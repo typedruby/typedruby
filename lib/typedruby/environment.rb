@@ -4,6 +4,7 @@ module TypedRuby
     attr_reader :root_scope
 
     attr_reader \
+      :BasicObject,
       :Object,
       :Module,
       :Class,
@@ -28,15 +29,17 @@ module TypedRuby
     end
 
     def bootstrap_class_system
+      @BasicObject = RubyClass.allocate
       @Object = RubyClass.allocate
       @Module = RubyClass.allocate
       @Class = RubyClass.allocate
 
-      k_basic_object = RubyClass.new(
+      @BasicObject.send(:initialize,
         # RubyClass#metaclass assumes that #superklass is non-nil.
         # BasicObject is the only class in Ruby without a superclass, so we need
         # to initialize its metaclass manually:
         klass: RubyMetaclass.new(
+          of: @BasicObject,
           klass: @Class,
           name: "Class[BasicObject]",
           superklass: @Class,
@@ -46,12 +49,12 @@ module TypedRuby
         superklass: nil,
         type_parameters: [],
       )
-      k_basic_object.constants[:BasicObject] = k_basic_object
+      @BasicObject.constants[:BasicObject] = @BasicObject
 
       @Object.send(:initialize,
         klass: @Class,
         name: "Object",
-        superklass: k_basic_object,
+        superklass: @BasicObject,
         type_parameters: [],
       )
       @Object.constants[:Object] = @Object

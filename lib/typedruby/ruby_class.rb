@@ -22,6 +22,7 @@ module TypedRuby
         @klass
       else
         @klass = RubyMetaclass.new(
+          of: self,
           klass: @klass,
           name: "Class[#{name}]",
           # no need to check for nil superklass here because BasicObject's metaklass

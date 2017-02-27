@@ -22,6 +22,7 @@ module TypedRuby
         @klass
       else
         @klass = RubyMetaclass.new(
+          of: self,
           name: "Class[#{name}]",
           klass: env.Class,
           superklass: @klass,
