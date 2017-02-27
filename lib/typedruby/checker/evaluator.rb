@@ -146,6 +146,49 @@ module TypedRuby
         end
       end
 
+      class KeywordHashType
+        attr_reader :node, :keywords
+
+        def initialize(node:, keywords:)
+          @node = node
+          @keywords = keywords
+        end
+
+        def describe
+          "{" + keywords.map { |k, t| "#{k}: #{t.describe}" }.join(", ") + "}"
+        end
+      end
+
+      class ProcType
+        attr_reader :node, :lead, :opt, :rest, :post, :kwreq, :kwopt, :block, :return_type
+
+        def initialize(node:, lead:, opt:, rest:, post:, kwreq:, kwopt:, block:, return_type:)
+          @node = node
+          @lead = lead
+          @opt = opt
+          @rest = rest
+          @post = post
+          @kwreq = kwreq
+          @kwopt = kwopt
+          @block = block
+          @return_type = return_type
+        end
+
+        def describe
+          args = [
+            *lead.map { |l| l.describe },
+            *opt.map { |o| "opt #{o.describe}" },
+            *(rest && "rest #{rest.describe}"),
+            *post.map { |p| "post #{p.describe}" },
+            *kwreq.map { |k, t| "kwreq #{k} #{t.describe}" },
+            *kwopt.map { |k, t| "kwopt #{k} #{t.describe}" },
+            *(block && "block #{block.describe}"),
+          ]
+
+          "(#{args.join(", ")}) => #{return_type.describe}"
+        end
+      end
+
       class TypeVar
         attr_accessor :node, :description, :instance
 
@@ -239,9 +282,33 @@ module TypedRuby
           UnionType.new(node: node, types: concrete_type.types.map { |t| new_type_from_concrete(t, node: node, self_type: self_type) })
         when Type::Any
           AnyType.new(node: node)
+        when Prototype
+          ProcType.new(node: node,
+            lead: concrete_type.lead.map { |arg| new_type_from_concrete(arg.type, node: node, self_type: self_type) },
+            opt: concrete_type.opt.map { |arg| new_type_from_concrete(arg.type, node: node, self_type: self_type) },
+            rest: concrete_type.rest && new_type_from_concrete(concrete_type.rest.type, node: node, self_type: self_type),
+            post: concrete_type.post.map { |arg| new_type_from_concrete(arg.type, node: node, self_type: self_type) },
+            kwreq: concrete_type.kwreq.map { |arg| [k, new_type_from_concrete(arg.type, node: node, self_type: self_type)] }.to_h,
+            kwopt: concrete_type.kwopt.map { |arg| [k, new_type_from_concrete(arg.type, node: node, self_type: self_type)] }.to_h,
+            block: concrete_type.block && new_type_from_concrete(concrete_type.block.type, node: node, self_type: self_type),
+            return_type: new_type_from_concrete(concrete_type.return_type, node: node, self_type: self_type),
+          )
         else
           raise "unknown concrete type #{concrete_type} in #{node}"
         end
+      end
+
+      def untyped_prototype
+        @untyped_prototype ||= ProcType.new(node: nil,
+          lead: [],
+          opt: [],
+          rest: InstanceType.new(node: nil, klass: env.Array, type_parameters: [AnyType.new(node: nil)]),
+          post: [],
+          kwreq: {},
+          kwopt: {},
+          block: AnyType.new(node: nil),
+          return_type: AnyType.new(node: nil),
+        )
       end
 
       def nil_type(node:)
@@ -327,6 +394,8 @@ module TypedRuby
           type_var == other_type
         when InstanceType
           other_type.type_parameters.any? { |t| occurs_in_type?(type_var, t) }
+        when AnyType
+          false
         else
           raise "unknown type in occurs_in_type?: #{other_type}"
         end
@@ -409,13 +478,48 @@ module TypedRuby
       end
 
       def on_send(node, locals)
-        recv, mid, *args = *node
+        method_prototype, locals = process_send(node, locals)
+
+        [method_prototype.return_type, locals]
+      end
+
+      def on_block(node, locals)
+        send, block_args, block_body = *node
+
+        method_prototype, locals = process_send(send, locals)
+
+        block_locals = block_args.children.reduce(locals) { |l, arg_node|
+          # TODO - we need proper prototype parsing in here
+
+          case arg_node.type
+          when :arg
+            arg_name, = *arg_node
+
+            l.assign(name: arg_name, type: new_type_var(node: arg_node))
+          when :procarg0
+            # to handle procarg0 correctly we need to look at the block
+            # argument in the method prototype... TODO
+            arg_name, = *arg_node
+
+            l.assign(name: arg_name, type: AnyType.new(node: arg_node))
+          end
+        }
+
+        # TODO - match block arguments against method
+
+        block_return_type, _ = process(block_body, block_locals)
+
+        [method_prototype.return_type, locals]
+      end
+
+      def process_send(send_node, locals)
+        recv, mid, *args = *send_node
 
         if recv
           recv_type, locals = process(recv, locals)
         else
           # TODO - handle case where self has generic type parameters
-          recv_type = InstanceType.new(node: node, klass: method.klass, type_parameters: [])
+          recv_type = InstanceType.new(node: send_node, klass: method.klass, type_parameters: [])
         end
 
         arg_types = args.map { |arg|
@@ -425,27 +529,101 @@ module TypedRuby
 
         case recv_type
         when InstanceType
-          unless method_entry = recv_type.klass.lookup_method_entry(mid)
+          if method_entry = recv_type.klass.lookup_method_entry(mid)
+            method = method_entry.definitions.last
+            prototype = new_type_from_concrete(method.prototype(env: env), node: method.prototype_node, self_type: recv_type)
+          else
             errors << Error.new(
               message: "Could not resolve method ##{mid} on #{recv_type.describe}",
-              node: node
+              node: send_node,
             )
-            return new_type_var(node: node), locals
+            prototype = untyped_prototype
           end
-
-          unless prototype = method_entry.definitions.last.prototype(env: env)
-            return new_type_var(node: node), locals
-          end
-
-          # TODO - check invocation matches prototype
-          return new_type_from_concrete(prototype.return_type, node: node, self_type: recv_type), locals
         when AnyType
-          return AnyType.new(node: node), locals
+          prototype = untyped_prototype
         when TypeVar
-          return new_type_var(node: node), locals
+          errors << Error.new(
+            message: "Unknown receiver type in invocation of ##{mid}",
+            node: send_node,
+          )
+          prototype = untyped_prototype
         else
           raise "unknown type #{recv_type.describe} as receiver to send"
         end
+
+        match_prototype_with_arguments(prototype, arg_types, node: send_node)
+
+        [prototype, locals]
+      end
+
+      def match_prototype_with_arguments(prototype, arg_types, node:)
+        arg_types = arg_types.dup
+
+        required_argc = prototype.lead.count + prototype.post.count
+
+        if arg_types.count < required_argc
+          errors << Error.new(
+            message: "Too few arguments supplied in method invocation",
+            node: node,
+          )
+        end
+
+        if arg_types.count > required_argc && (prototype.kwreq.any? || prototype.kwopt.any?)
+          last_arg = arg_types.last
+
+          if last_arg.is_a?(KeywordHashType)
+            arg_types.pop
+            kw_arg = last_arg
+            # TODO - type check
+          end
+        end
+
+        prototype.lead.each do |lead_arg|
+          arg_type = arg_types.shift or return
+          unify!(arg_type, lead_arg)
+        end
+
+        prototype.post.each do |post_arg|
+          arg_type = arg_types.pop or return
+          unify!(arg_type, post_arg)
+        end
+
+        prototype.opt.each do |opt_arg|
+          arg_type = arg_types.shift or break
+          unify!(arg_type, opt_arg)
+        end
+
+        if arg_types.count > 0
+          if rest_type = prototype.rest
+            unless rest_type.is_a?(InstanceType) && rest_type.klass == env.Array
+              # TODO sketchy
+              raise "expected rest arg to be an array..."
+            end
+
+            rest_element_type = rest_type.type_parameters[0]
+
+            arg_types.each do |arg_type|
+              unify!(arg_type, rest_element_type)
+            end
+          else
+            errors << Error.new(
+              message: "Too many arguments supplied in method invocation",
+              node: node,
+            )
+          end
+        end
+      end
+
+      def keyword_hash_type?(type)
+        return true if type.is_a?(KeywordHashType)
+
+        if type.is_a?(InstanceType) && type.klass == env.Hash
+          if type.type_parameters[0] == env.Symbol
+            return true
+          end
+        end
+
+        false
       end
 
       def on_const(node, locals)
@@ -475,6 +653,15 @@ module TypedRuby
 
       def on_str(node, locals)
         [InstanceType.new(node: node, klass: env.String, type_parameters: []), locals]
+      end
+
+      def on_regexp(node, locals)
+        *parts, regopt = *node
+
+        # TODO - ensure that all parts are to_s-able
+        _, locals = process_all(parts, locals)
+
+
       end
 
       def on_ivar(node, locals)
@@ -541,10 +728,20 @@ module TypedRuby
         key_type = new_type_var(node: node)
         value_type = new_type_var(node: node)
 
+        keywords = {}
+
         node.children.each do |n|
           case n.type
           when :pair
             key, value = *n
+
+            if key.type == :sym && keywords
+              vt, locals = process(value, locals)
+
+              keywords[key.children[0]] = vt
+            else
+              keywords = nil
+            end
 
             kt, locals = process(key, locals)
             vt, locals = process(value, locals)
@@ -556,7 +753,11 @@ module TypedRuby
           end
         end
 
-        [InstanceType.new(node: node, klass: env.Hash, type_parameters: [key_type, value_type]), locals]
+        if keywords
+          [KeywordHashType.new(node: node, keywords: keywords), locals]
+        else
+          [InstanceType.new(node: node, klass: env.Hash, type_parameters: [key_type, value_type]), locals]
+        end
       end
 
       def on_int(node, locals)
