@@ -19,7 +19,8 @@ module TypedRuby
       :Integer,
       :Array,
       :Hash,
-      :Float
+      :Float,
+      :Regexp
 
     def initialize(resolver:)
       @resolver = resolver
@@ -108,6 +109,9 @@ module TypedRuby
 
       @Float = RubyClass.new(klass: @Class, name: "Float", superklass: @Numeric, type_parameters: [])
       @Object.constants[:Float] = @Float
+
+      @Regexp = RubyClass.new(klass: @Class, name: "Regexp", superklass: @Object, type_parameters: [])
+      @Object.constants[:Regexp] = @Regexp
     end
 
     def resolve_type(node:, scope:)
