@@ -1795,6 +1795,9 @@ end
 
 class Time < Object
   include Comparable
+
+  def self.now => :instance
+  end
 end
 
 module Marshal
