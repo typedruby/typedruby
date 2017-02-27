@@ -1,0 +1,36 @@
+#!/usr/bin/env ruby
+require "typedruby"
+
+if ARGV.empty?
+  abort "usage: typedruby <ruby-files...>"
+end
+
+resolver = TypedRuby::Resolver.new(
+  load_paths: [
+    File.expand_path("../typedruby/stubs", __dir__),
+    *$LOAD_PATH,
+  ],
+  autoload_paths: [],
+  ignore_errors_in: [
+    # "#{RbConfig::CONFIG["rubylibdir"]}/racc/parser.rb",
+    File.expand_path("../vendor/bundle/", __dir__),
+    File.expand_path("../../../vendor/gems/", __dir__),
+  ],
+  autoloader: nil,
+)
+
+begin
+  ARGV.each do |file|
+    resolver.process(file)
+  end
+
+  resolver.perform
+rescue TypedRuby::Error => e
+  puts e.message
+  e.node_backtrace.each do |node|
+    file = node.location.expression.source_buffer.name
+    line = node.location.expression.line
+    puts("    #{file}:#{line}  #{node.type}")
+  end
+  exit! false
+end

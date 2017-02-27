@@ -1,0 +1,2 @@
+class Tempfile
+end
