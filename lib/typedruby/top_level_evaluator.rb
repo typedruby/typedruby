@@ -473,6 +473,7 @@ module TypedRuby
               klass: @env.Class,
               name: id,
               superklass: superklass,
+              type_parameters: [],
             ))
 
             return
