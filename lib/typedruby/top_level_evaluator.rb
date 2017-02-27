@@ -30,67 +30,139 @@ module TypedRuby
 
       # special case requires
       if recv == nil
-        if mid == :require
-          if args.count != 1
-            raise Error, "require takes only one argument"
-          end
-
-          require_arg = args[0]
-
-          if require_arg.type == :str
-            file, = *require_arg
-
-            @resolver.require_file(file: file, node: node)
-          else
-            UI.warn("dynamic require", node: node)
-          end
-
+        case mid
+        when :require
+          process_require(node)
           return
-        elsif mid == :require_relative
-          if args.count != 1
-            raise Error, "require_relative takes only one argument"
-          end
-
-          require_arg = args[0]
-
-          if require_arg.type == :str
-            file, = *require_arg
-
-            require_path = File.expand_path(file, File.dirname(node.location.expression.source_buffer.name))
-
-            if File.file?(require_path)
-              @resolver.process(require_path)
-            elsif File.file?("#{require_path}.rb")
-              @resolver.process("#{require_path}.rb")
-            else
-              UI.warn("could not resolve #{file.inspect} in require_relative", node: node)
-            end
-          else
-            UI.warn("dynamic require", node: node)
-          end
-
+        when :require_relative
+          process_require_relative(node)
           return
-        elsif mid == :autoload
-          if args.count != 2
-            raise Error, "autoload takes only two arguments"
-          end
-
-          if args[0].type != :sym
-            raise Error, "first argument of autoload must be symbol literal"
-          end
-
-          if args[1].type != :str
-            raise Error, "second argument of autoload must be string literal"
-          end
-
-          @scope.mod.autoload_const(env: @env, id: args[0].children[0], file: args[1].children[0], node: node)
-
+        when :autoload
+          process_autoload(node)
+          return
+        when :attr_reader
+          process_attr(node, reader: true, writer: false)
+          return
+        when :attr_writer
+          process_attr(node, reader: false, writer: true)
+          return
+        when :attr_accessor
+          process_attr(node, reader: true, writer: true)
           return
         end
       end
 
       process(recv)
       process_all(args)
+    end
+
+    def process_require(node)
+      _, _, *args = *node
+
+      if args.count != 1
+        raise Error, "require takes only one argument"
+      end
+
+      require_arg = args[0]
+
+      if require_arg.type == :str
+        file, = *require_arg
+
+        @resolver.require_file(file: file, node: node)
+      else
+        UI.warn("dynamic require", node: node)
+      end
+    end
+
+    def process_require_relative(node)
+      _, _, *args = *node
+
+      if args.count != 1
+        raise Error, "require_relative takes only one argument"
+      end
+
+      require_arg = args[0]
+
+      if require_arg.type == :str
+        file, = *require_arg
+
+        require_path = File.expand_path(file, File.dirname(node.location.expression.source_buffer.name))
+
+        if File.file?(require_path)
+          @resolver.process(require_path)
+        elsif File.file?("#{require_path}.rb")
+          @resolver.process("#{require_path}.rb")
+        else
+          UI.warn("could not resolve #{file.inspect} in require_relative", node: node)
+        end
+      else
+        UI.warn("dynamic require", node: node)
+      end
+    end
+
+    def process_autoload(node)
+      _, _, *args = *node
+
+      if args.count != 2
+        raise Error, "autoload takes only two arguments"
+      end
+
+      if args[0].type != :sym
+        raise Error, "first argument of autoload must be symbol literal"
+      end
+
+      if args[1].type != :str
+        raise Error, "second argument of autoload must be string literal"
+      end
+
+      @scope.mod.autoload_const(env: @env, id: args[0].children[0], file: args[1].children[0], node: node)
+    end
+
+    def process_attr(node, reader:, writer:)
+      _, _, *args = *node
+
+      args.each do |arg|
+        if arg.type != :sym
+          UI.warn("dynamic attr definition", node: arg)
+          next
+        end
+
+        attr_name, = *arg
+
+        if reader
+          @scope.mod.define_method(id: attr_name, method: RubyMethodStub.new(
+            klass: @scope.mod,
+            definition_node: node,
+            prototype: Prototype.new(
+              lead: [],
+              opt: [],
+              rest: nil,
+              post: [],
+              kwreq: [],
+              kwopt: [],
+              block: nil,
+              return_type: Type::Any.new,
+            ),
+          ))
+        end
+
+        if writer
+          @scope.mod.define_method(id: :"#{attr_name}=", method: RubyMethodStub.new(
+            klass: @scope.mod,
+            definition_node: node,
+            prototype: Prototype.new(
+              lead: [],
+              opt: [],
+              rest: nil,
+              post: [],
+              kwreq: [],
+              kwopt: [],
+              block: nil,
+              return_type: Type::Any.new,
+            ),
+          ))
+        end
+      end
     end
 
     def on_str(node)
@@ -195,8 +267,7 @@ module TypedRuby
       process_method_definition(
         target: @scope.mod,
         id: id,
-        prototype_node: args,
-        body_node: body,
+        node: node,
       )
     end
 
@@ -216,17 +287,15 @@ module TypedRuby
       process_method_definition(
         target: resolved_definee.metaklass(env: @env),
         id: id,
-        prototype_node: args,
-        body_node: body,
+        node: node,
       )
     end
 
-    def process_method_definition(target:, id:, prototype_node:, body_node:)
+    def process_method_definition(target:, id:, node:)
       method = RubyMethod.new(
         klass: target,
         scope: @scope,
-        prototype_node: prototype_node,
-        body_node: body_node,
+        definition_node: node,
       )
 
       target.define_method(id: id, method: method)
