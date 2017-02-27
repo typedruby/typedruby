@@ -7,6 +7,7 @@ module TypedRuby
   autoload :Environment, "typedruby/environment"
   autoload :Error, "typedruby/error"
   autoload :Location, "typedruby/location"
+  autoload :NoConstantError, "typedruby/no_constant_error"
   autoload :ParserBuilder, "typedruby/parser_builder"
   autoload :Prototype, "typedruby/prototype"
   autoload :RubyClass, "typedruby/ruby_class"

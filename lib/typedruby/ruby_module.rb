@@ -48,7 +48,7 @@ module TypedRuby
         return superklass.get_const(env: env, id: id, node: node)
       end
 
-      raise Error, "no such constant #{constant_path(id)}"
+      raise NoConstantError, "Could not resolve reference to constant #{constant_path(id)}"
     end
 
     def set_const(id:, value:)
