@@ -27,7 +27,7 @@ module TypedRuby
         # any type annotations
 
         if node.children.any? { |arg| arg.type == :typed_arg }
-          raise Error, "partial type annotations are not permitted at #{node}"
+          raise Error, "partial type annotations are not permitted at #{Location.new(node.location).file_and_line}"
         end
 
         return nil
@@ -51,7 +51,7 @@ module TypedRuby
 
       args.children.each do |typed_arg|
         if typed_arg.type != :typed_arg
-          raise Error, "partial type annotations are not permitted at #{node}"
+          raise Error, "partial type annotations are not permitted at #{Location.new(node.location).file_and_line}"
         end
 
         arg_type_node, arg_node = *typed_arg
