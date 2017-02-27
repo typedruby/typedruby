@@ -133,6 +133,12 @@ module TypedRuby
       when :tr_array
         element_type_node, = *node
         Type::Array.new(type: resolve_type(node: element_type_node, scope: scope))
+      when :tr_hash
+        key_type_node, value_type_node = *node
+        Type::Hash.new(
+          key_type: resolve_type(node: key_type_node, scope: scope),
+          value_type: resolve_type(node: value_type_node, scope: scope),
+        )
       when :tr_nil
         nil_type
       when :tr_special
