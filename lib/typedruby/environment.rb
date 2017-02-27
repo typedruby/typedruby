@@ -9,6 +9,7 @@ module TypedRuby
       :Module,
       :Class,
       :Kernel,
+      :Boolean,
       :TrueClass,
       :FalseClass,
       :NilClass,
@@ -75,10 +76,13 @@ module TypedRuby
       )
       @Object.constants[:Class] = @Class
 
-      @TrueClass = RubyClass.new(klass: @Class, name: "TrueClass", superklass: @Object, type_parameters: [])
+      @Boolean = RubyClass.new(klass: @Class, name: "Boolean", superklass: @Object, type_parameters: [])
+      @Object.constants[:Boolean] = @Boolean
+
+      @TrueClass = RubyClass.new(klass: @Class, name: "TrueClass", superklass: @Boolean, type_parameters: [])
       @Object.constants[:TrueClass] = @TrueClass
 
-      @FalseClass = RubyClass.new(klass: @Class, name: "FalseClass", superklass: @Object, type_parameters: [])
+      @FalseClass = RubyClass.new(klass: @Class, name: "FalseClass", superklass: @Boolean, type_parameters: [])
       @Object.constants[:FalseClass] = @FalseClass
 
       @NilClass = RubyClass.new(klass: @Class, name: "NilClass", superklass: @Object, type_parameters: [])

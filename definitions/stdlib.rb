@@ -624,10 +624,13 @@ end
 class Data < Object
 end
 
-class TrueClass < Object
+class Boolean < Object
 end
 
-class FalseClass < Object
+class TrueClass < Boolean
+end
+
+class FalseClass < Boolean
 end
 
 class Encoding < Object
