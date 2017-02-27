@@ -217,7 +217,21 @@ module TypedRuby
             # TODO - return a generic instance of the class rather than the class with type parameters erased:
             InstanceType.new(node: node, klass: self_type.klass.metaklass(env: env), type_parameters: [])
           else
-            raise "unknown self_type in Type::SpecialClass in new_type_from_concrete: #{self_type}"
+            raise "unknown self_type in Type::SpecialClass in new_type_from_concrete: #{self_type.describe}"
+          end
+        when Type::SpecialInstance
+          case self_type
+          when InstanceType
+            if self_type.klass.is_a?(RubyMetaclass)
+              InstanceType.new(node: node, klass: self_type.klass.of, type_parameters: [])
+            else
+              # only encountered when type checking the Class#new definition
+              # in that case, rather than the receiver being a metaclass of a
+              # real class (as is the case in an instantiation), it's just Class
+              AnyType.new(node: node)
+            end
+          else
+            raise "unknown self_type in Type::SpecialInstance in new_type_from_concrete: #{self_type.describe}"
           end
         when Type::GenericTypeParameter
           GenericTypeParameter.new(name: concrete_type.name)
