@@ -123,6 +123,12 @@ module TypedRuby
       end
 
       class AnyType
+        attr_reader :node
+
+        def initialize(node:)
+          @node = node
+        end
+
         def describe
           "any"
         end
@@ -217,6 +223,8 @@ module TypedRuby
           GenericTypeParameter.new(name: concrete_type.name)
         when Type::Union
           UnionType.new(node: node, types: concrete_type.types.map { |t| new_type_from_concrete(t, node: node, self_type: self_type) })
+        when Type::Any
+          AnyType.new(node: node)
         else
           raise "unknown concrete type #{concrete_type} in #{node}"
         end
@@ -418,7 +426,7 @@ module TypedRuby
           # TODO - check invocation matches prototype
           return new_type_from_concrete(prototype.return_type, node: node, self_type: recv_type), locals
         when AnyType
-          return new_type_var(node: node), locals
+          return AnyType.new(node: node), locals
         when TypeVar
           return new_type_var(node: node), locals
         else
