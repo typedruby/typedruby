@@ -14,6 +14,10 @@ module TypedRuby
       ast_location.expression.line
     end
 
+    def file_and_line
+      "#{file}:#{line}"
+    end
+
     def to_s
       "#<#{self.class} #{file}:#{line}>"
     end
