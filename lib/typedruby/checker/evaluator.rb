@@ -223,14 +223,14 @@ module TypedRuby
         locals = method_prototype.locals.reduce(NullLocal.new) { |locals, (name, type)|
           locals.assign(
             name: name,
-            type: new_type_from_concrete(type, node: method.prototype_node, self_type: self_type))
+            type: new_type_from_concrete(type, node: method.definition_node, self_type: self_type))
         }
 
         type, locals = process(method.body_node, locals)
 
         # TODO - unify type and method return type
 
-        unify!(type, new_type_from_concrete(method_prototype.return_type, node: method.prototype_node, self_type: self_type))
+        unify!(type, new_type_from_concrete(method_prototype.return_type, node: method.definition_node, self_type: self_type))
       end
 
       def new_type_var(node:)
@@ -531,7 +531,7 @@ module TypedRuby
         when InstanceType
           if method_entry = recv_type.klass.lookup_method_entry(mid)
             method = method_entry.definitions.last
-            prototype = new_type_from_concrete(method.prototype(env: env), node: method.prototype_node, self_type: recv_type)
+            prototype = new_type_from_concrete(method.prototype(env: env), node: method.definition_node, self_type: recv_type)
           else
             errors << Error.new(
               message: "Could not resolve method ##{mid} on #{recv_type.describe}",
