@@ -172,7 +172,7 @@ module TypedRuby
           return mod.get_const(env: self, id: id, node: node)
         end
 
-        resolver.autoload_const(mod, id) or begin
+        resolver.autoload_const(mod: mod, id: id) or begin
           raise Error, "no such constant #{mod.constant_path(id)}"
         end
       else
