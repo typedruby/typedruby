@@ -1,0 +1,190 @@
+#!/usr/bin/env ruby --disable-gem
+
+require "socket"
+require "etc"
+require "fcntl"
+
+class StdlibDumper
+  # while StdlibDumper does attempt to perform a topsort on dependency
+  # relationships within the standard library, there are a handful of cases
+  # of cyclical dependencies, for example:
+  #
+  #   - File is a subclass of IO
+  #   - File::Constants is defined under File
+  #   - IO includes File::Constants
+  #
+  # To break this cycle we can defer inclusion of modules where necessary:
+  #
+  CYCLIC_DEPENDENCIES = {
+    IO => [
+      File::Constants,
+    ],
+    Random => [
+      Random::Formatter,
+    ],
+  }
+
+  # This is an inverted version of the hash above mapping modules to a list of
+  # including classes:
+  DEFERRED_INCLUDES = CYCLIC_DEPENDENCIES \
+    .flat_map { |cls, mods| mods.map { |mod| [cls, mod] } }
+    .group_by { |cls, mod| mod }
+    .map      { |mod, cls_mods| [mod, cls_mods.map { |cls, mod| cls }] }
+    .to_h
+
+  def initialize(io)
+    @io = io
+    @indent = 0
+    @depends = {}.compare_by_identity
+    @rendered = {}.compare_by_identity
+  end
+
+  def own_includes(ns)
+    ancestors = ns.ancestors[1..-1]
+
+    if ns.is_a?(Class) && ns.superclass
+      ancestors -= ns.superclass.ancestors
+    end
+
+    ancestor_includes = ancestors.map { |a| a.ancestors[1..-1] }.reduce([], :|)
+
+    ancestors - ancestor_includes
+  end
+
+  def visit(ns)
+    return if !ns.name
+
+    return if @depends[ns]
+    depends = @depends[ns] = []
+
+    # if the class/module is defined under a parent class/module, that must also
+    # be defined first:
+    if ns.name.include?("::")
+      owner_cpath = ns.name.split("::")[0...-1].join("::")
+      owner = Object.const_get(owner_cpath)
+      depends << owner
+    end
+
+    # ensure we visit the superclass before attempting to define subclasses:
+    if ns.is_a?(Class) && ns.superclass
+      depends << ns.superclass
+    end
+
+    # each class/module depends on anything it includes having been defined first:
+    depends.concat(own_includes(ns))
+
+    # remove any anonymous classes/modules
+    depends.select! { |dep| dep.name }
+
+    # and ensure everything we depend on is visited:
+    depends.each do |dep|
+      visit(dep)
+    end
+
+    # visit all namespaces defined underneath this namespace:
+    ns.constants(false).each do |const|
+      mod = ns.const_get(const)
+      if mod.is_a?(Module)
+        visit(mod)
+      end
+    end
+  end
+
+  def render_definitions!
+    @depends.each_key do |ns|
+      render(ns)
+    end
+  end
+
+  # The stringio and io/console C extensions define modules with constant names
+  # that are not valid Ruby constant names. Ruby Core is unwilling to change
+  # these constant names (https://github.com/ruby/ruby/pull/315), so we must
+  # work around this here so that our type definitions file is valid Ruby.
+  def safe_name(mod)
+    case mod.name
+    when "IO::generic_readable"
+      "IO::Generic_readable"
+    when "IO::generic_writable"
+      "IO::Generic_writable"
+    else
+      mod.name
+    end
+  end
+
+  def render(ns)
+    return if @rendered[ns]
+
+    @rendered[ns] = true
+
+    # render everything this class/module depends on before rendering ourselves:
+    if @depends[ns]
+      @depends[ns].each do |dep|
+        if CYCLIC_DEPENDENCIES[ns] && CYCLIC_DEPENDENCIES[ns].include?(dep)
+          next
+        end
+
+        render(dep)
+      end
+    end
+
+    if ns.is_a?(Class)
+      if ns.superclass
+        emit("class #{safe_name(ns)} < #{safe_name(ns.superclass)}")
+      else
+        emit("class #{safe_name(ns)}")
+      end
+    else
+      emit("module #{safe_name(ns)}")
+    end
+
+    indent do
+      own_includes(ns).each do |incl|
+        next if CYCLIC_DEPENDENCIES[ns] && CYCLIC_DEPENDENCIES[ns].include?(incl)
+
+        next unless incl.name
+
+        emit("include #{safe_name(incl)}")
+      end
+
+      ns.constants(false).each do |const|
+        if !ns.const_get(const).is_a?(Module)
+          emit("#{const} = nil")
+        end
+      end
+    end
+
+    emit("end")
+    emit
+
+    if DEFERRED_INCLUDES[ns]
+      DEFERRED_INCLUDES[ns].each do |cls|
+        kw = cls.is_a?(Class) ? "class" : "module"
+        emit("#{kw} #{safe_name(cls)}")
+        indent do
+          emit("include #{safe_name(ns)}")
+        end
+        emit("end")
+        emit
+      end
+    end
+  end
+
+  def indent
+    @indent += 1
+    yield
+  ensure
+    @indent -= 1
+  end
+
+  def emit(str = "")
+    @io.puts(("  " * @indent + str).chomp)
+  end
+end
+
+File.open("#{__dir__}/../definitions/stdlib.rb", "w") do |f|
+  dumper = StdlibDumper.new(f)
+
+  dumper.visit(Object)
+
+  dumper.render_definitions!
+end

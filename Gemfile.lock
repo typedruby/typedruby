@@ -1,0 +1,34 @@
+PATH
+  remote: .
+  specs:
+    typedruby (0.0.1)
+      parser (= 2.3.3.2.typedruby.16b3e73)
+
+GEM
+  remote: https://rubygems.org/
+  specs:
+    ast (2.3.0)
+    byebug (9.0.6)
+    coderay (1.1.1)
+    method_source (0.8.2)
+    parser (2.3.3.2.typedruby.16b3e73)
+      ast (~> 2.2)
+    pry (0.10.4)
+      coderay (~> 1.1.0)
+      method_source (~> 0.8.1)
+      slop (~> 3.4)
+    pry-byebug (3.4.2)
+      byebug (~> 9.0)
+      pry (~> 0.10)
+    slop (3.6.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  pry
+  pry-byebug
+  typedruby!
+
+BUNDLED WITH
+   1.13.7
