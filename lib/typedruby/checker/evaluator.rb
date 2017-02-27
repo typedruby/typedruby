@@ -628,9 +628,18 @@ module TypedRuby
 
       def on_const(node, locals)
         if validate_static_cpath(node)
-          const = env.resolve_cpath(node: node, scope: scope)
+          begin
+            const = env.resolve_cpath(node: node, scope: scope)
 
-          [InstanceType.new(node: node, klass: const.metaklass(env: env), type_parameters: []), locals]
+            [InstanceType.new(node: node, klass: const.metaklass(env: env), type_parameters: []), locals]
+          rescue NoConstantError => e
+            errors << Error.new(
+              message: e.message,
+              node: node,
+            )
+
+            [new_type_var(node: node), locals]
+          end
         else
           errors << Error.new(
             message: "Dynamic constant lookup",

@@ -186,7 +186,7 @@ module TypedRuby
         end
 
         resolver.autoload_const(mod: mod, id: id) or begin
-          raise Error, "no such constant #{mod.constant_path(id)}"
+          raise NoConstantError, "Could not resolve reference to constant #{mod.constant_path(id)}"
         end
       else
         # look up in lexical scope
@@ -202,7 +202,7 @@ module TypedRuby
           end
         end
 
-        raise Error, "no such constant #{id}"
+        raise NoConstantError, "Could not resolve reference to constant #{id} in lexical scope"
       end
     end
   end
