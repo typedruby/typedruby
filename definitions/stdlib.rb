@@ -576,6 +576,9 @@ class String < Object
 
   def %(Object arg) => String
   end
+
+  def gsub(Regexp pattern, { |String s| => String } &) => String
+  end
 end
 
 class Array::[ElementType] < Object
