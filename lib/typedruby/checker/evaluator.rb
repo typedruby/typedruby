@@ -422,11 +422,7 @@ module TypedRuby
       end
 
       def process(node, locals)
-        if node
-          send("on_#{node.type}", node, locals)
-        else
-          [nil_type(node: node), locals]
-        end
+        send("on_#{node.type}", node, locals)
       end
 
       def process_all(nodes, locals)
