@@ -527,6 +527,8 @@ module TypedRuby
           t
         }
 
+        recv_type = prune(recv_type)
+
         case recv_type
         when InstanceType
           if method_entry = recv_type.klass.lookup_method_entry(mid)
@@ -569,7 +571,7 @@ module TypedRuby
         end
 
         if arg_types.count > required_argc && (prototype.kwreq.any? || prototype.kwopt.any?)
-          last_arg = arg_types.last
+          last_arg = prune(arg_types.last)
 
           if last_arg.is_a?(KeywordHashType)
             arg_types.pop
@@ -594,7 +596,7 @@ module TypedRuby
         end
 
         if arg_types.count > 0
-          if rest_type = prototype.rest
+          if rest_type = prune(prototype.rest)
             unless rest_type.is_a?(InstanceType) && rest_type.klass == env.Array
               # TODO sketchy
               raise "expected rest arg to be an array..."
@@ -612,18 +614,6 @@ module TypedRuby
             )
           end
         end
-      end
-
-      def keyword_hash_type?(type)
-        return true if type.is_a?(KeywordHashType)
-
-        if type.is_a?(InstanceType) && type.klass == env.Hash
-          if type.type_parameters[0] == env.Symbol
-            return true
-          end
-        end
-
-        false
       end
 
       def on_const(node, locals)
