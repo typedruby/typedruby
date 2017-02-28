@@ -8,5 +8,5 @@ Gem::Specification.new do |s|
 
   s.executables << "typedruby"
 
-  s.add_dependency "parser", "= 2.3.3.2.typedruby.2e0a807"
+  s.add_dependency "parser", "= 2.3.3.2.typedruby.913df53"
 end
