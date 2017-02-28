@@ -583,6 +583,9 @@ class Array::[ElementType] < Object
 
   def <<(ElementType item) => :self
   end
+
+  def each({ |ElementType element| } &bk) => :self
+  end
 end
 
 class Hash < Object
