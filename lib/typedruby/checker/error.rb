@@ -6,5 +6,13 @@ module TypedRuby::Checker
       @message = message
       @node = node
     end
+
+    def file
+      node.location.expression.source_buffer.name
+    end
+
+    def line
+      node.location.expression.first_line
+    end
   end
 end
