@@ -572,11 +572,9 @@ class String < Object
   include Comparable
 
   def +(String other) => String
-    ""
   end
 
   def %(Object arg) => String
-    ""
   end
 end
 
@@ -584,7 +582,6 @@ class Array::[ElementType] < Object
   include Enumerable
 
   def <<(ElementType item) => :self
-    self
   end
 end
 
