@@ -172,6 +172,19 @@ module TypedRuby
         end
       end
 
+      class ProcArg0
+        attr_reader :node, :type
+
+        def initialize(node:, type:)
+          @node = node
+          @type = type
+        end
+
+        def describe
+          "#{type.describe}"
+        end
+      end
+
       class OptionalArg
         attr_reader :node, :type
 
@@ -194,7 +207,7 @@ module TypedRuby
         end
 
         def describe
-          "* #{type.describe}"
+          "#{type.describe} *"
         end
       end
 
@@ -213,6 +226,19 @@ module TypedRuby
             optional.map { |kw, type| "#{type.describe} #{kw}: ..." }
 
           "{" + keywords.join(", ") + "}"
+        end
+      end
+
+      class BlockArg
+        attr_reader :node, :type
+
+        def initialize(node:, type:)
+          @node = node
+          @type = type
+        end
+
+        def describe
+          "#{type.describe} &"
         end
       end
 
@@ -455,6 +481,8 @@ module TypedRuby
           other_type.type_parameters.any? { |t| occurs_in_type?(type_var, t) }
         when AnyType
           false
+        when TupleType
+          other_type.types.any? { |t| occurs_in_type?(type_var, t) }
         else
           raise "unknown type in occurs_in_type?: #{other_type}"
         end
@@ -543,28 +571,76 @@ module TypedRuby
 
         method_prototype, locals = process_send(send, locals)
 
-        block_locals = block_args.children.reduce(locals) { |l, arg_node|
-          # TODO - we need proper prototype parsing in here
-
-          case arg_node.type
-          when :arg
-            arg_name, = *arg_node
-
-            l.assign(name: arg_name, type: new_type_var(node: arg_node))
-          when :procarg0
-            # to handle procarg0 correctly we need to look at the block
-            # argument in the method prototype... TODO
-            arg_name, = *arg_node
-
-            l.assign(name: arg_name, type: AnyType.new(node: arg_node))
-          end
-        }
+        block_prototype, block_locals = parse_prototype(block_args, locals, self_type: self_type, scope: scope)
 
         # TODO - match block arguments against method
 
         block_return_type, _ = process(block_body, block_locals)
 
         [method_prototype.return_type, locals]
+      end
+
+      def parse_prototype(prototype_node, locals, self_type:, scope:)
+        if prototype_node.type == :prototype
+          args_node, return_type_node = *prototype_node
+          concrete_return_type = env.resolve_type(node: return_type_node, scope: scope)
+          return_type = new_type_from_concrete(concrete_return_type, node: return_type_node, self_type: self_type)
+        else
+          args_node = prototype_node
+          return_type = new_type_var(node: args_node)
+        end
+
+        arguments = args_node.children.map { |arg_node|
+          argument, locals = parse_argument(arg_node, locals, self_type: self_type, scope: scope)
+          argument
+        }
+
+        if arguments.last.is_a?(BlockArg)
+          block_type = arguments.pop.type
+        end
+
+        prototype = ProcType.new(
+          node: prototype_node,
+          args: arguments,
+          block: block_type,
+          return_type: return_type,
+        )
+
+        [prototype, locals]
+      end
+
+      def parse_argument(arg_node, locals, self_type:, scope:)
+        if arg_node.type == :typed_arg
+          type_node, arg_node = *arg_node
+          concrete_type = env.resolve_type(node: type_node, scope: scope)
+          type = new_type_from_concrete(concrete_type, node: type_node, self_type: self_type)
+        else
+          type = new_type_var(node: arg_node)
+        end
+
+        case arg_node.type
+        when :arg
+          arg_name, = *arg_node
+          locals = locals.assign(name: arg_name, type: type)
+          argument = RequiredArg.new(node: arg_node, type: type)
+        when :procarg0
+          if arg_node.children.count == 1 && arg_node.children.first.is_a?(Symbol)
+            arg_name = arg_node.children.first
+            locals = locals.assign(name: arg_name, type: type)
+            argument = ProcArg0.new(node: arg_node, type: type)
+          else
+            args = arg_node.children.map { |n|
+              arg, locals = parse_argument(n, locals, self_type: self_type, scope: scope)
+              arg
+            }
+            unify!(type, TupleType.new(node: arg_node, types: args.map(&:type)))
+            argument = ProcArg0.new(node: arg_node, type: type)
+          end
+        else
+          raise "unknown arg type: #{arg_node.type}"
+        end
+
+        [argument, locals]
       end
 
       def process_send(send_node, locals)
@@ -588,7 +664,10 @@ module TypedRuby
         when InstanceType
           if method_entry = recv_type.klass.lookup_method_entry(mid)
             method = method_entry.definitions.last
-            prototype = new_type_from_concrete(method.prototype(env: env), node: method.definition_node, self_type: recv_type)
+            concrete_prototype = method.prototype(env: env)
+            prototype = concrete_prototype \
+              ? new_type_from_concrete(concrete_prototype, node: method.definition_node, self_type: recv_type)
+              : untyped_prototype
           else
             errors << Error.new(
               message: "Could not resolve method ##{mid} on #{recv_type.describe}",
