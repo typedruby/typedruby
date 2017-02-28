@@ -123,7 +123,7 @@ module TypedRuby
           cbase, id = *cpath
 
           if cbase == nil && scope.mod.is_a?(RubyClass) && scope.mod.type_parameters.include?(id)
-            return Type::GenericTypeParameter.new(klass: scope.mod, name: id)
+            return Type::GenericTypeParameter.new(name: id)
           end
         end
 
@@ -158,6 +158,9 @@ module TypedRuby
         else
           raise Error, "unexpected special type: #{node.children[0]}"
         end
+      when :tr_proc
+        prototype, = *node
+        Type::Proc.new(prototype_node: prototype, scope: scope)
       else
         raise Error, "unexpected type node: #{node.type}"
       end

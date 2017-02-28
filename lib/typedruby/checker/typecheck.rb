@@ -17,24 +17,33 @@ module TypedRuby
 
         evaluator.process_method_body
 
-        errors_by_file = evaluator.errors.group_by(&:file)
+        evaluator.errors.each do |error|
+          puts "\e[31;1merror:\e[0;1m #{error.message}\e[0m"
 
-        if fileless_errors = errors_by_file.delete(nil)
-          fileless_errors.each do |e|
-            puts e.message
-          end
-        end
+          last_file = nil
 
-        errors_by_file.each do |file, errors|
-          puts "\e[34;4;1m#{file}\e[0m"
+          error.context.each do |context|
+            loc = context.node.location.expression
 
-          lines = File.readlines(file)
+            if last_file != loc.source_buffer.name
+              last_file = loc.source_buffer.name
+              puts
+              puts "       \e[34;4;1m#{last_file}\e[0m"
+            end
 
-          line_number_padding = errors.map { |e| e.node.location.expression.last_line }.max.to_s.size
+            lines = File.readlines(last_file)
+            line_number_padding = lines.count.to_s.size
 
-          errors.sort_by(&:line).each do |error|
-            puts "  \e[31;1merror:\e[0;1m #{error.message}\e[0m"
-            printf "    \e[33;1m%#{line_number_padding}d\e[0m %s\n", error.line, lines[error.line - 1].chomp
+            line = lines[loc.line - 1].chomp
+
+            printf "       \e[33;1m%#{line_number_padding}d\e[0m ", loc.line
+            print line[0, loc.column]
+            print "\e[31;1m"
+            print line[loc.column...loc.last_column]
+            print "\e[0m"
+            print line[loc.last_column..-1]
+            puts
+            puts "#{" " * (line_number_padding + 8)}#{" " * loc.column}\e[31;1m#{"^" * (loc.last_column - loc.column)}\e[0;1m #{context.message}\e[0m"
             puts
           end
         end

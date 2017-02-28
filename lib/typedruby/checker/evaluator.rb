@@ -105,7 +105,7 @@ module TypedRuby
         end
 
         def describe
-          "[#{type.map(&:describe).join(", ")}]"
+          "[#{types.map(&:describe).join(", ")}]"
         end
       end
 
@@ -352,11 +352,25 @@ module TypedRuby
             raise "unknown self_type in Type::SpecialInstance in new_type_from_concrete: #{self_type.describe}"
           end
         when Type::GenericTypeParameter
-          GenericTypeParameter.new(name: concrete_type.name)
+          case self_type
+          when InstanceType
+            type_parameter_index = self_type.klass.type_parameters.index(concrete_type.name)
+
+            unless type_parameter_index
+              raise "could not find type parameter #{concrete_type.name} in #{self_type.klass}"
+            end
+
+            self_type.type_parameters[type_parameter_index]
+          else
+            raise "unknown self_type in Type::GenericTypeParameter in new_type_from_concrete: #{self_type.describe}"
+          end
         when Type::Union
           UnionType.new(node: node, types: concrete_type.types.map { |t| new_type_from_concrete(t, node: node, self_type: self_type) })
         when Type::Any
           AnyType.new(node: node)
+        when Type::Proc
+          proc_type, _ = parse_prototype(concrete_type.prototype_node, NullLocal.new, self_type: self_type, scope: concrete_type.scope)
+          proc_type
         when Prototype
           args =
             concrete_type.lead.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node) } +
@@ -414,55 +428,100 @@ module TypedRuby
       end
 
       def unify!(t1, t2)
-        unless unify(t1, t2)
-          errors << Error.new(
-            node: t1.node || t2.node,
-            message: "Could not match #{t1.describe} with #{t2.describe}",
-          )
-        end
-      end
-
-      def unify(t1, t2)
         t1 = prune(t1)
         t2 = prune(t2)
 
         if t1.is_a?(TypeVar)
           if occurs_in_type?(t1, t2)
-            false
+            fail_unification!(t1, t2)
           else
             t1.instance = t2
-            true
           end
         elsif t2.is_a?(TypeVar)
-          unify(t2, t1)
+          unify!(t2, t1)
         elsif t1.is_a?(InstanceType) && t2.is_a?(InstanceType)
           if t1.klass == t2.klass
             t1.type_parameters.zip(t2.type_parameters) do |tp1, tp2|
-              return false unless unify(tp1, tp2)
+              unify!(tp1, tp2)
             end
-            true
+            t2
           else
-            false
+            fail_unification!(t1, t2)
           end
+        elsif t1.is_a?(TupleType) && t2.is_a?(TupleType)
+          t1.types.zip(t2.types) do |ty1, ty2|
+            unify!(ty1, ty2)
+          end
+          t1
+        elsif t1.is_a?(TupleType)
+          if t2.is_a?(InstanceType) && t2.klass == env.Array
+            t1.types.each do |tuple_type|
+              unify!(tuple_type, t2.type_parameters[0])
+            end
+            t1
+          else
+            fail_unification(t1, t2)
+          end
+        elsif t2.is_a?(TupleType)
+          unify!(t2, t1)
         elsif t1.is_a?(AnyType)
           t2
         elsif t2.is_a?(AnyType)
           t1
         elsif t1.is_a?(GenericTypeParameter) && t2.is_a?(GenericTypeParameter)
-          t1.name == t2.name
+          if t1.name == t2.name
+            t1
+          else
+            fail_unification!(t1, t2)
+          end
+        elsif t1.is_a?(ProcType) && t2.is_a?(ProcType)
+          if t1.args.count == 1 && t1.args[0].is_a?(ProcArg0)
+            if t2.args.count == 1 && t2.args[0].is_a?(ProcArg0)
+              unify!(t1.args[0].type, t2.args[0].type)
+            else
+              # handle procarg0 expansion
+              raise "nope"
+            end
+          elsif t2.args.count == 1 && t2.args[0].is_a?(ProcArg0)
+            # handle procarg0 expansion
+            raise "nope"
+          else
+            # handle arbitrary arg matching
+            raise "nope"
+          end
+
+          if t1.block && t2.block
+            unify!(t1.block, t2.block)
+          elsif !!t1.block ^ !!t2.block
+            fail_unification!(t1.block, t2.block)
+          end
+
+          unify!(t1.return_type, t2.return_type)
         else
-          false
+          raise "unknown case in unify!\n#{t1.describe}\n#{t2.describe}"
+          fail_unification!(t1, t2)
         end
+      end
+
+      def fail_unification!(t1, t2)
+        errors << Error.new("Could not match types:", [
+          Error::MessageWithNode.new(message: "#{t1.describe}, with:", node: t1.node),
+          Error::MessageWithNode.new(message: t2.describe, node: t2.node),
+        ])
+
+        t2
       end
 
       def unify_or_make_union(t1, t2, node:)
         unified = new_type_var(node: node)
 
-        if unify(unified, t1) && unify(unified, t2)
-          unified
-        else
-          UnionType.new(node: node, types: [t1, t2])
-        end
+        unify!(unified, t1)
+        unify!(unified, t2)
+
+        # TODO:
+        # UnionType.new(node: node, types: [t1, t2])
+
+        unified
       end
 
       def prune(type)
@@ -572,10 +631,10 @@ module TypedRuby
         method_prototype, locals = process_send(send, locals)
 
         block_prototype, block_locals = parse_prototype(block_args, locals, self_type: self_type, scope: scope)
-
-        # TODO - match block arguments against method
+        unify!(block_prototype, method_prototype.block)
 
         block_return_type, _ = process(block_body, block_locals)
+        unify!(block_return_type, block_prototype.return_type)
 
         [method_prototype.return_type, locals]
       end
@@ -609,13 +668,14 @@ module TypedRuby
         [prototype, locals]
       end
 
-      def parse_argument(arg_node, locals, self_type:, scope:)
-        if arg_node.type == :typed_arg
-          type_node, arg_node = *arg_node
+      def parse_argument(typed_arg_node, locals, self_type:, scope:)
+        if typed_arg_node.type == :typed_arg
+          type_node, arg_node = *typed_arg_node
           concrete_type = env.resolve_type(node: type_node, scope: scope)
           type = new_type_from_concrete(concrete_type, node: type_node, self_type: self_type)
         else
-          type = new_type_var(node: arg_node)
+          arg_node = typed_arg_node
+          type = new_type_var(node: typed_arg_node)
         end
 
         case arg_node.type
@@ -669,19 +729,23 @@ module TypedRuby
               ? new_type_from_concrete(concrete_prototype, node: method.definition_node, self_type: recv_type)
               : untyped_prototype
           else
-            errors << Error.new(
-              message: "Could not resolve method ##{mid} on #{recv_type.describe}",
-              node: send_node,
-            )
+            errors << Error.new("Could not resolve method ##{mid} on #{recv_type.describe}", [
+              Error::MessageWithNode.new(
+                message: "in this invocation",
+                node: send_node,
+              ),
+            ])
             prototype = untyped_prototype
           end
         when AnyType
           prototype = untyped_prototype
         when TypeVar
-          errors << Error.new(
-            message: "Unknown receiver type in invocation of ##{mid}",
-            node: send_node,
-          )
+          errors << Error.new("Unknown receiver type in invocation of ##{mid}", [
+            Error::MessageWithNode.new(
+              message: "here",
+              node: send_node,
+            ),
+          ])
           prototype = untyped_prototype
         else
           raise "unknown type #{recv_type.describe} as receiver to send"
@@ -699,10 +763,12 @@ module TypedRuby
         required_argc = prototype_args.grep(RequiredArg).count
 
         if arg_types.count < required_argc
-          errors << Error.new(
-            message: "Too few arguments supplied in method invocation",
-            node: node,
-          )
+          errors << Error.new("Too few arguments", [
+            Error::MessageWithNode.new(
+              message: "in this method invocation",
+              node: node,
+            ),
+          ])
         end
 
         if arg_types.count > required_argc && prototype_args.last.is_a?(KeywordHashArg)
@@ -742,10 +808,12 @@ module TypedRuby
           end
         else
           if arg_types.any?
-            errors << Error.new(
-              message: "Too many arguments supplied in method invocation",
-              node: node,
-            )
+            errors << Error.new("Too many arguments", [
+              Error::MessageWithNode.new(
+                message: "in this method invocation",
+                node: node,
+              ),
+            ])
           end
         end
       end
@@ -757,18 +825,22 @@ module TypedRuby
 
             [InstanceType.new(node: node, klass: const.metaklass(env: env), type_parameters: []), locals]
           rescue NoConstantError => e
-            errors << Error.new(
-              message: e.message,
-              node: node,
-            )
+            errors << Error.new(e.message, [
+              Error::MessageWithNode.new(
+                message: "here",
+                node: node,
+              ),
+            ])
 
             [new_type_var(node: node), locals]
           end
         else
-          errors << Error.new(
-            message: "Dynamic constant lookup",
-            node: node
-          )
+          errors << Error.new("Dynamic constant lookup", [
+            Error::MessageWithNode.new(
+              message: "here",
+              node: node
+            ),
+          ])
 
           [new_type_var(node: node), locals]
         end
@@ -833,10 +905,12 @@ module TypedRuby
 
       def on_super(node, locals)
         # TODO -
-        errors << Error.new(
-          node: node,
-          message: "I haven't implemented super calls yet",
-        )
+        errors << Error.new("I haven't implemented super calls yet", [
+          Error::MessageWithNode.new(
+            message: "here",
+            node: node,
+          ),
+        ])
 
         [new_type_var(node: node), locals]
       end
@@ -917,10 +991,12 @@ module TypedRuby
             node = left
             next
           else
-            errors << Error.new(
-              message: "Left-hand side of constant lookup (:: operator) is not a constant. Dynamic constant references are not permitted in TypedRuby code.",
-              node: node,
-            )
+            errors << Error.new("Dynamic constant lookup", [
+              Error::MessageWithNode.new(
+                message: "here",
+                node: node,
+              ),
+            ])
             return false
           end
         end
