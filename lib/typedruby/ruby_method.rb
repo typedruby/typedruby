@@ -1,6 +1,6 @@
 module TypedRuby
   class RubyMethod
-    attr_reader :klass, :definition_node, :body_node, :scope
+    attr_reader :klass, :definition_node, :prototype_node, :body_node, :scope
 
     def initialize(klass:, definition_node:, scope:)
       @klass = klass
@@ -20,7 +20,7 @@ module TypedRuby
     def prototype(env:)
       return @prototype if defined?(@prototype)
 
-      @prototype = Prototype.from_node(env: env, scope: scope, node: @prototype_node)
+      @prototype = Prototype.from_node(env: env, scope: scope, node: prototype_node)
     end
 
     def source_location
