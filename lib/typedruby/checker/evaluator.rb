@@ -226,11 +226,14 @@ module TypedRuby
             type: new_type_from_concrete(type, node: method.definition_node, self_type: self_type))
         }
 
-        type, locals = process(method.body_node, locals)
+        if method.body_node
+          type, locals = process(method.body_node, locals)
 
-        # TODO - unify type and method return type
-
-        unify!(type, new_type_from_concrete(method_prototype.return_type, node: method.definition_node, self_type: self_type))
+          unify!(type, new_type_from_concrete(method_prototype.return_type, node: method.definition_node, self_type: self_type))
+        else
+          # if method body is missing, just ignore any type error (stub definitions would rely on this for instance)
+          # TODO - perhaps revisit this decision later?
+        end
       end
 
       def new_type_var(node:)
