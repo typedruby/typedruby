@@ -17,7 +17,15 @@ module TypedRuby
 
         evaluator.process_method_body
 
-        evaluator.errors.group_by(&:file).each do |file, errors|
+        errors_by_file = evaluator.errors.group_by(&:file)
+
+        if fileless_errors = errors_by_file.delete(nil)
+          fileless_errors.each do |e|
+            puts e.message
+          end
+        end
+
+        errors_by_file.each do |file, errors|
           puts "\e[34;4;1m#{file}\e[0m"
 
           lines = File.readlines(file)
