@@ -28,6 +28,12 @@ class Object < BasicObject
 
   def class => :class
   end
+
+  def dup => :self
+  end
+
+  def freeze => :self
+  end
 end
 
 module Enumerable
@@ -564,6 +570,10 @@ end
 
 class String < Object
   include Comparable
+
+  def +(String other) => String
+    ""
+  end
 
   def %(Object arg) => String
     ""
