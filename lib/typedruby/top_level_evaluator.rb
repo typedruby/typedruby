@@ -259,6 +259,8 @@ module TypedRuby
 
     def on_const(node)
       resolve_cpath(node)
+    rescue NoConstantError => e
+      raise Error, e
     end
 
     def on_def(node)
