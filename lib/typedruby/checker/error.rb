@@ -1,18 +1,19 @@
 module TypedRuby::Checker
   class Error
-    attr_reader :message, :node
+    class MessageWithNode
+      attr_reader :message, :node
 
-    def initialize(message:, node:)
+      def initialize(message:, node:)
+        @message = message
+        @node = node
+      end
+    end
+
+    attr_reader :message, :context
+
+    def initialize(message, context = [])
       @message = message
-      @node = node
-    end
-
-    def file
-      node && node.location.expression.source_buffer.name
-    end
-
-    def line
-      node && node.location.expression.first_line
+      @context = context
     end
   end
 end

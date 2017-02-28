@@ -1,14 +1,13 @@
 module TypedRuby
   class Type::GenericTypeParameter
-    attr_reader :klass, :name
+    attr_reader :name
 
-    def initialize(klass:, name:)
-      @klass = klass
+    def initialize(name:)
       @name = name
     end
 
     def to_type_notation
-      "#{name} of #{klass.to_type_notation}"
+      name
     end
 
     def ==(other)

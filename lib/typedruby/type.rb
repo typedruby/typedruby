@@ -4,6 +4,7 @@ module TypedRuby
     autoload :Array, "typedruby/type/array"
     autoload :Instance, "typedruby/type/instance"
     autoload :Hash, "typedruby/type/hash"
+    autoload :Proc, "typedruby/type/proc"
     autoload :SpecialClass, "typedruby/type/special_class"
     autoload :SpecialInstance, "typedruby/type/special_instance"
     autoload :SpecialSelf, "typedruby/type/special_self"
