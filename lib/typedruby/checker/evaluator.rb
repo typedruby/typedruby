@@ -159,31 +159,77 @@ module TypedRuby
         end
       end
 
-      class ProcType
-        attr_reader :node, :lead, :opt, :rest, :post, :kwreq, :kwopt, :block, :return_type
+      class RequiredArg
+        attr_reader :node, :type
 
-        def initialize(node:, lead:, opt:, rest:, post:, kwreq:, kwopt:, block:, return_type:)
+        def initialize(node:, type:)
           @node = node
-          @lead = lead
-          @opt = opt
-          @rest = rest
-          @post = post
-          @kwreq = kwreq
-          @kwopt = kwopt
+          @type = type
+        end
+
+        def describe
+          type.describe
+        end
+      end
+
+      class OptionalArg
+        attr_reader :node, :type
+
+        def initialize(node:, type:)
+          @node = node
+          @type = type
+        end
+
+        def describe
+          "#{type.describe} = ..."
+        end
+      end
+
+      class RestArg
+        attr_reader :node, :type
+
+        def initialize(node:, type:)
+          @node = node
+          @type = type
+        end
+
+        def describe
+          "* #{type.describe}"
+        end
+      end
+
+      class KeywordHashArg
+        attr_reader :node, :required, :optional
+
+        def initialize(node:, required:, optional:)
+          @node = node
+          @required = required
+          @optional = optional
+        end
+
+        def describe
+          keywords =
+            required.map { |kw, type| "#{type.describe} #{kw}:" } +
+            optional.map { |kw, type| "#{type.describe} #{kw}: ..." }
+
+          "{" + keywords.join(", ") + "}"
+        end
+      end
+
+      class ProcType
+        attr_reader :node, :args, :block, :return_type
+
+        def initialize(node:, args:, block:, return_type:)
+          @node = node
+          @args = args
           @block = block
           @return_type = return_type
         end
 
         def describe
-          args = [
-            *lead.map { |l| l.describe },
-            *opt.map { |o| "opt #{o.describe}" },
-            *(rest && "rest #{rest.describe}"),
-            *post.map { |p| "post #{p.describe}" },
-            *kwreq.map { |k, t| "kwreq #{k} #{t.describe}" },
-            *kwopt.map { |k, t| "kwopt #{k} #{t.describe}" },
-            *(block && "block #{block.describe}"),
-          ]
+          args = self.args.map(&:describe)
+
+          args << block.describe if block
 
           "(#{args.join(", ")}) => #{return_type.describe}"
         end
@@ -286,13 +332,22 @@ module TypedRuby
         when Type::Any
           AnyType.new(node: node)
         when Prototype
+          args =
+            concrete_type.lead.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node) } +
+            concrete_type.opt.map { |arg| OptionalArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node) } +
+            (concrete_type.rest ? [RestArg.new(type: new_type_from_concrete(concrete_type.rest.type, node: node, self_type: self_type), node: node)] : []) +
+            concrete_type.post.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node) }
+
+          if concrete_type.kwreq.any? || concrete_type.kwopt.any?
+            args << KeywordHashArg.new(
+              node: node,
+              required: concrete_type.kwreq.map { |arg| [arg.name.to_sym, arg.type] }.to_h,
+              optional: concrete_type.kwopt.map { |arg| [arg.name.to_sym, arg.type] }.to_h,
+            )
+          end
+
           ProcType.new(node: node,
-            lead: concrete_type.lead.map { |arg| new_type_from_concrete(arg.type, node: node, self_type: self_type) },
-            opt: concrete_type.opt.map { |arg| new_type_from_concrete(arg.type, node: node, self_type: self_type) },
-            rest: concrete_type.rest && new_type_from_concrete(concrete_type.rest.type, node: node, self_type: self_type),
-            post: concrete_type.post.map { |arg| new_type_from_concrete(arg.type, node: node, self_type: self_type) },
-            kwreq: concrete_type.kwreq.map { |arg| [k, new_type_from_concrete(arg.type, node: node, self_type: self_type)] }.to_h,
-            kwopt: concrete_type.kwopt.map { |arg| [k, new_type_from_concrete(arg.type, node: node, self_type: self_type)] }.to_h,
+            args: args,
             block: concrete_type.block && new_type_from_concrete(concrete_type.block.type, node: node, self_type: self_type),
             return_type: new_type_from_concrete(concrete_type.return_type, node: node, self_type: self_type),
           )
@@ -302,13 +357,14 @@ module TypedRuby
       end
 
       def untyped_prototype
-        @untyped_prototype ||= ProcType.new(node: nil,
-          lead: [],
-          opt: [],
-          rest: InstanceType.new(node: nil, klass: env.Array, type_parameters: [AnyType.new(node: nil)]),
-          post: [],
-          kwreq: {},
-          kwopt: {},
+        @untyped_prototype ||= ProcType.new(
+          node: nil,
+          args: [
+            RestArg.new(
+              node: nil,
+              type: InstanceType.new(node: nil, klass: env.Array, type_parameters: [AnyType.new(node: nil)]),
+            )
+          ],
           block: AnyType.new(node: nil),
           return_type: AnyType.new(node: nil),
         )
@@ -559,8 +615,9 @@ module TypedRuby
 
       def match_prototype_with_arguments(prototype, arg_types, node:)
         arg_types = arg_types.dup
+        prototype_args = prototype.args.dup
 
-        required_argc = prototype.lead.count + prototype.post.count
+        required_argc = prototype_args.grep(RequiredArg).count
 
         if arg_types.count < required_argc
           errors << Error.new(
@@ -569,44 +626,43 @@ module TypedRuby
           )
         end
 
-        if arg_types.count > required_argc && (prototype.kwreq.any? || prototype.kwopt.any?)
+        if arg_types.count > required_argc && prototype_args.last.is_a?(KeywordHashArg)
           last_arg = prune(arg_types.last)
 
           if last_arg.is_a?(KeywordHashType)
+            prototype_args.pop
             arg_types.pop
-            kw_arg = last_arg
             # TODO - type check
           end
         end
 
-        prototype.lead.each do |lead_arg|
-          arg_type = arg_types.shift or return
-          unify!(arg_type, lead_arg)
+        while prototype_args.first.is_a?(RequiredArg)
+          unify!(arg_types.shift, prototype_args.shift.type)
         end
 
-        prototype.post.each do |post_arg|
-          arg_type = arg_types.pop or return
-          unify!(arg_type, post_arg)
+        while prototype_args.last.is_a?(RequiredArg)
+          unify!(arg_types.pop, prototype_args.pop.type)
         end
 
-        prototype.opt.each do |opt_arg|
-          arg_type = arg_types.shift or break
-          unify!(arg_type, opt_arg)
+        while prototype_args.first.is_a?(OptionalArg)
+          unify!(arg_types.shift, prototype_args.shift.type)
         end
 
-        if arg_types.count > 0
-          if rest_type = prune(prototype.rest)
-            unless rest_type.is_a?(InstanceType) && rest_type.klass == env.Array
-              # TODO sketchy
-              raise "expected rest arg to be an array..."
-            end
+        if prototype_args.first.is_a?(RestArg)
+          rest_arg_type = prune(prototype_args.first.type)
 
-            rest_element_type = rest_type.type_parameters[0]
+          unless rest_arg_type.is_a?(InstanceType) && rest_arg_type.klass == env.Array
+            # TODO sketchy
+            raise "wtf expected rest arg to be an array"
+          end
 
-            arg_types.each do |arg_type|
-              unify!(arg_type, rest_element_type)
-            end
-          else
+          rest_arg_type = rest_arg_type.type_parameters[0]
+
+          arg_types.each do |arg_type|
+            unify!(arg_type, rest_arg_type)
+          end
+        else
+          if arg_types.any?
             errors << Error.new(
               message: "Too many arguments supplied in method invocation",
               node: node,
