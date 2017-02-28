@@ -8,11 +8,11 @@ module TypedRuby::Checker
     end
 
     def file
-      node.location.expression.source_buffer.name
+      node && node.location.expression.source_buffer.name
     end
 
     def line
-      node.location.expression.first_line
+      node && node.location.expression.first_line
     end
   end
 end
