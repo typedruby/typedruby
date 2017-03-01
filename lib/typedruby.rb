@@ -11,6 +11,7 @@ module TypedRuby
   autoload :ParserBuilder, "typedruby/parser_builder"
   autoload :Prototype, "typedruby/prototype"
   autoload :RubyClass, "typedruby/ruby_class"
+  autoload :RubyIClass, "typedruby/ruby_iclass"
   autoload :RubyModule, "typedruby/ruby_module"
   autoload :RubyObject, "typedruby/ruby_object"
   autoload :RubyMetaclass, "typedruby/ruby_metaclass"

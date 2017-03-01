@@ -21,13 +21,19 @@ module TypedRuby
       if @klass.is_a?(RubyMetaclass)
         @klass
       else
+        super_for_metaclass = superklass
+
+        while super_for_metaclass.is_a?(RubyIClass)
+          super_for_metaclass = super_for_metaclass.superklass
+        end
+
         @klass = RubyMetaclass.new(
           of: self,
           klass: @klass,
           name: "Class[#{name}]",
           # no need to check for nil superklass here because BasicObject's metaklass
           # is set during class system bootstrap
-          superklass: superklass.metaklass(env: env),
+          superklass: super_for_metaclass.metaklass(env: env),
           type_parameters: type_parameters,
         )
       end
