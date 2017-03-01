@@ -2,12 +2,81 @@ module TypedRuby
   class RubyModule < RubyObject
     attr_reader :name, :constants, :methods, :superklass
 
+    attr_writer :superklass
+
     def initialize(RubyClass klass:, String name:) => nil
       super(klass: klass)
       @name = name
       @constants = {}
       @methods = {}
       @superklass = nil
+    end
+
+    # TODO - we'll need this to implement prepends later.
+    # MRI's prepend implementation relies on changing the type of the object
+    # at the module's address. We can't do that here, so instead let's go with
+    # JRuby's algorithm involving keeping a reference to the real module.
+    def method_location
+      self
+    end
+
+    def delegate
+      self
+    end
+
+    def include_module(mod)
+      check_for_cyclic_include(mod)
+
+      modules_to_include = mod.ancestors
+
+      current_inclusion_point = method_location
+
+      modules_to_include.each do |next_module|
+        check_for_cyclic_include(next_module)
+
+        superclass_seen = false
+
+        next unless \
+          method_location.superklass.ancestors.each do |next_class|
+            if next_class.is_a?(RubyIClass) && next_class.delegate == next_module.delegate
+              if !superclass_seen
+                current_inclusion_point = next_class
+              end
+
+              break false
+            else
+              superclass_seen = true
+            end
+          end
+
+        iclass = RubyIClass.new(
+          name: "#{next_module.delegate.name}[#{self.name}]",
+          superklass: current_inclusion_point.superklass,
+          mod: next_module.delegate,
+        )
+
+        current_inclusion_point.superklass = iclass
+
+        current_inclusion_point = iclass
+      end
+    end
+
+    def check_for_cyclic_include(mod)
+      if delegate == mod.delegate
+        raise Error, "cyclic include detected"
+      end
+    end
+
+    def ancestors
+      ancestors = []
+      mod = self
+
+      while mod
+        ancestors << mod
+        mod = mod.superklass
+      end
+
+      ancestors
     end
 
     def has_const?(id)

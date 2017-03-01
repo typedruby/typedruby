@@ -49,6 +49,8 @@ module TypedRuby
         when :attr_accessor
           process_attr(node, reader: true, writer: true)
           return
+        when :include
+          process_include(node)
         end
       end
 
@@ -162,6 +164,25 @@ module TypedRuby
             ),
           ))
         end
+      end
+    end
+
+    def process_include(node)
+      _, _, *args = *node
+
+      include_modules = args.map { |arg|
+        begin
+          mod = resolve_cpath(arg)
+          raise Error, "not a module" if mod.class != RubyModule
+          mod
+        rescue Error => e
+          UI.warn(e.message, node: arg)
+          nil
+        end
+      }.compact
+
+      include_modules.reverse_each do |mod|
+        @scope.mod.include_module(mod)
       end
     end
 
