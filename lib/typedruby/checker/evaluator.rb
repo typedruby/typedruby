@@ -505,8 +505,8 @@ module TypedRuby
 
       def fail_unification!(t1, t2)
         errors << Error.new("Could not match types:", [
-          Error::MessageWithNode.new(message: "#{t1.describe}, with:", node: t1.node),
-          Error::MessageWithNode.new(message: t2.describe, node: t2.node),
+          Error::MessageWithLocation.new(message: "#{t1.describe}, with:", location: t1.node.location.expression),
+          Error::MessageWithLocation.new(message: t2.describe, location: t2.node.location.expression),
         ])
 
         t2
@@ -741,9 +741,9 @@ module TypedRuby
           prototype = untyped_prototype
         when TypeVar
           errors << Error.new("Unknown receiver type in invocation of ##{mid}", [
-            Error::MessageWithNode.new(
+            Error::MessageWithLocation.new(
               message: "here",
-              node: send_node,
+              node: recv.location.expression,
             ),
           ])
           prototype = untyped_prototype
@@ -764,9 +764,9 @@ module TypedRuby
 
         if arg_types.count < required_argc
           errors << Error.new("Too few arguments", [
-            Error::MessageWithNode.new(
+            Error::MessageWithLocation.new(
               message: "in this method invocation",
-              node: node,
+              location: node.location.expression,
             ),
           ])
         end
@@ -809,9 +809,9 @@ module TypedRuby
         else
           if arg_types.any?
             errors << Error.new("Too many arguments", [
-              Error::MessageWithNode.new(
+              Error::MessageWithLocation.new(
                 message: "in this method invocation",
-                node: node,
+                location: node.location.expression,
               ),
             ])
           end
@@ -832,9 +832,9 @@ module TypedRuby
             [type, locals]
           rescue NoConstantError => e
             errors << Error.new(e.message, [
-              Error::MessageWithNode.new(
+              Error::MessageWithLocation.new(
                 message: "here",
-                node: node,
+                location: node.location.expression,
               ),
             ])
 
@@ -842,9 +842,9 @@ module TypedRuby
           end
         else
           errors << Error.new("Dynamic constant lookup", [
-            Error::MessageWithNode.new(
+            Error::MessageWithLocation.new(
               message: "here",
-              node: node
+              location: node.location.expression,
             ),
           ])
 
@@ -998,9 +998,9 @@ module TypedRuby
             next
           else
             errors << Error.new("Dynamic constant lookup", [
-              Error::MessageWithNode.new(
+              Error::MessageWithLocation.new(
                 message: "here",
-                node: node,
+                location: node.location.expression,
               ),
             ])
             return false

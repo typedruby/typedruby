@@ -1,11 +1,11 @@
 module TypedRuby::Checker
   class Error
-    class MessageWithNode
-      attr_reader :message, :node
+    class MessageWithLocation
+      attr_reader :message, :location
 
-      def initialize(message:, node:)
+      def initialize(message:, location:)
         @message = message
-        @node = node
+        @location = location
       end
     end
 
