@@ -1,10 +1,11 @@
 module TypedRuby
-  class RubyUnresolvedExpression < RubyObject
-    attr_reader :node
+  class RubyUnresolvedExpression
+    attr_reader :scope, :node, :type
 
-    def initialize(env:, node:)
-      super(klass: env.Object) # TODO - we need a special 'any' type here
+    def initialize(scope:, node:, type:)
+      @scope = scope
       @node = node
+      @type = type
     end
   end
 end
