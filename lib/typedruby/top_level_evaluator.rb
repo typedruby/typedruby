@@ -573,7 +573,20 @@ module TypedRuby
         end
       end
 
-      cbase_ref.set_const(id: id, value: RubyUnresolvedExpression.new(env: @env, node: expr))
+      if expr.type == :tr_cast
+        expr, type = *expr
+
+        process(expr)
+
+        cbase_ref.set_const(id: id, value:
+          RubyUnresolvedExpression.new(scope: @scope, node: expr, type:
+            @env.resolve_type(node: type, scope: @scope)))
+
+        return
+      end
+
+      cbase_ref.set_const(id: id, value:
+        RubyUnresolvedExpression.new(scope: @scope, node: expr, type: Type::Any.new))
     end
 
     def resolve_casgn_expr(expr)

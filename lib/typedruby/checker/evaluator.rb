@@ -823,7 +823,13 @@ module TypedRuby
           begin
             const = env.resolve_cpath(node: node, scope: scope)
 
-            [InstanceType.new(node: node, klass: const.metaklass(env: env), type_parameters: []), locals]
+            if const.is_a?(RubyUnresolvedExpression)
+              type = new_type_from_concrete(const.type, node: const.node, self_type: const.scope.mod)
+            elsif const.is_a?(RubyObject)
+              type = InstanceType.new(node: node, klass: const.metaklass(env: env), type_parameters: [])
+            end
+
+            [type, locals]
           rescue NoConstantError => e
             errors << Error.new(e.message, [
               Error::MessageWithNode.new(
