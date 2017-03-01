@@ -639,6 +639,41 @@ module TypedRuby
         [method_prototype.return_type, locals]
       end
 
+      def on_super(node, locals)
+        args = node.children
+
+        arg_types, locals = process_args(args, locals)
+
+        unless klass = self.method.klass.superklass
+          errors << Error.new("Can't invoke super where no superclass exists", [
+            Error::MessageWithLocation.new(
+              message: "here",
+              location: node.location.keyword,
+            )
+          ])
+          return AnyType.new(node: node), locals
+        end
+
+        unless method_entry = klass.lookup_method_entry(self.method.id)
+          errors << Error.new("Could not resolve superclass implementation of ##{self.method.id}", [
+            Error::MessageWithLocation.new(
+              message: "here",
+              location: node.location.keyword,
+            )
+          ])
+          return AnyType.new(node: node), locals
+        end
+
+        prototype = prototype_from_method_entry(method_entry, self_type: method.klass)
+
+        match_prototype_with_arguments(prototype, arg_types, node: node)
+
+        type = new_type_var(node: node)
+        unify!(type, prototype.return_type)
+
+        [type, locals]
+      end
+
       def parse_prototype(prototype_node, locals, self_type:, scope:)
         if prototype_node.type == :prototype
           args_node, return_type_node = *prototype_node
@@ -703,6 +738,15 @@ module TypedRuby
         [argument, locals]
       end
 
+      def process_args(args, locals)
+        arg_types = args.map { |arg|
+          t, locals = process(arg, locals)
+          t
+        }
+
+        [arg_types, locals]
+      end
+
       def process_send(send_node, locals)
         recv, mid, *args = *send_node
 
@@ -713,26 +757,19 @@ module TypedRuby
           recv_type = InstanceType.new(node: send_node, klass: method.klass, type_parameters: [])
         end
 
-        arg_types = args.map { |arg|
-          t, locals = process(arg, locals)
-          t
-        }
+        arg_types, locals = process_args(args, locals)
 
         recv_type = prune(recv_type)
 
         case recv_type
         when InstanceType
           if method_entry = recv_type.klass.lookup_method_entry(mid)
-            method = method_entry.definitions.last
-            concrete_prototype = method.prototype(env: env)
-            prototype = concrete_prototype \
-              ? new_type_from_concrete(concrete_prototype, node: method.definition_node, self_type: recv_type)
-              : untyped_prototype
+            prototype = prototype_from_method_entry(method_entry, self_type: recv_type)
           else
             errors << Error.new("Could not resolve method ##{mid} on #{recv_type.describe}", [
-              Error::MessageWithNode.new(
+              Error::MessageWithLocation.new(
                 message: "in this invocation",
-                node: send_node,
+                location: send_node.location.selector,
               ),
             ])
             prototype = untyped_prototype
@@ -754,6 +791,16 @@ module TypedRuby
         match_prototype_with_arguments(prototype, arg_types, node: send_node)
 
         [prototype, locals]
+      end
+
+      def prototype_from_method_entry(method_entry, self_type:)
+        method = method_entry.definitions.last
+
+        if concrete_prototype = method.prototype(env: env)
+          new_type_from_concrete(concrete_prototype, node: method.definition_node, self_type: self_type)
+        else
+          untyped_prototype
+        end
       end
 
       def match_prototype_with_arguments(prototype, arg_types, node:)
@@ -907,18 +954,6 @@ module TypedRuby
 
       def on_nil(node, locals)
         [nil_type(node: node), locals]
-      end
-
-      def on_super(node, locals)
-        # TODO -
-        errors << Error.new("I haven't implemented super calls yet", [
-          Error::MessageWithNode.new(
-            message: "here",
-            node: node,
-          ),
-        ])
-
-        [new_type_var(node: node), locals]
       end
 
       def on_array(node, locals)
