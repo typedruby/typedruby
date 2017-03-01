@@ -44,6 +44,8 @@ class IO < Object
   SEEK_SET = nil
   SEEK_CUR = nil
   SEEK_END = nil
+
+  def write(String data) => Integer; end
 end
 
 class BasicSocket < IO
@@ -57,12 +59,17 @@ class File < IO
   SEPARATOR = nil
   ALT_SEPARATOR = nil
   PATH_SEPARATOR = nil
+
+  # TODO - needs a stricter prototype
+  def self.open(:any *, { |File f| => :any } &) => :any; end
+
+  def self.join(String s, String *) => String; end
 end
 
 module File::Constants
   RDONLY = nil
   WRONLY = nil
-  RDWR = nil
+  RDWR = (nil : Integer)
   APPEND = nil
   CREAT = nil
   EXCL = nil
@@ -550,6 +557,8 @@ end
 
 class Integer < Numeric
   GMP_VERSION = nil
+
+  def |(Integer other) => Integer; end
 end
 
 class Float < Numeric
@@ -571,14 +580,15 @@ end
 class String < Object
   include Comparable
 
-  def +(String other) => String
-  end
+  def +(String other) => String; end
 
-  def %(Object arg) => String
-  end
+  def %(Object arg) => String; end
 
-  def gsub(Regexp pattern, { |String s| => String } &) => String
-  end
+  def gsub(Regexp pattern, { |String s| => String } &) => String; end
+
+  def size => Integer; end
+
+  def b => String; end
 end
 
 class Array::[ElementType] < Object
