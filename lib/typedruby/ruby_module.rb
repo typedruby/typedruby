@@ -37,7 +37,7 @@ module TypedRuby
         superclass_seen = false
 
         next unless \
-          method_location.superklass.ancestors.each do |next_class|
+          method_location.ancestors.drop(1).each do |next_class|
             if next_class.is_a?(RubyIClass) && next_class.delegate == next_module.delegate
               if !superclass_seen
                 current_inclusion_point = next_class
