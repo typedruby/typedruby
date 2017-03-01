@@ -317,6 +317,7 @@ module TypedRuby
     def process_method_definition(target:, id:, node:)
       method = RubyMethod.new(
         klass: target,
+        id: id,
         scope: @scope,
         definition_node: node,
       )

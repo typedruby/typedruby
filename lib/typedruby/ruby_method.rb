@@ -1,8 +1,9 @@
 module TypedRuby
   class RubyMethod
-    attr_reader :klass, :definition_node, :prototype_node, :body_node, :scope
+    attr_reader :klass, :id, :definition_node, :prototype_node, :body_node, :scope
 
-    def initialize(klass:, definition_node:, scope:)
+    def initialize(klass:, id:, definition_node:, scope:)
+      @id = id
       @klass = klass
       @definition_node = definition_node
       @scope = scope
