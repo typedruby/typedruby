@@ -23,7 +23,7 @@ module TypedRuby
           last_file = nil
 
           error.context.each do |context|
-            loc = context.node.location.expression
+            loc = context.location
 
             if last_file != loc.source_buffer.name
               last_file = loc.source_buffer.name
