@@ -116,6 +116,7 @@ module Errno
 end
 
 class Exception < Object
+  def initialize(String s) => nil; end
 end
 
 class StandardError < Exception
