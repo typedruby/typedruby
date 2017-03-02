@@ -164,7 +164,7 @@ module TypedRuby
         klass = get_const_for_definition(env: env, id: id, node: node)
 
         if klass.is_a?(RubyClass)
-          if superklass && klass.superklass != superklass
+          if superklass && klass.class_superklass != superklass
             raise Error, "superclass mismatch for #{klass.name} in declaration"
           end
 
