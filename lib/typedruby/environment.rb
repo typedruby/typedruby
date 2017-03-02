@@ -79,6 +79,9 @@ module TypedRuby
       )
       @Object.constants[:Class] = @Class
 
+      @Kernel = RubyModule.new(klass: @Module, name: "Kernel")
+      @Object.include_module(@Kernel)
+
       define_class("Boolean", @Object)
       define_class("TrueClass", @Boolean)
       define_class("FalseClass", @Boolean)
