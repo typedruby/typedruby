@@ -6,6 +6,12 @@ module Kernel
 
   # TODO tighten up:
   def raise(:any *) => nil; end
+
+  def nil? => Boolean; end
+
+  def inspect => String; end
+
+  def caller => [String]; end
 end
 
 class Object < BasicObject
@@ -30,14 +36,11 @@ class Object < BasicObject
   TOPLEVEL_BINDING = nil
   ARGV = nil
 
-  def class => :class
-  end
+  def class => :class; end
 
-  def dup => :self
-  end
+  def dup => :self; end
 
-  def freeze => :self
-  end
+  def freeze => :self; end
 end
 
 module Enumerable
@@ -122,7 +125,9 @@ end
 class Exception < Object
   def initialize(String s) => nil; end
 
-  # def message => String; end
+  def message => String; end
+
+  def set_backtrace([String] backtrace) => nil; end
 end
 
 class StandardError < Exception
