@@ -79,6 +79,16 @@ module TypedRuby
       ancestors
     end
 
+    def class_superklass
+      c = superklass
+
+      while c.is_a?(RubyIClass)
+        c = c.superklass
+      end
+
+      c
+    end
+
     def has_const?(id)
       if constants.key?(id)
         true
