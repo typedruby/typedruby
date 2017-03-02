@@ -562,7 +562,7 @@ module TypedRuby
           l1_type = l1_defs[key] || nil_type(node: node)
           l2_type = l2_defs[key] || nil_type(node: node)
 
-          defs[key] = unify_or_make_union(l1_type, l2_tye)
+          defs[key] = unify_or_make_union(l1_type, l2_type, node: node)
         end
 
         defs.reduce(ancestor) { |p, (n, t)|
@@ -575,7 +575,7 @@ module TypedRuby
       end
 
       def process_all(nodes, locals)
-        type = nil_type(node: nil)
+        type = nil
 
         nodes.each do |node|
           type, locals = process(node, locals)
@@ -585,7 +585,15 @@ module TypedRuby
       end
 
       def on_begin(node, locals)
-        process_all(node.children, locals)
+        if node.children.any?
+          process_all(node.children, locals)
+        else
+          nil_type(node: node)
+        end
+      end
+
+      def on_kwbegin(node, locals)
+        on_begin(node, locals)
       end
 
       def on_lvasgn(node, locals)
@@ -645,7 +653,7 @@ module TypedRuby
       def on_super(node, locals)
         args = node.children
 
-        arg_types, locals = process_args(args, locals)
+        arg_types, locals = map_process(args, locals)
 
         unless klass = self.method.klass.superklass
           errors << Error.new("Can't invoke super where no superclass exists", [
@@ -741,13 +749,13 @@ module TypedRuby
         [argument, locals]
       end
 
-      def process_args(args, locals)
-        arg_types = args.map { |arg|
-          t, locals = process(arg, locals)
+      def map_process(nodes, locals)
+        types = nodes.map { |node|
+          t, locals = process(node, locals)
           t
         }
 
-        [arg_types, locals]
+        [types, locals]
       end
 
       def process_send(send_node, locals)
@@ -760,7 +768,7 @@ module TypedRuby
           recv_type = InstanceType.new(node: send_node, klass: method.klass, type_parameters: [])
         end
 
-        arg_types, locals = process_args(args, locals)
+        arg_types, locals = map_process(args, locals)
 
         recv_type = prune(recv_type)
 
@@ -783,7 +791,7 @@ module TypedRuby
           errors << Error.new("Unknown receiver type in invocation of ##{mid}", [
             Error::MessageWithLocation.new(
               message: "here",
-              node: recv.location.expression,
+              location: recv.location.expression,
             ),
           ])
           prototype = untyped_prototype
@@ -839,7 +847,7 @@ module TypedRuby
           unify!(arg_types.pop, prototype_args.pop.type)
         end
 
-        while prototype_args.first.is_a?(OptionalArg)
+        while arg_types.any? && prototype_args.first.is_a?(OptionalArg)
           unify!(arg_types.shift, prototype_args.shift.type)
         end
 
@@ -922,7 +930,7 @@ module TypedRuby
         # TODO - ensure that all parts are to_s-able
         _, locals = process_all(parts, locals)
 
-
+        pry binding
       end
 
       def on_ivar(node, locals)
@@ -938,8 +946,19 @@ module TypedRuby
 
         # TODO - emit warning if cond_type is always truthy or always falsy
 
-        then_type, then_locals = process(then_expr, locals)
-        else_type, else_locals = process(else_expr, locals)
+        if then_expr
+          then_type, then_locals = process(then_expr, locals)
+        else
+          then_type = nil_type(node: node)
+          then_locals = locals
+        end
+
+        if else_expr
+          else_type, else_locals = process(else_expr, locals)
+        else
+          else_type = nil_type(node: node)
+          else_locals = locals
+        end
 
         type = unify_or_make_union(then_type, else_type, node: node)
         locals = merge_locals(then_locals, else_locals, node: node)
@@ -947,12 +966,80 @@ module TypedRuby
         [type, locals]
       end
 
-      def on_false(node)
-        Type::Instance.new(mod: env.FalseClass)
+      def on_rescue(node, locals)
+        begin_expr, *resbodies, else_expr = *node
+
+        begin_type, begin_locals = process(begin_expr, locals)
+
+        # merge begin_locals with the locals we began with to ensure any local
+        # defined in the begin body is nillable (if an exception was raised and
+        # caught any variables defined might be left nil)
+        locals = merge_locals(locals, begin_locals, node: begin_expr)
+
+        expr_type = begin_type
+
+        resbodies.each do |resbody|
+          resbody_type, locals = on_resbody(resbody, locals)
+
+          expr_type = unify_or_make_union(expr_type, resbody_type, node: resbody)
+        end
+
+        if else_expr
+          else_type, else_locals = process(else_expr, begin_locals)
+
+          expr_type = unify_or_make_union(expr_type, else_type, node: else_expr)
+
+          locals = merge_locals(locals, else_locals)
+        end
+
+        [expr_type, locals]
       end
 
-      def on_true(node)
-        Type::Instance.new(mod: env.TrueClass)
+      def on_resbody(node, locals)
+        classes_node, lvasgn, body = *node
+
+        exception_type = type_for_rescue(node)
+
+        if lvasgn
+          local_name, = *lvasgn
+          locals = locals.assign(name: local_name, type: exception_type)
+        end
+
+        process(body, locals)
+      end
+
+      def type_for_rescue(node)
+        classes_node, _, _ = *node
+
+        if !classes_node
+          return InstanceType.new(node: node, klass: env.StandardError, type_parameters: [])
+        end
+
+        if classes_node.type != :array
+          raise "expected klasses to be an array"
+        end
+
+        types = classes_node.children.map { |c|
+          t, locals = process(c, locals)
+
+          t = prune(t)
+
+          if t.is_a?(InstanceType) && t.klass.is_a?(RubyMetaclass) && t.klass.of.is_a?(RubyModule)
+            InstanceType.new(klass: t.klass.of, type_parameters: [], node: c)
+          else
+            errors << Error.new("Expected class/module in rescue clause", [
+              MessageWithLocation.new(
+                message: "here",
+                location: c.location.expression,
+              )
+            ])
+            AnyType.new(node: node)
+          end
+        }
+
+        types.reduce { |t1, t2|
+          unify_or_make_union(t1, t2)
+        }
       end
 
       def on_nil(node, locals)
@@ -1021,6 +1108,33 @@ module TypedRuby
 
       def on_float(node, locals)
         [InstanceType.new(node: node, klass: env.Float, type_parameters: []), locals]
+      end
+
+      def on_return(node, locals)
+        expr, = *node
+
+        expr_type, locals = process(expr, locals)
+
+        type = new_type_var(node: node)
+        unify!(type, expr_type)
+        unify!(type,
+          new_type_from_concrete(method.prototype(env: env).return_type,
+            node: method.prototype_node,
+            self_type: method.klass))
+
+        # TODO - we need a void type
+        [nil_type(node: node), locals]
+      end
+
+      def on_tr_cast(node, locals)
+        expr, type_node = *node
+
+        _, locals = process(expr, locals)
+
+        concrete_type = env.resolve_type(node: type_node, scope: scope)
+        type = new_type_from_concrete(concrete_type, node: type_node, self_type: self_type)
+
+        [type, locals]
       end
 
       def validate_static_cpath(node)
