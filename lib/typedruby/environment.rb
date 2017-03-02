@@ -77,41 +77,24 @@ module TypedRuby
       )
       @Object.constants[:Class] = @Class
 
-      @Boolean = RubyClass.new(klass: @Class, name: "Boolean", superklass: @Object, type_parameters: [])
-      @Object.constants[:Boolean] = @Boolean
+      define_class("Boolean", @Object)
+      define_class("TrueClass", @Boolean)
+      define_class("FalseClass", @FalseClass)
+      define_class("NilClass", @Object)
+      define_class("Symbol", @Object)
+      define_class("String", @Object)
+      define_class("Numeric", @Object)
+      define_class("Integer", @Numeric)
+      define_class("Float", @Numeric)
+      define_class("Array", @Object, [:ElementType])
+      define_class("Hash", @Object, [:KeyType, :ValueType])
+      define_class("Regexp", @Object)
+    end
 
-      @TrueClass = RubyClass.new(klass: @Class, name: "TrueClass", superklass: @Boolean, type_parameters: [])
-      @Object.constants[:TrueClass] = @TrueClass
-
-      @FalseClass = RubyClass.new(klass: @Class, name: "FalseClass", superklass: @Boolean, type_parameters: [])
-      @Object.constants[:FalseClass] = @FalseClass
-
-      @NilClass = RubyClass.new(klass: @Class, name: "NilClass", superklass: @Object, type_parameters: [])
-      @Object.constants[:NilClass] = @NilClass
-
-      @Symbol = RubyClass.new(klass: @Class, name: "Symbol", superklass: @Object, type_parameters: [])
-      @Object.constants[:Symbol] = @Symbol
-
-      @String = RubyClass.new(klass: @Class, name: "String", superklass: @Object, type_parameters: [])
-      @Object.constants[:String] = @String
-
-      @Numeric = RubyClass.new(klass: @Class, name: "Numeric", superklass: @Object, type_parameters: [])
-      @Object.constants[:Numeric] = @Numeric
-
-      @Integer = RubyClass.new(klass: @Class, name: "Integer", superklass: @Numeric, type_parameters: [])
-      @Object.constants[:Integer] = @Integer
-
-      @Array = RubyClass.new(klass: @Class, name: "Array", superklass: @Object, type_parameters: [:ElementType])
-      @Object.constants[:Array] = @Array
-
-      @Hash = RubyClass.new(klass: @Class, name: "Hash", superklass: @Object, type_parameters: [:KeyType, :ValueType])
-      @Object.constants[:Hash] = @Hash
-
-      @Float = RubyClass.new(klass: @Class, name: "Float", superklass: @Numeric, type_parameters: [])
-      @Object.constants[:Float] = @Float
-
-      @Regexp = RubyClass.new(klass: @Class, name: "Regexp", superklass: @Object, type_parameters: [])
-      @Object.constants[:Regexp] = @Regexp
+    def define_class(name, superklass, type_parameters = [])
+      klass = RubyClass.new(klass: @Class, name: name, superklass: superklass, type_parameters: type_parameters)
+      instance_variable_set("@#{klass.name}", klass)
+      @Object.constants[name.to_sym] = klass
     end
 
     def resolve_type(node:, scope:)
