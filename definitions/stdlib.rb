@@ -566,6 +566,8 @@ class Integer < Numeric
   GMP_VERSION = nil
 
   def |(Integer other) => Integer; end
+
+  def <(Integer other) => Boolean; end
 end
 
 class Float < Numeric
@@ -594,6 +596,7 @@ class String < Object
   def gsub(Regexp pattern, { |String s| => String } &) => String; end
 
   def size => Integer; end
+  def length => Integer; end
 
   def b => String; end
 end
@@ -612,6 +615,8 @@ class Hash::[KeyType, ValueType] < Object
   include Enumerable
 
   def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
+
+  def reject({ |KeyType k, ValueType v| => Boolean } &) => Hash::[KeyType, ValueType]; end
 end
 
 class NilClass < Object
