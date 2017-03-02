@@ -430,43 +430,43 @@ module TypedRuby
         end
       end
 
-      def unify!(t1, t2)
+      def unify!(t1, t2, node: nil)
         t1 = prune(t1)
         t2 = prune(t2)
 
         if t1.is_a?(TypeVar)
           if occurs_in_type?(t1, t2)
-            fail_unification!(t1, t2)
+            fail_unification!(t1, t2, node: node)
           else
             t1.instance = t2
           end
         elsif t2.is_a?(TypeVar)
-          unify!(t2, t1)
+          unify!(t2, t1, node: node)
         elsif t1.is_a?(InstanceType) && t2.is_a?(InstanceType)
           if t1.klass == t2.klass
             t1.type_parameters.zip(t2.type_parameters) do |tp1, tp2|
-              unify!(tp1, tp2)
+              unify!(tp1, tp2, node: node)
             end
             t2
           else
-            fail_unification!(t1, t2)
+            fail_unification!(t1, t2, node: node)
           end
         elsif t1.is_a?(TupleType) && t2.is_a?(TupleType)
           t1.types.zip(t2.types) do |ty1, ty2|
-            unify!(ty1, ty2)
+            unify!(ty1, ty2, node: node)
           end
           t1
         elsif t1.is_a?(TupleType)
           if t2.is_a?(InstanceType) && t2.klass == env.Array
             t1.types.each do |tuple_type|
-              unify!(tuple_type, t2.type_parameters[0])
+              unify!(tuple_type, t2.type_parameters[0], node: node)
             end
             t1
           else
-            fail_unification(t1, t2)
+            fail_unification!(t1, t2)
           end
         elsif t2.is_a?(TupleType)
-          unify!(t2, t1)
+          unify!(t2, t1, node: node)
         elsif t1.is_a?(AnyType)
           t2
         elsif t2.is_a?(AnyType)
@@ -480,7 +480,7 @@ module TypedRuby
         elsif t1.is_a?(ProcType) && t2.is_a?(ProcType)
           if t1.args.count == 1 && t1.args[0].is_a?(ProcArg0)
             if t2.args.count == 1 && t2.args[0].is_a?(ProcArg0)
-              unify!(t1.args[0].type, t2.args[0].type)
+              unify!(t1.args[0].type, t2.args[0].type, node: node)
             else
               # handle procarg0 expansion
               raise "nope"
@@ -488,29 +488,42 @@ module TypedRuby
           elsif t2.args.count == 1 && t2.args[0].is_a?(ProcArg0)
             # handle procarg0 expansion
             raise "nope"
+          elsif t1.args.count == t2.args.count
+            t1.args.zip(t2.args).each do |arg1, arg2|
+              if arg1.class != arg2.class
+                fail_unification!(t1, t2, node: node)
+              end
+
+              unify!(arg1.type, arg2.type, node: node)
+            end
           else
-            # handle arbitrary arg matching
-            raise "nope"
+            fail_unification!(t1, t2, node: node)
           end
 
           if t1.block && t2.block
-            unify!(t1.block, t2.block)
+            unify!(t1.block, t2.block, node: node)
           elsif !!t1.block ^ !!t2.block
-            fail_unification!(t1.block, t2.block)
+            fail_unification!(t1.block, t2.block, node: node)
           end
 
-          unify!(t1.return_type, t2.return_type)
+          unify!(t1.return_type, t2.return_type, node: node)
         else
           raise "unknown case in unify!\n#{t1.describe}\n#{t2.describe}"
-          fail_unification!(t1, t2)
+          fail_unification!(t1, t2, node: node)
         end
       end
 
-      def fail_unification!(t1, t2)
-        errors << Error.new("Could not match types:", [
+      def fail_unification!(t1, t2, node:)
+        context = [
           Error::MessageWithLocation.new(message: "#{t1.describe}, with:", location: t1.node.location.expression),
-          Error::MessageWithLocation.new(message: t2.describe, location: t2.node.location.expression),
-        ])
+          Error::MessageWithLocation.new(message: "#{t2.describe}", location: t2.node.location.expression),
+        ]
+
+        if node
+          context << Error::MessageWithLocation.new(message: "in this expression", location: node.location.expression)
+        end
+
+        errors << Error.new("Could not match types:", context)
 
         t2
       end
@@ -645,7 +658,7 @@ module TypedRuby
         unify!(block_prototype, method_prototype.block)
 
         block_return_type, _ = process(block_body, block_locals)
-        unify!(block_return_type, block_prototype.return_type)
+        unify!(block_return_type, block_prototype.return_type, node: block_body)
 
         [method_prototype.return_type, locals]
       end

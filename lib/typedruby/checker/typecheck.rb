@@ -19,6 +19,7 @@ module TypedRuby
 
         evaluator.errors.each do |error|
           puts "\e[31;1merror:\e[0;1m #{error.message}\e[0m"
+          puts
 
           last_file = nil
 
@@ -27,7 +28,6 @@ module TypedRuby
 
             if last_file != loc.source_buffer.name
               last_file = loc.source_buffer.name
-              puts
               puts "       \e[34;4;1m#{last_file}\e[0m"
             end
 
