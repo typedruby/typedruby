@@ -114,7 +114,17 @@ module TypedRuby
           end
         end
 
-        Type::Instance.new(mod: resolve_cpath(node: cpath, scope: scope))
+        Type::Instance.new(
+          mod: resolve_cpath(node: cpath, scope: scope),
+          type_parameters: [],
+        )
+      when :tr_geninst
+        cpath, *parameters = *node
+
+        Type::Instance.new(
+          mod: resolve_cpath(node: cpath, scope: scope),
+          type_parameters: parameters.map { |p| resolve_type(node: p, scope: scope) },
+        )
       when :tr_nillable
         type_node, = *node
         Type::Union.new(types: [
@@ -154,7 +164,7 @@ module TypedRuby
     end
 
     def nil_type
-      @nil_type ||= Type::Instance.new(mod: self.NilClass)
+      @nil_type ||= Type::Instance.new(mod: self.NilClass, type_parameters: [])
     end
 
     def resolve_cpath(node:, scope:)

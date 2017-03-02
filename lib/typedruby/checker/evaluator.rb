@@ -315,7 +315,10 @@ module TypedRuby
       def new_type_from_concrete(concrete_type, node:, self_type:)
         case concrete_type
         when Type::Instance
-          InstanceType.new(node: node, klass: concrete_type.mod, type_parameters: [])
+          InstanceType.new(node: node, klass: concrete_type.mod, type_parameters:
+            concrete_type.type_parameters.map { |param|
+              new_type_from_concrete(param, node: node, self_type: self_type)
+            })
         when Type::Array
           InstanceType.new(node: node, klass: env.Array,
             type_parameters: [new_type_from_concrete(concrete_type.type, node: node, self_type: self_type)])
