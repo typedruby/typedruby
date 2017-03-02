@@ -2,6 +2,10 @@ class BasicObject
 end
 
 module Kernel
+  def puts(:any *) => nil; end
+
+  # TODO tighten up:
+  def raise(:any *) => nil; end
 end
 
 class Object < BasicObject
@@ -117,6 +121,8 @@ end
 
 class Exception < Object
   def initialize(String s) => nil; end
+
+  # def message => String; end
 end
 
 class StandardError < Exception
@@ -602,8 +608,10 @@ class Array::[ElementType] < Object
   end
 end
 
-class Hash < Object
+class Hash::[KeyType, ValueType] < Object
   include Enumerable
+
+  def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
 end
 
 class NilClass < Object
