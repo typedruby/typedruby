@@ -20,7 +20,9 @@ module TypedRuby
       :Array,
       :Hash,
       :Float,
-      :Regexp
+      :Regexp,
+      :Exception,
+      :StandardError
 
     def initialize(resolver:)
       @resolver = resolver
@@ -89,6 +91,8 @@ module TypedRuby
       define_class("Array", @Object, [:ElementType])
       define_class("Hash", @Object, [:KeyType, :ValueType])
       define_class("Regexp", @Object)
+      define_class("Exception", @Object)
+      define_class("StandardError", @Exception)
     end
 
     def define_class(name, superklass, type_parameters = [])
