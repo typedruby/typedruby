@@ -81,7 +81,7 @@ module TypedRuby
 
       define_class("Boolean", @Object)
       define_class("TrueClass", @Boolean)
-      define_class("FalseClass", @FalseClass)
+      define_class("FalseClass", @Boolean)
       define_class("NilClass", @Object)
       define_class("Symbol", @Object)
       define_class("String", @Object)
