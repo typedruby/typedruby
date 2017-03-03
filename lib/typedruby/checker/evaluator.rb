@@ -1008,8 +1008,10 @@ module TypedRuby
 
       def map_process(nodes, locals)
         types = nodes.map { |node|
-          t, locals = process(node, locals)
-          t
+          type, locals = process(node, locals)
+          tvar = new_type_var(node: node)
+          unify!(tvar, type)
+          tvar
         }
 
         [types, locals]
@@ -1122,15 +1124,18 @@ module TypedRuby
         end
 
         while prototype_args.first.is_a?(RequiredArg)
-          unify!(arg_types.shift, prototype_args.shift.type)
+          arg_type = arg_types.shift
+          assert_compatible!(source: arg_type, target: prototype_args.shift.type, node: nil)
         end
 
         while prototype_args.last.is_a?(RequiredArg)
-          unify!(arg_types.pop, prototype_args.pop.type)
+          arg_type = arg_types.pop
+          assert_compatible!(source: arg_type, target: prototype_args.pop.type, node: nil)
         end
 
         while arg_types.any? && prototype_args.first.is_a?(OptionalArg)
-          unify!(arg_types.shift, prototype_args.shift.type)
+          arg_type = arg_types.shift
+          assert_compatible!(source: arg_type, target: prototype_args.shift.type, node: nil)
         end
 
         if prototype_args.first.is_a?(RestArg)
@@ -1144,7 +1149,7 @@ module TypedRuby
           rest_arg_type = rest_arg_type.type_parameters[0]
 
           arg_types.each do |arg_type|
-            unify!(arg_type, rest_arg_type)
+            assert_compatible!(source: arg_type, target: rest_arg_type, node: nil)
           end
         else
           if arg_types.any?
