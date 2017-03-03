@@ -41,6 +41,8 @@ class Object < BasicObject
   def dup => :self; end
 
   def freeze => :self; end
+
+  def ==(:self other) => Boolean; end
 end
 
 module Enumerable
