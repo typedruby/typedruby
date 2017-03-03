@@ -10,14 +10,6 @@ module TypedRuby
       "[#{type.to_type_notation}]"
     end
 
-    def subtype_of?(other)
-      raise NotImplementedError
-    end
-
-    def supertype_of?(other)
-      raise NotImplementedError
-    end
-
     def ==(other)
       other.is_a?(Type::Array) && type == other.type
     end

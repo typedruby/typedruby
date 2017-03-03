@@ -6,14 +6,6 @@ module TypedRuby
       "any"
     end
 
-    def subtype_of?(other)
-      true
-    end
-
-    def supertype_of?(other)
-      true
-    end
-
     def ==(other)
       other.is_a?(Type::Any)
     end

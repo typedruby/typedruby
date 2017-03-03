@@ -11,14 +11,6 @@ module TypedRuby
       "{ #{key_type.to_type_notation} => #{value_type.to_type_notation} }"
     end
 
-    def subtype_of?(other)
-      raise NotImplementedError
-    end
-
-    def supertype_of?(other)
-      raise NotImplementedError
-    end
-
     def ==(other)
       other.is_a?(Type::Hash) && key_type == other.key_type && value_type == other.value_type
     end

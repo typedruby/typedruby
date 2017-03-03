@@ -16,14 +16,6 @@ module TypedRuby
         end
     end
 
-    def subtype_of?(other)
-      raise NotImplementedError
-    end
-
-    def supertype_of?(other)
-      raise NotImplementedError
-    end
-
     def ==(other)
       other.is_a?(Type::Instance) && mod == other.mod && type_parameters == other.type_parameters
     end
