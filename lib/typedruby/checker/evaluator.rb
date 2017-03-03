@@ -772,6 +772,8 @@ module TypedRuby
           false
         when UnionType
           other_type.types.any? { |t| occurs_in_type?(type_var, t) }
+        when KeywordHashType
+          other_type.keywords.any? { |n, t| occurs_in_type?(type_var, t) }
         else
           raise "unknown type in occurs_in_type?: #{other_type}"
         end
