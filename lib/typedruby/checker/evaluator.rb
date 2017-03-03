@@ -1123,7 +1123,7 @@ module TypedRuby
                     klass: const.scope.mod,
                     type_parameters: [],
                   ),
-                  type_parameters: {},
+                  method_type_parameters: [],
                 )
               )
             elsif const.is_a?(RubyObject)

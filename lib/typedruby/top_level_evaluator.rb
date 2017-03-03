@@ -136,6 +136,7 @@ module TypedRuby
             klass: @scope.mod,
             definition_node: node,
             prototype: Prototype.new(
+              type_parameters: [],
               lead: [],
               opt: [],
               rest: nil,
@@ -153,6 +154,7 @@ module TypedRuby
             klass: @scope.mod,
             definition_node: node,
             prototype: Prototype.new(
+              type_parameters: [],
               lead: [],
               opt: [],
               rest: nil,
