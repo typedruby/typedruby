@@ -11,6 +11,8 @@ module Kernel
 
   def nil? => Boolean; end
 
+  def to_s => String; end
+
   def inspect => String; end
 
   def caller => [String]; end
