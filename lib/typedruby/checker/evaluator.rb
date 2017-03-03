@@ -301,7 +301,11 @@ module TypedRuby
         if method.body_node
           type, locals = process(method.body_node, locals)
 
-          unify!(type, new_type_from_concrete(method_prototype.return_type, node: method.definition_node, self_type: self_type))
+          return_type = new_type_from_concrete(method_prototype.return_type, node: method.definition_node, self_type: self_type)
+
+          unless compatible_type?(source: type, target: return_type)
+            add_type_error(type, return_type, node: nil)
+          end
         else
           # if method body is missing, just ignore any type error (stub definitions would rely on this for instance)
           # TODO - perhaps revisit this decision later?
@@ -513,7 +517,109 @@ module TypedRuby
         end
       end
 
+      def same_type?(t1, t2)
+        t1 = prune(t1)
+        t2 = prune(t2)
+
+        if t1.is_a?(TypeVar) || t2.is_a?(TypeVar)
+          t1 == t2
+        elsif t1.is_a?(InstanceType) && t2.is_a?(InstanceType)
+          t1.klass == t2.klass &&
+            same_ordered_types?(t1.type_parameters, t2.type_parameters)
+        elsif t1.is_a?(TupleType) && t2.is_a?(TupleType)
+          t1.types.count == t2.types.count &&
+            same_ordered_types?(t1.type_parameters, t2.type_parameters)
+        elsif t1.is_a?(AnyType) && t2.is_a?(AnyType)
+          true
+        elsif t1.is_a?(GenericTypeParameter) && t2.is_a?(GenericTypeParameter)
+          t1.name == t2.name
+        elsif t1.is_a?(KeywordHashType) && t2.is_a?(KeywordHashType)
+          t1.keywords.keys.sort == t2.keywords.keys.sort &&
+            t1.keywords.keys.map { |k|
+              same_type?(t1.keywords[k], t2.keywords[k])
+            }
+        elsif t1.is_a?(UnionType) && t2.is_a?(UnionType)
+          same_unordered_types?(t1.types, t2.types)
+        else
+          false
+        end
+      end
+
+      def compatible_type?(source:, target:)
+        source = prune(source)
+        target = prune(target)
+
+        if source.is_a?(InstanceType) && target.is_a?(InstanceType)
+          source.klass.has_ancestor?(target.klass) &&
+            (target.type_parameters.empty? ||
+              same_ordered_types?(source.type_parameters, target.type_parameters))
+        elsif source.is_a?(UnionType)
+          source.types.all? { |source_type|
+            compatible_type?(source: source_type, target: target)
+          }
+        elsif target.is_a?(UnionType)
+          target.types.any? { |target_type|
+            compatible_type?(source: source, target: target_type)
+          }
+        else
+          same_type?(source, target)
+        end
+      end
+
+      def same_ordered_types?(types1, types2)
+        return false unless types1.count == types2.count
+
+        types1.zip(types2) do |t1, t2|
+          return false unless same_type?(t1, t2)
+        end
+
+        true
+      end
+
+      def same_unordered_types?(types1, types2)
+        return false unless types1.count == types2.count
+
+        types1 = types1.dup
+        types2 = types2.dup
+
+        types1.each do |t1|
+          if t2_index = types2.find_index { |t2| same_type?(t1, t2) }
+            types2.delete_at(t2_index)
+          else
+            return false
+          end
+        end
+
+        true
+      end
+
+      def make_union(t1, t2, node:)
+        t1 = prune(t1)
+        t2 = prune(t2)
+
+        if t1.is_a?(UnionType) && t2.is_a?(UnionType)
+          t2.types.reduce(t1) { |a, b| make_union(a, b, node: node) }
+        elsif t1.is_a?(UnionType)
+          if t1.types.any? { |t| same_type?(t, t2) }
+            t1
+          else
+            UnionType.new(node: node, types: [*t1.types, t2])
+          end
+        elsif t2.is_a?(UnionType)
+          make_union(t2, t1, node: node)
+        elsif same_type?(t1, t2)
+          t1
+        else
+          UnionType.new(node: node, types: [t1, t2])
+        end
+      end
+
       def fail_unification!(t1, t2, node:)
+        add_type_error(t1, t2, node: node)
+        t2
+      end
+
+      def add_type_error(t1, t2, node:)
         context = [
           Error::MessageWithLocation.new(message: "#{t1.describe}, with:", location: t1.node.location.expression),
           Error::MessageWithLocation.new(message: "#{t2.describe}", location: t2.node.location.expression),
@@ -524,20 +630,6 @@ module TypedRuby
         end
 
         errors << Error.new("Could not match types:", context)
-
-        t2
-      end
-
-      def unify_or_make_union(t1, t2, node:)
-        unified = new_type_var(node: node)
-
-        unify!(unified, t1)
-        unify!(unified, t2)
-
-        # TODO:
-        # UnionType.new(node: node, types: [t1, t2])
-
-        unified
       end
 
       def prune(type)
@@ -575,7 +667,7 @@ module TypedRuby
           l1_type = l1_defs[key] || nil_type(node: node)
           l2_type = l2_defs[key] || nil_type(node: node)
 
-          defs[key] = unify_or_make_union(l1_type, l2_type, node: node)
+          defs[key] = make_union(l1_type, l2_type, node: node)
         end
 
         defs.reduce(ancestor) { |p, (n, t)|
@@ -973,7 +1065,7 @@ module TypedRuby
           else_locals = locals
         end
 
-        type = unify_or_make_union(then_type, else_type, node: node)
+        type = make_union(then_type, else_type, node: node)
         locals = merge_locals(then_locals, else_locals, node: node)
 
         [type, locals]
@@ -994,13 +1086,13 @@ module TypedRuby
         resbodies.each do |resbody|
           resbody_type, locals = on_resbody(resbody, locals)
 
-          expr_type = unify_or_make_union(expr_type, resbody_type, node: resbody)
+          expr_type = make_union(expr_type, resbody_type, node: resbody)
         end
 
         if else_expr
           else_type, else_locals = process(else_expr, begin_locals)
 
-          expr_type = unify_or_make_union(expr_type, else_type, node: else_expr)
+          expr_type = make_union(expr_type, else_type, node: else_expr)
 
           locals = merge_locals(locals, else_locals)
         end
@@ -1051,7 +1143,7 @@ module TypedRuby
         }
 
         types.reduce { |t1, t2|
-          unify_or_make_union(t1, t2)
+          make_union(t1, t2)
         }
       end
 
