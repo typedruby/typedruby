@@ -628,6 +628,10 @@ class Hash::[KeyType, ValueType] < Object
   def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
 
   def reject({ |KeyType k, ValueType v| => Boolean } &) => Hash::[KeyType, ValueType]; end
+
+  def fetch(KeyType k, ~{ || => ValueType } &) => ValueType; end
+
+  def [](KeyType k) => ~ValueType; end
 end
 
 class NilClass < Object
