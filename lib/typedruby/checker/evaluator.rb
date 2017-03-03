@@ -280,7 +280,7 @@ module TypedRuby
         end
       end
 
-      attr_reader :env, :method, :scope, :locals, :errors
+      attr_reader :env, :method, :scope, :locals, :errors, :method_proc_type
 
       def initialize(env:, method:)
         @env = env
@@ -291,7 +291,7 @@ module TypedRuby
       end
 
       def process_method_body
-        method_proc_type, locals = parse_prototype(method.prototype_node, NullLocal.new,
+        @method_proc_type, locals = parse_prototype(method.prototype_node, NullLocal.new,
           self_type: self_type,
           scope: scope,
         )
@@ -299,7 +299,7 @@ module TypedRuby
         method_proc_type.args.each do |arg|
           if arg.type.is_a?(TypeVar)
             errors << Error.new("Missing method argument type annotation", [
-              MessageWithLocation.new(
+              Error::MessageWithLocation.new(
                 message: "here",
                 location: arg.node.location.expression,
               )
@@ -310,7 +310,7 @@ module TypedRuby
 
         if method_proc_type.return_type.is_a?(TypeVar)
           errors << Error.new("Missing method return type annotation", [
-            MessageWithLocation.new(
+            Error::MessageWithLocation.new(
               message: "expected '=> SomeType' here",
               location: method.prototype_node.location.expression,
             )
@@ -321,9 +321,7 @@ module TypedRuby
         if method.body_node
           type, locals = process(method.body_node, locals)
 
-          unless compatible_type?(source: type, target: method_proc_type.return_type)
-            add_type_error(type, method_proc_type.return_type, node: nil)
-          end
+          assert_compatible!(source: type, target: method_proc_type.return_type, node: nil)
         else
           # if method body is missing, just ignore any type error (stub definitions would rely on this for instance)
           # TODO - perhaps revisit this decision later?
@@ -337,10 +335,38 @@ module TypedRuby
       def new_type_from_concrete(concrete_type, node:, self_type:)
         case concrete_type
         when Type::Instance
-          InstanceType.new(node: node, klass: concrete_type.mod, type_parameters:
-            concrete_type.type_parameters.map { |param|
-              new_type_from_concrete(param, node: node, self_type: self_type)
-            })
+          type_parameters = concrete_type.type_parameters.map { |param|
+            new_type_from_concrete(param, node: node, self_type: self_type)
+          }
+
+          expected_type_parameters =
+            if concrete_type.mod.is_a?(RubyClass)
+              concrete_type.mod.type_parameters.count
+            else
+              0
+            end
+
+          if type_parameters.count < expected_type_parameters
+            errors << Error.new("Too few type parameters supplied in instantiation of #{concrete_type.to_type_notation}", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.location.expression,
+              ),
+            ])
+
+            type_parameters.concat([AnyType.new(node: node)] * (expected_type_parameters - type_parameters.count))
+          elsif type_parameters.count > expected_type_parameters
+            errors << Error.new("Too many type parameters supplied in instantiation of #{concrete_type.to_type_notation}", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.location.expression,
+              ),
+            ])
+
+            type_parameters = type_parameters[0, expected_type_parameters]
+          end
+
+          InstanceType.new(node: node, klass: concrete_type.mod, type_parameters: type_parameters)
         when Type::Array
           InstanceType.new(node: node, klass: env.Array,
             type_parameters: [new_type_from_concrete(concrete_type.type, node: node, self_type: self_type)])
@@ -390,7 +416,11 @@ module TypedRuby
             raise "unknown self_type in Type::GenericTypeParameter in new_type_from_concrete: #{self_type.describe}"
           end
         when Type::Union
-          UnionType.new(node: node, types: concrete_type.types.map { |t| new_type_from_concrete(t, node: node, self_type: self_type) })
+          concrete_type.types.map { |t|
+            new_type_from_concrete(t, node: node, self_type: self_type)
+          }.reduce { |a, b|
+            make_union(a, b, node: node)
+          }
         when Type::Any
           AnyType.new(node: node)
         when Type::Proc
@@ -530,6 +560,7 @@ module TypedRuby
 
           unify!(t1.return_type, t2.return_type, node: node)
         else
+          pry binding
           raise "unknown case in unify!\n#{t1.describe}\n#{t2.describe}"
           fail_unification!(t1, t2, node: node)
         end
@@ -540,7 +571,8 @@ module TypedRuby
         t2 = prune(t2)
 
         if t1.is_a?(TypeVar) || t2.is_a?(TypeVar)
-          t1 == t2
+          unify!(t1, t2, node: t1.node || t2.node)
+          true
         elsif t1.is_a?(InstanceType) && t2.is_a?(InstanceType)
           t1.klass == t2.klass &&
             same_ordered_types?(t1.type_parameters, t2.type_parameters)
@@ -584,6 +616,12 @@ module TypedRuby
         end
       end
 
+      def assert_compatible!(source:, target:, node:)
+        unless compatible_type?(source: source, target: target)
+          add_type_error(source, target, node: node)
+        end
+      end
+
       def same_ordered_types?(types1, types2)
         return false unless types1.count == types2.count
 
@@ -618,14 +656,16 @@ module TypedRuby
         if t1.is_a?(UnionType) && t2.is_a?(UnionType)
           t2.types.reduce(t1) { |a, b| make_union(a, b, node: node) }
         elsif t1.is_a?(UnionType)
-          if t1.types.any? { |t| same_type?(t, t2) }
+          if t1.types.any? { |t| compatible_type?(source: t2, target: t) }
             t1
           else
             UnionType.new(node: node, types: [*t1.types, t2])
           end
         elsif t2.is_a?(UnionType)
           make_union(t2, t1, node: node)
-        elsif same_type?(t1, t2)
+        elsif compatible_type?(source: t1, target: t2)
+          t2
+        elsif compatible_type?(source: t2, target: t1)
           t1
         else
           UnionType.new(node: node, types: [t1, t2])
@@ -924,14 +964,21 @@ module TypedRuby
         when InstanceType
           if method_entry = recv_type.klass.lookup_method_entry(mid)
             prototype = prototype_from_method_entry(method_entry, self_type: recv_type)
-          else
-            errors << Error.new("Could not resolve method ##{mid} on #{recv_type.describe}", [
-              Error::MessageWithLocation.new(
-                message: "in this invocation",
-                location: send_node.location.selector,
-              ),
-            ])
-            prototype = untyped_prototype
+          end
+        when KeywordHashType
+          if method_entry = env.Hash.lookup_method_entry(mid)
+            prototype = prototype_from_method_entry(method_entry, self_type: InstanceType.new(
+              node: recv_type.node,
+              klass: env.Hash,
+              type_parameters: [
+                InstanceType.new(
+                  node: recv_type.node,
+                  klass: env.Symbol,
+                  type_parameters: [],
+                ),
+                AnyType.new(node: recv_type.node),
+              ]
+            ))
           end
         when AnyType
           prototype = untyped_prototype
@@ -945,6 +992,16 @@ module TypedRuby
           prototype = untyped_prototype
         else
           raise "unknown type #{recv_type.describe} as receiver to send"
+        end
+
+        unless prototype
+          errors << Error.new("Could not resolve method ##{mid} on #{recv_type.describe}", [
+            Error::MessageWithLocation.new(
+              message: "in this invocation",
+              location: send_node.location.selector,
+            ),
+          ])
+          prototype = untyped_prototype
         end
 
         match_prototype_with_arguments(prototype, arg_types, node: send_node)
@@ -1176,7 +1233,7 @@ module TypedRuby
             InstanceType.new(klass: t.klass.of, type_parameters: [], node: c)
           else
             errors << Error.new("Expected class/module in rescue clause", [
-              MessageWithLocation.new(
+              Error::MessageWithLocation.new(
                 message: "here",
                 location: c.location.expression,
               )
@@ -1265,10 +1322,7 @@ module TypedRuby
 
         type = new_type_var(node: node)
         unify!(type, expr_type)
-        unify!(type,
-          new_type_from_concrete(method.prototype(env: env).return_type,
-            node: method.prototype_node,
-            self_type: method.klass))
+        assert_compatible!(source: type, target: method_proc_type.return_type, node: expr)
 
         # TODO - we need a void type
         [nil_type(node: node), locals]
