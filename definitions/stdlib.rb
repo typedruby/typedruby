@@ -613,11 +613,11 @@ end
 class Array::[ElementType] < Object
   include Enumerable
 
-  def <<(ElementType item) => :self
-  end
+  def <<(ElementType item) => :self; end
 
-  def each({ |ElementType element| } &bk) => :self
-  end
+  def each({ |ElementType element| } &bk) => :self; end
+
+  def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
 end
 
 class Hash::[KeyType, ValueType] < Object
