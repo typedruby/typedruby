@@ -260,5 +260,9 @@ module TypedRuby
         "#{name}::#{id}"
       end
     end
+
+    def has_ancestor?(other)
+      self == other || ancestors.include?(other)
+    end
   end
 end
