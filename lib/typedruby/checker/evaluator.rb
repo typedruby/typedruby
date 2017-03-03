@@ -296,6 +296,28 @@ module TypedRuby
           scope: scope,
         )
 
+        method_proc_type.args.each do |arg|
+          if arg.type.is_a?(TypeVar)
+            errors << Error.new("Missing method argument type annotation", [
+              MessageWithLocation.new(
+                message: "here",
+                location: arg.node.location.expression,
+              )
+            ])
+            unify!(arg.type, AnyType.new(node: arg.node))
+          end
+        end
+
+        if method_proc_type.return_type.is_a?(TypeVar)
+          errors << Error.new("Missing method return type annotation", [
+            MessageWithLocation.new(
+              message: "expected '=> SomeType' here",
+              location: method.prototype_node.location.expression,
+            )
+          ])
+          unify!(method_proc_type.return_type, AnyType.new(node: method.prototype_node))
+        end
+
         if method.body_node
           type, locals = process(method.body_node, locals)
 
