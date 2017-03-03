@@ -4,8 +4,8 @@ end
 module Kernel
   def puts(:any *) => nil; end
 
-  # TODO tighten up:
-  def raise(:any *) => nil; end
+  # TODO tighten up prototype:
+  def raise(:any *) => :any; end
 
   def nil? => Boolean; end
 
