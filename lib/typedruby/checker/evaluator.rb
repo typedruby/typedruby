@@ -186,11 +186,12 @@ module TypedRuby
       end
 
       class OptionalArg
-        attr_reader :node, :type
+        attr_reader :node, :type, :expr
 
-        def initialize(node:, type:)
+        def initialize(node:, type:, expr:)
           @node = node
           @type = type
+          @expr = expr
         end
 
         def describe
@@ -290,21 +291,16 @@ module TypedRuby
       end
 
       def process_method_body
-        method_prototype = method.prototype(env: env)
-
-        locals = method_prototype.locals.reduce(NullLocal.new) { |locals, (name, type)|
-          locals.assign(
-            name: name,
-            type: new_type_from_concrete(type, node: method.definition_node, self_type: self_type))
-        }
+        method_proc_type, locals = parse_prototype(method.prototype_node, NullLocal.new,
+          self_type: self_type,
+          scope: scope,
+        )
 
         if method.body_node
           type, locals = process(method.body_node, locals)
 
-          return_type = new_type_from_concrete(method_prototype.return_type, node: method.definition_node, self_type: self_type)
-
-          unless compatible_type?(source: type, target: return_type)
-            add_type_error(type, return_type, node: nil)
+          unless compatible_type?(source: type, target: method_proc_type.return_type)
+            add_type_error(type, method_proc_type.return_type, node: nil)
           end
         else
           # if method body is missing, just ignore any type error (stub definitions would rely on this for instance)
@@ -381,7 +377,7 @@ module TypedRuby
         when Prototype
           args =
             concrete_type.lead.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node) } +
-            concrete_type.opt.map { |arg| OptionalArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node) } +
+            concrete_type.opt.map { |arg| OptionalArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node, expr: nil) } +
             (concrete_type.rest ? [RestArg.new(type: new_type_from_concrete(concrete_type.rest.type, node: node, self_type: self_type), node: node)] : []) +
             concrete_type.post.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node) }
 
@@ -847,6 +843,31 @@ module TypedRuby
             unify!(type, TupleType.new(node: arg_node, types: args.map(&:type)))
             argument = ProcArg0.new(node: arg_node, type: type)
           end
+        when :restarg
+          arg_name, = *arg_node
+
+          if arg_name
+            locals = locals.assign(
+              name: arg_name,
+              type: InstanceType.new(
+                node: type_node || arg_node,
+                klass: env.Array,
+                type_parameters: [type]))
+          end
+
+          argument = RestArg.new(node: arg_node, type: type)
+        when :blockarg
+          arg_name, = *arg_node
+
+          if arg_name
+            locals = locals.assign(name: arg_name, type: type)
+          end
+
+          argument = BlockArg.new(node: arg_node, type: type)
+        when :optarg
+          arg_name, expr = *arg_node
+          locals = locals.assign(name: arg_name, type: type)
+          argument = OptionalArg.new(node: arg_node, type: type, expr: expr)
         else
           raise "unknown arg type: #{arg_node.type}"
         end
