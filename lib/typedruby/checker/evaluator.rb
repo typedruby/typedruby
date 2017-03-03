@@ -280,6 +280,20 @@ module TypedRuby
         end
       end
 
+      class LocalVariableType
+        attr_accessor :node, :local, :type
+
+        def initialize(node:, local:, type:)
+          @node = node
+          @local = local
+          @type = type
+        end
+
+        def describe
+          type.describe
+        end
+      end
+
       class TypeContext
         attr_reader :self_type, :method_type_parameters
 
@@ -661,6 +675,38 @@ module TypedRuby
         true
       end
 
+      def always_truthy?(type)
+        type = prune(type)
+
+        if type.is_a?(InstanceType)
+          return false if type.klass == env.Boolean
+
+          type.klass != env.FalseClass && type.klass != env.NilClass
+        elsif type.is_a?(UnionType)
+          type.types.all? { |t| always_truthy?(t) }
+        elsif type.is_a?(AnyType)
+          false
+        else
+          true
+        end
+      end
+
+      def always_falsy?(type)
+        type = prune(type)
+
+        if type.is_a?(InstanceType)
+          return false if type.klass == env.Boolean
+
+          type.klass == env.FalseClass || type.klass == env.NilClass
+        elsif type.is_a?(UnionType)
+          type.types.all? { |t| always_falsy?(t) }
+        elsif type.is_a?(AnyType)
+          false
+        else
+          false
+        end
+      end
+
       def make_union(t1, t2, node:)
         t1 = prune(t1)
         t2 = prune(t2)
@@ -705,6 +751,8 @@ module TypedRuby
       def prune(type)
         if type.is_a?(TypeVar) && type.instance
           type.instance = prune(type.instance)
+        elsif type.is_a?(LocalVariableType)
+          prune(type.type)
         else
           type
         end
@@ -780,7 +828,9 @@ module TypedRuby
 
         expr_type, locals = process(expr, locals)
 
-        [expr_type, locals.assign(name: name, type: expr_type)]
+        local_type = LocalVariableType.new(node: node, local: name, type: expr_type)
+
+        [local_type, locals.assign(name: name, type: expr_type)]
       end
 
       def on_ivasgn(node, locals)
@@ -794,15 +844,11 @@ module TypedRuby
       def on_lvar(node, locals)
         name, = *node
 
-        type = new_type_var(node: node)
-
         unless locals[name]
           raise "No such local #{name} - this should not happen"
         end
 
-        unify!(type, locals[name])
-
-        [type, locals]
+        [LocalVariableType.new(node: node, local: name, type: locals[name]), locals]
       end
 
       def on_splat(node)
@@ -1183,26 +1229,60 @@ module TypedRuby
         [new_type_var(node: node), locals]
       end
 
+      # this method has a very over-simplified way of doing some sort of
+      # flow-sensitive typing. we probably need fancier control flow analysis
+      # to make this more robust, but let's see how this goes for now.
       def on_if(node, locals)
         cond, then_expr, else_expr = *node
 
-        # TODO - need flow sensitive typing here:
         cond_type, locals = process(cond, locals)
 
-        # TODO - emit warning if cond_type is always truthy or always falsy
+        then_locals = locals
+        else_locals = locals
+
+        if cond_type.is_a?(LocalVariableType)
+          # TODO this is very simple specialisation of local variable types
+          if cond_type.type.is_a?(UnionType)
+            truthy_types = cond_type.type.types.reject { |t| always_falsy?(t) }
+            falsy_types = cond_type.type.types.reject { |t| always_truthy?(t) }
+
+            if truthy_types.empty?
+              pry binding
+            end
+
+            if falsy_types.empty?
+              pry binding
+            end
+
+            then_locals = locals.assign(
+              name: cond_type.local,
+              type: truthy_types.reduce { |a, b| make_union(a, b, node: node) },
+            )
+            else_locals = locals.assign(
+              name: cond_type.local,
+              type: falsy_types.reduce { |a, b| make_union(a, b, node: node) },
+            )
+          end
+        end
 
         if then_expr
-          then_type, then_locals = process(then_expr, locals)
+          then_type, then_locals = process(then_expr, then_locals)
         else
           then_type = nil_type(node: node)
-          then_locals = locals
         end
 
         if else_expr
-          else_type, else_locals = process(else_expr, locals)
+          else_type, else_locals = process(else_expr, else_locals)
         else
           else_type = nil_type(node: node)
-          else_locals = locals
+        end
+
+        if then_expr && then_expr.type == :return
+          return else_type, else_locals
+        end
+
+        if else_expr && else_expr.type == :return
+          return then_type, then_locals
         end
 
         type = make_union(then_type, else_type, node: node)
