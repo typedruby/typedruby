@@ -24,7 +24,7 @@ module TypedRuby
     end
 
     def undefine
-      raise NotImplementedError
+      raise Error, "undefine not implemented"
     end
   end
 end
