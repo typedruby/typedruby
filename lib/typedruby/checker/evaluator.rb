@@ -722,6 +722,8 @@ module TypedRuby
           other_type.types.any? { |t| occurs_in_type?(type_var, t) }
         when GenericTypeParameter
           false
+        when UnionType
+          other_type.types.any? { |t| occurs_in_type?(type_var, t) }
         else
           raise "unknown type in occurs_in_type?: #{other_type}"
         end
