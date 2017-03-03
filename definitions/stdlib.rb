@@ -58,6 +58,16 @@ class IO < Object
   SEEK_CUR = nil
   SEEK_END = nil
 
+  def self.read(
+    String name,
+    ~Integer length = nil,
+    ~Integer offset = nil
+    # :any encoding:, # TODO this should be String or Encoding
+    # String mode:,
+    # [String] open_args:
+  ) => String
+  end
+
   def write(String data) => Integer; end
 end
 
@@ -620,6 +630,8 @@ class Array::[ElementType] < Object
   def each({ |ElementType element| } &bk) => :self; end
 
   def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
+
+  def compact => [ElementType]; end
 end
 
 class Hash::[KeyType, ValueType] < Object
