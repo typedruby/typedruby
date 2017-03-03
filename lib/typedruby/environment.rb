@@ -104,7 +104,7 @@ module TypedRuby
       @Object.constants[name.to_sym] = klass
     end
 
-    def resolve_type(node:, scope:)
+    def resolve_type(node:, scope:, genargs:)
       case node.type
       when :tr_cpath
         cpath, = *node
@@ -112,8 +112,10 @@ module TypedRuby
         if cpath.type == :const
           cbase, id = *cpath
 
-          if cbase == nil && scope.mod.is_a?(RubyClass) && scope.mod.type_parameters.include?(id)
-            return Type::GenericTypeParameter.new(name: id)
+          if cbase == nil
+            if (scope.mod.is_a?(RubyClass) && scope.mod.type_parameters.include?(id)) || genargs.include?(id)
+              return Type::GenericTypeParameter.new(name: id)
+            end
           end
         end
 
@@ -126,22 +128,22 @@ module TypedRuby
 
         Type::Instance.new(
           mod: resolve_cpath(node: cpath, scope: scope),
-          type_parameters: parameters.map { |p| resolve_type(node: p, scope: scope) },
+          type_parameters: parameters.map { |p| resolve_type(node: p, scope: scope, genargs: genargs) },
         )
       when :tr_nillable
         type_node, = *node
         Type::Union.new(types: [
           nil_type,
-          resolve_type(node: type_node, scope: scope),
+          resolve_type(node: type_node, scope: scope, genargs: genargs),
         ])
       when :tr_array
         element_type_node, = *node
-        Type::Array.new(type: resolve_type(node: element_type_node, scope: scope))
+        Type::Array.new(type: resolve_type(node: element_type_node, scope: scope, genargs: genargs))
       when :tr_hash
         key_type_node, value_type_node = *node
         Type::Hash.new(
-          key_type: resolve_type(node: key_type_node, scope: scope),
-          value_type: resolve_type(node: value_type_node, scope: scope),
+          key_type: resolve_type(node: key_type_node, scope: scope, genargs: genargs),
+          value_type: resolve_type(node: value_type_node, scope: scope, genargs: genargs),
         )
       when :tr_nil
         nil_type
