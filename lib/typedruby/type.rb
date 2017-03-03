@@ -17,20 +17,8 @@ module TypedRuby
       raise NotImplementedError
     end
 
-    def subtype_of?(other)
-      raise NotImplementedError
-    end
-
-    def supertype_of?(other)
-      raise NotImplementedError
-    end
-
     def ==(other)
       raise NotImplementedError
-    end
-
-    def compatible_with?(other)
-      self == other || subtype_of?(other)
     end
   end
 end
