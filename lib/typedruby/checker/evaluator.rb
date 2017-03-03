@@ -560,7 +560,6 @@ module TypedRuby
 
           unify!(t1.return_type, t2.return_type, node: node)
         else
-          pry binding
           raise "unknown case in unify!\n#{t1.describe}\n#{t2.describe}"
           fail_unification!(t1, t2, node: node)
         end
