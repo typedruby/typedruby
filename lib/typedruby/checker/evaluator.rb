@@ -611,6 +611,10 @@ module TypedRuby
           target.types.any? { |target_type|
             compatible_type?(source: source, target: target_type)
           }
+        elsif source.is_a?(AnyType)
+          true
+        elsif target.is_a?(AnyType)
+          true
         else
           same_type?(source, target)
         end
