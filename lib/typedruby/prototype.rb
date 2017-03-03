@@ -10,6 +10,7 @@ module TypedRuby
     end
 
     attr_reader \
+      :type_parameters,
       :lead,
       :opt,
       :rest,
@@ -37,7 +38,21 @@ module TypedRuby
         raise Error, "unexpected node type: #{node.type}"
       end
 
-      args, return_type_node = *node
+      genargs, args, return_type_node = *node
+
+      if genargs
+        if scope.mod.is_a?(RubyClass)
+          conflicting_type_parameters = genargs.children & scope.mod.type_parameters
+
+          if conflicting_type_parameters.any?
+            raise Error, "duplicate type parameter names in method prototype: #{conflicting_type_parameters}"
+          end
+        end
+
+        type_parameters = genargs.children
+      else
+        type_parameters = []
+      end
 
       lead = []
       opt = []
@@ -56,7 +71,7 @@ module TypedRuby
 
         arg_type_node, arg_node = *typed_arg
 
-        arg_type = env.resolve_type(node: arg_type_node, scope: scope)
+        arg_type = env.resolve_type(node: arg_type_node, scope: scope, genargs: type_parameters)
 
         case arg_node.type
         when :arg
@@ -105,9 +120,10 @@ module TypedRuby
         end
       end
 
-      return_type = env.resolve_type(node: return_type_node, scope: scope)
+      return_type = env.resolve_type(node: return_type_node, scope: scope, genargs: type_parameters)
 
       new(
+        type_parameters: type_parameters,
         lead: lead,
         opt: opt,
         rest: rest,
@@ -119,7 +135,8 @@ module TypedRuby
       )
     end
 
-    def initialize(lead:, opt:, rest:, post:, kwreq:, kwopt:, block:, return_type:)
+    def initialize(type_parameters:, lead:, opt:, rest:, post:, kwreq:, kwopt:, block:, return_type:)
+      @type_parameters = type_parameters
       @lead = lead
       @opt = opt
       @rest = rest
@@ -176,7 +193,14 @@ module TypedRuby
         args << "#{block.type.to_type_notation} &#{block.name}"
       end
 
-      "(#{args.join(", ")}) => #{return_type.to_type_notation}"
+      type_parameter_prefix =
+        if type_parameters.any?
+          "[#{type_parameters.join(", ")}]"
+        else
+          ""
+        end
+
+      "#{type_parameter_prefix}(#{args.join(", ")}) => #{return_type.to_type_notation}"
     end
 
   private

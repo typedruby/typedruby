@@ -280,7 +280,26 @@ module TypedRuby
         end
       end
 
-      attr_reader :env, :method, :scope, :locals, :errors, :method_proc_type
+      class TypeContext
+        attr_reader :self_type, :method_type_parameters
+
+        def initialize(self_type:, method_type_parameters:)
+          @self_type = self_type
+          @method_type_parameters = method_type_parameters
+        end
+
+        def fetch_type_parameter(name)
+          if index = self_type.klass.type_parameters.index(name)
+            self_type.type_parameters[index]
+          elsif method_type_parameters.key?(name)
+            method_type_parameters[name]
+          else
+            raise "should not happen: couldn't find type parameter #{name}"
+          end
+        end
+      end
+
+      attr_reader :env, :method, :scope, :locals, :errors, :method_proc_type, :type_context
 
       def initialize(env:, method:)
         @env = env
@@ -288,11 +307,25 @@ module TypedRuby
         @scope = method.scope
         @errors = []
         @type_var_count = 0
+
+        type_parameters =
+          if method.klass.is_a?(RubyClass)
+            method.klass.type_parameters.map { |name| GenericTypeParameter.new(name: name.to_s) }
+          else
+            []
+          end
+
+        @type_context = TypeContext.new(
+          self_type: InstanceType.new(node: nil, klass: method.klass, type_parameters: type_parameters),
+          method_type_parameters: method.prototype(env: env).type_parameters.map { |param_name|
+            [param_name, GenericTypeParameter.new(name: param_name)]
+          }.to_h,
+        )
       end
 
       def process_method_body
         @method_proc_type, locals = parse_prototype(method.prototype_node, NullLocal.new,
-          self_type: self_type,
+          type_context: type_context,
           scope: scope,
         )
 
@@ -332,11 +365,11 @@ module TypedRuby
         TypeVar.new(node: node, description: "t#{@type_var_count += 1}")
       end
 
-      def new_type_from_concrete(concrete_type, node:, self_type:)
+      def new_type_from_concrete(concrete_type, node:, type_context:)
         case concrete_type
         when Type::Instance
           type_parameters = concrete_type.type_parameters.map { |param|
-            new_type_from_concrete(param, node: node, self_type: self_type)
+            new_type_from_concrete(param, node: node, type_context: type_context)
           }
 
           expected_type_parameters =
@@ -369,30 +402,30 @@ module TypedRuby
           InstanceType.new(node: node, klass: concrete_type.mod, type_parameters: type_parameters)
         when Type::Array
           InstanceType.new(node: node, klass: env.Array,
-            type_parameters: [new_type_from_concrete(concrete_type.type, node: node, self_type: self_type)])
+            type_parameters: [new_type_from_concrete(concrete_type.type, node: node, type_context: type_context)])
         when Type::Hash
           InstanceType.new(node: node, klass: env.Hash,
             type_parameters: [
-              new_type_from_concrete(concrete_type.key_type, node: node, self_type: self_type),
-              new_type_from_concrete(concrete_type.value_type, node: node, self_type: self_type),
+              new_type_from_concrete(concrete_type.key_type, node: node, type_context: type_context),
+              new_type_from_concrete(concrete_type.value_type, node: node, type_context: type_context),
             ])
         when Type::Tuple
-          TupleType.new(node: node, types: concrete_type.types.map { |t| new_type_from_concrete(t, node: node, self_type: self_type) })
+          TupleType.new(node: node, types: concrete_type.types.map { |t| new_type_from_concrete(t, node: node, type_context: type_context) })
         when Type::SpecialSelf
-          self_type
+          type_context.self_type
         when Type::SpecialClass
-          case self_type
+          case type_context.self_type
           when InstanceType
             # TODO - return a generic instance of the class rather than the class with type parameters erased:
-            InstanceType.new(node: node, klass: self_type.klass.metaklass(env: env), type_parameters: [])
+            InstanceType.new(node: node, klass: type_context.self_type.klass.metaklass(env: env), type_parameters: [])
           else
-            raise "unknown self_type in Type::SpecialClass in new_type_from_concrete: #{self_type.describe}"
+            raise "unknown self_type in Type::SpecialClass in new_type_from_concrete: #{type_context.self_type.describe}"
           end
         when Type::SpecialInstance
-          case self_type
+          case type_context.self_type
           when InstanceType
-            if self_type.klass.is_a?(RubyMetaclass)
-              InstanceType.new(node: node, klass: self_type.klass.of, type_parameters: [])
+            if type_context.self_type.klass.is_a?(RubyMetaclass)
+              InstanceType.new(node: node, klass: type_context.self_type.klass.of, type_parameters: [])
             else
               # only encountered when type checking the Class#new definition
               # in that case, rather than the receiver being a metaclass of a
@@ -400,38 +433,27 @@ module TypedRuby
               AnyType.new(node: node)
             end
           else
-            raise "unknown self_type in Type::SpecialInstance in new_type_from_concrete: #{self_type.describe}"
+            raise "unknown self_type in Type::SpecialInstance in new_type_from_concrete: #{type_context.self_type.describe}"
           end
         when Type::GenericTypeParameter
-          case self_type
-          when InstanceType
-            type_parameter_index = self_type.klass.type_parameters.index(concrete_type.name)
-
-            unless type_parameter_index
-              raise "could not find type parameter #{concrete_type.name} in #{self_type.klass}"
-            end
-
-            self_type.type_parameters[type_parameter_index]
-          else
-            raise "unknown self_type in Type::GenericTypeParameter in new_type_from_concrete: #{self_type.describe}"
-          end
+          type_context.fetch_type_parameter(concrete_type.name)
         when Type::Union
           concrete_type.types.map { |t|
-            new_type_from_concrete(t, node: node, self_type: self_type)
+            new_type_from_concrete(t, node: node, type_context: type_context)
           }.reduce { |a, b|
             make_union(a, b, node: node)
           }
         when Type::Any
           AnyType.new(node: node)
         when Type::Proc
-          proc_type, _ = parse_prototype(concrete_type.prototype_node, NullLocal.new, self_type: self_type, scope: concrete_type.scope)
+          proc_type, _ = parse_prototype(concrete_type.prototype_node, NullLocal.new, type_context: type_context, scope: concrete_type.scope)
           proc_type
         when Prototype
           args =
-            concrete_type.lead.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node) } +
-            concrete_type.opt.map { |arg| OptionalArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node, expr: nil) } +
-            (concrete_type.rest ? [RestArg.new(type: new_type_from_concrete(concrete_type.rest.type, node: node, self_type: self_type), node: node)] : []) +
-            concrete_type.post.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, self_type: self_type), node: node) }
+            concrete_type.lead.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, type_context: type_context), node: node) } +
+            concrete_type.opt.map { |arg| OptionalArg.new(type: new_type_from_concrete(arg.type, node: node, type_context: type_context), node: node, expr: nil) } +
+            (concrete_type.rest ? [RestArg.new(type: new_type_from_concrete(concrete_type.rest.type, node: node, type_context: type_context), node: node)] : []) +
+            concrete_type.post.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, type_context: type_context), node: node) }
 
           if concrete_type.kwreq.any? || concrete_type.kwopt.any?
             args << KeywordHashArg.new(
@@ -443,8 +465,8 @@ module TypedRuby
 
           ProcType.new(node: node,
             args: args,
-            block: concrete_type.block && new_type_from_concrete(concrete_type.block.type, node: node, self_type: self_type),
-            return_type: new_type_from_concrete(concrete_type.return_type, node: node, self_type: self_type),
+            block: concrete_type.block && new_type_from_concrete(concrete_type.block.type, node: node, type_context: type_context),
+            return_type: new_type_from_concrete(concrete_type.return_type, node: node, type_context: type_context),
           )
         else
           raise "unknown concrete type #{concrete_type} in #{node}"
@@ -467,19 +489,6 @@ module TypedRuby
 
       def nil_type(node:)
         InstanceType.new(node: node, klass: env.NilClass, type_parameters: [])
-      end
-
-      def self_type
-        @self_type ||= begin
-          type_parameters =
-            if method.klass.is_a?(RubyClass)
-              method.klass.type_parameters.map { |name| GenericTypeParameter.new(name: name.to_s) }
-            else
-              []
-            end
-
-          InstanceType.new(node: nil, klass: method.klass, type_parameters: type_parameters)
-        end
       end
 
       def unify!(t1, t2, node: nil)
@@ -711,6 +720,8 @@ module TypedRuby
           false
         when TupleType
           other_type.types.any? { |t| occurs_in_type?(type_var, t) }
+        when GenericTypeParameter
+          false
         else
           raise "unknown type in occurs_in_type?: #{other_type}"
         end
@@ -807,7 +818,7 @@ module TypedRuby
 
         method_prototype, locals = process_send(send, locals)
 
-        block_prototype, block_locals = parse_prototype(block_args, locals, self_type: self_type, scope: scope)
+        block_prototype, block_locals = parse_prototype(block_args, locals, type_context: type_context, scope: scope)
         unify!(block_prototype, method_prototype.block)
 
         block_return_type, _ = process(block_body, block_locals)
@@ -851,18 +862,25 @@ module TypedRuby
         [type, locals]
       end
 
-      def parse_prototype(prototype_node, locals, self_type:, scope:)
+      def parse_prototype(prototype_node, locals, type_context:, scope:)
+        genargs = type_context.method_type_parameters.keys
+
         if prototype_node.type == :prototype
-          args_node, return_type_node = *prototype_node
-          concrete_return_type = env.resolve_type(node: return_type_node, scope: scope)
-          return_type = new_type_from_concrete(concrete_return_type, node: return_type_node, self_type: self_type)
+          genargs_node, args_node, return_type_node = *prototype_node
+
+          if genargs_node
+            genargs.concat(genargs_node.children)
+          end
+
+          concrete_return_type = env.resolve_type(node: return_type_node, scope: scope, genargs: genargs)
+          return_type = new_type_from_concrete(concrete_return_type, node: return_type_node, type_context: type_context)
         else
           args_node = prototype_node
           return_type = new_type_var(node: args_node)
         end
 
         arguments = args_node.children.map { |arg_node|
-          argument, locals = parse_argument(arg_node, locals, self_type: self_type, scope: scope)
+          argument, locals = parse_argument(arg_node, locals, type_context: type_context, scope: scope, genargs: genargs)
           argument
         }
 
@@ -880,11 +898,11 @@ module TypedRuby
         [prototype, locals]
       end
 
-      def parse_argument(typed_arg_node, locals, self_type:, scope:)
+      def parse_argument(typed_arg_node, locals, type_context:, scope:, genargs:)
         if typed_arg_node.type == :typed_arg
           type_node, arg_node = *typed_arg_node
-          concrete_type = env.resolve_type(node: type_node, scope: scope)
-          type = new_type_from_concrete(concrete_type, node: type_node, self_type: self_type)
+          concrete_type = env.resolve_type(node: type_node, scope: scope, genargs: genargs)
+          type = new_type_from_concrete(concrete_type, node: type_node, type_context: type_context)
         else
           arg_node = typed_arg_node
           type = new_type_var(node: typed_arg_node)
@@ -902,7 +920,7 @@ module TypedRuby
             argument = ProcArg0.new(node: arg_node, type: type)
           else
             args = arg_node.children.map { |n|
-              arg, locals = parse_argument(n, locals, self_type: self_type, scope: scope)
+              arg, locals = parse_argument(n, locals, type_context: type_context, scope: scope, genargs: genargs)
               arg
             }
             unify!(type, TupleType.new(node: arg_node, types: args.map(&:type)))
@@ -1016,7 +1034,15 @@ module TypedRuby
         method = method_entry.definitions.last
 
         if concrete_prototype = method.prototype(env: env)
-          new_type_from_concrete(concrete_prototype, node: method.definition_node, self_type: self_type)
+          new_type_from_concrete(concrete_prototype,
+            node: method.definition_node,
+            type_context: TypeContext.new(
+              self_type: self_type,
+              method_type_parameters: concrete_prototype.type_parameters.map { |type_parameter|
+                [type_parameter, new_type_var(node: method.prototype_node)]
+              }.to_h,
+            ),
+          )
         else
           untyped_prototype
         end
@@ -1090,7 +1116,16 @@ module TypedRuby
             const = env.resolve_cpath(node: node, scope: scope)
 
             if const.is_a?(RubyUnresolvedExpression)
-              type = new_type_from_concrete(const.type, node: const.node, self_type: const.scope.mod)
+              type = new_type_from_concrete(const.type, node: const.node, type_context:
+                TypeContext.new(
+                  self_type: InstanceType.new(
+                    node: const.node,
+                    klass: const.scope.mod,
+                    type_parameters: [],
+                  ),
+                  type_parameters: {},
+                )
+              )
             elsif const.is_a?(RubyObject)
               type = InstanceType.new(node: node, klass: const.metaklass(env: env), type_parameters: [])
             end
@@ -1267,7 +1302,7 @@ module TypedRuby
       end
 
       def on_self(node, locals)
-        [self_type, locals]
+        [type_context.self_type, locals]
       end
 
       def on_hash(node, locals)
@@ -1336,8 +1371,8 @@ module TypedRuby
 
         _, locals = process(expr, locals)
 
-        concrete_type = env.resolve_type(node: type_node, scope: scope)
-        type = new_type_from_concrete(concrete_type, node: type_node, self_type: self_type)
+        concrete_type = env.resolve_type(node: type_node, scope: scope, genargs: method.prototype(env: env).type_parameters)
+        type = new_type_from_concrete(concrete_type, node: type_node, type_context: type_context)
 
         [type, locals]
       end

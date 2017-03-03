@@ -579,7 +579,7 @@ module TypedRuby
 
         cbase_ref.set_const(id: id, value:
           RubyUnresolvedExpression.new(scope: @scope, node: expr, type:
-            @env.resolve_type(node: type, scope: @scope)))
+            @env.resolve_type(node: type, scope: @scope, genargs: [])))
 
         return
       end
