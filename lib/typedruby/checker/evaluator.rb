@@ -1339,6 +1339,44 @@ module TypedRuby
         [type, locals]
       end
 
+      def on_case(node, locals)
+        # TODO - flow sensitive typing for case class structures
+
+        case_expr, *whens, else_expr = *node
+
+        case_type, locals = process(case_expr, locals)
+
+        branch_types = []
+        branch_locals = []
+
+        whens.each do |when_branch|
+          *conds, expr = *when_branch
+
+          conds.each do |cond|
+            cond_type, locals = process(cond, locals)
+            # TODO - check that the condition at least responds to #===?
+          end
+
+          expr_type, expr_locals = process(expr, locals)
+
+          branch_types << expr_type
+          branch_locals << expr_locals
+        end
+
+        if else_expr
+          else_type, else_locals = process(else_expr, locals)
+        else
+          else_type = nil_type(node: node)
+        end
+
+        branch_types << else_type
+
+        result_type = branch_types.reduce { |a, b| make_union(a, b, node: node) }
+        result_locals = branch_locals.reduce { |a, b| merge_locals(a, b, node: node) }
+
+        [result_type, result_locals]
+      end
+
       def validate_static_cpath(node)
         loop do
           left, _ = *node
