@@ -4,6 +4,8 @@ end
 module Kernel
   def puts(:any *) => nil; end
 
+  def warn(:any *) => nil; end
+
   # TODO tighten up prototype:
   def raise(:any *) => :any; end
 
