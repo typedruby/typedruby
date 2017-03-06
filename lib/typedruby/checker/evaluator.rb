@@ -213,20 +213,44 @@ module TypedRuby
       end
 
       class KeywordHashArg
-        attr_reader :node, :required, :optional
+        attr_reader :type, :keywords
 
-        def initialize(node:, required:, optional:)
-          @node = node
-          @required = required
-          @optional = optional
+        def initialize(type:, keywords:)
+          @type = type
+          @keywords = keywords
         end
 
         def describe
-          keywords =
-            required.map { |kw, type| "#{type.describe} #{kw}:" } +
-            optional.map { |kw, type| "#{type.describe} #{kw}: ..." }
+          "{#{keywords.map(&:describe).join(", ")}}"
+        end
+      end
 
-          "{" + keywords.join(", ") + "}"
+      class KeywordArg
+        attr_reader :node, :name, :type
+
+        def initialize(node:, name:, type:)
+          @node = node
+          @name = name
+          @type = type
+        end
+
+        def describe
+          "#{type.describe} #{kw}:"
+        end
+      end
+
+      class OptionalKeywordArg
+        attr_reader :node, :name, :type, :expr
+
+        def initialize(node:, name:, type:, expr:)
+          @node = node
+          @name = name
+          @type = type
+          @expr = expr
+        end
+
+        def describe
+          "#{type.describe} #{kw}: ..."
         end
       end
 
@@ -330,7 +354,7 @@ module TypedRuby
           end
 
         @type_context = TypeContext.new(
-          self_type: InstanceType.new(node: nil, klass: method.klass, type_parameters: type_parameters),
+          self_type: InstanceType.new(node: method.definition_node, klass: method.klass, type_parameters: type_parameters),
           method_type_parameters: method.prototype(env: env).type_parameters.map { |param_name|
             [param_name, GenericTypeParameter.new(name: param_name)]
           }.to_h,
@@ -470,10 +494,22 @@ module TypedRuby
             concrete_type.post.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, type_context: type_context), node: node) }
 
           if concrete_type.kwreq.any? || concrete_type.kwopt.any?
-            args << KeywordHashArg.new(
+            keywords = concrete_type.kwreq.map { |arg|
+                KeywordArg.new(node: node, name: arg.name.to_sym, type: arg.type)
+              } + concrete_type.kwopt.map { |arg|
+                OptionalKeywordArg.new(node: node, name: arg.name.to_sym, type: arg.type, expr: nil)
+              }
+
+            type = KeywordHashType.new(
               node: node,
-              required: concrete_type.kwreq.map { |arg| [arg.name.to_sym, arg.type] }.to_h,
-              optional: concrete_type.kwopt.map { |arg| [arg.name.to_sym, arg.type] }.to_h,
+              keywords: keywords.grep(KeywordArg).map { |kw|
+                [kw.name, kw.type]
+              }.to_h,
+            )
+
+            args << KeywordHashArg.new(
+              type: type,
+              keywords: keywords,
             )
           end
 
@@ -929,10 +965,33 @@ module TypedRuby
           return_type = new_type_var(node: args_node)
         end
 
+        args_node.children.each do |arg_node|
+          argument, locals = parse_argument(arg_node, locals, type_context: type_context, scope: scope, genargs: genargs)
+        end
+
         arguments = args_node.children.map { |arg_node|
           argument, locals = parse_argument(arg_node, locals, type_context: type_context, scope: scope, genargs: genargs)
           argument
         }
+
+        if arguments.last.is_a?(KeywordArg) || arguments.last.is_a?(OptionalKeywordArg)
+          # pop individual keyword args off the arguments array and combine into KeywordHashArg
+          keywords = []
+
+          while arguments.last.is_a?(KeywordArg) || arguments.last.is_a?(OptionalKeywordArg)
+            keywords << arguments.pop
+          end
+
+          arguments << KeywordHashArg.new(
+            keywords: keywords,
+            type: KeywordHashType.new(
+              node: args_node,
+              keywords: keywords.grep(KeywordArg).map { |kw|
+                [kw.name, kw.type]
+              }.to_h,
+            ),
+          )
+        end
 
         if arguments.last.is_a?(BlockArg)
           block_type = arguments.pop.type
@@ -1001,6 +1060,14 @@ module TypedRuby
           arg_name, expr = *arg_node
           locals = locals.assign(name: arg_name, type: type)
           argument = OptionalArg.new(node: arg_node, type: type, expr: expr)
+        when :kwarg
+          arg_name, = *arg_node
+          locals = locals.assign(name: arg_name, type: type)
+          argument = KeywordArg.new(node: arg_node, name: arg_name, type: type)
+        when :kwoptarg
+          arg_name, expr = *arg_node
+          locals = locals.assign(name: arg_name, type: type)
+          argument = OptionalKeywordArg.new(node: arg_node, name: arg_name, type: type, expr: expr)
         else
           raise "unknown arg type: #{arg_node.type}"
         end
