@@ -640,6 +640,8 @@ class Array::[ElementType] < Object
   def each({ |ElementType element| } &bk) => :self; end
 
   def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
+
+  def include?(ElementType item) => Boolean; end
 end
 
 class Hash::[KeyType, ValueType] < Object
