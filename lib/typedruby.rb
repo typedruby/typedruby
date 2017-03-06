@@ -24,6 +24,8 @@ module TypedRuby
   autoload :Type, "typedruby/type"
   autoload :UI, "typedruby/ui"
 
+  Node = Parser::AST::Node
+
   class Resolver
     attr_reader \
       :load_paths,
