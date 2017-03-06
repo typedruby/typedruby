@@ -16,6 +16,8 @@ module Kernel
   def inspect => String; end
 
   def caller => [String]; end
+
+  def rand => Float; end
 end
 
 class Object < BasicObject
@@ -47,6 +49,10 @@ class Object < BasicObject
   def freeze => :self; end
 
   def ==(:self other) => Boolean; end
+
+  def send(Symbol method_name, :any *args) => :any; end
+
+  def is_a?(Module mod) => Boolean; end
 end
 
 module Enumerable
@@ -605,6 +611,8 @@ class Float < Numeric
   EPSILON = nil
   INFINITY = nil
   NAN = nil
+
+  def <(Float other) => Boolean; end
 end
 
 class String < Object
@@ -620,6 +628,8 @@ class String < Object
   def length => Integer; end
 
   def b => String; end
+
+  def to_sym => Symbol; end
 end
 
 class Array::[ElementType] < Object
@@ -630,8 +640,6 @@ class Array::[ElementType] < Object
   def each({ |ElementType element| } &bk) => :self; end
 
   def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
-
-  def compact => [ElementType]; end
 end
 
 class Hash::[KeyType, ValueType] < Object
