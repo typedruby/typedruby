@@ -3,7 +3,7 @@ module TypedRuby
     attr_reader :types
 
     def initialize(types:)
-      @type = type
+      @types = types
     end
 
     def to_type_notation
