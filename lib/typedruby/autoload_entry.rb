@@ -2,12 +2,13 @@ module TypedRuby
   class AutoloadEntry
     attr_reader :file, :node
 
-    def initialize(file:, node:)
+    def initialize(String file:, Parser::AST::Node node:) => nil
       @file = file
       @node = node
+      nil
     end
 
-    def perform(env:)
+    def perform(Environment env:) => nil
       env.resolver.require_file(file: file, node: node)
     end
   end
