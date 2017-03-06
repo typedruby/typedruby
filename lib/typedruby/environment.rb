@@ -106,13 +106,13 @@ module TypedRuby
       @Object.constants[name.to_sym] = klass
     end
 
-    def resolve_type(node:, scope:, genargs:)
+    def resolve_type(Node node:, Scope scope:, [Symbol] genargs:) => Type
       case node.type
       when :tr_cpath
-        cpath, = *node
+        cpath, = *(node : [Node, nil])
 
         if cpath.type == :const
-          cbase, id = *cpath
+          cbase, id = *(cpath : [Node, Symbol])
 
           if cbase == nil
             if (scope.mod.is_a?(RubyClass) && scope.mod.type_parameters.include?(id)) || genargs.include?(id)
@@ -126,23 +126,23 @@ module TypedRuby
           type_parameters: [],
         )
       when :tr_geninst
-        cpath, *parameters = *node
+        cpath, *parameters = *(node : [Node])
 
         Type::Instance.new(
           mod: resolve_cpath(node: cpath, scope: scope),
           type_parameters: parameters.map { |p| resolve_type(node: p, scope: scope, genargs: genargs) },
         )
       when :tr_nillable
-        type_node, = *node
+        type_node, = *(node : [Node, nil])
         Type::Union.new(types: [
           nil_type,
           resolve_type(node: type_node, scope: scope, genargs: genargs),
         ])
       when :tr_array
-        element_type_node, = *node
+        element_type_node, = *(node : [Node, nil])
         Type::Array.new(type: resolve_type(node: element_type_node, scope: scope, genargs: genargs))
       when :tr_hash
-        key_type_node, value_type_node = *node
+        key_type_node, value_type_node = *(node : [Node, Node])
         Type::Hash.new(
           key_type: resolve_type(node: key_type_node, scope: scope, genargs: genargs),
           value_type: resolve_type(node: value_type_node, scope: scope, genargs: genargs),
@@ -163,8 +163,10 @@ module TypedRuby
           raise Error, "unexpected special type: #{node.children[0]}"
         end
       when :tr_proc
-        prototype, = *node
+        prototype, = *(node : [Node, nil])
         Type::Proc.new(prototype_node: prototype, scope: scope)
+      when :tr_tuple
+        Type::Tuple.new(types: node.children.map { |n| resolve_type(node: n, scope: scope, genargs: genargs) })
       else
         raise Error, "unexpected type node: #{node.type}"
       end
