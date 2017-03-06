@@ -19,7 +19,7 @@ module TypedRuby
 
     def metaklass(Environment env:) => RubyMetaclass
       if @klass.is_a?(RubyMetaclass)
-        @klass
+        (@klass : RubyMetaclass)
       else
         @klass = RubyMetaclass.new(
           of: self,
