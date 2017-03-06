@@ -10,6 +10,7 @@ module TypedRuby
       @constants = {}
       @methods = {}
       @superklass = nil
+      @ivar_types = {}
     end
 
     # TODO - we'll need this to implement prepends later.
@@ -263,6 +264,29 @@ module TypedRuby
 
     def has_ancestor?(other)
       self == other || ancestors.include?(other)
+    end
+
+    # TODO - needs to understand logic around changing superclasses - do a
+    # reverification to make sure that we don't have any duplicated ivar names
+    def defines_ivar?(name)
+      if @ivar_types.key?(name)
+        true
+      elsif superklass
+        superklass.defines_ivar?(name)
+      else
+        false
+      end
+    end
+
+    def type_for_ivar(name:, node:)
+      if @ivar_types.key?(name)
+        @ivar_types[name]
+      elsif superklass && superklass.defines_ivar?(name)
+        superklass.type_for_ivar(name, node: node)
+      else
+        # TODO - the TypeVar stuff needs to be moved out of the checker
+        @ivar_types[name] = Checker::Evaluator::TypeVar.new(node: node, description: "#{name}##{name}")
+      end
     end
   end
 end

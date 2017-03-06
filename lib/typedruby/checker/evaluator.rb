@@ -872,11 +872,15 @@ module TypedRuby
       end
 
       def on_ivasgn(node, locals)
-        # TODO - we need to perform some sort of class-wide type inference of instance variable types
-        # for now we'll just type them as any
         name, expr = *node
 
-        process(expr, locals)
+        expr_type, locals = process(expr, locals)
+
+        ivar_type = method.klass.type_for_ivar(name: name, node: node)
+
+        assert_compatible!(source: expr_type, target: ivar_type, node: node)
+
+        [expr_type, locals]
       end
 
       def on_lvar(node, locals)
@@ -1299,8 +1303,8 @@ module TypedRuby
       end
 
       def on_ivar(node, locals)
-        # TODO - need to figure out a way to type instance variables
-        [new_type_var(node: node), locals]
+        name, = *node
+        [method.klass.type_for_ivar(name: name, node: node), locals]
       end
 
       # this method has a very over-simplified way of doing some sort of
