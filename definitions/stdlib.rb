@@ -1911,8 +1911,9 @@ end
 
 class Class < Module
   # TODO - special case Class#new to reflect the type signature of #initialize
-  def new(:any *) => :instance
-  end
+  def new(:any *) => :instance; end
+
+  def allocate => :instance; end
 end
 
 class LocalJumpError < StandardError
