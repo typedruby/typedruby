@@ -1458,43 +1458,60 @@ module TypedRuby
       end
 
       def on_self(node, locals)
-        [type_context.self_type, locals]
+        type = InstanceType.new(
+          node: node,
+          klass: type_context.self_type.klass,
+          type_parameters: type_context.self_type.type_parameters,
+        )
+
+        [type, locals]
       end
 
       def on_hash(node, locals)
-        key_type = new_type_var(node: node)
-        value_type = new_type_var(node: node)
+        if keyword_hash?(node)
+          keywords = {}
 
-        keywords = {}
-
-        node.children.each do |n|
-          case n.type
-          when :pair
-            key, value = *n
-
-            if key.type == :sym && keywords
-              vt, locals = process(value, locals)
-
-              keywords[key.children[0]] = vt
+          node.children.each do |n|
+            case n.type
+            when :pair
+              key, value = *n
+              key_sym, = *key
+              value_type, locals = process(value, locals)
+              keywords[key_sym] = value_type
             else
-              keywords = nil
+              raise "unknown node type in hash literal: #{n}"
             end
-
-            kt, locals = process(key, locals)
-            vt, locals = process(value, locals)
-
-            unify!(key_type, kt)
-            unify!(value_type, vt)
-          else
-            raise "unknown node type in hash literal: #{n}"
           end
-        end
 
-        if keywords
           [KeywordHashType.new(node: node, keywords: keywords), locals]
         else
+          key_type = new_type_var(node: node)
+          value_type = new_type_var(node: node)
+
+          node.children.each do |n|
+            case n.type
+            when :pair
+              key, value = *n
+
+              kt, locals = process(key, locals)
+              vt, locals = process(value, locals)
+
+              unify!(key_type, kt)
+              unify!(value_type, vt)
+            else
+              raise "unknown node type in hash literal: #{n}"
+            end
+          end
+
           [InstanceType.new(node: node, klass: env.Hash, type_parameters: [key_type, value_type]), locals]
         end
+      end
+
+      def keyword_hash?(hash_node)
+        hash_node.children.all? { |pair_node|
+          key, value = *pair_node
+          key.type == :sym
+        }
       end
 
       def on_int(node, locals)
