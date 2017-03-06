@@ -97,15 +97,27 @@ module TypedRuby
       end
 
       class TupleType
-        attr_reader :node, :types
+        attr_reader :node, :lead_types, :splat_type, :post_types
 
-        def initialize(node:, types:)
+        def initialize(node:, lead_types:, splat_type:, post_types:)
           @node = node
-          @types = types
+          @lead_types = post_types
+          @splat_type = splat_type
+          @post_types = post_type
         end
 
         def describe
-          "[#{types.map(&:describe).join(", ")}]"
+          types = []
+
+          types.concat(lead_types.map(&:describe))
+
+          if splat_type
+            types << "*#{splat_type.describe}"
+          end
+
+          types.concat(post_types.map(&:describe))
+
+          "[#{types.join(", ")}]"
         end
       end
 
@@ -448,7 +460,12 @@ module TypedRuby
               new_type_from_concrete(concrete_type.value_type, node: node, type_context: type_context),
             ])
         when Type::Tuple
-          TupleType.new(node: node, types: concrete_type.types.map { |t| new_type_from_concrete(t, node: node, type_context: type_context) })
+          TupleType.new(
+            node: node,
+            lead_types: concrete_type.types.map { |t| new_type_from_concrete(t, node: node, type_context: type_context) },
+            rest_type: nil,
+            post_types: [],
+          )
         when Type::SpecialSelf
           type_context.self_type
         when Type::SpecialClass
@@ -563,18 +580,46 @@ module TypedRuby
             fail_unification!(t1, t2, node: node)
           end
         elsif t1.is_a?(TupleType) && t2.is_a?(TupleType)
-          t1.types.zip(t2.types) do |ty1, ty2|
+          if t1.lead_types.count != t2.lead_types.count
+            fail_unification!(t1, t2, node: node)
+          end
+
+          t1.lead_types.zip(t2.lead_types).each do |ty1, ty2|
             unify!(ty1, ty2, node: node)
           end
-          t1
+
+          if !!t1.rest_type ^ !!t2.rest_type
+            fail_unification!(t1, t2, node: node)
+          end
+
+          if t1.rest_type
+            unify!(t1, t2, node: node)
+          end
+
+          if t1.post_types.count != t2.post_types.count
+            fail_unification!(t1, t2, node: node)
+          end
+
+          t1.post_types.zip(t2.post_types).each do |ty1, ty2|
+            unify!(ty1, ty2, node: node)
+          end
         elsif t1.is_a?(TupleType)
           if t2.is_a?(InstanceType) && t2.klass == env.Array
-            t1.types.each do |tuple_type|
-              unify!(tuple_type, t2.type_parameters[0], node: node)
+            array_element_type = t2.type_parameters[0]
+
+            t1.lead_types.each do |lead_type|
+              unify!(lead_type, array_element_type, node: node)
             end
-            t1
+
+            if rest_type = t1.rest_type
+              unify!(rest_type, array_element_type, node: node)
+            end
+
+            t1.post_types.each do |post_type|
+              unify!(post_type, array_element_type, node: node)
+            end
           else
-            fail_unification!(t1, t2)
+            fail_unification!(t1, t2, node: node)
           end
         elsif t2.is_a?(TupleType)
           unify!(t2, t1, node: node)
@@ -635,8 +680,10 @@ module TypedRuby
           t1.klass == t2.klass &&
             same_ordered_types?(t1.type_parameters, t2.type_parameters)
         elsif t1.is_a?(TupleType) && t2.is_a?(TupleType)
-          t1.types.count == t2.types.count &&
-            same_ordered_types?(t1.type_parameters, t2.type_parameters)
+          same_ordered_types?(t1.lead_types, t2.lead_types) &&
+            (!!t1.rest_type == !!t2.rest_type && (!t1.rest_type || same_type?(t1.rest_type, t2.rest_type))) &&
+            t1.post_types.count == t2.post_types.count &&
+            same_ordered_types?(t1.post_types, t2.post_types)
         elsif t1.is_a?(AnyType) && t2.is_a?(AnyType)
           true
         elsif t1.is_a?(GenericTypeParameter) && t2.is_a?(GenericTypeParameter)
@@ -803,7 +850,13 @@ module TypedRuby
         when AnyType
           false
         when TupleType
-          other_type.types.any? { |t| occurs_in_type?(type_var, t) }
+          other_type.lead_types.any? { |t| occurs_in_type?(type_var, t) }
+
+          if other_type.rest_type
+            occurs_in_type?(type_var, other_type.rest_type)
+          end
+
+          other_type.post_types.any? { |t| occurs_in_type?(type_var, t) }
         when GenericTypeParameter
           false
         when UnionType
@@ -1036,7 +1089,7 @@ module TypedRuby
               arg, locals = parse_argument(n, locals, type_context: type_context, scope: scope, genargs: genargs)
               arg
             }
-            unify!(type, TupleType.new(node: arg_node, types: args.map(&:type)))
+            unify!(type, TupleType.new(node: arg_node, lead_types: args.map(&:type), rest_type: nil, post_types: []))
             argument = ProcArg0.new(node: arg_node, type: type)
           end
         when :restarg
