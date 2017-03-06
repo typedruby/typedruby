@@ -101,9 +101,9 @@ module TypedRuby
 
         def initialize(node:, lead_types:, splat_type:, post_types:)
           @node = node
-          @lead_types = post_types
+          @lead_types = lead_types
           @splat_type = splat_type
-          @post_types = post_type
+          @post_types = post_types
         end
 
         def describe
@@ -463,7 +463,7 @@ module TypedRuby
           TupleType.new(
             node: node,
             lead_types: concrete_type.types.map { |t| new_type_from_concrete(t, node: node, type_context: type_context) },
-            rest_type: nil,
+            splat_type: nil,
             post_types: [],
           )
         when Type::SpecialSelf
@@ -580,28 +580,31 @@ module TypedRuby
             fail_unification!(t1, t2, node: node)
           end
         elsif t1.is_a?(TupleType) && t2.is_a?(TupleType)
-          if t1.lead_types.count != t2.lead_types.count
+          if t1.lead_types.count == t2.lead_types.count
+            t1.lead_types.zip(t2.lead_types).each do |ty1, ty2|
+              unify!(ty1, ty2, node: node)
+            end
+          else
             fail_unification!(t1, t2, node: node)
+            return
           end
 
-          t1.lead_types.zip(t2.lead_types).each do |ty1, ty2|
-            unify!(ty1, ty2, node: node)
-          end
-
-          if !!t1.rest_type ^ !!t2.rest_type
+          if !!t1.splat_type ^ !!t2.splat_type
             fail_unification!(t1, t2, node: node)
+            return
           end
 
-          if t1.rest_type
-            unify!(t1, t2, node: node)
+          if t1.splat_type
+            unify!(t1.splat_type, t2.splat_type, node: node)
           end
 
-          if t1.post_types.count != t2.post_types.count
+          if t1.post_types.count == t2.post_types.count
+            t1.post_types.zip(t2.post_types).each do |ty1, ty2|
+              unify!(ty1, ty2, node: node)
+            end
+          else
             fail_unification!(t1, t2, node: node)
-          end
-
-          t1.post_types.zip(t2.post_types).each do |ty1, ty2|
-            unify!(ty1, ty2, node: node)
+            return
           end
         elsif t1.is_a?(TupleType)
           if t2.is_a?(InstanceType) && t2.klass == env.Array
@@ -611,8 +614,8 @@ module TypedRuby
               unify!(lead_type, array_element_type, node: node)
             end
 
-            if rest_type = t1.rest_type
-              unify!(rest_type, array_element_type, node: node)
+            if splat_type = t1.splat_type
+              unify!(splat_type, array_element_type, node: node)
             end
 
             t1.post_types.each do |post_type|
@@ -681,7 +684,7 @@ module TypedRuby
             same_ordered_types?(t1.type_parameters, t2.type_parameters)
         elsif t1.is_a?(TupleType) && t2.is_a?(TupleType)
           same_ordered_types?(t1.lead_types, t2.lead_types) &&
-            (!!t1.rest_type == !!t2.rest_type && (!t1.rest_type || same_type?(t1.rest_type, t2.rest_type))) &&
+            (!!t1.splat_type == !!t2.splat_type && (!t1.splat_type || same_type?(t1.splat_type, t2.splat_type))) &&
             t1.post_types.count == t2.post_types.count &&
             same_ordered_types?(t1.post_types, t2.post_types)
         elsif t1.is_a?(AnyType) && t2.is_a?(AnyType)
@@ -852,8 +855,8 @@ module TypedRuby
         when TupleType
           other_type.lead_types.any? { |t| occurs_in_type?(type_var, t) }
 
-          if other_type.rest_type
-            occurs_in_type?(type_var, other_type.rest_type)
+          if other_type.splat_type
+            occurs_in_type?(type_var, other_type.splat_type)
           end
 
           other_type.post_types.any? { |t| occurs_in_type?(type_var, t) }
@@ -864,6 +867,7 @@ module TypedRuby
         when KeywordHashType
           other_type.keywords.any? { |n, t| occurs_in_type?(type_var, t) }
         else
+          pry binding
           raise "unknown type in occurs_in_type?: #{other_type}"
         end
       end
@@ -934,6 +938,121 @@ module TypedRuby
         assert_compatible!(source: expr_type, target: ivar_type, node: node)
 
         [expr_type, locals]
+      end
+
+      def on_masgn(node, locals)
+        lhs, rhs = *node
+
+        lhs_type, locals = process(lhs, locals)
+
+        if rhs.type == :array
+          rhs_type, locals = process_array_rhs(rhs, locals)
+        else
+          rhs_type, locals = process(rhs, locals)
+        end
+
+        unify!(lhs_type, rhs_type, node: node)
+
+        [rhs_type, locals]
+      end
+
+      def on_mlhs(node, locals)
+        lead_types = []
+        splat_type = nil
+        post_types = []
+
+        node.children.each do |n|
+          case n.type
+          when :lvasgn
+            name, = *n
+            type = new_type_var(node: n)
+            locals = locals.assign(name: name, type: type)
+
+            if splat_type
+              post_types << type
+            else
+              lead_types << type
+            end
+          when :splat
+            splat_lhs, = *n
+            raise "unexpected node in lhs splat: #{splat_lhs}" unless splat_lhs.type == :lvasgn
+            name, = *splat_lhs
+            type = new_type_var(node: n)
+            locals = locals.assign(name: name, type: InstanceType.new(node: n, klass: env.Array, type_parameters: [type]))
+            splat_type = type
+          else
+            raise "unexpected lhs node: #{n}"
+          end
+        end
+
+        [TupleType.new(node: node, lead_types: lead_types, splat_type: splat_type, post_types: post_types), locals]
+      end
+
+      def process_array_rhs(node, locals)
+        lead_types = []
+        splat_type = nil
+        post_types = []
+
+        rhs_tuples = []
+
+        node.children.each do |rhs_node|
+          if rhs_node.type == :splat
+            rhs_splat, = *rhs_node
+            type, locals = process(rhs_splat, locals)
+
+            if type.is_a?(TupleType)
+              type.lead_types.each do |lead_type|
+                rhs_tuples << TupleType.new(node: lead_type.node, lead_types: [lead_type], splat_type: nil, post_types: [])
+              end
+
+              if type.splat_type
+                rhs_tuples << TupleType.new(node: type.splat_type.node, lead_types: [], splat_type: type.splat_type, post_types: [])
+              end
+
+              type.post_types.each do |post_type|
+                rhs_tuples << TupleType.new(node: post_type.node, lead_types: [post_type], splat_type: nil, post_types: [])
+              end
+            elsif type.is_a?(InstanceType) && type.klass == env.Array
+              type = type.type_parameters[0]
+              rhs_tuples << TupleType.new(node: rhs_node, lead_types: [], splat_type: type, post_types: [])
+            else
+              # attempt to call #to_a
+              errors << Error.new("Cannot splat non-array (well, you can actually. I just haven't implemented it yet...)", [
+                Error::MessageWithLocation.new(
+                  message: "here",
+                  location: rhs_node.location.expression,
+                )
+              ])
+            end
+          else
+            type, locals = process(rhs_node, locals)
+
+            rhs_tuples << TupleType.new(node: rhs_node, lead_types: [type], splat_type: nil, post_types: [])
+          end
+        end
+
+        while rhs_tuples.any? && !rhs_tuples.first.splat_type
+          lead_types << rhs_tuples.shift.lead_types.first
+        end
+
+        while rhs_tuples.any? && !rhs_tuples.last.splat_type
+          post_types.unshift(rhs_tuples.pop.lead_types.first)
+        end
+
+        if rhs_tuples.any?
+          # first tuple remaining at this point must be a splat:
+          splat_type = rhs_tuples.shift.splat_type
+
+          rhs_tuples.each do |rhs_tuple|
+            if rhs_tuple.splat_type
+              unify!(splat_type, rhs_tuple.splat_type, node: node)
+            else
+              unify!(splat_type, rhs_tuple.lead_types.first, node: node)
+            end
+          end
+        end
+
+        [TupleType.new(node: node, lead_types: lead_types, splat_type: splat_type, post_types: post_types), locals]
       end
 
       def on_lvar(node, locals)
@@ -1089,7 +1208,7 @@ module TypedRuby
               arg, locals = parse_argument(n, locals, type_context: type_context, scope: scope, genargs: genargs)
               arg
             }
-            unify!(type, TupleType.new(node: arg_node, lead_types: args.map(&:type), rest_type: nil, post_types: []))
+            unify!(type, TupleType.new(node: arg_node, lead_types: args.map(&:type), splat_type: nil, post_types: []))
             argument = ProcArg0.new(node: arg_node, type: type)
           end
         when :restarg
