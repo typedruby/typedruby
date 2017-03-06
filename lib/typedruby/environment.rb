@@ -106,15 +106,15 @@ module TypedRuby
       @Object.constants[name.to_sym] = klass
     end
 
-    def resolve_type(Node node:, Scope scope:, [Symbol] genargs:) => Type
+    def resolve_type(node:, scope:, genargs:)
       case node.type
       when :tr_cpath
         cpath, = *(node : [Node, nil])
 
         if cpath.type == :const
-          cbase, id = *(cpath : [Node, Symbol])
+          cbase, id = *(cpath : [~Node, Symbol])
 
-          if cbase == nil
+          if !cbase
             if (scope.mod.is_a?(RubyClass) && scope.mod.type_parameters.include?(id)) || genargs.include?(id)
               return Type::GenericTypeParameter.new(name: id)
             end
@@ -185,7 +185,7 @@ module TypedRuby
         raise Error, "not a static cpath: #{node}"
       end
 
-      cbase, id = *node
+      cbase, id = *(node : [Node, Symbol])
 
       if cbase
         mod = resolve_cpath(node: cbase, scope: scope)
