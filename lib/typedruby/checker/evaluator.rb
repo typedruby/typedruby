@@ -1539,28 +1539,34 @@ module TypedRuby
         then_locals = locals
         else_locals = locals
 
+        if always_falsy?(cond_type) || always_truthy?(cond_type)
+          errors << Error.new("Condition expression in #{node.type} is always #{always_falsy?(cond_type) ? "falsy" : "truthy"}", [
+            Error::MessageWithLocation.new(
+              message: "here",
+              location: cond.location.expression,
+            )
+          ])
+        end
+
         if cond_type.is_a?(LocalVariableType)
           # TODO this is very simple specialisation of local variable types
           if cond_type.type.is_a?(UnionType)
             truthy_types = cond_type.type.types.reject { |t| always_falsy?(t) }
             falsy_types = cond_type.type.types.reject { |t| always_truthy?(t) }
 
-            if truthy_types.empty?
-              pry binding
+            if truthy_types.any?
+              then_locals = locals.assign(
+                name: cond_type.local,
+                type: truthy_types.reduce { |a, b| make_union(a, b, node: node) },
+              )
             end
 
-            if falsy_types.empty?
-              pry binding
+            if falsy_types.any?
+              else_locals = locals.assign(
+                name: cond_type.local,
+                type: falsy_types.reduce { |a, b| make_union(a, b, node: node) },
+              )
             end
-
-            then_locals = locals.assign(
-              name: cond_type.local,
-              type: truthy_types.reduce { |a, b| make_union(a, b, node: node) },
-            )
-            else_locals = locals.assign(
-              name: cond_type.local,
-              type: falsy_types.reduce { |a, b| make_union(a, b, node: node) },
-            )
           end
         end
 
