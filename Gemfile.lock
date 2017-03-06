@@ -2,7 +2,7 @@ PATH
   remote: .
   specs:
     typedruby (0.0.1)
-      parser (= 2.3.3.2.typedruby.1ea0154)
+      parser (= 2.3.3.2.typedruby.123736d)
 
 GEM
   remote: https://rubygems.org/
@@ -11,7 +11,7 @@ GEM
     byebug (9.0.6)
     coderay (1.1.1)
     method_source (0.8.2)
-    parser (2.3.3.2.typedruby.1ea0154)
+    parser (2.3.3.2.typedruby.123736d)
       ast (~> 2.2)
     pry (0.10.4)
       coderay (~> 1.1.0)
