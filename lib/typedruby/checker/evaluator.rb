@@ -1357,6 +1357,9 @@ module TypedRuby
 
       def on_ivar(node, locals)
         name, = *node
+        # TODO - if the instance variable does not yet exist, we want to defer
+        # checking of the rest of this method until we process another method
+        # where it does exist
         [method.klass.type_for_ivar(name: name, node: node), locals]
       end
 
