@@ -1508,6 +1508,8 @@ module TypedRuby
       end
 
       def keyword_hash?(hash_node)
+        return false if hash_node.children.empty?
+
         hash_node.children.all? { |pair_node|
           key, value = *pair_node
           key.type == :sym
