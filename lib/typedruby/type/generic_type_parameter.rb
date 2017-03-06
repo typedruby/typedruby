@@ -1,5 +1,5 @@
 module TypedRuby
-  class Type::GenericTypeParameter
+  class Type::GenericTypeParameter < Type
     attr_reader :name
 
     def initialize(name:)
