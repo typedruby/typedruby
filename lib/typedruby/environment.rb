@@ -24,15 +24,17 @@ module TypedRuby
       :Exception,
       :StandardError
 
-    def initialize(resolver:)
+    def initialize(Resolver resolver:) => nil
       @resolver = resolver
 
       bootstrap_class_system
 
       @root_scope = Scope.new(nil, nil, self.Object)
+
+      nil
     end
 
-    def bootstrap_class_system
+    def bootstrap_class_system => nil
       @BasicObject = RubyClass.allocate
       @Object = RubyClass.allocate
       @Module = RubyClass.allocate
@@ -82,25 +84,25 @@ module TypedRuby
       @Kernel = RubyModule.new(klass: @Module, name: "Kernel")
       @Object.include_module(@Kernel)
 
-      define_class("Boolean", @Object)
-      define_class("TrueClass", @Boolean)
-      define_class("FalseClass", @Boolean)
-      define_class("NilClass", @Object)
-      define_class("Symbol", @Object)
-      define_class("String", @Object)
-      define_class("Numeric", @Object)
-      define_class("Integer", @Numeric)
-      define_class("Float", @Numeric)
-      define_class("Array", @Object, [:ElementType])
-      define_class("Hash", @Object, [:KeyType, :ValueType])
-      define_class("Regexp", @Object)
-      define_class("Exception", @Object)
-      define_class("StandardError", @Exception)
+      @Boolean = define_class("Boolean", @Object)
+      @TrueClass = define_class("TrueClass", @Boolean)
+      @FalseClass = define_class("FalseClass", @Boolean)
+      @NilClass = define_class("NilClass", @Object)
+      @Symbol = define_class("Symbol", @Object)
+      @String = define_class("String", @Object)
+      @Numeric = define_class("Numeric", @Object)
+      @Integer = define_class("Integer", @Numeric)
+      @Float = define_class("Float", @Numeric)
+      @Array = define_class("Array", @Object, [:ElementType])
+      @Hash = define_class("Hash", @Object, [:KeyType, :ValueType])
+      @Regexp = define_class("Regexp", @Object)
+      @Exception = define_class("Exception", @Object)
+      @StandardError = define_class("StandardError", @Exception)
+      nil
     end
 
-    def define_class(name, superklass, type_parameters = [])
+    def define_class(String name, RubyClass superklass, [Symbol] type_parameters = []) => RubyClass
       klass = RubyClass.new(klass: @Class, name: name, superklass: superklass, type_parameters: type_parameters)
-      instance_variable_set("@#{klass.name}", klass)
       @Object.constants[name.to_sym] = klass
     end
 
