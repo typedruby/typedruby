@@ -1669,16 +1669,6 @@ module TypedRuby
           end
         end
       end
-
-      def capture_local_defs
-        current_locals = locals
-
-        yield
-
-        locals
-      ensure
-        @locals = current_locals
-      end
     end
   end
 end
