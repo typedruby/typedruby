@@ -11,6 +11,7 @@ module TypedRuby
       @methods = {}
       @superklass = nil
       @ivar_types = {}
+      nil
     end
 
     # TODO - we'll need this to implement prepends later.
