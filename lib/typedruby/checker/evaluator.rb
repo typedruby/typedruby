@@ -951,7 +951,42 @@ module TypedRuby
           rhs_type, locals = process(rhs, locals)
         end
 
-        unify!(lhs_type, rhs_type, node: node)
+        lhs_type.lead_types.zip(rhs_type.lead_types) do |lhs, rhs|
+          lhs ||= lhs_type.splat_type
+          rhs ||= rhs_type.splat_type
+
+          break unless lhs
+
+          if rhs
+            assert_compatible!(source: rhs, target: lhs, node: node)
+          else
+            errors << Error.new("Too many items on left-hand side of multiple assignment", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: lhs.node.location.expression,
+              )
+            ])
+          end
+        end
+
+        if lhs_type.splat_type
+          if rhs_type.splat_type
+            assert_compatible!(source: rhs_type.splat_type, target: rhs_type.splat_type, node: node)
+
+            lhs_type.post_types.reverse.zip(rhs_type.post_types.reverse) do |lhs, rhs|
+              lhs ||= lhs_type.splat_type
+              rhs ||= rhs_type.splat_type
+              assert_compatible!(source: rhs, target: lhs, node: node)
+            end
+          else
+            errors << Error.new("Useless splat, will always be empty", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: lhs_type.splat_type.node.location.expression,
+              )
+            ])
+          end
+        end
 
         [rhs_type, locals]
       end
@@ -1482,11 +1517,22 @@ module TypedRuby
         [method.klass.type_for_ivar(name: name, node: node), locals]
       end
 
+      def on_if(node, locals)
+        process_conditional(node, locals)
+      end
+
       # this method has a very over-simplified way of doing some sort of
       # flow-sensitive typing. we probably need fancier control flow analysis
       # to make this more robust, but let's see how this goes for now.
-      def on_if(node, locals)
-        cond, then_expr, else_expr = *node
+      def process_conditional(node, locals)
+        case node.type
+        when :if
+          cond, then_expr, else_expr = *node
+        when :or
+          cond, else_expr, _ = *node
+        when :and
+          cond, then_expr, _ = *node
+        end
 
         cond_type, locals = process(cond, locals)
 
@@ -1538,10 +1584,29 @@ module TypedRuby
           return then_type, then_locals
         end
 
-        type = make_union(then_type, else_type, node: node)
-        locals = merge_locals(then_locals, else_locals, node: node)
+        case node.type
+        when :if
+          type = make_union(then_type, else_type, node: node)
+          locals = merge_locals(then_locals, else_locals, node: node)
+        when :or
+          type = make_union(cond_type, else_type, node: node)
+          locals = merge_locals(locals, else_locals, node: node)
+        when :and
+          type = make_union(cond_type, then_type, node: node)
+          locals = merge_locals(locals, then_locals, node: node)
+        else
+          raise "unknown node type in process_conditional: #{node.type}"
+        end
 
         [type, locals]
+      end
+
+      def on_or(node, locals)
+        process_conditional(node, locals)
+      end
+
+      def on_and(node, locals)
+        process_conditional(node, locals)
       end
 
       def on_rescue(node, locals)
