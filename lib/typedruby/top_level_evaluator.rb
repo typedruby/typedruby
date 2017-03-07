@@ -132,38 +132,18 @@ module TypedRuby
         attr_name, = *arg
 
         if reader
-          @scope.mod.define_method(id: attr_name, method: RubyMethodStub.new(
+          @scope.mod.define_method(id: attr_name, method: RubyAttrReader.new(
             klass: @scope.mod,
+            name: attr_name,
             definition_node: node,
-            prototype: Prototype.new(
-              type_parameters: [],
-              lead: [],
-              opt: [],
-              rest: nil,
-              post: [],
-              kwreq: [],
-              kwopt: [],
-              block: nil,
-              return_type: Type::Any.new,
-            ),
           ))
         end
 
         if writer
-          @scope.mod.define_method(id: :"#{attr_name}=", method: RubyMethodStub.new(
+          @scope.mod.define_method(id: :"#{attr_name}=", method: RubyAttrWriter.new(
             klass: @scope.mod,
+            name: attr_name,
             definition_node: node,
-            prototype: Prototype.new(
-              type_parameters: [],
-              lead: [],
-              opt: [],
-              rest: nil,
-              post: [],
-              kwreq: [],
-              kwopt: [],
-              block: nil,
-              return_type: Type::Any.new,
-            ),
           ))
         end
       end
