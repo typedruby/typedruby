@@ -707,7 +707,9 @@ module TypedRuby
         source = prune(source)
         target = prune(target)
 
-        if source.is_a?(InstanceType) && target.is_a?(InstanceType)
+        if source.is_a?(TypeVar) || target.is_a?(TypeVar)
+          unify!(source, target, node: source.node || target.node)
+        elsif source.is_a?(InstanceType) && target.is_a?(InstanceType)
           source.klass.has_ancestor?(target.klass) &&
             (target.type_parameters.empty? ||
               same_ordered_types?(source.type_parameters, target.type_parameters))
