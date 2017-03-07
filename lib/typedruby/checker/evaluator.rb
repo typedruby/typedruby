@@ -247,7 +247,7 @@ module TypedRuby
         end
 
         def describe
-          "#{type.describe} #{kw}:"
+          "#{type.describe} #{name}:"
         end
       end
 
@@ -262,7 +262,7 @@ module TypedRuby
         end
 
         def describe
-          "#{type.describe} #{kw}: ..."
+          "#{type.describe} #{name}: ..."
         end
       end
 
