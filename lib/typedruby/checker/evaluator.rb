@@ -147,9 +147,10 @@ module TypedRuby
       end
 
       class GenericTypeParameter
-        attr_reader :name
+        attr_reader :node, :name
 
-        def initialize(name:)
+        def initialize(node:, name:)
+          @node = node
           @name = name
         end
 
@@ -338,8 +339,22 @@ module TypedRuby
           @method_type_parameters = method_type_parameters
         end
 
+        def type_parameter?(name)
+          klass = self_type.klass
+
+          if klass.is_a?(RubyClass) && klass.type_parameters.include?(name)
+            true
+          elsif method_type_parameters.key?(name)
+            method_type_parameters[name]
+          else
+            false
+          end
+        end
+
         def fetch_type_parameter(name)
-          if index = self_type.klass.type_parameters.index(name)
+          klass = self_type.klass
+
+          if klass.is_a?(RubyClass) and index = klass.type_parameters.index(name)
             self_type.type_parameters[index]
           elsif method_type_parameters.key?(name)
             method_type_parameters[name]
@@ -360,27 +375,29 @@ module TypedRuby
 
         type_parameters =
           if method.klass.is_a?(RubyClass)
-            method.klass.type_parameters.map { |name| GenericTypeParameter.new(name: name.to_s) }
+            method.klass.type_parameters.map { |param| GenericTypeParameter.new(node: nil, name: param) }
           else
             []
           end
 
         @type_context = TypeContext.new(
           self_type: new_instance_type(node: method.definition_node, klass: method.klass, type_parameters: type_parameters),
-          method_type_parameters: method.prototype(env: env).type_parameters.map { |param_name|
-            [param_name, GenericTypeParameter.new(name: param_name)]
-          }.to_h,
+          method_type_parameters: {},
         )
       end
 
       def process_method_body
-        @method_proc_type, locals = parse_prototype(method.prototype_node, NullLocal.new,
+        @method_proc_type, @type_context, locals = parse_prototype(method.prototype_node, NullLocal.new,
           type_context: type_context,
           scope: scope,
         )
 
+        @type_context.method_type_parameters.each do |name, type_var|
+          unify!(type_var, GenericTypeParameter.new(node: type_var.node, name: name.to_s))
+        end
+
         method_proc_type.args.each do |arg|
-          if arg.type.is_a?(TypeVar)
+          if prune(arg.type).is_a?(TypeVar)
             errors << Error.new("Missing method argument type annotation", [
               Error::MessageWithLocation.new(
                 message: "here",
@@ -391,7 +408,7 @@ module TypedRuby
           end
         end
 
-        if method_proc_type.return_type.is_a?(TypeVar)
+        if prune(method_proc_type.return_type).is_a?(TypeVar)
           errors << Error.new("Missing method return type annotation", [
             Error::MessageWithLocation.new(
               message: "expected '=> SomeType' here",
@@ -431,7 +448,7 @@ module TypedRuby
             )
           ])
 
-          type_parameters.concat([AnyType.new(node: node)] * expected_type_parameters - type_parameters.count)
+          type_parameters.concat([AnyType.new(node: node)] * (expected_type_parameters - type_parameters.count))
         elsif type_parameters.count > expected_type_parameters
           errors << Error.new("Too many type parameters supplied in instantiation of #{klass.name}", [
             Error::MessageWithLocation.new(
@@ -448,6 +465,106 @@ module TypedRuby
 
       def new_array_type(node:, element_type:)
         new_instance_type(node: node, klass: env.Array, type_parameters: [element_type])
+      end
+
+      def new_hash_type(node:, key_type:, value_type:)
+        new_instance_type(node: node, klass: env.Hash, type_parameters: [key_type, value_type])
+      end
+
+      def resolve_type(node:, scope:, type_context:)
+        case node.type
+        when :tr_cpath
+          cpath, = *node
+          cbase, id = *cpath
+
+          if !cbase && type_context.type_parameter?(id)
+            type_context.fetch_type_parameter(id)
+          else
+            mod = env.resolve_cpath(node: cpath, scope: scope)
+
+            if !mod.is_a?(RubyModule)
+              errors << Error.new("Constant used in type does not reference class/module", [
+                Error::MessageWithLocation.new(
+                  message: "here",
+                  location: cpath.location.expression,
+                )
+              ])
+
+              return AnyType.new(node: node)
+            end
+
+            new_instance_type(node: node, klass: mod, type_parameters: [])
+          end
+        when :tr_geninst
+          cpath, *parameters = *node
+
+          mod = env.resolve_cpath(node: cpath, scope: scope)
+
+          if !mod.is_a?(RubyModule)
+            errors << Error.new("Constant used in type does not reference class/module", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: cpath.location.expression,
+              )
+            ])
+
+            return AnyType.new(node: node)
+          end
+
+          new_instance_type(node: node, klass: mod, type_parameters: parameters.map { |parameter|
+            resolve_type(node: parameter, scope: scope, type_context: type_context)
+          })
+        when :tr_nillable
+          type_node, = *node
+
+          make_union(nil_type(node: node), resolve_type(node: type_node, scope: scope, type_context: type_context), node: node)
+        when :tr_array
+          element_type_node, = *node
+
+          new_array_type(node: node,
+            element_type: resolve_type(node: element_type_node, scope: scope, type_context: type_context),
+          )
+        when :tr_hash
+          key_type_node, value_type_node = *node
+
+          new_hash_type(node: node,
+            key_type: resolve_type(node: key_type_node, scope: scope, type_context: type_context),
+            value_type: resolve_type(node: value_type_node, scope: scope, type_context: type_context),
+          )
+        when :tr_nil
+          nil_type(node: node)
+        when :tr_special
+          special_type, = *node
+
+          case special_type
+          when :any
+            AnyType.new(node: node)
+          when :class
+            new_instance_type(node: node, klass: type_context.self_type.klass.metaklass(env: env), type_parameters: [])
+          when :instance
+            if type_context.self_type.klass.is_a?(RubyMetaclass)
+              new_instance_type(node: node, klass: type_context.self_type.klass.of, type_parameters: [])
+            else
+              # only encountered when type checking the Class#new definition
+              # in that case, rather than the receiver being a metaclass of a
+              # real class (as is the case in an instantiation), it's just Class
+              AnyType.new(node: node)
+            end
+          when :self
+            type_context.self_type
+          end
+        when :tr_proc
+          prototype_node, = *node
+          proc_type, proc_type_context, _ = parse_prototype(prototype_node, NullLocal.new, scope: scope, type_context: type_context)
+          proc_type
+        when :tr_tuple
+          TupleType.new(node: node,
+            types: node.children.map { |n|
+              resolve_type(node: n, scope: scope, type_context: type_context)
+            })
+        else
+          raise "unknown type node: #{node.type}"
+        end
       end
 
       def new_type_from_concrete(concrete_type, node:, type_context:)
@@ -510,7 +627,7 @@ module TypedRuby
         when Type::Any
           AnyType.new(node: node)
         when Type::Proc
-          proc_type, _ = parse_prototype(concrete_type.prototype_node, NullLocal.new, type_context: type_context, scope: concrete_type.scope)
+          proc_type, proc_type_context, _ = parse_prototype(concrete_type.prototype_node, NullLocal.new, type_context: type_context, scope: concrete_type.scope)
           proc_type
         when Prototype
           args =
@@ -1174,7 +1291,7 @@ module TypedRuby
 
         method_prototype, locals = process_send(send, locals)
 
-        block_prototype, block_locals = parse_prototype(block_args, locals, type_context: type_context, scope: scope)
+        block_prototype, block_type_context, block_locals = parse_prototype(block_args, locals, type_context: type_context, scope: scope)
         unify!(block_prototype, method_prototype.block)
 
         block_return_type, _ = process(block_body, block_locals)
@@ -1219,28 +1336,42 @@ module TypedRuby
       end
 
       def parse_prototype(prototype_node, locals, type_context:, scope:)
-        genargs = type_context.method_type_parameters.keys
-
         if prototype_node.type == :prototype
           genargs_node, args_node, return_type_node = *prototype_node
 
           if genargs_node
-            genargs.concat(genargs_node.children)
+            duplicate_type_parameters = type_context.method_type_parameters.keys & genargs_node.children
+
+            if duplicate_type_parameters.any?
+              pry binding
+              errors << Error.new("Duplicate type parameter names", [
+                Error::MessageWithLocation.new(
+                  message: duplicate_type_parameters.join(", "),
+                  location: genargs_node.location.expression,
+                )
+              ])
+            end
+
+            type_context = TypeContext.new(
+              self_type: type_context.self_type,
+              method_type_parameters: type_context.method_type_parameters.merge(genargs_node.children.map { |name|
+                [name, new_type_var(node: genargs_node)]
+              }.to_h),
+            )
           end
 
-          concrete_return_type = env.resolve_type(node: return_type_node, scope: scope, genargs: genargs)
-          return_type = new_type_from_concrete(concrete_return_type, node: return_type_node, type_context: type_context)
+          return_type = resolve_type(node: return_type_node, scope: scope, type_context: type_context)
         else
           args_node = prototype_node
           return_type = new_type_var(node: args_node)
         end
 
         args_node.children.each do |arg_node|
-          argument, locals = parse_argument(arg_node, locals, type_context: type_context, scope: scope, genargs: genargs)
+          argument, locals = parse_argument(arg_node, locals, type_context: type_context, scope: scope)
         end
 
         arguments = args_node.children.map { |arg_node|
-          argument, locals = parse_argument(arg_node, locals, type_context: type_context, scope: scope, genargs: genargs)
+          argument, locals = parse_argument(arg_node, locals, type_context: type_context, scope: scope)
           argument
         }
 
@@ -1274,14 +1405,13 @@ module TypedRuby
           return_type: return_type,
         )
 
-        [prototype, locals]
+        [prototype, type_context, locals]
       end
 
-      def parse_argument(typed_arg_node, locals, type_context:, scope:, genargs:)
+      def parse_argument(typed_arg_node, locals, type_context:, scope:)
         if typed_arg_node.type == :typed_arg
           type_node, arg_node = *typed_arg_node
-          concrete_type = env.resolve_type(node: type_node, scope: scope, genargs: genargs)
-          type = new_type_from_concrete(concrete_type, node: type_node, type_context: type_context)
+          type = resolve_type(node: type_node, scope: scope, type_context: type_context)
         else
           arg_node = typed_arg_node
           type = new_type_var(node: typed_arg_node)
@@ -1299,7 +1429,7 @@ module TypedRuby
             argument = ProcArg0.new(node: arg_node, type: type)
           else
             args = arg_node.children.map { |n|
-              arg, locals = parse_argument(n, locals, type_context: type_context, scope: scope, genargs: genargs)
+              arg, locals = parse_argument(n, locals, type_context: type_context, scope: scope)
               arg
             }
             unify!(type, TupleType.new(node: arg_node, lead_types: args.map(&:type), splat_type: nil, post_types: []))
