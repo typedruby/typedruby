@@ -1555,18 +1555,35 @@ module TypedRuby
       def prototype_from_method_entry(method_entry, self_type:)
         method = method_entry.definitions.last
 
-        if concrete_prototype = method.prototype(env: env)
-          new_type_from_concrete(concrete_prototype,
-            node: method.definition_node,
+        case method
+        when RubyMethod
+          prototype, type_context, locals = parse_prototype(method.prototype_node, NullLocal.new,
             type_context: TypeContext.new(
               self_type: self_type,
-              method_type_parameters: concrete_prototype.type_parameters.map { |type_parameter|
-                [type_parameter, new_type_var(node: method.prototype_node)]
-              }.to_h,
+              method_type_parameters: {},
             ),
+            scope: method.scope,
+          )
+
+          prototype
+        when RubyAttrReader
+          ProcType.new(
+            node: method.definition_node,
+            args: [],
+            block: nil,
+            return_type: method.klass.type_for_ivar(name: :"@#{method.name}", node: method.definition_node),
+          )
+        when RubyAttrWriter
+          attr_type = method.klass.type_for_ivar(name: :"@#{method.name}", node: method.definition_node)
+
+          ProcType.new(
+            node: method.definition_node,
+            args: [RequiredArg.new(node: method.definition_node, type: attr_type)],
+            block: nil,
+            return_type: attr_type,
           )
         else
-          untyped_prototype
+          raise "unknown method type: #{method}"
         end
       end
 
