@@ -21,6 +21,7 @@ module TypedRuby
   autoload :RubyMethodEntry, "typedruby/ruby_method_entry"
   autoload :RubyUnresolvedExpression, "typedruby/ruby_unresolved_expression"
   autoload :Scope, "typedruby/scope"
+  autoload :Task, "typedruby/task"
   autoload :TopLevelEvaluator, "typedruby/top_level_evaluator"
   autoload :Type, "typedruby/type"
   autoload :UI, "typedruby/ui"
@@ -51,7 +52,7 @@ module TypedRuby
 
       @loaded = ({} : { String => ~Boolean })
 
-      @pending_work = []
+      @pending_work = ([] : [Task])
 
       process("#{__dir__}/../definitions/stdlib.rb")
     end

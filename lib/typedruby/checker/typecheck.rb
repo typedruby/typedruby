@@ -1,6 +1,8 @@
 module TypedRuby
   module Checker
     class Typecheck
+      include Task
+
       attr_reader :method
 
       def initialize(method:)
