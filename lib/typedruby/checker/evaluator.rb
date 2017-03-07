@@ -868,6 +868,10 @@ module TypedRuby
           other_type.types.any? { |t| occurs_in_type?(type_var, t) }
         when KeywordHashType
           other_type.keywords.any? { |n, t| occurs_in_type?(type_var, t) }
+        when ProcType
+          other_type.args.any? { |arg| occurs_in_type?(type_var, arg.type) } ||
+            (other_type.block && occurs_in_type?(type_var, other_type.block)) ||
+            occurs_in_type?(type_var, other_type.return_type)
         else
           pry binding
           raise "unknown type in occurs_in_type?: #{other_type}"
