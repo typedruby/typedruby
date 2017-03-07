@@ -633,7 +633,7 @@ module TypedRuby
           args =
             concrete_type.lead.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, type_context: type_context), node: node) } +
             concrete_type.opt.map { |arg| OptionalArg.new(type: new_type_from_concrete(arg.type, node: node, type_context: type_context), node: node, expr: nil) } +
-            (concrete_type.rest ? [RestArg.new(type: new_type_from_concrete(concrete_type.rest.type, node: node, type_context: type_context), node: node)] : []) +
+            (concrete_type.rest ? [RestArg.new(type: concrete_type.rest.type, node: node)] : []) +
             concrete_type.post.map { |arg| RequiredArg.new(type: new_type_from_concrete(arg.type, node: node, type_context: type_context), node: node) }
 
           if concrete_type.kwreq.any? || concrete_type.kwopt.any?
@@ -672,7 +672,7 @@ module TypedRuby
           args: [
             RestArg.new(
               node: nil,
-              type: new_array_type(node: nil, element_type: AnyType.new(node: nil)),
+              type: AnyType.new(node: nil),
             )
           ],
           block: AnyType.new(node: nil),
@@ -1612,13 +1612,6 @@ module TypedRuby
 
         if prototype_args.first.is_a?(RestArg)
           rest_arg_type = prune(prototype_args.first.type)
-
-          unless rest_arg_type.is_a?(InstanceType) && rest_arg_type.klass == env.Array
-            # TODO sketchy
-            raise "wtf expected rest arg to be an array"
-          end
-
-          rest_arg_type = rest_arg_type.type_parameters[0]
 
           arg_types.each do |arg_type|
             assert_compatible!(source: arg_type, target: rest_arg_type, node: nil)
