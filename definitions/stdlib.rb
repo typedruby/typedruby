@@ -638,6 +638,8 @@ class String < Object
   def to_sym => Symbol; end
 
   def start_with?(String prefix) => Boolean; end
+
+  def capitalize => String; end
 end
 
 class Array::[ElementType] < Object
@@ -650,6 +652,22 @@ class Array::[ElementType] < Object
   def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
 
   def include?(ElementType item) => Boolean; end
+
+  def shift => ~ElementType; end
+
+  def unshift(ElementType element) => :self; end
+
+  def pop => ~ElementType; end
+
+  def push(ElementType element) => :self; end
+
+  def *(Integer times) => :self; end
+
+  def join(String sep = "") => String; end
+
+  def any?({ |ElementType element| => Boolean } &) => Boolean; end
+
+  def all?({ |ElementType element| => Boolean } &) => Boolean; end
 end
 
 class Hash::[KeyType, ValueType] < Object
