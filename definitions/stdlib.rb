@@ -18,6 +18,8 @@ module Kernel
   def caller => [String]; end
 
   def rand => Float; end
+
+  def __dir__ => String; end
 end
 
 class Object < BasicObject
