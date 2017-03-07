@@ -2051,8 +2051,7 @@ module TypedRuby
 
         _, locals = process(expr, locals)
 
-        concrete_type = env.resolve_type(node: type_node, scope: scope, genargs: method.prototype(env: env).type_parameters)
-        type = new_type_from_concrete(concrete_type, node: type_node, type_context: type_context)
+        type = resolve_type(node: type_node, scope: scope, type_context: type_context)
 
         [type, locals]
       end
