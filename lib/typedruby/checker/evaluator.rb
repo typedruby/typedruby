@@ -952,7 +952,7 @@ module TypedRuby
         lhs_type, locals = process(lhs, locals)
 
         if rhs.type == :array
-          rhs_type, locals = process_array_rhs(rhs, locals)
+          rhs_type, locals = process_array_tuple(rhs, locals)
         else
           rhs_type, locals = process(rhs, locals)
         end
@@ -1029,7 +1029,7 @@ module TypedRuby
         [TupleType.new(node: node, lead_types: lead_types, splat_type: splat_type, post_types: post_types), locals]
       end
 
-      def process_array_rhs(node, locals)
+      def process_array_tuple(node, locals)
         lead_types = []
         splat_type = nil
         post_types = []
@@ -1785,13 +1785,15 @@ module TypedRuby
       end
 
       def on_return(node, locals)
-        expr, = *node
+        if node.children.count > 1
+          return_type, locals = process_array_tuple(node, locals)
+        elsif node.children.count == 1
+          return_type, locals = process(node.children.first, locals)
+        else
+          return_type = nil_type(node: node)
+        end
 
-        expr_type, locals = process(expr, locals)
-
-        type = new_type_var(node: node)
-        unify!(type, expr_type)
-        assert_compatible!(source: type, target: method_proc_type.return_type, node: expr)
+        assert_compatible!(source: return_type, target: method_proc_type.return_type, node: node)
 
         # TODO - we need a void type
         [nil_type(node: node), locals]
