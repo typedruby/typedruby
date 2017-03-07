@@ -35,7 +35,12 @@ module TypedRuby
       :env,
       :pending_work
 
-    def initialize(load_paths:, autoload_paths:, ignore_errors_in:, autoloader:)
+    def initialize(
+      [String] load_paths:,
+      [String] autoload_paths:,
+      [String] ignore_errors_in:,
+      ~{ |Resolver resolver:, RubyModule mod:, Symbol id:| => ~RubyObject } autoloader:
+    ) => nil
       @load_paths = load_paths
       @autoload_paths = autoload_paths
       @ignore_errors_in = ignore_errors_in
@@ -43,23 +48,21 @@ module TypedRuby
 
       @env = Environment.new(resolver: self)
 
-      @loaded = {}
+      @loaded = ({} : { String => ~Boolean })
 
       @pending_work = []
 
       process("#{__dir__}/../definitions/stdlib.rb")
     end
 
-    def evaluate(source)
+    def evaluate(String source) => nil
       evaluate_ast(parse(source, file: "(eval)"))
     end
 
-    def process(file)
+    def process(String file) => nil
       file = File.expand_path(file)
 
-      if @loaded.key?(file)
-        return @loaded[file]
-      end
+      return if @loaded.key?(file)
 
       @loaded[file] = nil
 
@@ -74,15 +77,17 @@ module TypedRuby
       end
 
       @loaded[file] = true
+
+      nil
     end
 
-    def perform
+    def perform => nil
       while task = pending_work.shift
         task.perform(env: env)
       end
     end
 
-    def evaluate_ast(ast)
+    def evaluate_ast(Node ast) => nil
       evaluator = TopLevelEvaluator.new(
         env: env,
         resolver: self,
@@ -92,7 +97,7 @@ module TypedRuby
       evaluator.process(ast)
     end
 
-    def require_file(file:, node:)
+    def require_file(String file:, Node node:) => nil
       if require_path = search_file_for_require(file)
         process(require_path)
       elsif require_path = search_file_for_require("#{file}.rb")
@@ -102,7 +107,7 @@ module TypedRuby
       end
     end
 
-    def search_file_for_require(file)
+    def search_file_for_require(String file) => ~String
       @load_paths.each do |path|
         absolute_path = "#{path}/#{file}"
 
@@ -114,7 +119,7 @@ module TypedRuby
       nil
     end
 
-    def search_file_for_autoload(file)
+    def search_file_for_autoload(String file) => ~String
       @autoload_paths.each do |path|
         absolute_path = "#{path}/#{file}"
 
@@ -126,7 +131,7 @@ module TypedRuby
       nil
     end
 
-    def parse(source, file:)
+    def parse(String source, String file:) => Node
       buffer = Parser::Source::Buffer.new(file)
       buffer.source = source
 
@@ -141,7 +146,7 @@ module TypedRuby
       ast
     end
 
-    def autoload_const(mod:, id:)
+    def autoload_const(RubyModule mod:, Symbol id:) => ~RubyModule
       if autoloader
         autoloader.call(resolver: self, mod: mod, id: id)
       end
