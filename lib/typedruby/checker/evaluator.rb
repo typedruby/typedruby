@@ -1409,12 +1409,12 @@ module TypedRuby
           end
         end
 
-        while prototype_args.first.is_a?(RequiredArg)
+        while arg_types.any? && prototype_args.first.is_a?(RequiredArg)
           arg_type = arg_types.shift
           assert_compatible!(source: arg_type, target: prototype_args.shift.type, node: nil)
         end
 
-        while prototype_args.last.is_a?(RequiredArg)
+        while arg_types.any? && prototype_args.last.is_a?(RequiredArg)
           arg_type = arg_types.pop
           assert_compatible!(source: arg_type, target: prototype_args.pop.type, node: nil)
         end
