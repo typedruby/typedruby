@@ -963,6 +963,8 @@ module TypedRuby
           end
         elsif type.is_a?(AnyType)
           type
+        elsif type.is_a?(TypeVar)
+          type
         else
           type
         end
@@ -982,6 +984,8 @@ module TypedRuby
             nil
           end
         elsif type.is_a?(AnyType)
+          type
+        elsif type.is_a?(TypeVar)
           type
         else
           nil
