@@ -1830,7 +1830,6 @@ module TypedRuby
 
         truthy_cond_type = truthy_type(cond_type, node: cond)
         falsy_cond_type = falsy_type(cond_type, node: cond)
-        useless_conditional_warning(truthy_cond_type, falsy_cond_type, node: node)
 
         if cond_type.is_a?(LocalVariableType) && truthy_cond_type
           first_iteration_locals = first_iteration_locals.assign(
@@ -1843,7 +1842,20 @@ module TypedRuby
 
         generalised_iteration_locals = merge_locals(locals, first_iteration_locals, node: node)
 
-        cond_type, generalised_iteration_locals = process(cond, generalised_iteration_locals)
+        generalised_cond_type, generalised_iteration_locals = process(cond, generalised_iteration_locals)
+
+        truthy_generalised_cond_type = truthy_type(generalised_cond_type, node: cond)
+        falsy_generalised_cond_type = falsy_type(generalised_cond_type, node: cond)
+
+        useless_conditional_warning(truthy_generalised_cond_type, falsy_generalised_cond_type, node: node)
+
+        if generalised_cond_type.is_a?(LocalVariableType) && truthy_generalised_cond_type
+          generalised_iteration_locals = generalised_iteration_locals.assign(
+            name: generalised_cond_type.local,
+            type: truthy_generalised_cond_type,
+          )
+        end
+
         _, generalised_iteration_locals = process(body, generalised_iteration_locals)
 
         [nil_type(node: node), generalised_iteration_locals]
