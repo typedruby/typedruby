@@ -18,11 +18,11 @@ module TypedRuby
     # MRI's prepend implementation relies on changing the type of the object
     # at the module's address. We can't do that here, so instead let's go with
     # JRuby's algorithm involving keeping a reference to the real module.
-    def method_location
+    def method_location => RubyModule
       self
     end
 
-    def delegate
+    def delegate => RubyModule
       self
     end
 
@@ -61,15 +61,18 @@ module TypedRuby
 
         current_inclusion_point = iclass
       end
+
+      nil
     end
 
-    def check_for_cyclic_include(mod)
+    def check_for_cyclic_include(RubyModule mod) => nil
       if delegate == mod.delegate
         raise Error, "cyclic include detected"
       end
+      nil
     end
 
-    def ancestors
+    def ancestors => [RubyModule]
       ancestors = []
       mod = self
 
@@ -81,7 +84,7 @@ module TypedRuby
       ancestors
     end
 
-    def class_superklass
+    def class_superklass => ~RubyClass
       c = superklass
 
       while c.is_a?(RubyIClass)
@@ -91,7 +94,7 @@ module TypedRuby
       c
     end
 
-    def has_const?(id)
+    def has_const?(Symbol id) => Boolean
       if constants.key?(id)
         true
       elsif superklass
