@@ -366,7 +366,7 @@ module TypedRuby
           end
 
         @type_context = TypeContext.new(
-          self_type: InstanceType.new(node: method.definition_node, klass: method.klass, type_parameters: type_parameters),
+          self_type: new_instance_type(node: method.definition_node, klass: method.klass, type_parameters: type_parameters),
           method_type_parameters: method.prototype(env: env).type_parameters.map { |param_name|
             [param_name, GenericTypeParameter.new(name: param_name)]
           }.to_h,
@@ -415,46 +415,52 @@ module TypedRuby
         TypeVar.new(node: node, description: "t#{@type_var_count += 1}")
       end
 
+      def new_instance_type(node:, klass:, type_parameters:)
+        expected_type_parameters =
+          if klass.is_a?(RubyClass)
+            klass.type_parameters.count
+          else
+            0
+          end
+
+        if type_parameters.count < expected_type_parameters
+          errors << Error.new("Too few type parameters supplied in instantiation of #{klass.name}", [
+            Error::MessageWithLocation.new(
+              message: "here",
+              location: node.location.expression,
+            )
+          ])
+
+          type_parameters.concat([AnyType.new(node: node)] * expected_type_parameters - type_parameters.count)
+        elsif type_parameters.count > expected_type_parameters
+          errors << Error.new("Too many type parameters supplied in instantiation of #{klass.name}", [
+            Error::MessageWithLocation.new(
+              message: "here",
+              location: node.location.expression,
+            )
+          ])
+
+          type_parameters = type_parameters[0, expected_type_parameters]
+        end
+
+        InstanceType.new(node: node, klass: klass, type_parameters: type_parameters)
+      end
+
       def new_type_from_concrete(concrete_type, node:, type_context:)
         case concrete_type
         when Type::Instance
-          type_parameters = concrete_type.type_parameters.map { |param|
-            new_type_from_concrete(param, node: node, type_context: type_context)
-          }
-
-          expected_type_parameters =
-            if concrete_type.mod.is_a?(RubyClass)
-              concrete_type.mod.type_parameters.count
-            else
-              0
-            end
-
-          if type_parameters.count < expected_type_parameters
-            errors << Error.new("Too few type parameters supplied in instantiation of #{concrete_type.to_type_notation}", [
-              Error::MessageWithLocation.new(
-                message: "here",
-                location: node.location.expression,
-              ),
-            ])
-
-            type_parameters.concat([AnyType.new(node: node)] * (expected_type_parameters - type_parameters.count))
-          elsif type_parameters.count > expected_type_parameters
-            errors << Error.new("Too many type parameters supplied in instantiation of #{concrete_type.to_type_notation}", [
-              Error::MessageWithLocation.new(
-                message: "here",
-                location: node.location.expression,
-              ),
-            ])
-
-            type_parameters = type_parameters[0, expected_type_parameters]
-          end
-
-          InstanceType.new(node: node, klass: concrete_type.mod, type_parameters: type_parameters)
+          new_instance_type(
+            node: node,
+            klass: concrete_type.mod,
+            type_parameters: concrete_type.type_parameters.map { |param|
+              new_type_from_concrete(param, node: node, type_context: type_context)
+            },
+          )
         when Type::Array
-          InstanceType.new(node: node, klass: env.Array,
+          new_instance_type(node: node, klass: env.Array,
             type_parameters: [new_type_from_concrete(concrete_type.type, node: node, type_context: type_context)])
         when Type::Hash
-          InstanceType.new(node: node, klass: env.Hash,
+          new_instance_type(node: node, klass: env.Hash,
             type_parameters: [
               new_type_from_concrete(concrete_type.key_type, node: node, type_context: type_context),
               new_type_from_concrete(concrete_type.value_type, node: node, type_context: type_context),
@@ -472,7 +478,7 @@ module TypedRuby
           case type_context.self_type
           when InstanceType
             # TODO - return a generic instance of the class rather than the class with type parameters erased:
-            InstanceType.new(node: node, klass: type_context.self_type.klass.metaklass(env: env), type_parameters: [])
+            new_instance_type(node: node, klass: type_context.self_type.klass.metaklass(env: env), type_parameters: [])
           else
             raise "unknown self_type in Type::SpecialClass in new_type_from_concrete: #{type_context.self_type.describe}"
           end
@@ -480,7 +486,7 @@ module TypedRuby
           case type_context.self_type
           when InstanceType
             if type_context.self_type.klass.is_a?(RubyMetaclass)
-              InstanceType.new(node: node, klass: type_context.self_type.klass.of, type_parameters: [])
+              new_instance_type(node: node, klass: type_context.self_type.klass.of, type_parameters: [])
             else
               # only encountered when type checking the Class#new definition
               # in that case, rather than the receiver being a metaclass of a
@@ -546,7 +552,7 @@ module TypedRuby
           args: [
             RestArg.new(
               node: nil,
-              type: InstanceType.new(node: nil, klass: env.Array, type_parameters: [AnyType.new(node: nil)]),
+              type: new_instance_type(node: nil, klass: env.Array, type_parameters: [AnyType.new(node: nil)]),
             )
           ],
           block: AnyType.new(node: nil),
@@ -555,7 +561,7 @@ module TypedRuby
       end
 
       def nil_type(node:)
-        InstanceType.new(node: node, klass: env.NilClass, type_parameters: [])
+        new_instance_type(node: node, klass: env.NilClass, type_parameters: [])
       end
 
       def unify!(t1, t2, node: nil)
@@ -829,7 +835,7 @@ module TypedRuby
           make_union_from_types(type.types.reject { |t| always_falsy?(t) }, node: node)
         elsif type.is_a?(InstanceType)
           if type.klass == env.Boolean
-            InstanceType.new(node: node, klass: env.TrueClass, type_parameters: [])
+            new_instance_type(node: node, klass: env.TrueClass, type_parameters: [])
           elsif type.klass == env.FalseClass || type.klass == env.NilClass
             nil
           else
@@ -849,7 +855,7 @@ module TypedRuby
           make_union_from_types(type.types.reject { |t| always_truthy?(t) }, node: node)
         elsif type.is_a?(InstanceType)
           if type.klass == env.Boolean
-            InstanceType.new(node: node, klass: env.FalseClass, type_parameters: [])
+            new_instance_type(node: node, klass: env.FalseClass, type_parameters: [])
           elsif type.klass == env.NilClass
             type
           else
@@ -1063,7 +1069,7 @@ module TypedRuby
             raise "unexpected node in lhs splat: #{splat_lhs}" unless splat_lhs.type == :lvasgn
             name, = *splat_lhs
             type = new_type_var(node: n)
-            locals = locals.assign(name: name, type: InstanceType.new(node: n, klass: env.Array, type_parameters: [type]))
+            locals = locals.assign(name: name, type: new_instance_type(node: n, klass: env.Array, type_parameters: [type]))
             splat_type = type
           else
             raise "unexpected lhs node: #{n}"
@@ -1302,7 +1308,7 @@ module TypedRuby
           if arg_name
             locals = locals.assign(
               name: arg_name,
-              type: InstanceType.new(
+              type: new_instance_type(
                 node: type_node || arg_node,
                 klass: env.Array,
                 type_parameters: [type]))
@@ -1354,7 +1360,7 @@ module TypedRuby
           recv_type, locals = process(recv, locals)
         else
           # TODO - handle case where self has generic type parameters
-          recv_type = InstanceType.new(node: send_node, klass: method.klass, type_parameters: [])
+          recv_type = new_instance_type(node: send_node, klass: method.klass, type_parameters: [])
         end
 
         arg_types, locals = map_process(args, locals)
@@ -1368,11 +1374,11 @@ module TypedRuby
           end
         when KeywordHashType
           if method_entry = env.Hash.lookup_method_entry(mid)
-            prototype = prototype_from_method_entry(method_entry, self_type: InstanceType.new(
+            prototype = prototype_from_method_entry(method_entry, self_type: new_instance_type(
               node: recv_type.node,
               klass: env.Hash,
               type_parameters: [
-                InstanceType.new(
+                new_instance_type(
                   node: recv_type.node,
                   klass: env.Symbol,
                   type_parameters: [],
@@ -1501,7 +1507,7 @@ module TypedRuby
             if const.is_a?(RubyUnresolvedExpression)
               type = new_type_from_concrete(const.type, node: const.node, type_context:
                 TypeContext.new(
-                  self_type: InstanceType.new(
+                  self_type: new_instance_type(
                     node: const.node,
                     klass: const.scope.mod,
                     type_parameters: [],
@@ -1510,7 +1516,7 @@ module TypedRuby
                 )
               )
             elsif const.is_a?(RubyObject)
-              type = InstanceType.new(node: node, klass: const.metaklass(env: env), type_parameters: [])
+              type = new_instance_type(node: node, klass: const.metaklass(env: env), type_parameters: [])
             end
 
             [type, locals]
@@ -1543,11 +1549,11 @@ module TypedRuby
           # TODO - unify type with something that says it should respond to to_s
         end
 
-        [InstanceType.new(node: node, klass: env.String, type_parameters: []), locals]
+        [new_instance_type(node: node, klass: env.String, type_parameters: []), locals]
       end
 
       def on_str(node, locals)
-        [InstanceType.new(node: node, klass: env.String, type_parameters: []), locals]
+        [new_instance_type(node: node, klass: env.String, type_parameters: []), locals]
       end
 
       def on_regexp(node, locals)
@@ -1734,7 +1740,7 @@ module TypedRuby
         classes_node, _, _ = *node
 
         if !classes_node
-          return InstanceType.new(node: node, klass: env.StandardError, type_parameters: [])
+          return new_instance_type(node: node, klass: env.StandardError, type_parameters: [])
         end
 
         if classes_node.type != :array
@@ -1747,7 +1753,7 @@ module TypedRuby
           t = prune(t)
 
           if t.is_a?(InstanceType) && t.klass.is_a?(RubyMetaclass) && t.klass.of.is_a?(RubyModule)
-            InstanceType.new(klass: t.klass.of, type_parameters: [], node: c)
+            new_instance_type(klass: t.klass.of, type_parameters: [], node: c)
           else
             errors << Error.new("Expected class/module in rescue clause", [
               Error::MessageWithLocation.new(
@@ -1769,11 +1775,11 @@ module TypedRuby
       end
 
       def on_true(node, locals)
-        [InstanceType.new(node: node, klass: env.TrueClass, type_parameters: []), locals]
+        [new_instance_type(node: node, klass: env.TrueClass, type_parameters: []), locals]
       end
 
       def on_false(node, locals)
-        [InstanceType.new(node: node, klass: env.FalseClass, type_parameters: []), locals]
+        [new_instance_type(node: node, klass: env.FalseClass, type_parameters: []), locals]
       end
 
       def on_array(node, locals)
@@ -1785,11 +1791,11 @@ module TypedRuby
           unify!(element_type, type)
         end
 
-        [InstanceType.new(node: node, klass: env.Array, type_parameters: [element_type]), locals]
+        [new_instance_type(node: node, klass: env.Array, type_parameters: [element_type]), locals]
       end
 
       def on_self(node, locals)
-        type = InstanceType.new(
+        type = new_instance_type(
           node: node,
           klass: type_context.self_type.klass,
           type_parameters: type_context.self_type.type_parameters,
@@ -1834,7 +1840,7 @@ module TypedRuby
             end
           end
 
-          [InstanceType.new(node: node, klass: env.Hash, type_parameters: [key_type, value_type]), locals]
+          [new_instance_type(node: node, klass: env.Hash, type_parameters: [key_type, value_type]), locals]
         end
       end
 
@@ -1848,15 +1854,15 @@ module TypedRuby
       end
 
       def on_int(node, locals)
-        [InstanceType.new(node: node, klass: env.Integer, type_parameters: []), locals]
+        [new_instance_type(node: node, klass: env.Integer, type_parameters: []), locals]
       end
 
       def on_sym(node, locals)
-        [InstanceType.new(node: node, klass: env.Symbol, type_parameters: []), locals]
+        [new_instance_type(node: node, klass: env.Symbol, type_parameters: []), locals]
       end
 
       def on_float(node, locals)
-        [InstanceType.new(node: node, klass: env.Float, type_parameters: []), locals]
+        [new_instance_type(node: node, klass: env.Float, type_parameters: []), locals]
       end
 
       def on_return(node, locals)
@@ -1932,7 +1938,7 @@ module TypedRuby
         # TODO - check (hopefully with type constraints in the Range class)
         # that the range bound types are comparable
 
-        [InstanceType.new(node: node, klass: env.Range, type_parameters: [begin_type, end_type]), locals]
+        [new_instance_type(node: node, klass: env.Range, type_parameters: [begin_type, end_type]), locals]
       end
 
       def on_erange(node, locals)
@@ -1944,7 +1950,7 @@ module TypedRuby
         # TODO - check (hopefully with type constraints in the Range class)
         # that the range bound types are comparable
 
-        [InstanceType.new(node: node, klass: env.Range, type_parameters: [begin_type, end_type]), locals]
+        [new_instance_type(node: node, klass: env.Range, type_parameters: [begin_type, end_type]), locals]
       end
 
       def validate_static_cpath(node)
