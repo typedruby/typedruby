@@ -1549,7 +1549,13 @@ module TypedRuby
           ])
           prototype = untyped_prototype
         else
-          raise "unknown type #{recv_type.describe} as receiver to send"
+          errors << Error.new("Internal error: don't know how to send messages to:", [
+            Error::MessageWithLocation.new(
+              message: recv_type.describe,
+              location: recv.location.expression,
+            ),
+          ])
+          prototype = untyped_prototype
         end
 
         unless prototype
