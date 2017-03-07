@@ -1701,6 +1701,14 @@ module TypedRuby
         [nil_type(node: node), locals]
       end
 
+      def on_true(node, locals)
+        [InstanceType.new(node: node, klass: env.TrueClass, type_parameters: []), locals]
+      end
+
+      def on_false(node, locals)
+        [InstanceType.new(node: node, klass: env.FalseClass, type_parameters: []), locals]
+      end
+
       def on_array(node, locals)
         element_type = new_type_var(node: node)
 
