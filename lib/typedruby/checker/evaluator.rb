@@ -818,6 +818,50 @@ module TypedRuby
         end
       end
 
+      def make_union_from_types(types, node:)
+        types.reduce { |a, b| make_union(a, b, node: node) }
+      end
+
+      def truthy_type(type, node:)
+        type = prune(type)
+
+        if type.is_a?(UnionType)
+          make_union_from_types(type.types.reject { |t| always_falsy?(t) }, node: node)
+        elsif type.is_a?(InstanceType)
+          if type.klass == env.Boolean
+            InstanceType.new(node: node, klass: env.TrueClass, type_parameters: [])
+          elsif type.klass == env.FalseClass || type.klass == env.NilClass
+            nil
+          else
+            type
+          end
+        elsif type.is_a?(AnyType)
+          type
+        else
+          type
+        end
+      end
+
+      def falsy_type(type, node:)
+        type = prune(type)
+
+        if type.is_a?(UnionType)
+          make_union_from_types(type.types.reject { |t| always_truthy?(t) }, node: node)
+        elsif type.is_a?(InstanceType)
+          if type.klass == env.Boolean
+            InstanceType.new(node: node, klass: env.FalseClass, type_parameters: [])
+          elsif type.klass == env.NilClass
+            type
+          else
+            nil
+          end
+        elsif type.is_a?(AnyType)
+          type
+        else
+          nil
+        end
+      end
+
       def fail_unification!(t1, t2, node:)
         add_type_error(t1, t2, node: node)
         t2
@@ -1545,34 +1589,18 @@ module TypedRuby
         then_locals = locals
         else_locals = locals
 
-        if always_falsy?(cond_type) || always_truthy?(cond_type)
-          errors << Error.new("Condition expression in #{node.type} is always #{always_falsy?(cond_type) ? "falsy" : "truthy"}", [
-            Error::MessageWithLocation.new(
-              message: "here",
-              location: cond.location.expression,
-            )
-          ])
-        end
+        truthy_type = truthy_type(cond_type, node: node)
+        falsy_type = falsy_type(cond_type, node: node)
+        useless_conditional_warning(truthy_type, falsy_type, node: node)
 
         if cond_type.is_a?(LocalVariableType)
           # TODO this is very simple specialisation of local variable types
-          if cond_type.type.is_a?(UnionType)
-            truthy_types = cond_type.type.types.reject { |t| always_falsy?(t) }
-            falsy_types = cond_type.type.types.reject { |t| always_truthy?(t) }
+          if truthy_type
+            then_locals = locals.assign(name: cond_type.local, type: truthy_type)
+          end
 
-            if truthy_types.any?
-              then_locals = locals.assign(
-                name: cond_type.local,
-                type: truthy_types.reduce { |a, b| make_union(a, b, node: node) },
-              )
-            end
-
-            if falsy_types.any?
-              else_locals = locals.assign(
-                name: cond_type.local,
-                type: falsy_types.reduce { |a, b| make_union(a, b, node: node) },
-              )
-            end
+          if falsy_type
+            else_locals = locals.assign(name: cond_type.local, type: falsy_type)
           end
         end
 
@@ -1619,6 +1647,45 @@ module TypedRuby
 
       def on_and(node, locals)
         process_conditional(node, locals)
+      end
+
+      def on_while(node, locals)
+        cond, body = *node
+
+        # TODO - need to push something into the environment for 'break'
+
+        cond_type, first_iteration_locals = process(cond, locals)
+
+        truthy_cond_type = truthy_type(cond_type, node: cond)
+        falsy_cond_type = falsy_type(cond_type, node: cond)
+        useless_conditional_warning(truthy_cond_type, falsy_cond_type, node: node)
+
+        if cond_type.is_a?(LocalVariableType)
+          first_iteration_locals = first_iteration_locals.assign(
+            name: cond_type.local,
+            type: truthy_cond_type,
+          )
+        end
+
+        _, first_iteration_locals = process(body, first_iteration_locals)
+
+        generalised_iteration_locals = merge_locals(locals, first_iteration_locals, node: node)
+
+        cond_type, generalised_iteration_locals = process(cond, generalised_iteration_locals)
+        _, generalised_iteration_locals = process(body, generalised_iteration_locals)
+
+        [nil_type(node: node), generalised_iteration_locals]
+      end
+
+      def useless_conditional_warning(truthy_type, falsy_type, node:)
+        if !truthy_type || !truthy_type
+          errors << Error.new("Condition expression in while is always #{truthy_cond_type ? "falsy" : "truthy"}", [
+            Error::MessageWithLocation.new(
+              message: "here",
+              location: cond.location.expression,
+            )
+          ])
+        end
       end
 
       def on_rescue(node, locals)
