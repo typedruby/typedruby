@@ -1833,7 +1833,7 @@ module TypedRuby
         falsy_cond_type = falsy_type(cond_type, node: cond)
         useless_conditional_warning(truthy_cond_type, falsy_cond_type, node: node)
 
-        if cond_type.is_a?(LocalVariableType)
+        if cond_type.is_a?(LocalVariableType) && truthy_cond_type
           first_iteration_locals = first_iteration_locals.assign(
             name: cond_type.local,
             type: truthy_cond_type,
