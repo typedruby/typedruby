@@ -1296,9 +1296,24 @@ module TypedRuby
         method_prototype, locals = process_send(send, locals)
 
         block_prototype, block_type_context, block_locals = parse_prototype(block_args, locals, type_context: type_context, scope: scope)
-        unify!(block_prototype, method_prototype.block)
 
-        block_return_type, _ = process(block_body, block_locals)
+        if !method_prototype.block
+          errors << Error.new("Method does not take a block:", [
+            Error::MessageWithLocation.new(
+              message: "but one was passed",
+              location: node.location.begin.join(node.location.end),
+            )
+          ])
+        else
+          unify!(block_prototype, method_prototype.block)
+        end
+
+        if block_body
+          block_return_type, _ = process(block_body, block_locals)
+        else
+          block_return_type = nil_type(node: node)
+        end
+
         unify!(block_return_type, block_prototype.return_type, node: block_body)
 
         [method_prototype.return_type, locals]
