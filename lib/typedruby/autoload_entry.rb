@@ -1,5 +1,7 @@
 module TypedRuby
   class AutoloadEntry
+    include Task
+
     attr_reader :file, :node
 
     def initialize(String file:, Parser::AST::Node node:) => nil
