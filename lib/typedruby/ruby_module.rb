@@ -286,7 +286,7 @@ module TypedRuby
         superklass.type_for_ivar(name, node: node)
       else
         # TODO - the TypeVar stuff needs to be moved out of the checker
-        @ivar_types[name] = Checker::Evaluator::TypeVar.new(node: node, description: "#{name}##{name}")
+        @ivar_types[name] = Checker::Evaluator::TypeVar.new(node: node, description: "#{name} in #{self.name}")
       end
     end
   end
