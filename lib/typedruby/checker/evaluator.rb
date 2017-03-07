@@ -1850,11 +1850,11 @@ module TypedRuby
       end
 
       def useless_conditional_warning(truthy_type, falsy_type, node:)
-        if !truthy_type || !truthy_type
-          errors << Error.new("Condition expression in while is always #{truthy_cond_type ? "falsy" : "truthy"}", [
+        if !truthy_type || !falsy_type
+          errors << Error.new("Condition expression in while is always #{truthy_type ? "falsy" : "truthy"}", [
             Error::MessageWithLocation.new(
               message: "here",
-              location: cond.location.expression,
+              location: node.location.expression,
             )
           ])
         end
