@@ -446,6 +446,10 @@ module TypedRuby
         InstanceType.new(node: node, klass: klass, type_parameters: type_parameters)
       end
 
+      def new_array_type(node:, element_type:)
+        new_instance_type(node: node, klass: env.Array, type_parameters: [element_type])
+      end
+
       def new_type_from_concrete(concrete_type, node:, type_context:)
         case concrete_type
         when Type::Instance
@@ -457,8 +461,7 @@ module TypedRuby
             },
           )
         when Type::Array
-          new_instance_type(node: node, klass: env.Array,
-            type_parameters: [new_type_from_concrete(concrete_type.type, node: node, type_context: type_context)])
+          new_array_type(node: node, element_type: new_type_from_concrete(concrete_type.type, node: node, type_context: type_context))
         when Type::Hash
           new_instance_type(node: node, klass: env.Hash,
             type_parameters: [
@@ -552,7 +555,7 @@ module TypedRuby
           args: [
             RestArg.new(
               node: nil,
-              type: new_instance_type(node: nil, klass: env.Array, type_parameters: [AnyType.new(node: nil)]),
+              type: new_array_type(node: nil, element_type: AnyType.new(node: nil)),
             )
           ],
           block: AnyType.new(node: nil),
@@ -1069,7 +1072,7 @@ module TypedRuby
             raise "unexpected node in lhs splat: #{splat_lhs}" unless splat_lhs.type == :lvasgn
             name, = *splat_lhs
             type = new_type_var(node: n)
-            locals = locals.assign(name: name, type: new_instance_type(node: n, klass: env.Array, type_parameters: [type]))
+            locals = locals.assign(name: name, type: new_array_type(node: n, element_type: type))
             splat_type = type
           else
             raise "unexpected lhs node: #{n}"
@@ -1308,10 +1311,9 @@ module TypedRuby
           if arg_name
             locals = locals.assign(
               name: arg_name,
-              type: new_instance_type(
+              type: new_array_type(
                 node: type_node || arg_node,
-                klass: env.Array,
-                type_parameters: [type]))
+                element_type: type))
           end
 
           argument = RestArg.new(node: arg_node, type: type)
@@ -1791,7 +1793,7 @@ module TypedRuby
           unify!(element_type, type)
         end
 
-        [new_instance_type(node: node, klass: env.Array, type_parameters: [element_type]), locals]
+        [new_array_type(node: node, element_type: element_type), locals]
       end
 
       def on_self(node, locals)
