@@ -97,6 +97,8 @@ class File < IO
   def self.join(String s, String *) => String; end
 
   def self.expand_path(String file, ~String dir = nil) => String; end
+
+  def self.file?(String file) => Boolean; end
 end
 
 module File::Constants
@@ -634,6 +636,8 @@ class String < Object
   def b => String; end
 
   def to_sym => Symbol; end
+
+  def start_with?(String prefix) => Boolean; end
 end
 
 class Array::[ElementType] < Object
@@ -658,6 +662,10 @@ class Hash::[KeyType, ValueType] < Object
   def fetch(KeyType k, ~{ || => ValueType } &) => ValueType; end
 
   def [](KeyType k) => ~ValueType; end
+
+  def []=(KeyType k, ValueType v) => ValueType; end
+
+  def key?(KeyType k) => Boolean; end
 end
 
 class NilClass < Object
