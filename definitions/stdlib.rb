@@ -95,6 +95,8 @@ class File < IO
   def self.open(:any *, { |File f| => :any } &) => :any; end
 
   def self.join(String s, String *) => String; end
+
+  def self.expand_path(String file, ~String dir = nil) => String; end
 end
 
 module File::Constants
