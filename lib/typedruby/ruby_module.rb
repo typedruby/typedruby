@@ -9,7 +9,7 @@ module TypedRuby
       @name = name
       @constants = {}
       @methods = {}
-      @superklass = nil
+      @superklass = (nil : ~RubyModule)
       @ivar_types = {}
       nil
     end
