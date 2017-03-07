@@ -1362,7 +1362,6 @@ module TypedRuby
             duplicate_type_parameters = type_context.method_type_parameters.keys & genargs_node.children
 
             if duplicate_type_parameters.any?
-              pry binding
               errors << Error.new("Duplicate type parameter names", [
                 Error::MessageWithLocation.new(
                   message: duplicate_type_parameters.join(", "),
