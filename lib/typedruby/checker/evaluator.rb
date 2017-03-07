@@ -1923,6 +1923,30 @@ module TypedRuby
         [result_type, result_locals]
       end
 
+      def on_irange(node, locals)
+        begin_node, end_node = *node
+
+        begin_type, locals = process(begin_node, locals)
+        end_type, locals = process(end_node, locals)
+
+        # TODO - check (hopefully with type constraints in the Range class)
+        # that the range bound types are comparable
+
+        [InstanceType.new(node: node, klass: env.Range, type_parameters: [begin_type, end_type]), locals]
+      end
+
+      def on_erange(node, locals)
+        begin_node, end_node = *node
+
+        begin_type, locals = process(begin_node, locals)
+        end_type, locals = process(end_node, locals)
+
+        # TODO - check (hopefully with type constraints in the Range class)
+        # that the range bound types are comparable
+
+        [InstanceType.new(node: node, klass: env.Range, type_parameters: [begin_type, end_type]), locals]
+      end
+
       def validate_static_cpath(node)
         loop do
           left, _ = *node

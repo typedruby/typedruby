@@ -22,7 +22,8 @@ module TypedRuby
       :Float,
       :Regexp,
       :Exception,
-      :StandardError
+      :StandardError,
+      :Range
 
     def initialize(Resolver resolver:) => nil
       @resolver = resolver
@@ -98,6 +99,7 @@ module TypedRuby
       @Regexp = define_class("Regexp", @Object)
       @Exception = define_class("Exception", @Object)
       @StandardError = define_class("StandardError", @Exception)
+      @Range = define_class("Range", @Object, [:BeginType, :EndType])
       nil
     end
 

@@ -1891,7 +1891,7 @@ module Marshal
   MINOR_VERSION = nil
 end
 
-class Range < Object
+class Range::[BeginType, EndType] < Object
   include Enumerable
 end
 
