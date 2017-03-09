@@ -44,6 +44,8 @@ class Object < BasicObject
   TOPLEVEL_BINDING = nil
   ARGV = nil
 
+  def initialize => :any; end
+
   def class => :class; end
 
   def dup => :self; end
