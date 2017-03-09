@@ -1,5 +1,7 @@
 module TypedRuby
   class RubyClass < RubyModule
+    def @type_parameters : [Symbol]
+
     attr_reader :type_parameters
 
     def initialize(klass:, name:, superklass:, type_parameters:)

@@ -1,5 +1,7 @@
 module TypedRuby
   class RubyObject
+    def @klass : RubyClass
+
     def initialize(RubyClass klass:) => nil
       @klass = klass
       nil

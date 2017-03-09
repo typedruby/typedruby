@@ -1,5 +1,8 @@
 module TypedRuby
   class Environment
+    def @resolver : TypedRuby::Resolver
+    def @root_scope : TypedRuby::Scope
+
     attr_reader :resolver
     attr_reader :root_scope
 
@@ -24,6 +27,27 @@ module TypedRuby
       :Exception,
       :StandardError,
       :Range
+
+    def @BasicObject : RubyClass
+    def @Object : RubyClass
+    def @Module : RubyClass
+    def @Class : RubyClass
+    def @Kernel : RubyModule
+    def @Boolean : RubyClass
+    def @TrueClass : RubyClass
+    def @FalseClass : RubyClass
+    def @NilClass : RubyClass
+    def @Symbol : RubyClass
+    def @String : RubyClass
+    def @Numeric : RubyClass
+    def @Integer : RubyClass
+    def @Array : RubyClass
+    def @Hash : RubyClass
+    def @Float : RubyClass
+    def @Regexp : RubyClass
+    def @Exception : RubyClass
+    def @StandardError : RubyClass
+    def @Range : RubyClass
 
     def initialize(Resolver resolver:) => nil
       @resolver = resolver
