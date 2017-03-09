@@ -1668,6 +1668,33 @@ module TypedRuby
               return_type: ivar_type,
             )
           end
+        when RubySpecialMethod
+          case method.special_type
+          when :class_new
+            if method_entry = self_type.klass.of.lookup_method_entry(:initialize)
+              new_instance_type = new_instance_type(
+                node: node,
+                klass: self_type.klass.of,
+                type_parameters: self_type.klass.of.type_parameters.map { |t| new_type_var(node: node) },
+              )
+
+              initialize_prototype = prototype_from_method_entry(method_entry,
+                self_type: new_instance_type,
+                node: node,
+              )
+
+              ProcType.new(
+                node: initialize_prototype.node,
+                args: initialize_prototype.args,
+                block: initialize_prototype.block,
+                return_type: new_instance_type,
+              )
+            else
+              raise "couldn't find #initialize method on class? what do"
+            end
+          else
+            raise "unknown special method type: #{method.special_type}"
+          end
         else
           raise "unknown method type: #{method}"
         end
