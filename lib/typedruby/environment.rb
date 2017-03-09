@@ -26,7 +26,8 @@ module TypedRuby
       :Regexp,
       :Exception,
       :StandardError,
-      :Range
+      :Range,
+      :Proc
 
     def @BasicObject : RubyClass
     def @Object : RubyClass
@@ -48,6 +49,7 @@ module TypedRuby
     def @Exception : RubyClass
     def @StandardError : RubyClass
     def @Range : RubyClass
+    def @Proc : RubyClass
 
     def initialize(Resolver resolver:) => nil
       @resolver = resolver
@@ -124,9 +126,16 @@ module TypedRuby
       @Exception = define_class("Exception", @Object)
       @StandardError = define_class("StandardError", @Exception)
       @Range = define_class("Range", @Object, [:BeginType, :EndType])
+      @Proc = define_class("Proc", @Object)
 
       @Class.define_method(id: :new, method:
         RubySpecialMethod.new(id: :new, klass: @Class, special_type: :class_new))
+
+      @Proc.define_method(id: :call, method:
+        RubySpecialMethod.new(id: :call, klass: @Proc, special_type: :proc_call))
+
+      @Proc.define_method(id: :[], method:
+        RubySpecialMethod.new(id: :[], klass: @Proc, special_type: :proc_call))
 
       nil
     end
