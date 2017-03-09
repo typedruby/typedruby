@@ -124,6 +124,10 @@ module TypedRuby
       @Exception = define_class("Exception", @Object)
       @StandardError = define_class("StandardError", @Exception)
       @Range = define_class("Range", @Object, [:BeginType, :EndType])
+
+      @Class.define_method(id: :new, method:
+        RubySpecialMethod.new(id: :new, klass: @Class, special_type: :class_new))
+
       nil
     end
 

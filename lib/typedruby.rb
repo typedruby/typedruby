@@ -20,6 +20,7 @@ module TypedRuby
   autoload :RubyMetaclass, "typedruby/ruby_metaclass"
   autoload :RubyMethod, "typedruby/ruby_method"
   autoload :RubyMethodEntry, "typedruby/ruby_method_entry"
+  autoload :RubySpecialMethod, "typedruby/ruby_special_method"
   autoload :RubyUnresolvedExpression, "typedruby/ruby_unresolved_expression"
   autoload :Scope, "typedruby/scope"
   autoload :Task, "typedruby/task"
