@@ -601,6 +601,10 @@ class Integer < Numeric
   def |(Integer other) => Integer; end
 
   def <(Integer other) => Boolean; end
+
+  def +(Integer other) => Integer; end
+
+  def *(Integer other) => Integer; end
 end
 
 class Float < Numeric
@@ -668,6 +672,10 @@ class Array::[ElementType] < Object
   def any?({ |ElementType element| => Boolean } &) => Boolean; end
 
   def all?({ |ElementType element| => Boolean } &) => Boolean; end
+
+  def first => ~ElementType; end
+
+  def last => ~ElementType; end
 end
 
 class Hash::[KeyType, ValueType] < Object
