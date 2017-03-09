@@ -1109,11 +1109,22 @@ module TypedRuby
       end
 
       def on_ivasgn(node, locals)
-        name, expr = *node
+        id, expr = *node
 
         expr_type, locals = process(expr, locals)
 
-        ivar_type = method.klass.type_for_ivar(name: name, node: node)
+        unless ivar = method.klass.lookup_ivar(id)
+          errors << Error.new("Assignment to undeclared instance variable", [
+            Error::MessageWithLocation.new(
+              message: "here",
+              location: node.location.expression,
+            )
+          ])
+
+          return expr_type, locals
+        end
+
+        ivar_type = resolve_type(node: ivar.type_node, scope: ivar.scope, type_context: type_context)
 
         assert_compatible!(source: expr_type, target: ivar_type, node: node)
 
@@ -1344,7 +1355,7 @@ module TypedRuby
           return AnyType.new(node: node), locals
         end
 
-        prototype = prototype_from_method_entry(method_entry, self_type: method.klass)
+        prototype = prototype_from_method_entry(method_entry, self_type: method.klass, node: node)
 
         match_prototype_with_arguments(prototype, arg_types, node: node)
 
@@ -1520,22 +1531,26 @@ module TypedRuby
         case recv_type
         when InstanceType
           if method_entry = recv_type.klass.lookup_method_entry(mid)
-            prototype = prototype_from_method_entry(method_entry, self_type: recv_type)
+            prototype = prototype_from_method_entry(method_entry, self_type: recv_type, node: send_node)
           end
         when KeywordHashType
           if method_entry = env.Hash.lookup_method_entry(mid)
-            prototype = prototype_from_method_entry(method_entry, self_type: new_instance_type(
-              node: recv_type.node,
-              klass: env.Hash,
-              type_parameters: [
-                new_instance_type(
-                  node: recv_type.node,
-                  klass: env.Symbol,
-                  type_parameters: [],
-                ),
-                AnyType.new(node: recv_type.node),
-              ]
-            ))
+            prototype = prototype_from_method_entry(
+              method_entry,
+              self_type: new_instance_type(
+                node: recv_type.node,
+                klass: env.Hash,
+                type_parameters: [
+                  new_instance_type(
+                    node: recv_type.node,
+                    klass: env.Symbol,
+                    type_parameters: [],
+                  ),
+                  AnyType.new(node: recv_type.node),
+                ]
+              ),
+              node: send_node,
+            )
           end
         when AnyType
           prototype = untyped_prototype
@@ -1572,36 +1587,55 @@ module TypedRuby
         [prototype, locals]
       end
 
-      def prototype_from_method_entry(method_entry, self_type:)
+      def prototype_from_method_entry(method_entry, self_type:, node:)
         method = method_entry.definitions.last
+
+        type_context = TypeContext.new(
+          self_type: self_type,
+          method_type_parameters: {},
+        )
 
         case method
         when RubyMethod
           prototype, type_context, locals = parse_prototype(method.prototype_node, NullLocal.new,
-            type_context: TypeContext.new(
-              self_type: self_type,
-              method_type_parameters: {},
-            ),
+            type_context: type_context,
             scope: method.scope,
           )
 
           prototype
-        when RubyAttrReader
-          ProcType.new(
-            node: method.definition_node,
-            args: [],
-            block: nil,
-            return_type: method.klass.type_for_ivar(name: :"@#{method.name}", node: method.definition_node),
-          )
-        when RubyAttrWriter
-          attr_type = method.klass.type_for_ivar(name: :"@#{method.name}", node: method.definition_node)
+        when RubyAttrReader, RubyAttrWriter
+          if ivar = method.klass.lookup_ivar(:"@#{method.name}")
+            ivar_type = resolve_type(node: ivar.type_node, scope: ivar.scope, type_context: type_context)
+          else
+            ivar_type = AnyType.new(node: method.definition_node)
 
-          ProcType.new(
-            node: method.definition_node,
-            args: [RequiredArg.new(node: method.definition_node, type: attr_type)],
-            block: nil,
-            return_type: attr_type,
-          )
+            errors << Error.new("Accessing undeclared instance variable", [
+              Error::MessageWithLocation.new(
+                message: "through this attribute",
+                location: method.definition_node.location.expression,
+              ),
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.location.expression,
+              )
+            ])
+          end
+
+          if method.is_a?(RubyAttrReader)
+            ProcType.new(
+              node: method.definition_node,
+              args: [],
+              block: nil,
+              return_type: ivar_type,
+            )
+          else
+            ProcType.new(
+              node: method.definition_node,
+              args: [RequiredArg.new(node: method.definition_node, type: ivar_type)],
+              block: nil,
+              return_type: ivar_type,
+            )
+          end
         else
           raise "unknown method type: #{method}"
         end
@@ -1732,11 +1766,19 @@ module TypedRuby
       end
 
       def on_ivar(node, locals)
-        name, = *node
-        # TODO - if the instance variable does not yet exist, we want to defer
-        # checking of the rest of this method until we process another method
-        # where it does exist
-        [method.klass.type_for_ivar(name: name, node: node), locals]
+        id, = *node
+
+        if ivar = method.klass.lookup_ivar(id)
+          [resolve_type(node: ivar.type_node, scope: ivar.scope, type_context: type_context), locals]
+        else
+          errors << Error.new("Reference to undeclared instance variable", [
+            Error::MessageWithLocation.new(
+              message: "here",
+              location: node.location.expression,
+            )
+          ])
+          [AnyType.new(node: node), locals]
+        end
       end
 
       def on_if(node, locals)

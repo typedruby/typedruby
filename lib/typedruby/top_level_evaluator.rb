@@ -264,6 +264,19 @@ module TypedRuby
       resolve_cpath(node)
     end
 
+    def on_tr_ivardecl(node)
+      id, type_node = *node
+
+      if ivar = @scope.mod.lookup_ivar(id)
+        raise Error, "duplicate instance variable declaration (already defined in #{ivar.klass})"
+      end
+
+      @scope.mod.define_ivar(
+        id: id,
+        ivar: RubyIVar.new(klass: @scope.mod, id: id, type_node: type_node, scope: @scope),
+      )
+    end
+
     def on_def(node)
       id, args, body = *node
 
