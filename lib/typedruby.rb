@@ -148,18 +148,18 @@ module TypedRuby
 
       parser = Parser::TypedRuby24.new(ParserBuilder.new)
 
-      ast = parser.parse(buffer)
+      ast = (parser.parse(buffer) : :any)
 
       if ast == false
         raise Error, "syntax error in #{file}"
       end
 
-      ast
+      (ast : Node)
     end
 
     def autoload_const(RubyModule mod:, Symbol id:) => ~RubyModule
-      if autoloader
-        autoloader.call(resolver: self, mod: mod, id: id)
+      if p = self.autoloader
+        p.call(resolver: self, mod: mod, id: id)
       end
     end
   end
