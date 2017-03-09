@@ -1867,7 +1867,7 @@ module TypedRuby
         # TODO - ensure that all parts are to_s-able
         _, locals = process_all(parts, locals)
 
-        pry binding
+        [new_instance_type(node: node, klass: env.Regexp, type_parameters: []), locals]
       end
 
       def on_ivar(node, locals)
