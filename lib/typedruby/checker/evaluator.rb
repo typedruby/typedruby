@@ -1570,7 +1570,7 @@ module TypedRuby
 
         arg_types, locals = map_process(args, locals)
 
-        possible_prototypes = possible_prototypes_for_invocation(recv_type: recv_type, mid: mid, send_node: send_node)
+        possible_prototypes = possible_prototypes_for_invocation(recv_type: recv_type, mid: mid, send_node: send_node, recv_node: recv)
 
         unless possible_prototypes
           errors << Error.new("Could not resolve method ##{mid} on #{recv_type.describe}", [
@@ -1589,7 +1589,7 @@ module TypedRuby
         [possible_prototypes, locals]
       end
 
-      def possible_prototypes_for_invocation(recv_type:, mid:, send_node:)
+      def possible_prototypes_for_invocation(recv_type:, mid:, send_node:, recv_node:)
         recv_type = prune(recv_type)
 
         case recv_type
@@ -1626,13 +1626,13 @@ module TypedRuby
           end
         when UnionType
           recv_type.types.flat_map { |type|
-            if prototypes = possible_prototypes_for_invocation(recv_type: type, mid: mid, send_node: send_node)
+            if prototypes = possible_prototypes_for_invocation(recv_type: type, mid: mid, send_node: send_node, recv_node: recv_node)
               prototypes
             else
               errors << Error.new("Union member type #{type.describe} does not respond to ##{mid}:", [
                 Error::MessageWithLocation.new(
-                  message: "in invocation against #{recv_type.describe}",
-                  location: send_node.location.expression,
+                  message: recv_type.describe,
+                  location: recv_node.location.expression,
                 )
               ])
               [untyped_prototype]
@@ -1644,7 +1644,7 @@ module TypedRuby
           errors << Error.new("Unknown receiver type in invocation of ##{mid}", [
             Error::MessageWithLocation.new(
               message: "here",
-              location: recv.location.expression,
+              location: recv_node.location.expression,
             ),
           ])
           return [untyped_prototype]
@@ -1652,7 +1652,7 @@ module TypedRuby
           errors << Error.new("Internal error: don't know how to send messages to:", [
             Error::MessageWithLocation.new(
               message: recv_type.describe,
-              location: recv.location.expression,
+              location: recv_node.location.expression,
             ),
           ])
           return [untyped_prototype]
