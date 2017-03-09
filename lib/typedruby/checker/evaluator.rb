@@ -824,6 +824,38 @@ module TypedRuby
             }
         elsif t1.is_a?(UnionType) && t2.is_a?(UnionType)
           same_unordered_types?(t1.types, t2.types)
+        elsif t1.is_a?(ProcType) && t2.is_a?(ProcType)
+          if t1.args.count == 1 && t1.args[0].is_a?(ProcArg0)
+            if t2.args.count == 1 && t2.args[0].is_a?(ProcArg0)
+              unless same_type?(t1.args[0].type, t2.args[0].type)
+                return false
+              end
+            else
+              # handle procarg0 expansion
+              raise "nope"
+            end
+          elsif t2.args.count == 1 && t2.args[0].is_a?(ProcArg0)
+            # handle procarg0 expansion
+            raise "nope"
+          elsif t1.args.count == t2.args.count
+            t1.args.zip(t2.args).each do |arg1, arg2|
+              unless arg1.class == arg2.class && same_type?(arg1.type, arg2.type)
+                return false
+              end
+            end
+          else
+            return false
+          end
+
+          if t1.block && t2.block
+            unless same_type?(t1.block, t2.block)
+              return false
+            end
+          elsif !!t1.block ^ !!t2.block
+            return false
+          end
+
+          same_type?(t1.return_type, t2.return_type)
         else
           false
         end
