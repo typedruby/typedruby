@@ -10,7 +10,7 @@ module TypedRuby
       @constants = {}
       @methods = {}
       @superklass = (nil : ~RubyModule)
-      @ivar_types = {}
+      @ivars = {}
       nil
     end
 
@@ -97,8 +97,8 @@ module TypedRuby
     def has_const?(Symbol id) => Boolean
       if constants.key?(id)
         true
-      elsif superklass
-        superklass.has_const?(id)
+      elsif k = superklass
+        k.has_const?(id)
       else
         false
       end
@@ -272,25 +272,26 @@ module TypedRuby
 
     # TODO - needs to understand logic around changing superclasses - do a
     # reverification to make sure that we don't have any duplicated ivar names
-    def defines_ivar?(name)
-      if @ivar_types.key?(name)
+    def ivar_defined?(name)
+      if @ivars.key?(name)
         true
       elsif superklass
-        superklass.defines_ivar?(name)
+        superklass.ivar_defined?(name)
       else
         false
       end
     end
 
-    def type_for_ivar(name:, node:)
-      if @ivar_types.key?(name)
-        @ivar_types[name]
-      elsif superklass && superklass.defines_ivar?(name)
-        superklass.type_for_ivar(name, node: node)
-      else
-        # TODO - the TypeVar stuff needs to be moved out of the checker
-        @ivar_types[name] = Checker::Evaluator::TypeVar.new(node: node, description: "#{name} in #{self.name}")
+    def lookup_ivar(id)
+      if @ivars.key?(id)
+        @ivars[id]
+      elsif superklass
+        superklass.lookup_ivar(id)
       end
+    end
+
+    def define_ivar(id:, ivar:)
+      @ivars[id] = ivar
     end
   end
 end
