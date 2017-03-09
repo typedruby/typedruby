@@ -1584,6 +1584,14 @@ module TypedRuby
               node: send_node,
             )
           end
+        when ProcType
+          if method_entry = env.Proc.lookup_method_entry(mid)
+            prototype = prototype_from_method_entry(
+              method_entry,
+              self_type: recv_type,
+              node: send_node,
+            )
+          end
         when AnyType
           prototype = untyped_prototype
         when TypeVar
@@ -1691,6 +1699,12 @@ module TypedRuby
               )
             else
               raise "couldn't find #initialize method on class? what do"
+            end
+          when :proc_call
+            if self_type.is_a?(ProcType)
+              self_type
+            else
+              untyped_prototype
             end
           else
             raise "unknown special method type: #{method.special_type}"
