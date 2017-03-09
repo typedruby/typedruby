@@ -14,7 +14,7 @@ module TypedRuby
   autoload :RubyAttrWriter, "typedruby/ruby_attr_writer"
   autoload :RubyClass, "typedruby/ruby_class"
   autoload :RubyIClass, "typedruby/ruby_iclass"
-  autoload :RubyIVar, "typeruby/ruby_ivar"
+  autoload :RubyIVar, "typedruby/ruby_ivar"
   autoload :RubyModule, "typedruby/ruby_module"
   autoload :RubyObject, "typedruby/ruby_object"
   autoload :RubyMetaclass, "typedruby/ruby_metaclass"
