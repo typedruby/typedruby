@@ -158,7 +158,7 @@ module TypedRuby
       (ast : Node)
     end
 
-    def autoload_const(RubyModule mod:, Symbol id:) => ~RubyModule
+    def autoload_const(RubyModule mod:, Symbol id:) => ~RubyObject
       if p = self.autoloader
         p.call(resolver: self, mod: mod, id: id)
       end
