@@ -130,6 +130,7 @@ module TypedRuby
     def define_class(String name, RubyClass superklass, [Symbol] type_parameters = []) => RubyClass
       klass = RubyClass.new(klass: @Class, name: name, superklass: superklass, type_parameters: type_parameters)
       @Object.constants[name.to_sym] = klass
+      klass
     end
 
     def resolve_type(node:, scope:, genargs:)
