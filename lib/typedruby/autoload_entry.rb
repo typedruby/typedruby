@@ -4,7 +4,10 @@ module TypedRuby
 
     attr_reader :file, :node
 
-    def initialize(String file:, Parser::AST::Node node:) => nil
+    def @file : String
+    def @node : Node
+
+    def initialize(String file:, Node node:) => nil
       @file = file
       @node = node
       nil

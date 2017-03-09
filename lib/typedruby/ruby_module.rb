@@ -1,5 +1,11 @@
 module TypedRuby
   class RubyModule < RubyObject
+    def @name : String
+    def @constants : { Symbol => RubyObject }
+    def @methods : { Symbol => RubyMethod }
+    def @superklass : ~RubyModule
+    def @ivars : { Symbol => RubyIVar }
+
     attr_reader :name, :constants, :methods, :superklass
 
     attr_writer :superklass
@@ -9,7 +15,7 @@ module TypedRuby
       @name = name
       @constants = {}
       @methods = {}
-      @superklass = (nil : ~RubyModule)
+      @superklass = nil
       @ivars = {}
       nil
     end

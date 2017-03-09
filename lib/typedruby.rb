@@ -38,6 +38,14 @@ module TypedRuby
       :env,
       :pending_work
 
+    def @load_paths : [String]
+    def @autoload_paths : [String]
+    def @ignore_errors_in : [String]
+    def @autoloader : ~{ |Resolver resolver:, RubyModule mod:, Symbol id:| => ~RubyObject }
+    def @env : Environment
+    def @loaded : { String => ~Boolean }
+    def @pending_work : [Task]
+
     def initialize(
       [String] load_paths:,
       [String] autoload_paths:,
@@ -51,9 +59,9 @@ module TypedRuby
 
       @env = Environment.new(resolver: self)
 
-      @loaded = ({} : { String => ~Boolean })
+      @loaded = {}
 
-      @pending_work = ([] : [Task])
+      @pending_work = []
 
       process("#{__dir__}/../definitions/stdlib.rb")
     end
