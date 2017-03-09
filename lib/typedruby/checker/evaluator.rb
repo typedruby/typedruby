@@ -1328,27 +1328,37 @@ module TypedRuby
       end
 
       def on_send(node, locals)
-        method_prototype, locals = process_send(node, locals)
+        possible_method_prototypes, locals = process_send(node, locals)
 
-        [method_prototype.return_type, locals]
+        return_type = make_union_from_types(possible_method_prototypes.map(&:return_type), node: node)
+
+        [return_type, locals]
       end
 
       def on_block(node, locals)
         send, block_args, block_body = *node
 
-        method_prototype, locals = process_send(send, locals)
+        possible_method_prototypes, locals = process_send(send, locals)
 
         block_prototype, block_type_context, block_locals = parse_prototype(block_args, locals, type_context: type_context, scope: scope)
 
-        if !method_prototype.block
-          errors << Error.new("Method does not take a block:", [
+        if possible_method_prototypes.any? { |prototype| !prototype.block }
+          block_error_message =
+            if possible_method_prototypes.count > 1
+              "Not all methods possibly invoked here take a block:"
+            else
+              "Method does not take a block:"
+            end
+
+          errors << Error.new(block_error_message, [
             Error::MessageWithLocation.new(
               message: "but one was passed",
               location: node.location.begin.join(node.location.end),
             )
           ])
         else
-          unify!(block_prototype, method_prototype.block)
+          possible_block_types = make_union_from_types(possible_method_prototypes.map(&:block), node: node)
+          unify!(block_prototype, possible_block_types)
         end
 
         if block_body
@@ -1359,7 +1369,9 @@ module TypedRuby
 
         unify!(block_return_type, block_prototype.return_type, node: block_body)
 
-        [method_prototype.return_type, locals]
+        return_type = make_union_from_types(possible_method_prototypes.map(&:return_type), node: node)
+
+        [return_type, locals]
       end
 
       def on_super(node, locals)
@@ -1558,16 +1570,36 @@ module TypedRuby
 
         arg_types, locals = map_process(args, locals)
 
+        possible_prototypes = possible_prototypes_for_invocation(recv_type: recv_type, mid: mid, send_node: send_node)
+
+        unless possible_prototypes
+          errors << Error.new("Could not resolve method ##{mid} on #{recv_type.describe}", [
+            Error::MessageWithLocation.new(
+              message: "in this invocation",
+              location: send_node.location.selector,
+            ),
+          ])
+          possible_prototypes = [untyped_prototype]
+        end
+
+        possible_prototypes.each do |prototype|
+          match_prototype_with_arguments(prototype, arg_types, node: send_node)
+        end
+
+        [possible_prototypes, locals]
+      end
+
+      def possible_prototypes_for_invocation(recv_type:, mid:, send_node:)
         recv_type = prune(recv_type)
 
         case recv_type
         when InstanceType
           if method_entry = recv_type.klass.lookup_method_entry(mid)
-            prototype = prototype_from_method_entry(method_entry, self_type: recv_type, node: send_node)
+            return [prototype_from_method_entry(method_entry, self_type: recv_type, node: send_node)]
           end
         when KeywordHashType
           if method_entry = env.Hash.lookup_method_entry(mid)
-            prototype = prototype_from_method_entry(
+            return [prototype_from_method_entry(
               method_entry,
               self_type: new_instance_type(
                 node: recv_type.node,
@@ -1582,18 +1614,32 @@ module TypedRuby
                 ]
               ),
               node: send_node,
-            )
+            )]
           end
         when ProcType
           if method_entry = env.Proc.lookup_method_entry(mid)
-            prototype = prototype_from_method_entry(
+            return [prototype_from_method_entry(
               method_entry,
               self_type: recv_type,
               node: send_node,
-            )
+            )]
           end
+        when UnionType
+          recv_type.types.flat_map { |type|
+            if prototypes = possible_prototypes_for_invocation(recv_type: type, mid: mid, send_node: send_node)
+              prototypes
+            else
+              errors << Error.new("Union member type #{type.describe} does not respond to ##{mid}:", [
+                Error::MessageWithLocation.new(
+                  message: "in invocation against #{recv_type.describe}",
+                  location: send_node.location.expression,
+                )
+              ])
+              [untyped_prototype]
+            end
+          }
         when AnyType
-          prototype = untyped_prototype
+          return [untyped_prototype]
         when TypeVar
           errors << Error.new("Unknown receiver type in invocation of ##{mid}", [
             Error::MessageWithLocation.new(
@@ -1601,7 +1647,7 @@ module TypedRuby
               location: recv.location.expression,
             ),
           ])
-          prototype = untyped_prototype
+          return [untyped_prototype]
         else
           errors << Error.new("Internal error: don't know how to send messages to:", [
             Error::MessageWithLocation.new(
@@ -1609,22 +1655,8 @@ module TypedRuby
               location: recv.location.expression,
             ),
           ])
-          prototype = untyped_prototype
+          return [untyped_prototype]
         end
-
-        unless prototype
-          errors << Error.new("Could not resolve method ##{mid} on #{recv_type.describe}", [
-            Error::MessageWithLocation.new(
-              message: "in this invocation",
-              location: send_node.location.selector,
-            ),
-          ])
-          prototype = untyped_prototype
-        end
-
-        match_prototype_with_arguments(prototype, arg_types, node: send_node)
-
-        [prototype, locals]
       end
 
       def prototype_from_method_entry(method_entry, self_type:, node:)
