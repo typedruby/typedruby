@@ -2281,6 +2281,16 @@ module TypedRuby
         [new_instance_type(node: node, klass: env.Range, type_parameters: [begin_type, end_type]), locals]
       end
 
+      def on_redo(node, locals)
+        # TODO - need a void type
+        [new_type_var(node: node), locals]
+      end
+
+      def on_retry(node, locals)
+        # TODO - need a void type
+        [new_type_var(node: node), locals]
+      end
+
       def validate_static_cpath(node)
         loop do
           left, _ = *node
