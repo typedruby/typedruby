@@ -558,10 +558,14 @@ module TypedRuby
           proc_type, proc_type_context, _ = parse_prototype(prototype_node, NullLocal.new, scope: scope, type_context: type_context)
           proc_type
         when :tr_tuple
-          TupleType.new(node: node,
-            types: node.children.map { |n|
+          TupleType.new(
+            node: node,
+            lead_types: node.children.map { |n|
               resolve_type(node: n, scope: scope, type_context: type_context)
-            })
+            },
+            splat_type: nil,
+            post_types: [],
+          )
         else
           raise "unknown type node: #{node.type}"
         end
