@@ -694,6 +694,10 @@ class Hash::[KeyType, ValueType] < Object
   def []=(KeyType k, ValueType v) => ValueType; end
 
   def key?(KeyType k) => Boolean; end
+
+  def empty? => Boolean; end
+
+  def map[ProjectedType]({ |KeyType k, ValueType v| => ProjectedType } &) => [ProjectedType]; end
 end
 
 class NilClass < Object
