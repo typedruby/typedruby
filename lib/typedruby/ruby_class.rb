@@ -30,7 +30,7 @@ module TypedRuby
           # no need to check for nil superklass here because BasicObject's metaklass
           # is set during class system bootstrap
           superklass: class_superklass.metaklass(env: env),
-          type_parameters: type_parameters,
+          type_parameters: [],
         )
       end
     end
