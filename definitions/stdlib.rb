@@ -52,11 +52,14 @@ class Object < BasicObject
 
   def freeze => :self; end
 
-  def ==(:self other) => Boolean; end
+  def ==(:any other) => Boolean; end
+  def !=(:any other) => Boolean; end
 
   def send(Symbol method_name, :any *args) => :any; end
 
   def is_a?(Module mod) => Boolean; end
+
+  def ! => Boolean; end
 end
 
 module Enumerable
@@ -101,6 +104,8 @@ class File < IO
   def self.expand_path(String file, ~String dir = nil) => String; end
 
   def self.file?(String file) => Boolean; end
+
+  def self.rename(String old_name, String new_name) => Integer; end
 end
 
 module File::Constants
@@ -595,14 +600,20 @@ end
 
 class Numeric < Object
   include Comparable
+
+  def <(Numeric other) => Boolean; end
+  def <=(Numeric other) => Boolean; end
+  def >(Numeric other) => Boolean; end
+  def >=(Numeric other) => Boolean; end
+  def <=>(Numeric other) => Boolean; end
+  def ==(Numeric other) => Boolean; end
+  def !=(Numeric other) => Boolean; end
 end
 
 class Integer < Numeric
   GMP_VERSION = nil
 
   def |(Integer other) => Integer; end
-
-  def <(Integer other) => Boolean; end
 
   def +(Integer other) => Integer; end
 
@@ -623,8 +634,6 @@ class Float < Numeric
   EPSILON = nil
   INFINITY = nil
   NAN = nil
-
-  def <(Float other) => Boolean; end
 end
 
 class String < Object
@@ -637,6 +646,7 @@ class String < Object
   def gsub(Regexp pattern, { |String s| => String } &) => String; end
 
   def size => Integer; end
+
   def length => Integer; end
 
   def b => String; end
@@ -678,6 +688,12 @@ class Array::[ElementType] < Object
   def first => ~ElementType; end
 
   def last => ~ElementType; end
+
+  def -([ElementType] other) => [ElementType]; end
+
+  def size => Integer; end
+
+  def length => Integer; end
 end
 
 class Hash::[KeyType, ValueType] < Object
@@ -698,6 +714,8 @@ class Hash::[KeyType, ValueType] < Object
   def empty? => Boolean; end
 
   def map[ProjectedType]({ |KeyType k, ValueType v| => ProjectedType } &) => [ProjectedType]; end
+
+  def keys => [KeyType]; end
 end
 
 class NilClass < Object
