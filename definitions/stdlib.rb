@@ -20,6 +20,8 @@ module Kernel
   def rand => Float; end
 
   def __dir__ => String; end
+
+  def is_a?(Class k) => Boolean; end
 end
 
 class Object < BasicObject
