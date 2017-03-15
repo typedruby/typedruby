@@ -51,6 +51,8 @@ module TypedRuby
           return
         when :include
           process_include(node)
+        when :module_function
+          process_visibility(:private, true, args)
         end
       end
 
@@ -165,6 +167,15 @@ module TypedRuby
 
       include_modules.reverse_each do |mod|
         @scope.mod.include_module(mod)
+      end
+    end
+
+    def process_visibility(visibility, module_func, args)
+      if args.empty?
+        scope.method_visibility = visibility
+        scope.module_func = module_func
+      else
+        # TODO - support changing visibility of existing methods
       end
     end
 
@@ -285,6 +296,14 @@ module TypedRuby
         id: id,
         node: node,
       )
+
+      if scope.module_func?
+        process_method_definition(
+          target: scope.mod.metaklass(env: env),
+          id: id,
+          node: node,
+        )
+      end
     end
 
     def on_defs(node)
