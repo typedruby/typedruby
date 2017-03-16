@@ -1568,8 +1568,7 @@ module TypedRuby
         if recv
           recv_type, locals = process(recv, locals)
         else
-          # TODO - handle case where self has generic type parameters
-          recv_type = new_instance_type(node: send_node, klass: method.klass, type_parameters: [])
+          recv_type = type_context.self_type
         end
 
         arg_types, locals = map_process(args, locals)
