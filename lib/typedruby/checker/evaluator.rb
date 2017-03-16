@@ -382,7 +382,7 @@ module TypedRuby
         end
       end
 
-      attr_reader :env, :method, :scope, :locals, :errors, :method_proc_type, :type_context
+      attr_reader :env, :method, :scope, :errors, :method_proc_type, :type_context
 
       def initialize(env:, method:)
         @env = env
