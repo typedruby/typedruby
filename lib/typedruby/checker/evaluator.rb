@@ -1165,6 +1165,10 @@ module TypedRuby
       def on_ivasgn(node, locals)
         id, expr = *node
 
+        process_ivasgn(id: id, expr: expr, locals: locals, node: node)
+      end
+
+      def process_ivasgn(id:, expr:, locals:, node:)
         expr_type, locals = process(expr, locals)
 
         unless ivar = method.klass.lookup_ivar(id)
@@ -1182,7 +1186,63 @@ module TypedRuby
 
         assert_compatible!(source: expr_type, target: ivar_type, node: node)
 
-        [expr_type, locals]
+        truthy_ivar_type = truthy_type(ivar_type, node: node)
+        falsy_ivar_type = falsy_type(ivar_type, node: node)
+
+        case node.type
+        when :or_asgn
+          if falsy_ivar_type == nil
+            errors << Error.new("Instance variable on left hand side of ||= is always truthy", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.children[0].location.expression,
+              )
+            ])
+
+            return ivar_type, locals
+          end
+
+          if truthy_ivar_type == nil
+            errors << Error.new("Instance variable on left hand side of ||= is always falsy", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.children[0].location.expression,
+              )
+            ])
+
+            return expr_type, locals
+          end
+
+          return make_union(truthy_ivar_type, expr_type, node: node), locals
+        when :and_asgn
+          if truthy_ivar_type == nil
+            errors << Error.new("Instance variable on left hand side of &&= is always falsy", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.children[0].location.expression,
+              )
+            ])
+
+            return ivar_type, locals
+          end
+
+          if falsy_ivar_type == nil
+            errors << Error.new("Instance variable on left hand side of &&= is always truthy", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.children[0].location.expression,
+              )
+            ])
+
+            return expr_type, locals
+          end
+
+          return make_union(falsy_ivar_type, expr_type, node: node), locals
+        when :ivasgn
+          return expr_type, locals
+        else
+          raise "unknown node type #{node.type} in process_ivasgn"
+        end
       end
 
       def on_masgn(node, locals)
@@ -1995,6 +2055,26 @@ module TypedRuby
 
       def on_and(node, locals)
         process_conditional(node, locals)
+      end
+
+      def process_conditional_asgn(node, locals)
+        lhs, rhs = *node
+
+        case lhs.type
+        when :ivasgn
+          id, = *lhs
+          process_ivasgn(id: id, expr: rhs, locals: locals, node: node)
+        else
+          raise "unknown lhs type #{lhs.type} in process_conditional_asgn"
+        end
+      end
+
+      def on_or_asgn(node, locals)
+        process_conditional_asgn(node, locals)
+      end
+
+      def on_and_asgn(node, locals)
+        process_conditional_asgn(node, locals)
       end
 
       def on_while(node, locals)
