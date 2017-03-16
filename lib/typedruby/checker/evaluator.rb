@@ -280,6 +280,24 @@ module TypedRuby
         end
       end
 
+      class Splat
+        attr_reader :node, :type
+
+        def initialize(node:, type:)
+          @node = node
+          @type = type
+        end
+      end
+
+      class BlockPass
+        attr_reader :node, :type
+
+        def initialize(node:, type:)
+          @node = node
+          @type = type
+        end
+      end
+
       class ProcType
         attr_reader :node, :args, :block, :return_type
 
@@ -1328,7 +1346,7 @@ module TypedRuby
       end
 
       def on_send(node, locals)
-        possible_method_prototypes, locals = process_send(node, locals)
+        possible_method_prototypes, locals = process_send(node, locals, block_node: nil)
 
         return_type = make_union_from_types(possible_method_prototypes.map(&:return_type), node: node)
 
@@ -1336,7 +1354,19 @@ module TypedRuby
       end
 
       def on_block(node, locals)
-        send, block_args, block_body = *node
+        call_node, block_args, block_body = *node
+
+        case call_node.type
+        when :send
+          possible_method_prototypes, locals = process_send(call_node, locals, block_node: node)
+
+          return_type = make_union_from_types(possible_method_prototypes.map(&:return_type), node: node)
+        else
+          raise "unknown call node type #{call_node.type} in on_block"
+        end
+
+        [return_type, locals]
+      end
 
         possible_method_prototypes, locals = process_send(send, locals)
 
@@ -1558,7 +1588,7 @@ module TypedRuby
         [types, locals]
       end
 
-      def process_send(send_node, locals)
+      def process_send(send_node, locals, block_node:)
         recv, mid, *args = *send_node
 
         if recv
@@ -2284,6 +2314,22 @@ module TypedRuby
       def on_retry(node, locals)
         # TODO - need a void type
         [new_type_var(node: node), locals]
+      end
+
+      def on_splat(node, locals)
+        splat, = *node
+
+        splat_type, locals = process(splat, locals)
+
+        [Splat.new(node: node, type: splat_type), locals]
+      end
+
+      def on_block_pass(node, locals)
+        block, = *node
+
+        block_type, locals = process(block, locals)
+
+        [BlockPass.new(node: node, type: block_type), locals]
       end
 
       def validate_static_cpath(node)
