@@ -2407,6 +2407,10 @@ module TypedRuby
         [BlockPass.new(node: node, type: block_type), locals]
       end
 
+      def on_defined?(node, locals)
+        [make_union(nil_type(node: node), new_instance_type(klass: env.String, type_parameters: [], node: node), node: node), locals]
+      end
+
       def validate_static_cpath(node)
         loop do
           left, _ = *node
