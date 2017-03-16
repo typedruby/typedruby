@@ -1428,42 +1428,6 @@ module TypedRuby
         [return_type, locals]
       end
 
-        possible_method_prototypes, locals = process_send(send, locals)
-
-        block_prototype, block_type_context, block_locals = parse_prototype(block_args, locals, type_context: type_context, scope: scope)
-
-        if possible_method_prototypes.any? { |prototype| !prototype.block }
-          block_error_message =
-            if possible_method_prototypes.count > 1
-              "Not all methods possibly invoked here take a block:"
-            else
-              "Method does not take a block:"
-            end
-
-          errors << Error.new(block_error_message, [
-            Error::MessageWithLocation.new(
-              message: "but one was passed",
-              location: node.location.begin.join(node.location.end),
-            )
-          ])
-        else
-          possible_block_types = make_union_from_types(possible_method_prototypes.map(&:block), node: node)
-          unify!(block_prototype, possible_block_types)
-        end
-
-        if block_body
-          block_return_type, _ = process(block_body, block_locals)
-        else
-          block_return_type = nil_type(node: node)
-        end
-
-        unify!(block_return_type, block_prototype.return_type, node: block_body)
-
-        return_type = make_union_from_types(possible_method_prototypes.map(&:return_type), node: node)
-
-        [return_type, locals]
-      end
-
       def on_super(node, locals)
         args = node.children
 
@@ -1640,9 +1604,7 @@ module TypedRuby
       def map_process(nodes, locals)
         types = nodes.map { |node|
           type, locals = process(node, locals)
-          tvar = new_type_var(node: node)
-          unify!(tvar, type)
-          tvar
+          type
         }
 
         [types, locals]
@@ -1669,6 +1631,28 @@ module TypedRuby
             ),
           ])
           possible_prototypes = [untyped_prototype]
+        end
+
+        if block_node
+          _, block_args, block_body = *block_node
+
+          block_prototype, block_type_context, block_locals = parse_prototype(block_args, locals, type_context: type_context, scope: scope)
+
+          assert_compatible!(
+            source: block_prototype,
+            target: make_union_from_types(possible_prototypes.map(&:block), node: block_node),
+            node: block_node,
+          )
+
+          if block_body
+            block_return_type, _ = process(block_body, block_locals)
+          else
+            block_return_type = nil_type(node: block_args)
+          end
+
+          assert_compatible!(source: block_return_type, target: block_prototype.return_type, node: block_node)
+
+          arg_types << BlockPass.new(node: block_node, type: block_prototype)
         end
 
         possible_prototypes.each do |prototype|
@@ -1848,6 +1832,25 @@ module TypedRuby
               location: node.location.expression,
             ),
           ])
+        end
+
+        if arg_types.last.is_a?(BlockPass)
+          block_pass = arg_types.pop
+
+          # TODO - coerce with #to_proc if not a Proc or nil
+
+          if prototype.block
+            assert_compatible!(source: block_pass.type, target: prototype.block, node: node)
+          else
+            errors << Error.new("Block passed to method not accepting one", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: block_pass.node.location.expression,
+              )
+            ])
+          end
+        elsif prototype.block
+          # TODO blow up
         end
 
         if arg_types.count > required_argc && prototype_args.last.is_a?(KeywordHashArg)
