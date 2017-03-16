@@ -113,7 +113,6 @@ module TypedRuby
     def autoload_const(env:, id:, file:, node:)
       if !constants.key?(id)
         autoload_entry = AutoloadEntry.new(file: file, node: node)
-        env.resolver.pending_work << autoload_entry
         constants[id] = autoload_entry
       elsif constants[id].is_a?(AutoloadEntry)
         constants[id].file = file
