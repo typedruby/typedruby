@@ -2396,14 +2396,6 @@ module TypedRuby
         [new_type_var(node: node), locals]
       end
 
-      def on_splat(node, locals)
-        splat, = *node
-
-        splat_type, locals = process(splat, locals)
-
-        [Splat.new(node: node, type: splat_type), locals]
-      end
-
       def on_block_pass(node, locals)
         block, = *node
 
