@@ -670,6 +670,7 @@ class Array::[ElementType] < Object
   def each({ |ElementType element| } &bk) => :self; end
 
   def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
+  alias :collect :map
 
   def include?(ElementType item) => Boolean; end
 
@@ -718,6 +719,7 @@ class Hash::[KeyType, ValueType] < Object
   def empty? => Boolean; end
 
   def map[ProjectedType]({ |KeyType k, ValueType v| => ProjectedType } &) => [ProjectedType]; end
+  alias :collect :map
 
   def keys => [KeyType]; end
 end
