@@ -1327,10 +1327,6 @@ module TypedRuby
         [LocalVariableType.new(node: node, local: name, type: locals[name]), locals]
       end
 
-      def on_splat(node)
-        Type::Splat.new(type: process(node))
-      end
-
       def on_send(node, locals)
         possible_method_prototypes, locals = process_send(node, locals)
 
