@@ -1245,6 +1245,77 @@ module TypedRuby
         end
       end
 
+      def process_lvasgn(id:, expr:, locals:, node:)
+        expr_type, locals = process(expr, locals)
+
+        local_type = locals[id]
+
+        if !local_type
+          local_type = nil_type(node: node)
+          locals = locals.assign(name: id, type: local_type)
+        end
+
+        truthy_local_type = truthy_type(local_type, node: node)
+        falsy_local_type = falsy_type(local_type, node: node)
+
+        case node.type
+        when :or_asgn
+          if falsy_local_type == nil
+            errors << Error.new("Local variable on left hand side of ||= is always truthy", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.children[0].location.expression,
+              )
+            ])
+
+            return local_type, locals
+          end
+
+          if truthy_local_type == nil
+            errors << Error.new("Local variable on left hand side of ||= is always falsy", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.children[0].location.expression,
+              )
+            ])
+
+            return expr_type, locals.assign(name: id, type: expr_type)
+          end
+
+          local_type = make_union(truthy_local_type, expr_type, node: node)
+          return local_type, locals.assign(name: id, type: local_type)
+        when :and_asgn
+          if truthy_local_type == nil
+            errors << Error.new("Local variable on left hand side of &&= is always falsy", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.children[0].location.expression,
+              )
+            ])
+
+            return local_type, locals
+          end
+
+          if falsy_local_type == nil
+            errors << Error.new("Local variable on left hand side of &&= is always truthy", [
+              Error::MessageWithLocation.new(
+                message: "here",
+                location: node.children[0].location.expression,
+              )
+            ])
+
+            return expr_type, locals.assign(name: id, type: expr_type)
+          end
+
+          local_type = make_union(falsy_ivar_type, expr_type, node: node)
+          return local_type, locals.assign(name: id, type: local_type)
+        when :lvasgn
+          return expr_type, locals
+        else
+          raise "unknown node type #{node.type} in process_lvasgn"
+        end
+      end
+
       def on_masgn(node, locals)
         lhs, rhs = *node
 
@@ -2067,6 +2138,9 @@ module TypedRuby
         when :ivasgn
           id, = *lhs
           process_ivasgn(id: id, expr: rhs, locals: locals, node: node)
+        when :lvasgn
+          id, = *lhs
+          process_lvasgn(id: id, expr: rhs, locals: locals, node: node)
         else
           raise "unknown lhs type #{lhs.type} in process_conditional_asgn"
         end
