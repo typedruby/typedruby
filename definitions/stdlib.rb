@@ -22,6 +22,8 @@ module Kernel
   def __dir__ => String; end
 
   def is_a?(Class k) => Boolean; end
+
+  def proc[T](T &) => T; end
 end
 
 class Object < BasicObject
