@@ -1953,24 +1953,24 @@ module TypedRuby
 
         while arg_types.any? && prototype_args.first.is_a?(RequiredArg)
           arg_type = arg_types.shift
-          assert_compatible!(source: arg_type, target: prototype_args.shift.type, node: nil)
+          assert_compatible!(source: arg_type, target: prototype_args.shift.type, node: node)
         end
 
         while arg_types.any? && prototype_args.last.is_a?(RequiredArg)
           arg_type = arg_types.pop
-          assert_compatible!(source: arg_type, target: prototype_args.pop.type, node: nil)
+          assert_compatible!(source: arg_type, target: prototype_args.pop.type, node: node)
         end
 
         while arg_types.any? && prototype_args.first.is_a?(OptionalArg)
           arg_type = arg_types.shift
-          assert_compatible!(source: arg_type, target: prototype_args.shift.type, node: nil)
+          assert_compatible!(source: arg_type, target: prototype_args.shift.type, node: node)
         end
 
         if prototype_args.first.is_a?(RestArg)
           rest_arg_type = prune(prototype_args.first.type)
 
           arg_types.each do |arg_type|
-            assert_compatible!(source: arg_type, target: rest_arg_type, node: nil)
+            assert_compatible!(source: arg_type, target: rest_arg_type, node: node)
           end
         else
           if arg_types.any?
