@@ -762,7 +762,11 @@ module TypedRuby
     end
 
     def resolve_cpath(node)
-      env.resolve_cpath(node: node, scope: scope)
+      if node.type == :self
+        scope.mod
+      else
+        env.resolve_cpath(node: node, scope: scope)
+      end
     rescue NoConstantError => e
       raise Error, e
     end
