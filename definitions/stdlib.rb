@@ -110,6 +110,8 @@ class File < IO
   def self.file?(String file) => Boolean; end
 
   def self.rename(String old_name, String new_name) => Integer; end
+
+  def self.dirname(String path) => String; end
 end
 
 module File::Constants
