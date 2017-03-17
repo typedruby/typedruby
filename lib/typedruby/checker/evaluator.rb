@@ -584,6 +584,14 @@ module TypedRuby
             splat_type: nil,
             post_types: [],
           )
+        when :tr_or
+          a_node, b_node = *node
+
+          make_union(
+            resolve_type(node: a_node, scope: scope, type_context: type_context),
+            resolve_type(node: b_node, scope: scope, type_context: type_context),
+            node: node,
+          )
         else
           raise "unknown type node: #{node.type}"
         end
