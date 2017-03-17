@@ -24,6 +24,10 @@ module Kernel
   def is_a?(Class k) => Boolean; end
 
   def proc[T](T &) => T; end
+
+  # __method__ actually returns ~Symbol, but it will always return Symbol when
+  # called from a method (TypedRuby only type-checks within methods)
+  def __method__ => Symbol; end
 end
 
 class Object < BasicObject
