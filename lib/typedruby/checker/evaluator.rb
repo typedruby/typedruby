@@ -719,7 +719,10 @@ module TypedRuby
         t2 = prune(t2)
 
         if t1.is_a?(TypeVar)
-          if occurs_in_type?(t1, t2)
+          if t1 == t2
+            # already unified
+            t1
+          elsif occurs_in_type?(t1, t2)
             fail_unification!(t1, t2, node: node)
           else
             t1.instance = t2
