@@ -135,10 +135,10 @@ module File::Constants
   SYNC = nil
   DSYNC = nil
   NOFOLLOW = nil
-  LOCK_SH = nil
-  LOCK_EX = nil
-  LOCK_UN = nil
-  LOCK_NB = nil
+  LOCK_SH = (nil : Integer)
+  LOCK_EX = (nil : Integer)
+  LOCK_UN = (nil : Integer)
+  LOCK_NB = (nil : Integer)
   NULL = nil
   FNM_NOESCAPE = nil
   FNM_PATHNAME = nil
