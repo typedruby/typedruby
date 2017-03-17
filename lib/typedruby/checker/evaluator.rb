@@ -916,6 +916,15 @@ module TypedRuby
           true
         elsif target.is_a?(AnyType)
           true
+        elsif source.is_a?(KeywordHashType) && target.is_a?(InstanceType) && target.klass == env.Hash
+          key_type, value_type = target.type_parameters
+          if key_type.is_a?(InstanceType) && key_type.klass == env.Symbol
+            source.keywords.values.all? { |v|
+              same_type?(v, value_type)
+            }
+          else
+            false
+          end
         else
           same_type?(source, target)
         end
