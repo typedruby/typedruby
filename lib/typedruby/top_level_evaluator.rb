@@ -51,6 +51,8 @@ module TypedRuby
           return
         when :include
           process_include(node)
+        when :extend
+          process_extend(node)
         when :module_function
           process_visibility(:private, true, args)
         end
@@ -153,20 +155,28 @@ module TypedRuby
 
     def process_include(node)
       _, _, *args = *node
+      include_into(args, mod: @scope.mod)
+    end
 
+    def process_extend(node)
+      _, _, *args = *node
+      include_into(args, mod: scope.mod.metaklass(env: env))
+    end
+
+    def include_into(args, mod:)
       include_modules = args.map { |arg|
         begin
-          mod = resolve_cpath(arg)
-          raise Error, "not a module" if mod.class != RubyModule
-          mod
+          include_module = resolve_cpath(arg)
+          raise Error, "not a module" if include_module.class != RubyModule
+          include_module
         rescue Error => e
           UI.warn(e.message, node: arg)
           nil
         end
       }.compact
 
-      include_modules.reverse_each do |mod|
-        @scope.mod.include_module(mod)
+      include_modules.reverse_each do |include_module|
+        mod.include_module(include_module)
       end
     end
 
