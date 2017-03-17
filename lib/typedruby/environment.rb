@@ -207,6 +207,8 @@ module TypedRuby
         Type::Proc.new(prototype_node: prototype, scope: scope)
       when :tr_tuple
         Type::Tuple.new(types: node.children.map { |n| resolve_type(node: n, scope: scope, genargs: genargs) })
+      when :tr_or
+        Type::Union.new(types: node.children.map { |n| resolve_type(node: n, scope: scope, genargs: genargs) })
       else
         raise Error, "unexpected type node: #{node.type}"
       end
