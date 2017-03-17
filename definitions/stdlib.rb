@@ -662,6 +662,8 @@ class String < Object
   def start_with?(String prefix) => Boolean; end
 
   def capitalize => String; end
+
+  def []((Integer | Range::[Integer, Integer]) idx) => String; end
 end
 
 class Array::[ElementType] < Object
