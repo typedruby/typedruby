@@ -407,7 +407,7 @@ module TypedRuby
       def process_method_body
         @method_proc_type, @type_context, locals = parse_prototype(method.prototype_node, NullLocal.new,
           type_context: type_context,
-          scope: scope,
+          scope: method.scope,
         )
 
         @type_context.method_type_parameters.each do |name, type_var|
