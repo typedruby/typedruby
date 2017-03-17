@@ -732,6 +732,8 @@ class Hash::[KeyType, ValueType] < Object
   alias :collect :map
 
   def keys => [KeyType]; end
+
+  def delete(KeyType k) => ~ValueType; end
 end
 
 class NilClass < Object
