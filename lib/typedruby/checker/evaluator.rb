@@ -1043,8 +1043,14 @@ module TypedRuby
         elsif type.is_a?(InstanceType)
           if type.klass == env.Boolean
             new_instance_type(node: node, klass: env.FalseClass, type_parameters: [])
-          elsif type.klass == env.NilClass
+          elsif type.klass == env.FalseClass || type.klass == env.NilClass
             type
+          elsif type.klass == env.Object || type.klass == env.BasicObject # superclasses of falsy classes
+            make_union(
+              new_instance_type(node: node, klass: env.FalseClass, type_parameters: []),
+              new_instance_type(node: node, klass: env.NilClass, type_parameters: []),
+              node: node,
+            )
           else
             nil
           end
