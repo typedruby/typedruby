@@ -116,6 +116,8 @@ class File < IO
   def self.rename(String old_name, String new_name) => Integer; end
 
   def self.dirname(String path) => String; end
+
+  def flock(Integer operation) => (FalseClass | Integer); end
 end
 
 module File::Constants
