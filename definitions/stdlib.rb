@@ -674,6 +674,8 @@ class String < Object
   def =~(Regexp pattern) => ~Integer; end
 
   def lines => [String]; end
+
+  def chomp => String; end
 end
 
 class Array::[ElementType] < Object
