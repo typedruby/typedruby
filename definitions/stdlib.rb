@@ -670,6 +670,10 @@ class String < Object
   def capitalize => String; end
 
   def []((Integer | Range::[Integer, Integer]) idx) => String; end
+
+  def =~(Regexp pattern) => ~Integer; end
+
+  def lines => [String]; end
 end
 
 class Array::[ElementType] < Object
@@ -713,6 +717,10 @@ class Array::[ElementType] < Object
   # TODO implement type constraints so that compact can be typed something like:
   # def compact[NonNullType : ~NonNullType = ElementType] => [NonNullType]; end
   def compact => [ElementType]; end
+
+  def empty? => Boolean; end
+
+  def uniq => [ElementType]; end
 end
 
 class Hash::[KeyType, ValueType] < Object
