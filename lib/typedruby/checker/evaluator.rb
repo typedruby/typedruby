@@ -2511,6 +2511,20 @@ module TypedRuby
         [make_union(nil_type(node: node), new_instance_type(klass: env.String, type_parameters: [], node: node), node: node), locals]
       end
 
+      def on_nth_ref(node, locals)
+        type = make_union(
+          nil_type(node: node),
+          new_instance_type(
+            klass: env.String,
+            type_parameters: [],
+            node: node,
+          ),
+          node: node,
+        )
+
+        [type, locals]
+      end
+
       def validate_static_cpath(node)
         loop do
           left, _ = *node
