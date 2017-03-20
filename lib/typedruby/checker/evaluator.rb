@@ -1916,6 +1916,124 @@ module TypedRuby
         end
       end
 
+      def infer_symbol_as_proc_type(symbol_node, prototype:)
+        method_id, = *symbol_node
+
+        prototype_block_type = prototype.block
+
+        if prototype_block_type.is_a?(UnionType)
+          non_nil_types = prototype_block_type.types.reject { |ty| ty.is_a?(InstanceType) && ty.klass == env.NilClass }
+
+          if non_nil_types.count != 1
+            errors << Error.new("I can't infer the type for the symbol-as-proc", [
+              Error::MessageWithLocation.new(
+                message: "passed here",
+                location: symbol_node.location.expression,
+              ),
+              Error::MessageWithLocation.new(
+                message: "because the block type defined in the method prototype is too complex",
+                location: prototype_block_type.node.location.expression,
+              ),
+            ])
+
+            return new_type_var(node: symbol_node)
+          end
+
+          prototype_block_type = non_nil_types.first
+        end
+
+        if !prototype_block_type.is_a?(ProcType)
+          errors << Error.new("I can't infer the type for the symbol-as-proc", [
+            Error::MessageWithLocation.new(
+              message: "passed here",
+              location: symbol_node.location.expression,
+            ),
+            Error::MessageWithLocation.new(
+              message: "because the block type defined in the method prototype is not a proc type",
+              location: prototype_block_type.node.location.expression,
+            ),
+          ])
+
+          return new_type_var(node: symbol_node)
+        end
+
+        # prototype.block is checked for nil in caller
+        # (match_prototype_with_arguments)
+        if prototype_block_type.args.count == 0
+          errors << Error.new("I can't infer the type for the symbol-as-proc", [
+            Error::MessageWithLocation.new(
+              message: "passed here",
+              location: symbol_node.location.expression,
+            ),
+            Error::MessageWithLocation.new(
+              message: "because the block type defined in the method prototype takes no arguments",
+              location: prototype_block_type.node.location.expression,
+            ),
+          ])
+
+          return new_type_var(node: symbol_node)
+        end
+
+        recv_arg, *rest_args = prototype_block_type.args
+
+        invokee_proc_type = ProcType.new(
+          node: symbol_node,
+          args: rest_args,
+          block: prototype_block_type.block,
+          return_type: prototype_block_type.return_type,
+        )
+
+        prototypes = possible_prototypes_for_invocation(recv_type: recv_arg.type, mid: method_id, send_node: symbol_node, recv_node: recv_arg.node)
+
+        if prototypes
+          prototypes.each do |prototype|
+            assert_compatible!(source: prototype, target: invokee_proc_type, node: symbol_node)
+          end
+        else
+          errors << Error.new("Could not resolve method ##{method_id} on #{recv_arg.type.describe}", [
+            Error::MessageWithLocation.new(
+              message: "in this symbol-as-proc",
+              location: symbol_node.location.expression,
+            ),
+          ])
+        end
+
+        prototype_block_type
+      end
+
+      def block_type_from_block_pass(block_pass, prototype:)
+        block_type = prune(block_pass.type)
+
+        if block_type.is_a?(ProcType)
+          return block_type
+        end
+
+        if block_type.is_a?(InstanceType)
+          if block_type.klass == env.Proc || block_type.klass == env.NilClass
+            return block_type
+          end
+
+          if block_type.klass == env.Symbol
+            passed_node, = *block_pass.node
+
+            if passed_node.type == :sym
+              return infer_symbol_as_proc_type(passed_node, prototype: prototype)
+            else
+              errors << Error.new("Expected symbol literal in block pass", [
+                Error::MessageWithLocation.new(
+                  message: "but an expression evaluating to a Symbol instance was passed instead",
+                  location: passed_node.location.expression,
+                )
+              ])
+              return new_type_var(node: passed_node)
+            end
+          end
+        end
+
+        # TODO - call to_proc on the type and see what we get back
+        raise "TODO"
+      end
+
       def match_prototype_with_arguments(prototype, arg_types, node:)
         arg_types = arg_types.dup
         prototype_args = prototype.args.dup
@@ -1934,10 +2052,10 @@ module TypedRuby
         if arg_types.last.is_a?(BlockPass)
           block_pass = arg_types.pop
 
-          # TODO - coerce with #to_proc if not a Proc or nil
-
           if prototype.block
-            assert_compatible!(source: block_pass.type, target: prototype.block, node: node)
+            block_type = block_type_from_block_pass(block_pass, prototype: prototype)
+
+            assert_compatible!(source: block_type, target: prototype.block, node: node)
           else
             errors << Error.new("Block passed to method not accepting one", [
               Error::MessageWithLocation.new(
