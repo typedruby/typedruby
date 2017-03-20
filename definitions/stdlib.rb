@@ -709,6 +709,10 @@ class Array::[ElementType] < Object
   def size => Integer; end
 
   def length => Integer; end
+
+  # TODO implement type constraints so that compact can be typed something like:
+  # def compact[NonNullType : ~NonNullType = ElementType] => [NonNullType]; end
+  def compact => [ElementType]; end
 end
 
 class Hash::[KeyType, ValueType] < Object
