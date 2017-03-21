@@ -682,6 +682,8 @@ class String < Object
   def lines => [String]; end
 
   def chomp => String; end
+
+  def downcase => String; end
 end
 
 class Array::[ElementType] < Object
@@ -693,6 +695,13 @@ class Array::[ElementType] < Object
 
   def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
   alias :collect :map
+
+  def reduce[ReduceType](ReduceType initial, { |ReduceType accumulator, ElementType element| => ReduceType } &) => ReduceType; end
+  alias :inject :reduce
+
+  def select({ |ElementType element| => Boolean } &) => [ElementType]; end
+
+  def reject({ |ElementType element| => Boolean } &) => [ElementType]; end
 
   def include?(ElementType item) => Boolean; end
 
@@ -736,9 +745,21 @@ class Hash::[KeyType, ValueType] < Object
 
   include Enumerable
 
-  def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
+  def map[ProjectedType]({ |KeyType k, ValueType v| => ProjectedType } &) => [ProjectedType]; end
+  alias :collect :map
+
+  def reduce[ReduceType](ReduceType initial, { |ReduceType accumulator, [KeyType, ValueType] kv| => ReduceType } &) => ReduceType; end
+  alias :inject :reduce
+
+  def select({ |KeyType k, ValueType v| => Boolean } &) => Hash::[KeyType, ValueType]; end
 
   def reject({ |KeyType k, ValueType v| => Boolean } &) => Hash::[KeyType, ValueType]; end
+
+  def all?({ |KeyType k, ValueType v| => Boolean } &) => Boolean; end
+
+  def any?({ |KeyType k, ValueType v| => Boolean } &) => Boolean; end
+
+  def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
 
   def fetch(KeyType k, ~{ || => ValueType } &) => ValueType; end
 
@@ -750,10 +771,9 @@ class Hash::[KeyType, ValueType] < Object
 
   def empty? => Boolean; end
 
-  def map[ProjectedType]({ |KeyType k, ValueType v| => ProjectedType } &) => [ProjectedType]; end
-  alias :collect :map
-
   def keys => [KeyType]; end
+
+  def values => [ValueType]; end
 
   def delete(KeyType k) => ~ValueType; end
 end
