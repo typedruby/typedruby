@@ -1942,6 +1942,10 @@ module TypedRuby
           prototype_block_type = non_nil_types.first
         end
 
+        if prototype_block_type.is_a?(AnyType)
+          return AnyType.new(node: symbol_node)
+        end
+
         if !prototype_block_type.is_a?(ProcType)
           errors << Error.new("I can't infer the type for the symbol-as-proc", [
             Error::MessageWithLocation.new(
