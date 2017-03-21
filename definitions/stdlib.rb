@@ -685,11 +685,11 @@ class String < Object
 end
 
 class Array::[ElementType] < Object
+  def each({ |ElementType element| => :any } &bk) => :self; end
+
   include Enumerable
 
   def <<(ElementType item) => :self; end
-
-  def each({ |ElementType element| } &bk) => :self; end
 
   def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
   alias :collect :map
@@ -732,6 +732,8 @@ class Array::[ElementType] < Object
 end
 
 class Hash::[KeyType, ValueType] < Object
+  def each({ |KeyType k, ValueType v| => :any } &) => :self; end
+
   include Enumerable
 
   def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
