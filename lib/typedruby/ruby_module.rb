@@ -201,7 +201,7 @@ module TypedRuby
     end
 
     def undefine_method(id:)
-      method_entry(id).undefine
+      methods.delete(id)
     end
 
     def alias_method(to_id:, from_id:)
