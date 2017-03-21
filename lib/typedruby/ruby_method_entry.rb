@@ -22,9 +22,5 @@ module TypedRuby
 
       definitions << method
     end
-
-    def undefine
-      raise Error, "undefine not implemented"
-    end
   end
 end
