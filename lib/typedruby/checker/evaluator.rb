@@ -2649,7 +2649,7 @@ module TypedRuby
 
           if left.nil?
             return true
-          elsif node.type == :cbase
+          elsif left.type == :cbase
             return true
           elsif left.type == :const
             node = left
