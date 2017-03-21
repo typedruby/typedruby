@@ -25,9 +25,13 @@ module Kernel
 
   def proc[T](T &) => T; end
 
+  def lambda[T](T &) => T; end
+
   # __method__ actually returns ~Symbol, but it will always return Symbol when
   # called from a method (TypedRuby only type-checks within methods)
   def __method__ => Symbol; end
+
+  def loop({ || => :any } &) => nil; end
 end
 
 class Object < BasicObject
