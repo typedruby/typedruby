@@ -117,6 +117,8 @@ class File < IO
 
   def self.dirname(String path) => String; end
 
+  def self.basename(String path, ~String ext = nil) => String; end
+
   def flock(Integer operation) => (FalseClass | Integer); end
 end
 
@@ -1121,6 +1123,8 @@ end
 class Thread::Mutex < Object
 end
 
+Mutex = Thread::Mutex
+
 class Thread::Queue < Object
 end
 
@@ -1924,6 +1928,8 @@ end
 
 class Dir < Object
   include Enumerable
+
+  def self.[](String pattern) => [String]; end
 end
 
 class ThreadError < StandardError
