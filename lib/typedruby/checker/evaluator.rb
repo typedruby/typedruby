@@ -1691,6 +1691,18 @@ module TypedRuby
           arg_name, expr = *arg_node
           locals = locals.assign(name: arg_name, type: type)
           argument = OptionalKeywordArg.new(node: arg_node, name: arg_name, type: type, expr: expr)
+        when :mlhs
+          args = arg_node.children.map { |n|
+            arg, locals = parse_argument(n, locals, type_context: type_context, scope: scope)
+            arg
+          }
+
+          unless args.all? { |arg| arg.is_a?(RequiredArg) }
+            raise "implement other argument types in mlhs"
+          end
+
+          unify!(type, TupleType.new(node: arg_node, lead_types: args.map(&:type), splat_type: nil, post_types: []))
+          argument = RequiredArg.new(node: arg_node, type: type)
         else
           raise "unknown arg type: #{arg_node.type}"
         end
