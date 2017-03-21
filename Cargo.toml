@@ -1,0 +1,6 @@
+[package]
+name = "rust-ruby-parser"
+version = "0.1.0"
+authors = ["Charlie Somerville <charlie@charlie.bz>"]
+
+[dependencies]
