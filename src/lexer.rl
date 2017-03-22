@@ -198,6 +198,18 @@ struct ruby_lexer_state_t {
     }
   }
 
+  void lexpop(std::stack<bool>& state_stack) {
+    bool top = state_stack.top();
+    state_stack.pop();
+
+    if (!top) {
+      top = state_stack.top();
+      state_stack.pop();
+    }
+
+    state_stack.push(top);
+  }
+
   int stack_pop() {
     return stack[--top];
   }
@@ -2414,16 +2426,15 @@ struct ruby_lexer_state_t {
 
       e_rbrace | e_rparen | ']'
       => {
-        /* TODO
-        emit_table(PUNCTUATION)
-        @cond.lexpop; @cmdarg.lexpop
+        /* TODO emit_table(PUNCTUATION) */
+        lexpop(cond); lexpop(cmdarg);
 
-        if RBRACE_OR_RBRACK.include?(tok)
+        if (ts[0] == '}' || ts[0] == ']') {
           fnext expr_endarg;
-        else # )
-          # fnext expr_endfn; ?
-        end
-        */
+        } else { // ')'
+          // this was commented out in the original lexer.rl:
+          // fnext expr_endfn; ?
+        }
 
         fbreak;
       };
