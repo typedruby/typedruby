@@ -1483,7 +1483,7 @@ struct ruby_lexer_state_t {
            fnext expr_endfn; fbreak; };
 
       global_var
-      => { /* TODO p = @ts - 1 */
+      => { p = ts - 1;
            fnext expr_end; fcall expr_variable; };
 
       # If the handling was to be delegated to expr_end,
@@ -1628,11 +1628,9 @@ struct ruby_lexer_state_t {
       # Ternary operator
       '?' c_space_nl
       => {
-        /* TODO
-        # Unlike expr_beg as invoked in the next rule, do not warn
-        p = @ts - 1
+        // Unlike expr_beg as invoked in the next rule, do not warn
+        p = ts - 1;
         fgoto expr_end;
-        */
       };
 
       # a ?b, a? ?
@@ -1683,7 +1681,7 @@ struct ruby_lexer_state_t {
       => { fhold; fgoto expr_beg; };
 
       w_space+ label
-      => { /* TODO p = @ts - 1; */ fgoto expr_beg; };
+      => { p = ts - 1; fgoto expr_beg; };
 
       #
       # AMBIGUOUS TOKENS RESOLVED VIA EXPR_END
@@ -1704,7 +1702,7 @@ struct ruby_lexer_state_t {
       # Miscellanea.
       w_space* punctuation_end
       => {
-        /* TODO p = @ts - 1 */
+        p = ts - 1;
         fgoto expr_end;
       };
 
@@ -1757,7 +1755,7 @@ struct ruby_lexer_state_t {
       # Disambiguate with the `do' rule above.
       w_space* bareword |
       w_space* label
-      => { /* TODO p = @ts - 1 */
+      => { p = ts - 1;
            fgoto expr_arg; };
 
       c_eof => do_eof;
@@ -1813,7 +1811,7 @@ struct ruby_lexer_state_t {
            fnext expr_beg; fbreak; };
 
       bareword
-      => { /* TODO p = @ts - 1; */ fgoto expr_beg; };
+      => { p = ts - 1; fgoto expr_beg; };
 
       w_space_comment;
 
@@ -1951,8 +1949,8 @@ struct ruby_lexer_state_t {
       => {
         /* TODO
         emit(:tSYMBOL, tok(@ts + 1), @ts)
-        fnext expr_end; fbreak;
         */
+        fnext expr_end; fbreak;
       };
 
       #
@@ -1989,8 +1987,8 @@ struct ruby_lexer_state_t {
                    "\v" => '\v', "\f" => '\f' }[@source_buffer.slice(@ts + 1)]
         diagnostic :warning, :invalid_escape_use, { :escape => escape }, range
 
-        p = @ts - 1
         */
+        p = ts - 1;
         fgoto expr_end;
       };
 
@@ -2004,9 +2002,7 @@ struct ruby_lexer_state_t {
       # f ?aa : b: Disambiguate with a character literal.
       '?' [A-Za-z_] bareword
       => {
-        /* TODO
-        p = @ts - 1
-        */
+        p = ts - 1;
         fgoto expr_end;
       };
 
@@ -2091,7 +2087,7 @@ struct ruby_lexer_state_t {
       bareword ambiguous_ident_suffix |
       # def foo:   Disambiguate with bareword rule below.
       keyword
-      => { /* TODO p = @ts - 1 */
+      => { p = ts - 1;
            fgoto expr_end; };
 
       # a = 42;     a [42]: Indexing.
@@ -2106,7 +2102,7 @@ struct ruby_lexer_state_t {
       w_any;
 
       e_heredoc_nl '=begin' ( c_space | c_nl_zlen )
-      => { /* TODO p = @ts - 1 */
+      => { p = ts - 1;
            fgoto line_begin; };
 
       #
@@ -2119,7 +2115,7 @@ struct ruby_lexer_state_t {
       operator_rest              |
       punctuation_end            |
       c_any
-      => { /* TODO p = @ts - 1; */ fgoto expr_end; };
+      => { p = ts - 1; fgoto expr_end; };
 
       c_eof => do_eof;
   *|;
@@ -2149,7 +2145,7 @@ struct ruby_lexer_state_t {
   expr_value := |*
       # a:b: a(:b), a::B, A::B
       label (any - ':')
-      => { /* TODO p = @ts - 1 */
+      => { p = ts - 1;
            fgoto expr_end; };
 
       # "bar", 'baz'
@@ -2389,7 +2385,7 @@ struct ruby_lexer_state_t {
            p = tm - 1; fbreak; };
 
       global_var | class_var_v | instance_var_v
-      => { /* TODO p = @ts - 1; */ fcall expr_variable; };
+      => { p = ts - 1; fcall expr_variable; };
 
       #
       # METHOD CALLS
