@@ -138,6 +138,93 @@ typedef enum {
 }
 ruby_num_xfrm_t;
 
+enum ruby_literal_type_t {
+  LIT_SQUOTE_STRING,
+  LIT_SQUOTE_HEREDOC,
+  LIT_LOWERQ_STRING,
+  LIT_DQUOTE_STRING,
+  LIT_DQUOTE_HEREDOC,
+  LIT_PERCENT_STRING,
+  LIT_UPPERQ_STRING,
+  LIT_LOWERW_WORDS,
+  LIT_UPPERW_WORDS,
+  LIT_LOWERI_SYMBOLS,
+  LIT_UPPERI_SYMBOLS,
+  LIT_SQUOTE_SYMBOL,
+  LIT_LOWERS_SYMBOL,
+  LIT_DQUOTE_SYMBOL,
+  LIT_SLASH_REGEXP,
+  LIT_PERCENT_REGEXP,
+  LIT_LOWERX_XSTRING,
+  LIT_BACKTICK_XSTRING,
+  LIT_BACKTICK_HEREDOC,
+};
+
+struct ruby_literal_t {
+  ruby_literal_type_t str_type;
+  const char* str_s;
+  std::string start_delim;
+  std::string end_delim;
+  const char* heredoc_e;
+  bool indent;
+  bool dedent_body;
+  bool label_allowed;
+
+  ruby_literal_t(ruby_literal_type_t str_type, std::string delimiter, const char* str_s, const char* heredoc_e = NULL, bool indent = false, bool dedent_body = false, bool label_allowed = false)
+    : str_type(str_type)
+    , str_s(str_s)
+    , heredoc_e(heredoc_e)
+    , indent(indent)
+    , dedent_body(dedent_body)
+    , label_allowed(label_allowed)
+  {
+    if (delimiter == "(") {
+      start_delim = "(";
+      end_delim = ")";
+    } else if (delimiter == "[") {
+      start_delim = "[";
+      end_delim = "]";
+    } else if (delimiter == "{") {
+      start_delim = "{";
+      end_delim = "}";
+    } else if (delimiter == "<") {
+      start_delim = "<";
+      end_delim = ">";
+    } else {
+      start_delim = "";
+      end_delim = delimiter;
+    }
+  }
+
+  bool words() const {
+    return str_type == LIT_UPPERW_WORDS
+        || str_type == LIT_LOWERW_WORDS
+        || str_type == LIT_UPPERI_SYMBOLS
+        || str_type == LIT_LOWERI_SYMBOLS
+        ;
+  }
+
+  bool backslash_delimited() const {
+    return end_delim == "\\";
+  }
+
+  bool interpolate() const {
+    return str_type == LIT_DQUOTE_STRING
+        || str_type == LIT_DQUOTE_HEREDOC
+        || str_type == LIT_PERCENT_STRING
+        || str_type == LIT_UPPERQ_STRING
+        || str_type == LIT_UPPERW_WORDS
+        || str_type == LIT_UPPERI_SYMBOLS
+        || str_type == LIT_DQUOTE_SYMBOL
+        || str_type == LIT_SLASH_REGEXP
+        || str_type == LIT_PERCENT_REGEXP
+        || str_type == LIT_LOWERX_XSTRING
+        || str_type == LIT_BACKTICK_XSTRING
+        || str_type == LIT_BACKTICK_HEREDOC
+        ;
+  }
+};
+
 struct ruby_lexer_state_t {
 
   ruby_version_t version;
@@ -147,6 +234,7 @@ struct ruby_lexer_state_t {
   std::stack<bool> cond;
   std::stack<bool> cmdarg;
   std::stack<ruby_env_t> static_env;
+  std::stack<ruby_literal_t> literal_stack;
   std::queue<ruby_token_t> token_queue;
 
   int cs;
@@ -411,32 +499,6 @@ struct ruby_lexer_state_t {
     :plain_words   => lex_en_plain_string,
   }
 
-  def state
-    LEX_STATES.invert.fetch(@cs, @cs)
-  end
-
-  def state=(state)
-    @cs = LEX_STATES.fetch(state)
-  end
-
-  def push_cmdarg
-    @cmdarg_stack.push(@cmdarg)
-    @cmdarg = StackState.new("cmdarg.#{@cmdarg_stack.count}")
-  end
-
-  def pop_cmdarg
-    @cmdarg = @cmdarg_stack.pop
-  end
-
-  def push_cond
-    @cond_stack.push(@cond)
-    @cond = StackState.new("cond.#{@cond_stack.count}")
-  end
-
-  def pop_cond
-    @cond = @cond_stack.pop
-  end
-
   def dedent_level
     # We erase @dedent_level as a precaution to avoid accidentally
     # using a stale value.
@@ -461,6 +523,8 @@ struct ruby_lexer_state_t {
     const char* eof = _pe;
 
     const char* tm = NULL;
+    const char* heredoc_e = NULL;
+    const char* new_herebody_s = NULL;
 
     %% write exec;
 
@@ -597,7 +661,47 @@ struct ruby_lexer_state_t {
   #
   # === LITERAL STACK ===
   #
+*/
 
+  //
+  // === LITERAL STACK ===
+  //
+
+  int push_literal(ruby_literal_t literal) {
+    literal_stack.push(literal);
+
+    if (literal.words() && literal.backslash_delimited()) {
+      if (literal.interpolate()) {
+        return lex_en_interp_backslash_delimited_words;
+      } else {
+        return lex_en_plain_backslash_delimited_words;
+      }
+    } else if (literal.words() && !literal.backslash_delimited()) {
+      if (literal.interpolate()) {
+        return lex_en_interp_words;
+      } else {
+        return lex_en_plain_words;
+      }
+    } else if (!literal.words() && literal.backslash_delimited()) {
+      if (literal.interpolate()) {
+        return lex_en_interp_backslash_delimited;
+      } else {
+        return lex_en_plain_backslash_delimited;
+      }
+    } else {
+      if (literal.interpolate()) {
+        return lex_en_interp_string;
+      } else {
+        return lex_en_plain_string;
+      }
+    }
+  }
+
+  ruby_literal_t& literal() {
+    return literal_stack.top();
+  }
+
+/*
   def push_literal(*args)
     new_literal = Literal.new(self, *args)
     @literal_stack.push(new_literal)
@@ -1551,15 +1655,12 @@ struct ruby_lexer_state_t {
 
       '%s' c_any
       => {
-        /* TODO
-        if version?(23)
-          type, delimiter = tok[0..-2], tok[-1].chr
-          fgoto *push_literal(type, delimiter, @ts);
-        else
-          p = @ts - 1
+        if (version == RUBY_23) {
+          fgoto *push_literal(ruby_literal_t(LIT_LOWERS_SYMBOL, std::string(ts + 2, 1), ts));
+        } else {
+          p = ts - 1;
           fgoto expr_end;
-        end
-        */
+        }
       };
 
       w_any;
@@ -1902,28 +2003,48 @@ struct ruby_lexer_state_t {
       # /=/ (disambiguation with /=)
       '/' c_any
       => {
-        /* TODO
-        type = delimiter = tok[0].chr
-        fhold; fgoto *push_literal(type, delimiter, @ts);
-        */
+        fhold; fgoto *push_literal(ruby_literal_t(LIT_SLASH_REGEXP, std::string(ts + 0, 1), ts));
       };
 
       # %<string>
       '%' ( any - [A-Za-z] )
       => {
-        /* TODO
-        type, delimiter = @source_buffer.slice(@ts).chr, tok[-1].chr
-        fgoto *push_literal(type, delimiter, @ts);
-        */
+        fgoto *push_literal(ruby_literal_t(LIT_PERCENT_STRING, std::string(ts + 1, 1), ts));
       };
 
       # %w(we are the people)
       '%' [A-Za-z]+ c_any
       => {
-        /* TODO
-        type, delimiter = tok[0..-2], tok[-1].chr
-        fgoto *push_literal(type, delimiter, @ts);
-        */
+        ruby_literal_type_t type;
+
+        bool single_char_type = (ts + 3 == te);
+
+        if (single_char_type && ts[1] == 'q') {
+          type = LIT_LOWERQ_STRING;
+        } else if (single_char_type && ts[1] == 'Q') {
+          type = LIT_UPPERQ_STRING;
+        } else if (single_char_type && ts[1] == 'w') {
+          type = LIT_LOWERW_WORDS;
+        } else if (single_char_type && ts[1] == 'W') {
+          type = LIT_UPPERW_WORDS;
+        } else if (single_char_type && ts[1] == 'i') {
+          type = LIT_LOWERI_SYMBOLS;
+        } else if (single_char_type && ts[1] == 'I') {
+          type = LIT_UPPERI_SYMBOLS;
+        } else if (single_char_type && ts[1] == 's') {
+          type = LIT_LOWERS_SYMBOL;
+        } else if (single_char_type && ts[1] == 'r') {
+          type = LIT_PERCENT_REGEXP;
+        } else if (single_char_type && ts[1] == 'x') {
+          type = LIT_LOWERX_XSTRING;
+        } else {
+          /* TODO
+          diagnostic :error, :unexpected_percent_str,
+                 { :type => str_type }, @lexer.send(:range, ts, te - 1)
+          */
+        }
+
+        fgoto *push_literal(ruby_literal_t(type, std::string(te - 1, 1), ts));
       };
 
       '%' c_eof
@@ -1941,28 +2062,63 @@ struct ruby_lexer_state_t {
         ( '"' ( c_line - '"' )* '"'
         | "'" ( c_line - "'" )* "'"
         | "`" ( c_line - "`" )* "`"
-        | bareword ) % { /* TODO heredoc_e      = p */ }
-        c_line* c_nl % { /* TODO new_herebody_s = p */ }
+        | bareword ) % { heredoc_e      = p; }
+        c_line* c_nl % { new_herebody_s = p; }
       => {
-        /* TODO
-        tok(@ts, heredoc_e) =~ /^<<(-?)(~?)(["'`]?)(.*)\3$/
+        bool indent;
+        bool dedent_body;
 
-        indent      = !$1.empty? || !$2.empty?
-        dedent_body = !$2.empty?
-        type        =  $3.empty? ? '<<"'.freeze : ('<<'.freeze + $3)
-        delimiter   =  $4
+        const char* delim_s = ts + 2;
+        const char* delim_e = heredoc_e;
 
-        if dedent_body && version?(18, 19, 20, 21, 22)
-          emit(:tLSHFT, '<<'.freeze, @ts, @ts + 2)
-          p = @ts + 1
+        if (*delim_s == '-') {
+          indent = true;
+          dedent_body = false;
+          delim_s++;
+        } else if (*delim_s == '~') {
+          indent = true;
+          dedent_body = true;
+          delim_s++;
+        } else {
+          indent = false;
+          dedent_body = false;
+        }
+
+        ruby_literal_type_t type;
+
+        if (*delim_s == '"') {
+          type = LIT_DQUOTE_HEREDOC;
+          delim_s++;
+          delim_e--;
+        } else if (*delim_s == '\'') {
+          type = LIT_SQUOTE_HEREDOC;
+          delim_s++;
+          delim_e--;
+        } else if (*delim_s == '`') {
+          type = LIT_BACKTICK_HEREDOC;
+          delim_s++;
+          delim_e--;
+        } else {
+          type = LIT_DQUOTE_HEREDOC;
+        }
+
+        if (dedent_body && (version == RUBY_18 ||
+                            version == RUBY_19 ||
+                            version == RUBY_20 ||
+                            version == RUBY_21 ||
+                            version == RUBY_22)) {
+          /* TODO emit(:tLSHFT, '<<'.freeze, @ts, @ts + 2) */
+          p = ts + 1;
           fnext expr_beg; fbreak;
-        else
-          fnext *push_literal(type, delimiter, @ts, heredoc_e, indent, dedent_body);
+        } else {
+          fnext *push_literal(ruby_literal_t(type, std::string(delim_s, (size_t)(delim_e - delim_s)), ts, heredoc_e, indent, dedent_body));
 
-          @herebody_s ||= new_herebody_s
-          p = @herebody_s - 1
-        end
-        */
+          if (!herebody_s) {
+            herebody_s = new_herebody_s;
+          }
+
+          p = herebody_s - 1;
+        }
       };
 
       #
@@ -1972,10 +2128,15 @@ struct ruby_lexer_state_t {
       # :"bar", :'baz'
       ':' ['"] # '
       => {
-        /* TODO
-        type, delimiter = tok, tok[-1].chr
-        fgoto *push_literal(type, delimiter, @ts);
-        */
+        ruby_literal_type_t type;
+
+        if (ts[1] == '\'') {
+          type = LIT_SQUOTE_SYMBOL;
+        } else { // '"'
+          type = LIT_DQUOTE_SYMBOL;
+        }
+
+        fgoto *push_literal(ruby_literal_t(type, std::string(ts + 1, 1), ts));
       };
 
       ':' bareword ambiguous_symbol_suffix
@@ -2006,21 +2167,13 @@ struct ruby_lexer_state_t {
           | (c_any - c_space_nl - e_bs) % { /* TODO @escape = nil */ }
           )
       => {
-        /* TODO
-        value = @escape || tok(@ts + 1)
-
-        if version?(18)
-          if defined?(Encoding)
-            emit(:tINTEGER, value.dup.force_encoding(Encoding::BINARY)[0].ord)
-          else
-            emit(:tINTEGER, value[0].ord)
-          end
-        else
-          emit(:tCHARACTER, value)
-        end
+        if (version == RUBY_18) {
+          /* TODO emit(:tINTEGER, ts[1]) */
+        } else {
+          /* TODO emit(:tCHARACTER, @escape || tok(@ts + 1))) */
+        }
 
         fnext expr_end; fbreak;
-        */
       };
 
       '?' c_space_nl
@@ -2193,9 +2346,15 @@ struct ruby_lexer_state_t {
       # "bar", 'baz'
       ['"] # '
       => {
-        /* TODO
-        fgoto *push_literal(tok, tok, @ts);
-        */
+        ruby_literal_type_t type;
+
+        if (ts[0] == '\'') {
+          type = LIT_SQUOTE_STRING;
+        } else { // '"'
+          type = LIT_DQUOTE_STRING;
+        }
+
+        fgoto *push_literal(ruby_literal_t(type, tok_as_string(), ts));
       };
 
       w_space_comment;
@@ -2408,10 +2567,17 @@ struct ruby_lexer_state_t {
       # `echo foo`, "bar", 'baz'
       '`' | ['"] # '
       => {
-        /* TODO
-        type, delimiter = tok, tok[-1].chr
-        fgoto *push_literal(type, delimiter, @ts, nil, false, false, true);
-        */
+        ruby_literal_type_t type;
+
+        if (ts[0] == '`') {
+          type = LIT_BACKTICK_XSTRING;
+        } else if (ts[0] == '\'') {
+          type = LIT_SQUOTE_STRING;
+        } else { // '"'
+          type = LIT_DQUOTE_STRING;
+        }
+
+        fgoto *push_literal(ruby_literal_t(type, std::string(pe - 1, 1), ts, NULL, false, false, true));
       };
 
       #
