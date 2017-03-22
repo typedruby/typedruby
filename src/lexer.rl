@@ -128,6 +128,16 @@ struct ruby_token_t {
 
 typedef std::set<std::string> ruby_env_t;
 
+typedef enum {
+  XFRM_NULL,
+  XFRM_RATIONAL,
+  XFRM_IMAGINARY,
+  XFRM_IMAGINARY_RATIONAL,
+  XFRM_FLOAT,
+  XFRM_IMAGINARY_FLOAT,
+}
+ruby_num_xfrm_t;
+
 struct ruby_lexer_state_t {
 
   ruby_version_t version;
@@ -174,6 +184,11 @@ struct ruby_lexer_state_t {
   // True at the end of "def foo a:"
   bool in_kwarg;
 
+  int num_base;             // last numeric base
+  const char* num_digits_s; // starting position of numeric digits
+  const char* num_suffix_s; // starting position of numeric suffix
+  ruby_num_xfrm_t num_xfrm; // numeric suffix-induced transformation
+
   ruby_lexer_state_t(ruby_version_t version, std::string source_buffer)
     : version(version)
     , source_buffer(source_buffer)
@@ -190,6 +205,10 @@ struct ruby_lexer_state_t {
     , paren_nest(0)
     , command_state(false)
     , in_kwarg(false)
+    , num_base(0)
+    , num_digits_s(NULL)
+    , num_suffix_s(NULL)
+    , num_xfrm(XFRM_NULL)
   {
     // ensure the stack capacity is non-zero so we can just double in
     // check_stack_capacity:
@@ -811,19 +830,19 @@ struct ruby_lexer_state_t {
   flo_pow  = [eE] [+\-]? ( digit+ '_' )* digit+;
 
   int_suffix =
-    ''   % { /* TODO @num_xfrm = lambda { |chars| emit(:tINTEGER,   chars) } */ }
-  | 'r'  % { /* TODO @num_xfrm = lambda { |chars| emit(:tRATIONAL,  Rational(chars)) } */ }
-  | 'i'  % { /* TODO @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, chars)) } */ }
-  | 'ri' % { /* TODO @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, Rational(chars))) } */ };
+    ''   % { num_xfrm = XFRM_NULL; }
+  | 'r'  % { num_xfrm = XFRM_RATIONAL; }
+  | 'i'  % { num_xfrm = XFRM_IMAGINARY; }
+  | 'ri' % { num_xfrm = XFRM_IMAGINARY_RATIONAL; };
 
   flo_pow_suffix =
-    ''   % { /* TODO @num_xfrm = lambda { |chars| emit(:tFLOAT,     Float(chars)) } */ }
-  | 'i'  % { /* TODO @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, Float(chars))) } */ };
+    ''   % { num_xfrm = XFRM_FLOAT; }
+  | 'i'  % { num_xfrm = XFRM_IMAGINARY_FLOAT; };
 
   flo_suffix =
     flo_pow_suffix
-  | 'r'  % { /* TODO @num_xfrm = lambda { |chars| emit(:tRATIONAL,  Rational(chars)) } */ }
-  | 'ri' % { /* TODO @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, Rational(chars))) } */ };
+  | 'r'  % { num_xfrm = XFRM_RATIONAL; }
+  | 'ri' % { num_xfrm = XFRM_IMAGINARY_RATIONAL; };
 
   #
   # === ESCAPE SEQUENCE PARSING ===
@@ -2290,38 +2309,44 @@ struct ruby_lexer_state_t {
       # NUMERIC LITERALS
       #
 
-      ( '0' [Xx] %{ /* TODO @num_base = 16; @num_digits_s = p */ } int_hex
-      | '0' [Dd] %{ /* TODO @num_base = 10; @num_digits_s = p */ } int_dec
-      | '0' [Oo] %{ /* TODO @num_base = 8;  @num_digits_s = p */ } int_dec
-      | '0' [Bb] %{ /* TODO @num_base = 2;  @num_digits_s = p */ } int_bin
-      | [1-9] digit* '_'? %{ /* TODO @num_base = 10; @num_digits_s = @ts */ } int_dec
-      | '0'   digit* '_'? %{ /* TODO @num_base = 8;  @num_digits_s = @ts */ } int_dec
-      ) %{ /* TODO @num_suffix_s = p */ } int_suffix
+      ( '0' [Xx] %{ num_base = 16; num_digits_s = p; } int_hex
+      | '0' [Dd] %{ num_base = 10; num_digits_s = p; } int_dec
+      | '0' [Oo] %{ num_base = 8;  num_digits_s = p; } int_dec
+      | '0' [Bb] %{ num_base = 2;  num_digits_s = p; } int_bin
+      | [1-9] digit* '_'? %{ num_base = 10; num_digits_s = ts; } int_dec
+      | '0'   digit* '_'? %{ num_base = 8;  num_digits_s = ts; } int_dec
+      ) %{ num_suffix_s = p; } int_suffix
       => {
-        /* TODO
-        digits = tok(@num_digits_s, @num_suffix_s)
+        // TODO std::string digits(num_digits_s, (size_t)(num_suffix_s - num_digits_s));
 
-        if digits.end_with? '_'.freeze
+        if (num_suffix_s[-1] == '_') {
+          /* TODO
           diagnostic :error, :trailing_in_number, { :character => '_'.freeze },
                      range(@te - 1, @te)
-        elsif digits.empty? && @num_base == 8 && version?(18)
-          # 1.8 did not raise an error on 0o.
-          digits = '0'.freeze
-        elsif digits.empty?
+          */
+        } else if (num_digits_s == num_suffix_s && num_base == 8 && version == RUBY_18) {
+          // 1.8 did not raise an error on 0o.
+        } else if (num_digits_s == num_suffix_s) {
+          /* TODO
           diagnostic :error, :empty_numeric
-        elsif @num_base == 8 && (invalid_idx = digits.index(/[89]/))
-          invalid_s = @num_digits_s + invalid_idx
-          diagnostic :error, :invalid_octal, nil,
-                     range(invalid_s, invalid_s + 1)
-        end
+          */
+        } else if (num_base == 8) {
+          for (const char* digit_p = num_digits_s; digit_p < num_suffix_s; digit_p++) {
+            if (*digit_p == '8' || *digit_p == '9') {
+              /* TODO
+              diagnostic :error, :invalid_octal, nil,
+                         range(digit_p, digit_p + 1)
+              */
+            }
+          }
+        }
 
-        if version?(18, 19, 20)
-          emit(:tINTEGER, digits.to_i(@num_base), @ts, @num_suffix_s)
-          p = @num_suffix_s - 1
-        else
-          @num_xfrm.call(digits.to_i(@num_base))
-        end
-        */
+        if (version == RUBY_18 || version == RUBY_19 || version == RUBY_20) {
+          /* TODO emit(:tINTEGER, digits.to_i(@num_base), @ts, @num_suffix_s) */
+          p = num_suffix_s - 1;
+        } else {
+          /* TODO @num_xfrm.call(digits.to_i(@num_base)) */
+        }
         fbreak;
       };
 
@@ -2363,20 +2388,18 @@ struct ruby_lexer_state_t {
       };
 
       flo_int
-      ( flo_frac? flo_pow %{ /* TODO @num_suffix_s = p */ } flo_pow_suffix
-      | flo_frac          %{ /* TODO @num_suffix_s = p */ } flo_suffix
+      ( flo_frac? flo_pow %{ num_suffix_s = p; } flo_pow_suffix
+      | flo_frac          %{ num_suffix_s = p; } flo_suffix
       )
       => {
-        /* TODO
-        digits = tok(@ts, @num_suffix_s)
+        /* TODO digits = tok(@ts, @num_suffix_s) */
 
-        if version?(18, 19, 20)
-          emit(:tFLOAT, Float(digits), @ts, @num_suffix_s)
-          p = @num_suffix_s - 1
-        else
-          @num_xfrm.call(digits)
-        end
-        */
+        if (version == RUBY_18 || version == RUBY_19 || version == RUBY_20) {
+          /* TODO emit(:tFLOAT, Float(digits), @ts, @num_suffix_s) */
+          p = num_suffix_s - 1;
+        } else {
+          /* TODO @num_xfrm.call(digits) */
+        }
         fbreak;
       };
 
