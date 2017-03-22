@@ -4,13 +4,13 @@
 #include <stddef.h>
 
 typedef enum {
-  RUBY_18,
-  RUBY_19,
-  RUBY_20,
-  RUBY_21,
-  RUBY_22,
-  RUBY_23,
-  RUBY_24,
+  RUBY_18 = 18,
+  RUBY_19 = 19,
+  RUBY_20 = 20,
+  RUBY_21 = 21,
+  RUBY_22 = 22,
+  RUBY_23 = 23,
+  RUBY_24 = 24,
 }
 ruby_version_t;
 
