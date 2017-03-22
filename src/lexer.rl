@@ -1739,12 +1739,13 @@ struct ruby_lexer_state_t {
       => {
         /* TODO
         emit(:tLPAREN_ARG, '('.freeze, @te - 1, @te)
-        if version?(18)
-          fnext expr_value; fbreak;
-        else
-          fnext expr_beg; fbreak;
-        end
         */
+
+        if (version == RUBY_18) {
+          fnext expr_value; fbreak;
+        } else {
+          fnext expr_beg; fbreak;
+        }
       };
 
       w_space* 'do'
@@ -2240,13 +2241,13 @@ struct ruby_lexer_state_t {
       => {
         /* TODO
         emit_table(KEYWORDS)
-
-        if version?(18) && tok == 'not'.freeze
-          fnext expr_beg; fbreak;
-        else
-          fnext expr_arg; fbreak;
-        end
         */
+
+        if (version == RUBY_18 && ts + 3 == te && ts[0] == 'n' && ts[1] == 'o' && ts[2] == 't') {
+          fnext expr_beg; fbreak;
+        } else {
+          fnext expr_arg; fbreak;
+        }
       };
 
       '__ENCODING__'
@@ -2331,16 +2332,18 @@ struct ruby_lexer_state_t {
 
       flo_int flo_frac [eE]
       => {
-        /* TODO
-        if version?(18, 19, 20)
+        if (version == RUBY_18 || version == RUBY_19 || version == RUBY_20) {
+          /* TODO
           diagnostic :error,
                      :trailing_in_number, { :character => tok(@te - 1, @te) },
                      range(@te - 1, @te)
-        else
+          */
+        } else {
+          /* TODO
           emit(:tFLOAT, tok(@ts, @te - 1).to_f, @ts, @te - 1)
+          */
           fhold; fbreak;
-        end
-        */
+        }
       };
 
       flo_int
