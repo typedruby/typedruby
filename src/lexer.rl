@@ -159,7 +159,8 @@ struct ruby_lexer_state_t {
 
   %% prepush { check_stack_capacity(); }
 
-  const char* newline_s;
+  const char* sharp_s;   // location of last encountered #
+  const char* newline_s; // location of last encountered newline
 
   ruby_lexer_state_t(ruby_version_t version, std::string source_buffer)
     : version(version)
@@ -171,6 +172,7 @@ struct ruby_lexer_state_t {
     , te(NULL)
     , act(0)
     , top(0)
+    , sharp_s(NULL)
     , newline_s(NULL)
   {
     // ensure the stack capacity is non-zero so we can just double in
@@ -199,6 +201,10 @@ struct ruby_lexer_state_t {
     } else {
       return lex_en_expr_arg;
     }
+  }
+
+  void emit_comment(const char* s, const char* e) {
+    /* TODO */
   }
 
   /*
@@ -1308,10 +1314,10 @@ struct ruby_lexer_state_t {
     ;
 
   w_comment =
-      '#'     %{ /* TODO @sharp_s = p - 1 */ }
+      '#'     %{ sharp_s = p - 1; }
       # The (p == pe) condition compensates for added "\0" and
       # the way Ragel handles EOF.
-      c_line* %{ /* TODO emit_comment(@sharp_s, p == pe ? p - 2 : p) */ }
+      c_line* %{ emit_comment(sharp_s, p == pe ? p - 2 : p); }
     ;
 
   w_space_comment =
