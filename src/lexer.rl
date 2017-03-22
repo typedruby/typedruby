@@ -109,11 +109,99 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
 */
 
-class Parser::Lexer
+extern "C" {
+  #include "lexer.h"
+}
 
-  %% write data nofinal;
-  # %
+#include <stack>
+#include <set>
+#include <string>
+#include <queue>
 
+struct ruby_token_t {
+  ruby_token_type_t type;
+  const char* ptr;
+  size_t len;
+};
+
+%% write data nofinal;
+
+typedef std::set<std::string> ruby_env_t;
+
+struct ruby_lexer_state_t {
+
+  ruby_version_t version;
+
+  std::string source_buffer;
+
+  std::stack<bool> cond;
+  std::stack<bool> cmdarg;
+  std::stack<ruby_env_t> static_env;
+  std::queue<ruby_token_t> token_queue;
+  bool in_kwarg;
+  bool command_state;
+
+  int cs;
+  const char* _p;
+  const char* _pe;
+  const char* ts;
+  const char* te;
+  int act;
+
+  std::vector<int> stack;
+  int top;
+
+  void check_stack_capacity() {
+    if (stack.size() == stack.capacity()) {
+      stack.resize(stack.capacity() * 2);
+    }
+  }
+
+  %% prepush { check_stack_capacity(); }
+
+  const char* newline_s;
+
+  ruby_lexer_state_t(ruby_version_t version, std::string source_buffer)
+    : version(version)
+    , source_buffer(source_buffer)
+    , cs(lex_en_line_begin)
+    , _p(source_buffer.data())
+    , _pe(source_buffer.data() + source_buffer.size())
+    , ts(NULL)
+    , te(NULL)
+    , act(0)
+    , top(0)
+    , newline_s(NULL)
+  {
+    // ensure the stack capacity is non-zero so we can just double in
+    // check_stack_capacity:
+    stack.reserve(16);
+
+    static_env.push(ruby_env_t());
+  }
+
+  bool active(std::stack<bool>& state_stack) const {
+    if (state_stack.empty()) {
+      return false;
+    } else {
+      return state_stack.top();
+    }
+  }
+
+  int stack_pop() {
+    /* TODO */
+    return -1;
+  }
+
+  int arg_or_cmdarg() {
+    if (command_state) {
+      return lex_en_expr_cmdarg;
+    } else {
+      return lex_en_expr_arg;
+    }
+  }
+
+  /*
   ESCAPES = {
     ?a.ord => "\a", ?b.ord  => "\b", ?e.ord => "\e", ?f.ord => "\f",
     ?n.ord => "\n", ?r.ord  => "\r", ?s.ord => "\s", ?t.ord => "\t",
@@ -130,10 +218,10 @@ class Parser::Lexer
   attr_accessor :static_env
   attr_accessor :force_utf32
 
-  attr_accessor :cond, :cmdarg, :in_kwarg
-
   attr_accessor :tokens, :comments
+  */
 
+/*
   def initialize(version)
     @version    = version
     @static_env = nil
@@ -286,7 +374,49 @@ class Parser::Lexer
     dedent_level, @dedent_level = @dedent_level, nil
     dedent_level
   end
+*/
 
+  ruby_token_t advance() {
+    if (!token_queue.empty()) {
+      ruby_token_t token = token_queue.front();
+      token_queue.pop();
+      return token;
+    }
+
+    command_state = (cs == lex_en_expr_value || cs == lex_en_line_begin);
+
+    const char* p = _p;
+    // TODO - the ruby lexer sets pe to @source_pts.size + 2...
+    // investigate why and whether we need to do the same:
+    const char* pe = _pe;
+    const char* eof = _pe;
+
+    %% write exec;
+
+    _p = p;
+
+    if (!token_queue.empty()) {
+      ruby_token_t token = token_queue.front();
+      token_queue.pop();
+      return token;
+    }
+
+    if (cs == lex_error) {
+      return (ruby_token_t){
+        .type = T_ERROR,
+        .ptr = p - 1,
+        .len = 1,
+      };
+    }
+
+    return (ruby_token_t){
+      .type = T_EOF,
+      .ptr = source_buffer.data(),
+      .len = 0,
+    };
+  }
+
+/*
   # Return next token: [type, value].
   def advance
     if @token_queue.any?
@@ -308,11 +438,7 @@ class Parser::Lexer
     pe = @source_pts.size + 2
     p, eof = @p, pe
 
-    @command_state = (@cs == klass.lex_en_expr_value ||
-                      @cs == klass.lex_en_line_begin)
-
     %% write exec;
-    # %
 
     @p = p
 
@@ -382,14 +508,6 @@ class Parser::Lexer
       emit(:kDO_BLOCK, 'do'.freeze)
     else
       emit(:kDO, 'do'.freeze)
-    end
-  end
-
-  def arg_or_cmdarg
-    if @command_state
-      self.class.lex_en_expr_cmdarg
-    else
-      self.class.lex_en_expr_arg
     end
   end
 
@@ -508,12 +626,10 @@ class Parser::Lexer
      false and or not alias __FILE__ __LINE__ __ENCODING__).each do |keyword|
     KEYWORDS_BEGIN[keyword] = KEYWORDS[keyword] = :"k#{keyword.upcase}"
   end
-
+*/
   %%{
-  # %
-
-  access @;
-  getkey (@source_pts[p] || 0);
+  # access @;
+  # getkey (@source_pts[p] || 0);
 
   # === CHARACTER CLASSES ===
   #
@@ -523,12 +639,12 @@ class Parser::Lexer
   # for scanners.
 
   action do_nl {
-    # Record position of a newline for precise location reporting on tNL
-    # tokens.
-    #
-    # This action is embedded directly into c_nl, as it is idempotent and
-    # there are no cases when we need to skip it.
-    @newline_s = p
+    // Record position of a newline for precise location reporting on tNL
+    // tokens.
+    //
+    // This action is embedded directly into c_nl, as it is idempotent and
+    // there are no cases when we need to skip it.
+    newline_s = p;
   }
 
   c_nl       = '\n' $ do_nl;
@@ -549,13 +665,13 @@ class Parser::Lexer
   c_alnum    = c_alpha | [0-9];
 
   action do_eof {
-    # Sit at EOF indefinitely. #advance would return $eof each time.
-    # This allows to feed the lexer more data if needed; this is only used
-    # in tests.
-    #
-    # Note that this action is not embedded into e_eof like e_heredoc_nl and e_bs
-    # below. This is due to the fact that scanner state at EOF is observed
-    # by tests, and encapsulating it in a rule would break the introspection.
+    // Sit at EOF indefinitely. #advance would return $eof each time.
+    // This allows to feed the lexer more data if needed; this is only used
+    // in tests.
+    //
+    // Note that this action is not embedded into e_eof like e_heredoc_nl and e_bs
+    // below. This is due to the fact that scanner state at EOF is observed
+    // by tests, and encapsulating it in a rule would break the introspection.
     fhold; fbreak;
   }
 
@@ -655,19 +771,19 @@ class Parser::Lexer
   flo_pow  = [eE] [+\-]? ( digit+ '_' )* digit+;
 
   int_suffix =
-    ''   % { @num_xfrm = lambda { |chars| emit(:tINTEGER,   chars) } }
-  | 'r'  % { @num_xfrm = lambda { |chars| emit(:tRATIONAL,  Rational(chars)) } }
-  | 'i'  % { @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, chars)) } }
-  | 'ri' % { @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, Rational(chars))) } };
+    ''   % { /* TODO @num_xfrm = lambda { |chars| emit(:tINTEGER,   chars) } */ }
+  | 'r'  % { /* TODO @num_xfrm = lambda { |chars| emit(:tRATIONAL,  Rational(chars)) } */ }
+  | 'i'  % { /* TODO @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, chars)) } */ }
+  | 'ri' % { /* TODO @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, Rational(chars))) } */ };
 
   flo_pow_suffix =
-    ''   % { @num_xfrm = lambda { |chars| emit(:tFLOAT,     Float(chars)) } }
-  | 'i'  % { @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, Float(chars))) } };
+    ''   % { /* TODO @num_xfrm = lambda { |chars| emit(:tFLOAT,     Float(chars)) } */ }
+  | 'i'  % { /* TODO @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, Float(chars))) } */ };
 
   flo_suffix =
     flo_pow_suffix
-  | 'r'  % { @num_xfrm = lambda { |chars| emit(:tRATIONAL,  Rational(chars)) } }
-  | 'ri' % { @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, Rational(chars))) } };
+  | 'r'  % { /* TODO @num_xfrm = lambda { |chars| emit(:tRATIONAL,  Rational(chars)) } */ }
+  | 'ri' % { /* TODO @num_xfrm = lambda { |chars| emit(:tIMAGINARY, Complex(0, Rational(chars))) } */ };
 
   #
   # === ESCAPE SEQUENCE PARSING ===
@@ -683,6 +799,7 @@ class Parser::Lexer
   escaped_nl = "\\" c_nl;
 
   action unicode_points {
+    /* TODO
     @escape = ""
 
     codepoints  = tok(@escape_s + 2, p - 1)
@@ -700,55 +817,64 @@ class Parser::Lexer
       @escape     += codepoint.chr(Encoding::UTF_8)
       codepoint_s += codepoint_str.length + 1
     end
+    */
   }
 
   action unescape_char {
+    /* TODO
     codepoint = @source_pts[p - 1]
     if (@escape = ESCAPES[codepoint]).nil?
       @escape = encode_escape(@source_buffer.slice(p - 1))
     end
+    */
   }
 
   action invalid_complex_escape {
+    /* TODO
     diagnostic :fatal, :invalid_escape
+    */
   }
 
   action slash_c_char {
+    /* TODO
     @escape = encode_escape(@escape[0].ord & 0x9f)
+    */
   }
 
   action slash_m_char {
+    /* TODO
     @escape = encode_escape(@escape[0].ord | 0x80)
+    */
   }
 
   maybe_escaped_char = (
         '\\' c_any      %unescape_char
-    | ( c_any - [\\] )  % { @escape = @source_buffer.slice(p - 1).chr }
+    | ( c_any - [\\] )  % { /* TODO @escape = @source_buffer.slice(p - 1).chr */ }
   );
 
   maybe_escaped_ctrl_char = ( # why?!
         '\\' c_any      %unescape_char %slash_c_char
-    |   '?'             % { @escape = "\x7f" }
-    | ( c_any - [\\?] ) % { @escape = @source_buffer.slice(p - 1).chr } %slash_c_char
+    |   '?'             % { /* TODO @escape = "\x7f" */ }
+    | ( c_any - [\\?] ) % { /* TODO @escape = @source_buffer.slice(p - 1).chr */ } %slash_c_char
   );
 
   escape = (
       # \377
       [0-7]{1,3}
-      % { @escape = encode_escape(tok(@escape_s, p).to_i(8) % 0x100) }
+      % { /* TODO @escape = encode_escape(tok(@escape_s, p).to_i(8) % 0x100) */ }
 
       # \xff
     | 'x' xdigit{1,2}
-        % { @escape = encode_escape(tok(@escape_s + 1, p).to_i(16)) }
+        % { /* TODO @escape = encode_escape(tok(@escape_s + 1, p).to_i(16)) */ }
 
       # \u263a
     | 'u' xdigit{4}
-      % { @escape = tok(@escape_s + 1, p).to_i(16).chr(Encoding::UTF_8) }
+      % { /* TODO @escape = tok(@escape_s + 1, p).to_i(16).chr(Encoding::UTF_8) */ }
 
       # %q[\x]
     | 'x' ( c_any - xdigit )
       % {
-        diagnostic :fatal, :invalid_hex_escape, nil, range(@escape_s - 1, p + 2)
+        /* TODO diagnostic :fatal, :invalid_hex_escape, nil, range(@escape_s - 1, p + 2) */
       }
 
       # %q[\u123] %q[\u{12]
@@ -760,7 +886,7 @@ class Parser::Lexer
             )
           )
       % {
-        diagnostic :fatal, :invalid_unicode_escape, nil, range(@escape_s - 1, p)
+        /* TODO diagnostic :fatal, :invalid_unicode_escape, nil, range(@escape_s - 1, p) */
       }
 
       # \u{123 456}
@@ -771,7 +897,7 @@ class Parser::Lexer
         | ( c_any - '}' )* c_eof
         | xdigit{7,}
         ) % {
-          diagnostic :fatal, :unterminated_unicode, nil, range(p - 1, p)
+          /* TODO diagnostic :fatal, :unterminated_unicode, nil, range(p - 1, p) */
         }
       )
 
@@ -797,14 +923,16 @@ class Parser::Lexer
     | ( c_any - [0-7xuCMc] ) %unescape_char
 
     | c_eof % {
-      diagnostic :fatal, :escape_eof, nil, range(p - 1, p)
+      /* TODO diagnostic :fatal, :escape_eof, nil, range(p - 1, p) */
     }
   );
 
   # Use rules in form of `e_bs escape' when you need to parse a sequence.
   e_bs = '\\' % {
+    /* TODO
     @escape_s = p
     @escape   = nil
+    */
   };
 
   #
@@ -843,15 +971,18 @@ class Parser::Lexer
   # containing another heredocs) is closed, the previous value is restored.
 
   e_heredoc_nl = c_nl % {
+    /* TODO
     # After every heredoc was parsed, @herebody_s contains the
     # position of next token after all heredocs.
     if @herebody_s
       p = @herebody_s
       @herebody_s = nil
     end
+    */
   };
 
   action extend_string {
+    /* TODO
     string = tok
 
     # tLABEL_END is only possible in non-cond context on >= 2.2
@@ -873,9 +1004,11 @@ class Parser::Lexer
     else
       current_literal.extend_string(string, @ts, @te)
     end
+    */
   }
 
   action extend_string_escaped {
+    /* TODO
     current_literal = literal
     # Get the first character after the backslash.
     escaped_char = @source_buffer.slice(@escape_s).chr
@@ -908,12 +1041,14 @@ class Parser::Lexer
         current_literal.extend_string(@escape || tok, @ts, @te)
       end
     end
+    */
   }
 
   # Extend a string with a newline or a EOF character.
   # As heredoc closing line can immediately precede EOF, this action
   # has to handle such case specially.
   action extend_string_eol {
+    /* TODO
     current_literal = literal
     if @te == pe
       diagnostic :fatal, :string_eof, nil,
@@ -968,15 +1103,18 @@ class Parser::Lexer
       current_literal.extend_space @ts, @te
     else
       # A literal newline is appended if the heredoc was _not_ closed
-      # this time (see fbreak above). See also Literal#nest_and_try_closing
+      # this time (see f break above). See also Literal#nest_and_try_closing
       # for rationale of calling #flush_string here.
       current_literal.extend_string tok, @ts, @te
       current_literal.flush_string
     end
+    */
   }
 
   action extend_string_space {
+    /* TODO
     literal.extend_space @ts, @te
+    */
   }
 
   #
@@ -989,6 +1127,7 @@ class Parser::Lexer
   interp_var = '#' ( global_var | class_var_v | instance_var_v );
 
   action extend_interp_var {
+    /* TODO
     current_literal = literal
     current_literal.flush_string
     current_literal.extend_content
@@ -997,6 +1136,7 @@ class Parser::Lexer
 
     p = @ts
     fcall expr_variable;
+    */
   }
 
   # Interpolations with code blocks must match nested curly braces, as
@@ -1014,15 +1154,18 @@ class Parser::Lexer
   interp_code = '#{';
 
   e_lbrace = '{' % {
+    /* TODO
     @cond.push(false); @cmdarg.push(false)
 
     current_literal = literal
     if current_literal
       current_literal.start_interp_brace
     end
+    */
   };
 
   e_rbrace = '}' % {
+    /* TODO
     current_literal = literal
     if current_literal
       if current_literal.end_interp_brace_and_try_closing
@@ -1041,9 +1184,11 @@ class Parser::Lexer
         fbreak;
       end
     end
+    */
   };
 
   action extend_interp_code {
+    /* TODO
     current_literal = literal
     current_literal.flush_string
     current_literal.extend_content
@@ -1057,6 +1202,7 @@ class Parser::Lexer
 
     current_literal.start_interp_brace
     fcall expr_value;
+    */
   }
 
   # Actual string parsers are simply combined from the primitives defined
@@ -1122,6 +1268,7 @@ class Parser::Lexer
   regexp_modifiers := |*
       [A-Za-z]+
       => {
+        /* TODO
         unknown_options = tok.scan(/[^imxouesn]/)
         if unknown_options.any?
           diagnostic :error, :regexp_options,
@@ -1130,12 +1277,15 @@ class Parser::Lexer
 
         emit(:tREGEXP_OPT)
         fnext expr_end; fbreak;
+        */
       };
 
       any
       => {
+        /* TODO
         emit(:tREGEXP_OPT, tok(@ts, @te - 1), @ts, @te - 1)
         fhold; fgoto expr_end;
+        */
       };
   *|;
 
@@ -1158,10 +1308,10 @@ class Parser::Lexer
     ;
 
   w_comment =
-      '#'     %{ @sharp_s = p - 1 }
+      '#'     %{ /* TODO @sharp_s = p - 1 */ }
       # The (p == pe) condition compensates for added "\0" and
       # the way Ragel handles EOF.
-      c_line* %{ emit_comment(@sharp_s, p == pe ? p - 2 : p) }
+      c_line* %{ /* TODO emit_comment(@sharp_s, p == pe ? p - 2 : p) */ }
     ;
 
   w_space_comment =
@@ -1202,58 +1352,60 @@ class Parser::Lexer
   # to sheer ambiguity.
 
   ambiguous_fid_suffix =         # actual    parsed
-      [?!]    %{ tm = p }      | # a?        a?
-      [?!]'=' %{ tm = p - 2 }    # a!=b      a != b
+      [?!]    %{ /* TODO tm = p */ }      | # a?        a?
+      [?!]'=' %{ /* TODO tm = p - 2 */ }    # a!=b      a != b
   ;
 
   ambiguous_ident_suffix =       # actual    parsed
       ambiguous_fid_suffix     |
-      '='     %{ tm = p }      | # a=        a=
-      '=='    %{ tm = p - 2 }  | # a==b      a == b
-      '=~'    %{ tm = p - 2 }  | # a=~b      a =~ b
-      '=>'    %{ tm = p - 2 }  | # a=>b      a => b
-      '==='   %{ tm = p - 3 }    # a===b     a === b
+      '='     %{ /* TODO tm = p */ }      | # a=        a=
+      '=='    %{ /* TODO tm = p - 2 */ }  | # a==b      a == b
+      '=~'    %{ /* TODO tm = p - 2 */ }  | # a=~b      a =~ b
+      '=>'    %{ /* TODO tm = p - 2 */ }  | # a=>b      a => b
+      '==='   %{ /* TODO tm = p - 3 */ }    # a===b     a === b
   ;
 
   ambiguous_symbol_suffix =      # actual    parsed
       ambiguous_ident_suffix |
-      '==>'   %{ tm = p - 2 }    # :a==>b    :a= => b
+      '==>'   %{ /* TODO tm = p - 2 */ }    # :a==>b    :a= => b
   ;
 
   # Ambiguous with 1.9 hash labels.
   ambiguous_const_suffix =       # actual    parsed
-      '::'    %{ tm = p - 2 }    # A::B      A :: B
+      '::'    %{ /* TODO tm = p - 2 */ }    # A::B      A :: B
   ;
 
   # Resolving kDO/kDO_COND/kDO_BLOCK ambiguity requires embedding
   # @cond/@cmdarg-related code to e_lbrack, e_lparen and e_lbrace.
 
   e_lbrack = '[' % {
-    @cond.push(false); @cmdarg.push(false)
+    cond.push(false); cmdarg.push(false);
   };
 
   # Ruby 1.9 lambdas require parentheses counting in order to
   # emit correct opening kDO/tLBRACE.
 
   e_lparen = '(' % {
-    @cond.push(false); @cmdarg.push(false)
+    cond.push(false); cmdarg.push(false);
 
-    @paren_nest += 1
+    /* TODO @paren_nest += 1 */
   };
 
   e_rparen = ')' % {
-    @paren_nest -= 1
+    /* TODO @paren_nest -= 1 */
   };
 
   # Ruby is context-sensitive wrt/ local identifiers.
   action local_ident {
+    /* TODO
     emit(:tIDENTIFIER)
 
     if !@static_env.nil? && @static_env.declared?(tok)
       fnext expr_endfn; fbreak;
     else
-      fnext *arg_or_cmdarg; fbreak;
+      fnext *arg_or_cmdarg(); fbreak;
     end
+    */
   }
 
   # Variable lexing code is accessed from both expressions and
@@ -1262,6 +1414,7 @@ class Parser::Lexer
   expr_variable := |*
       global_var
       => {
+        /* TODO
         if    tok =~ /^\$([1-9][0-9]*)$/
           emit(:tNTH_REF, tok(@ts + 1).to_i)
         elsif tok =~ /^\$([&`'+])$/
@@ -1269,28 +1422,33 @@ class Parser::Lexer
         else
           emit(:tGVAR)
         end
+        */
 
-        fnext *stack_pop; fbreak;
+        fnext *stack_pop(); fbreak;
       };
 
       class_var_v
       => {
+        /* TODO
         if tok =~ /^@@[0-9]/
           diagnostic :error, :cvar_name, { :name => tok }
         end
 
         emit(:tCVAR)
-        fnext *stack_pop; fbreak;
+        */
+        fnext *stack_pop(); fbreak;
       };
 
       instance_var_v
       => {
+        /* TODO
         if tok =~ /^@[0-9]/
           diagnostic :error, :ivar_name, { :name => tok }
         end
 
         emit(:tIVAR)
-        fnext *stack_pop; fbreak;
+        */
+        fnext *stack_pop(); fbreak;
       };
   *|;
 
@@ -1305,19 +1463,19 @@ class Parser::Lexer
   #
   expr_fname := |*
       keyword
-      => { emit_table(KEYWORDS_BEGIN);
+      => { /* TODO emit_table(KEYWORDS_BEGIN); */
            fnext expr_endfn; fbreak; };
 
       constant
-      => { emit(:tCONSTANT)
+      => { /* TODO emit(:tCONSTANT) */
            fnext expr_endfn; fbreak; };
 
       bareword [?=!]?
-      => { emit(:tIDENTIFIER)
+      => { /* TODO emit(:tIDENTIFIER) */
            fnext expr_endfn; fbreak; };
 
       global_var
-      => { p = @ts - 1
+      => { /* TODO p = @ts - 1 */
            fnext expr_end; fcall expr_variable; };
 
       # If the handling was to be delegated to expr_end,
@@ -1326,7 +1484,7 @@ class Parser::Lexer
       operator_fname      |
       operator_arithmetic |
       operator_rest
-      => { emit_table(PUNCTUATION)
+      => { /* TODO emit_table(PUNCTUATION) */
            fnext expr_endfn; fbreak; };
 
       '::'
@@ -1337,6 +1495,7 @@ class Parser::Lexer
 
       '%s' c_any
       => {
+        /* TODO
         if version?(23)
           type, delimiter = tok[0..-2], tok[-1].chr
           fgoto *push_literal(type, delimiter, @ts);
@@ -1344,6 +1503,7 @@ class Parser::Lexer
           p = @ts - 1
           fgoto expr_end;
         end
+        */
       };
 
       w_any;
@@ -1361,7 +1521,7 @@ class Parser::Lexer
   #
   expr_endfn := |*
       label ( any - ':' )
-      => { emit(:tLABEL, tok(@ts, @te - 2), @ts, @te - 1)
+      => { /* TODO emit(:tLABEL, tok(@ts, @te - 2), @ts, @te - 1) */
            fhold; fnext expr_labelarg; fbreak; };
 
       w_space_comment;
@@ -1378,22 +1538,22 @@ class Parser::Lexer
   #
   expr_dot := |*
       constant
-      => { emit(:tCONSTANT)
-           fnext *arg_or_cmdarg; fbreak; };
+      => { /* TODO emit(:tCONSTANT) */
+           fnext *arg_or_cmdarg(); fbreak; };
 
       call_or_var
-      => { emit(:tIDENTIFIER)
-           fnext *arg_or_cmdarg; fbreak; };
+      => { /* TODO emit(:tIDENTIFIER) */
+           fnext *arg_or_cmdarg(); fbreak; };
 
       bareword ambiguous_fid_suffix
-      => { emit(:tFID, tok(@ts, tm), @ts, tm)
-           fnext *arg_or_cmdarg; p = tm - 1; fbreak; };
+      => { /* TODO emit(:tFID, tok(@ts, tm), @ts, tm) */
+           fnext *arg_or_cmdarg(); /* TODO p = tm - 1 */; fbreak; };
 
       # See the comment in `expr_fname`.
       operator_fname      |
       operator_arithmetic |
       operator_rest
-      => { emit_table(PUNCTUATION)
+      => { /* TODO emit_table(PUNCTUATION) */
            fnext expr_arg; fbreak; };
 
       w_any;
@@ -1416,6 +1576,7 @@ class Parser::Lexer
       # See below the rationale about expr_endarg.
       w_space+ e_lparen
       => {
+        /* TODO
         if version?(18)
           emit(:tLPAREN2, '('.freeze, @te - 1, @te)
           fnext expr_value; fbreak;
@@ -1423,24 +1584,26 @@ class Parser::Lexer
           emit(:tLPAREN_ARG, '('.freeze, @te - 1, @te)
           fnext expr_beg; fbreak;
         end
+        */
       };
 
       # meth(1 + 2)
       # Regular method call.
       e_lparen
-      => { emit(:tLPAREN2, '('.freeze)
+      => { /* TODO emit(:tLPAREN2, '('.freeze) */
            fnext expr_beg; fbreak; };
 
       # meth [...]
       # Array argument. Compare with indexing `meth[...]`.
       w_space+ e_lbrack
-      => { emit(:tLBRACK, '['.freeze, @te - 1, @te)
+      => { /* TODO emit(:tLBRACK, '['.freeze, @te - 1, @te) */
            fnext expr_beg; fbreak; };
 
       # cmd {}
       # Command: method call without parentheses.
       w_space* e_lbrace
       => {
+        /* TODO
         if @lambda_stack.last == @paren_nest
           p = @ts - 1
           fgoto expr_end;
@@ -1448,6 +1611,7 @@ class Parser::Lexer
           emit(:tLCURLY, '{'.freeze, @te - 1, @te)
           fnext expr_value; fbreak;
         end
+        */
       };
 
       #
@@ -1458,9 +1622,11 @@ class Parser::Lexer
       # Ternary operator
       '?' c_space_nl
       => {
+        /* TODO
         # Unlike expr_beg as invoked in the next rule, do not warn
         p = @ts - 1
         fgoto expr_end;
+        */
       };
 
       # a ?b, a? ?
@@ -1471,28 +1637,32 @@ class Parser::Lexer
       # a %{1}, a %[1] (but not "a %=1=" or "a % foo")
       # a /foo/ (but not "a / foo" or "a /=foo")
       # a <<HEREDOC
-      w_space+ %{ tm = p }
+      w_space+ %{ /* TODO tm = p */ }
       ( [%/] ( c_any - c_space_nl - '=' ) # /
       | '<<'
       )
       => {
+        /* TODO
         if tok(tm, tm + 1) == '/'.freeze
           # Ambiguous regexp literal.
           diagnostic :warning, :ambiguous_literal, nil, range(tm, tm + 1)
         end
 
         p = tm - 1
+        */
         fgoto expr_beg;
       };
 
       # x *1
       # Ambiguous splat, kwsplat or block-pass.
-      w_space+ %{ tm = p } ( '+' | '-' | '*' | '&' | '**' )
+      w_space+ %{ /* TODO tm = p */ } ( '+' | '-' | '*' | '&' | '**' )
       => {
+        /* TODO
         diagnostic :warning, :ambiguous_prefix, { :prefix => tok(tm, @te) },
                    range(tm, @te)
 
         p = tm - 1
+        */
         fgoto expr_beg;
       };
 
@@ -1507,7 +1677,7 @@ class Parser::Lexer
       => { fhold; fgoto expr_beg; };
 
       w_space+ label
-      => { p = @ts - 1; fgoto expr_beg; };
+      => { /* TODO p = @ts - 1; */ fgoto expr_beg; };
 
       #
       # AMBIGUOUS TOKENS RESOLVED VIA EXPR_END
@@ -1515,8 +1685,8 @@ class Parser::Lexer
 
       # a ? b
       # Ternary operator.
-      w_space+ %{ tm = p } '?' c_space_nl
-      => { p = tm - 1; fgoto expr_end; };
+      w_space+ %{ /* TODO tm = p */ } '?' c_space_nl
+      => { /* TODO p = tm - 1; */ fgoto expr_end; };
 
       # x + 1: Binary operator or operator-assignment.
       w_space* operator_arithmetic
@@ -1528,7 +1698,7 @@ class Parser::Lexer
       # Miscellanea.
       w_space* punctuation_end
       => {
-        p = @ts - 1
+        /* TODO p = @ts - 1 */
         fgoto expr_end;
       };
 
@@ -1555,21 +1725,25 @@ class Parser::Lexer
   expr_cmdarg := |*
       w_space+ e_lparen
       => {
+        /* TODO
         emit(:tLPAREN_ARG, '('.freeze, @te - 1, @te)
         if version?(18)
           fnext expr_value; fbreak;
         else
           fnext expr_beg; fbreak;
         end
+        */
       };
 
       w_space* 'do'
       => {
+        /* TODO
         if @cond.active?
           emit(:kDO_COND, 'do'.freeze, @te - 2, @te)
         else
           emit(:kDO, 'do'.freeze, @te - 2, @te)
         end
+        */
         fnext expr_value; fbreak;
       };
 
@@ -1577,7 +1751,7 @@ class Parser::Lexer
       # Disambiguate with the `do' rule above.
       w_space* bareword |
       w_space* label
-      => { p = @ts - 1
+      => { /* TODO p = @ts - 1 */
            fgoto expr_arg; };
 
       c_eof => do_eof;
@@ -1601,17 +1775,19 @@ class Parser::Lexer
   expr_endarg := |*
       e_lbrace
       => {
+        /* TODO
         if @lambda_stack.last == @paren_nest
           @lambda_stack.pop
           emit(:tLAMBEG, '{'.freeze)
         else
           emit(:tLBRACE_ARG, '{'.freeze)
         end
+        */
         fnext expr_value;
       };
 
       'do'
-      => { emit_do(true)
+      => { /* TODO emit_do(true) */
            fnext expr_value; fbreak; };
 
       w_space_comment;
@@ -1629,11 +1805,11 @@ class Parser::Lexer
   #
   expr_mid := |*
       keyword_modifier
-      => { emit_table(KEYWORDS)
+      => { /* TODO emit_table(KEYWORDS) */
            fnext expr_beg; fbreak; };
 
       bareword
-      => { p = @ts - 1; fgoto expr_beg; };
+      => { /* TODO p = @ts - 1; */ fgoto expr_beg; };
 
       w_space_comment;
 
@@ -1659,16 +1835,18 @@ class Parser::Lexer
       #   -5 to [tUMINUS_NUM] [tINTEGER, 5]
       [+\-][0-9]
       => {
+        /* TODO
         fhold;
         if tok.start_with? '-'.freeze
           emit(:tUMINUS_NUM, '-'.freeze, @ts, @ts + 1)
           fnext expr_end; fbreak;
         end
+        */
       };
 
       # splat *a
       '*'
-      => { emit(:tSTAR, '*'.freeze)
+      => { /* TODO emit(:tSTAR, '*'.freeze) */
            fbreak; };
 
       #
@@ -1679,27 +1857,35 @@ class Parser::Lexer
       # /=/ (disambiguation with /=)
       '/' c_any
       => {
+        /* TODO
         type = delimiter = tok[0].chr
         fhold; fgoto *push_literal(type, delimiter, @ts);
+        */
       };
 
       # %<string>
       '%' ( any - [A-Za-z] )
       => {
+        /* TODO
         type, delimiter = @source_buffer.slice(@ts).chr, tok[-1].chr
         fgoto *push_literal(type, delimiter, @ts);
+        */
       };
 
       # %w(we are the people)
       '%' [A-Za-z]+ c_any
       => {
+        /* TODO
         type, delimiter = tok[0..-2], tok[-1].chr
         fgoto *push_literal(type, delimiter, @ts);
+        */
       };
 
       '%' c_eof
       => {
+        /* TODO
         diagnostic :fatal, :string_eof, nil, range(@ts, @ts + 1)
+        */
       };
 
       # Heredoc start.
@@ -1710,9 +1896,10 @@ class Parser::Lexer
         ( '"' ( c_line - '"' )* '"'
         | "'" ( c_line - "'" )* "'"
         | "`" ( c_line - "`" )* "`"
-        | bareword ) % { heredoc_e      = p }
-        c_line* c_nl % { new_herebody_s = p }
+        | bareword ) % { /* TODO heredoc_e      = p */ }
+        c_line* c_nl % { /* TODO new_herebody_s = p */ }
       => {
+        /* TODO
         tok(@ts, heredoc_e) =~ /^<<(-?)(~?)(["'`]?)(.*)\3$/
 
         indent      = !$1.empty? || !$2.empty?
@@ -1730,6 +1917,7 @@ class Parser::Lexer
           @herebody_s ||= new_herebody_s
           p = @herebody_s - 1
         end
+        */
       };
 
       #
@@ -1739,22 +1927,28 @@ class Parser::Lexer
       # :"bar", :'baz'
       ':' ['"] # '
       => {
+        /* TODO
         type, delimiter = tok, tok[-1].chr
         fgoto *push_literal(type, delimiter, @ts);
+        */
       };
 
       ':' bareword ambiguous_symbol_suffix
       => {
+        /* TODO
         emit(:tSYMBOL, tok(@ts + 1, tm), @ts, tm)
         p = tm - 1
         fnext expr_end; fbreak;
+        */
       };
 
       ':' ( bareword | global_var | class_var | instance_var |
             operator_fname | operator_arithmetic | operator_rest )
       => {
+        /* TODO
         emit(:tSYMBOL, tok(@ts + 1), @ts)
         fnext expr_end; fbreak;
+        */
       };
 
       #
@@ -1764,9 +1958,10 @@ class Parser::Lexer
       # Character constant, like ?a, ?\n, ?\u1000, and so on
       # Don't accept \u escape with multiple codepoints, like \u{1 2 3}
       '?' ( e_bs ( escape - ( '\u{' (xdigit+ [ \t]+)+ xdigit+ '}' ))
-          | (c_any - c_space_nl - e_bs) % { @escape = nil }
+          | (c_any - c_space_nl - e_bs) % { /* TODO @escape = nil */ }
           )
       => {
+        /* TODO
         value = @escape || tok(@ts + 1)
 
         if version?(18)
@@ -1780,27 +1975,34 @@ class Parser::Lexer
         end
 
         fnext expr_end; fbreak;
+        */
       };
 
       '?' c_space_nl
       => {
+        /* TODO
         escape = { " "  => '\s', "\r" => '\r', "\n" => '\n', "\t" => '\t',
                    "\v" => '\v', "\f" => '\f' }[@source_buffer.slice(@ts + 1)]
         diagnostic :warning, :invalid_escape_use, { :escape => escape }, range
 
         p = @ts - 1
+        */
         fgoto expr_end;
       };
 
       '?' c_eof
       => {
+        /* TODO
         diagnostic :fatal, :incomplete_escape, nil, range(@ts, @ts + 1)
+        */
       };
 
       # f ?aa : b: Disambiguate with a character literal.
       '?' [A-Za-z_] bareword
       => {
+        /* TODO
         p = @ts - 1
+        */
         fgoto expr_end;
       };
 
@@ -1811,40 +2013,42 @@ class Parser::Lexer
       # a({b=>c})
       e_lbrace
       => {
+        /* TODO
         if @lambda_stack.last == @paren_nest
           @lambda_stack.pop
           emit(:tLAMBEG, '{'.freeze)
         else
           emit(:tLBRACE, '{'.freeze)
         end
+        */
         fbreak;
       };
 
       # a([1, 2])
       e_lbrack
-      => { emit(:tLBRACK, '['.freeze)
+      => { /* TODO emit(:tLBRACK, '['.freeze) */
            fbreak; };
 
       # a()
       e_lparen
-      => { emit(:tLPAREN, '('.freeze)
+      => { /* TODO emit(:tLPAREN, '('.freeze) */
            fbreak; };
 
       # a(+b)
       punctuation_begin
-      => { emit_table(PUNCTUATION_BEGIN)
+      => { /* TODO emit_table(PUNCTUATION_BEGIN) */
            fbreak; };
 
       # rescue Exception => e: Block rescue.
       # Special because it should transition to expr_mid.
-      'rescue' %{ tm = p } '=>'?
-      => { emit(:kRESCUE, 'rescue'.freeze, @ts, tm)
-           p = tm - 1
+      'rescue' %{ /* TODO tm = p */ } '=>'?
+      => { /* TODO emit(:kRESCUE, 'rescue'.freeze, @ts, tm)
+           p = tm - 1 */
            fnext expr_mid; fbreak; };
 
       # if a: Statement if.
       keyword_modifier
-      => { emit_table(KEYWORDS_BEGIN)
+      => { /* TODO emit_table(KEYWORDS_BEGIN) */
            fnext expr_value; fbreak; };
 
       #
@@ -1855,6 +2059,7 @@ class Parser::Lexer
       => {
         fhold;
 
+        /* TODO
         if version?(18)
           ident = tok(@ts, @te - 2)
 
@@ -1865,12 +2070,13 @@ class Parser::Lexer
           if !@static_env.nil? && @static_env.declared?(ident)
             fnext expr_end;
           else
-            fnext *arg_or_cmdarg;
+            fnext *arg_or_cmdarg();
           end
         else
           emit(:tLABEL, tok(@ts, @te - 2), @ts, @te - 1)
           fnext expr_labelarg;
         end
+        */
 
         fbreak;
       };
@@ -1883,7 +2089,7 @@ class Parser::Lexer
       bareword ambiguous_ident_suffix |
       # def foo:   Disambiguate with bareword rule below.
       keyword
-      => { p = @ts - 1
+      => { /* TODO p = @ts - 1 */
            fgoto expr_end; };
 
       # a = 42;     a [42]: Indexing.
@@ -1898,7 +2104,7 @@ class Parser::Lexer
       w_any;
 
       e_heredoc_nl '=begin' ( c_space | c_nl_zlen )
-      => { p = @ts - 1
+      => { /* TODO p = @ts - 1 */
            fgoto line_begin; };
 
       #
@@ -1911,7 +2117,7 @@ class Parser::Lexer
       operator_rest              |
       punctuation_end            |
       c_any
-      => { p = @ts - 1; fgoto expr_end; };
+      => { /* TODO p = @ts - 1; */ fgoto expr_end; };
 
       c_eof => do_eof;
   *|;
@@ -1923,11 +2129,11 @@ class Parser::Lexer
 
     w_newline
     => {
-      if @in_kwarg
+      if (in_kwarg) {
         fhold; fgoto expr_end;
-      else
+      } else {
         fgoto line_begin;
-      end
+      }
     };
 
     c_any
@@ -1941,13 +2147,15 @@ class Parser::Lexer
   expr_value := |*
       # a:b: a(:b), a::B, A::B
       label (any - ':')
-      => { p = @ts - 1
+      => { /* TODO p = @ts - 1 */
            fgoto expr_end; };
 
       # "bar", 'baz'
       ['"] # '
       => {
+        /* TODO
         fgoto *push_literal(tok, tok, @ts);
+        */
       };
 
       w_space_comment;
@@ -1968,14 +2176,17 @@ class Parser::Lexer
 
       '->'
       => {
+        /* TODO
         emit(:tLAMBDA, '->'.freeze, @ts, @ts + 2)
 
         @lambda_stack.push @paren_nest
+        */
         fnext expr_endfn; fbreak;
       };
 
       e_lbrace | 'do'
       => {
+        /* TODO
         if @lambda_stack.last == @paren_nest
           @lambda_stack.pop
 
@@ -1991,6 +2202,7 @@ class Parser::Lexer
             emit_do
           end
         end
+        */
 
         fnext expr_value; fbreak;
       };
@@ -2000,30 +2212,31 @@ class Parser::Lexer
       #
 
       keyword_with_fname
-      => { emit_table(KEYWORDS)
+      => { /* TODO emit_table(KEYWORDS) */
            fnext expr_fname; fbreak; };
 
       'class' w_any* '<<'
-      => { emit(:kCLASS, 'class'.freeze, @ts, @ts + 5)
-           emit(:tLSHFT, '<<'.freeze,    @te - 2, @te)
+      => { /* TODO emit(:kCLASS, 'class'.freeze, @ts, @ts + 5)
+           emit(:tLSHFT, '<<'.freeze,    @te - 2, @te) */
            fnext expr_value; fbreak; };
 
       # a if b:c: Syntax error.
       keyword_modifier
-      => { emit_table(KEYWORDS)
+      => { /* TODO emit_table(KEYWORDS) */
            fnext expr_beg; fbreak; };
 
       # elsif b:c: elsif b(:c)
       keyword_with_value
-      => { emit_table(KEYWORDS)
+      => { /* TODO emit_table(KEYWORDS) */
            fnext expr_value; fbreak; };
 
       keyword_with_mid
-      => { emit_table(KEYWORDS)
+      => { /* TODO emit_table(KEYWORDS) */
            fnext expr_mid; fbreak; };
 
       keyword_with_arg
       => {
+        /* TODO
         emit_table(KEYWORDS)
 
         if version?(18) && tok == 'not'.freeze
@@ -2031,38 +2244,42 @@ class Parser::Lexer
         else
           fnext expr_arg; fbreak;
         end
+        */
       };
 
       '__ENCODING__'
       => {
+        /* TODO
         if version?(18)
           emit(:tIDENTIFIER)
 
           unless !@static_env.nil? && @static_env.declared?(tok)
-            fnext *arg_or_cmdarg;
+            fnext *arg_or_cmdarg();
           end
         else
           emit(:k__ENCODING__, '__ENCODING__'.freeze)
         end
+        */
         fbreak;
       };
 
       keyword_with_end
-      => { emit_table(KEYWORDS)
+      => { /* TODO emit_table(KEYWORDS) */
            fbreak; };
 
       #
       # NUMERIC LITERALS
       #
 
-      ( '0' [Xx] %{ @num_base = 16; @num_digits_s = p } int_hex
-      | '0' [Dd] %{ @num_base = 10; @num_digits_s = p } int_dec
-      | '0' [Oo] %{ @num_base = 8;  @num_digits_s = p } int_dec
-      | '0' [Bb] %{ @num_base = 2;  @num_digits_s = p } int_bin
-      | [1-9] digit* '_'? %{ @num_base = 10; @num_digits_s = @ts } int_dec
-      | '0'   digit* '_'? %{ @num_base = 8;  @num_digits_s = @ts } int_dec
-      ) %{ @num_suffix_s = p } int_suffix
+      ( '0' [Xx] %{ /* TODO @num_base = 16; @num_digits_s = p */ } int_hex
+      | '0' [Dd] %{ /* TODO @num_base = 10; @num_digits_s = p */ } int_dec
+      | '0' [Oo] %{ /* TODO @num_base = 8;  @num_digits_s = p */ } int_dec
+      | '0' [Bb] %{ /* TODO @num_base = 2;  @num_digits_s = p */ } int_bin
+      | [1-9] digit* '_'? %{ /* TODO @num_base = 10; @num_digits_s = @ts */ } int_dec
+      | '0'   digit* '_'? %{ /* TODO @num_base = 8;  @num_digits_s = @ts */ } int_dec
+      ) %{ /* TODO @num_suffix_s = p */ } int_suffix
       => {
+        /* TODO
         digits = tok(@num_digits_s, @num_suffix_s)
 
         if digits.end_with? '_'.freeze
@@ -2085,16 +2302,20 @@ class Parser::Lexer
         else
           @num_xfrm.call(digits.to_i(@num_base))
         end
+        */
         fbreak;
       };
 
       flo_frac flo_pow?
       => {
+        /* TODO
         diagnostic :error, :no_dot_digit_literal
+        */
       };
 
       flo_int [eE]
       => {
+        /* TODO
         if version?(18, 19, 20)
           diagnostic :error,
                      :trailing_in_number, { :character => tok(@te - 1, @te) },
@@ -2103,10 +2324,12 @@ class Parser::Lexer
           emit(:tINTEGER, tok(@ts, @te - 1).to_i, @ts, @te - 1)
           fhold; fbreak;
         end
+        */
       };
 
       flo_int flo_frac [eE]
       => {
+        /* TODO
         if version?(18, 19, 20)
           diagnostic :error,
                      :trailing_in_number, { :character => tok(@te - 1, @te) },
@@ -2115,13 +2338,15 @@ class Parser::Lexer
           emit(:tFLOAT, tok(@ts, @te - 1).to_f, @ts, @te - 1)
           fhold; fbreak;
         end
+        */
       };
 
       flo_int
-      ( flo_frac? flo_pow %{ @num_suffix_s = p } flo_pow_suffix
-      | flo_frac          %{ @num_suffix_s = p } flo_suffix
+      ( flo_frac? flo_pow %{ /* TODO @num_suffix_s = p */ } flo_pow_suffix
+      | flo_frac          %{ /* TODO @num_suffix_s = p */ } flo_suffix
       )
       => {
+        /* TODO
         digits = tok(@ts, @num_suffix_s)
 
         if version?(18, 19, 20)
@@ -2130,6 +2355,7 @@ class Parser::Lexer
         else
           @num_xfrm.call(digits)
         end
+        */
         fbreak;
       };
 
@@ -2140,8 +2366,10 @@ class Parser::Lexer
       # `echo foo`, "bar", 'baz'
       '`' | ['"] # '
       => {
+        /* TODO
         type, delimiter = tok, tok[-1].chr
         fgoto *push_literal(type, delimiter, @ts, nil, false, false, true);
+        */
       };
 
       #
@@ -2149,22 +2377,22 @@ class Parser::Lexer
       #
 
       constant
-      => { emit(:tCONSTANT)
-           fnext *arg_or_cmdarg; fbreak; };
+      => { /* TODO emit(:tCONSTANT) */
+           fnext *arg_or_cmdarg(); fbreak; };
 
       constant ambiguous_const_suffix
-      => { emit(:tCONSTANT, tok(@ts, tm), @ts, tm)
-           p = tm - 1; fbreak; };
+      => { /* TODO emit(:tCONSTANT, tok(@ts, tm), @ts, tm) */
+           /* TODO p = tm - 1; */ fbreak; };
 
       global_var | class_var_v | instance_var_v
-      => { p = @ts - 1; fcall expr_variable; };
+      => { /* TODO p = @ts - 1; */ fcall expr_variable; };
 
       #
       # METHOD CALLS
       #
 
       '.' | '&.' | '::'
-      => { emit_table(PUNCTUATION)
+      => { /* TODO emit_table(PUNCTUATION) */
            fnext expr_dot; fbreak; };
 
       call_or_var
@@ -2172,6 +2400,7 @@ class Parser::Lexer
 
       bareword ambiguous_fid_suffix
       => {
+        /* TODO
         if tm == @te
           # Suffix was consumed, e.g. foo!
           emit(:tFID)
@@ -2180,6 +2409,7 @@ class Parser::Lexer
           emit(:tIDENTIFIER, tok(@ts, tm), @ts, tm)
           p = tm - 1
         end
+        */
         fnext expr_arg; fbreak;
       };
 
@@ -2191,11 +2421,12 @@ class Parser::Lexer
       | operator_arithmetic
       | operator_rest
       )
-      => { emit_table(PUNCTUATION)
+      => { /* TODO emit_table(PUNCTUATION) */
            fnext expr_beg; fbreak; };
 
       e_rbrace | e_rparen | ']'
       => {
+        /* TODO
         emit_table(PUNCTUATION)
         @cond.lexpop; @cmdarg.lexpop
 
@@ -2204,24 +2435,25 @@ class Parser::Lexer
         else # )
           # fnext expr_endfn; ?
         end
+        */
 
         fbreak;
       };
 
       operator_arithmetic '='
-      => { emit(:tOP_ASGN, tok(@ts, @te - 1))
+      => { /* TODO emit(:tOP_ASGN, tok(@ts, @te - 1)) */
            fnext expr_beg; fbreak; };
 
       '?'
-      => { emit(:tEH, '?'.freeze)
+      => { /* TODO emit(:tEH, '?'.freeze) */
            fnext expr_value; fbreak; };
 
       e_lbrack
-      => { emit(:tLBRACK2, '['.freeze)
+      => { /* TODO emit(:tLBRACK2, '['.freeze) */
            fnext expr_beg; fbreak; };
 
       punctuation_end
-      => { emit_table(PUNCTUATION)
+      => { /* TODO emit_table(PUNCTUATION) */
            fnext expr_beg; fbreak; };
 
       #
@@ -2234,17 +2466,21 @@ class Parser::Lexer
       => { fgoto leading_dot; };
 
       ';'
-      => { emit(:tSEMI, ';'.freeze)
+      => { /* TODO emit(:tSEMI, ';'.freeze) */
            fnext expr_value; fbreak; };
 
       '\\' c_line {
+        /* TODO
         diagnostic :error, :bare_backslash, nil, range(@ts, @ts + 1)
+        */
         fhold;
       };
 
       c_any
       => {
+        /* TODO
         diagnostic :fatal, :unexpected, { :character => tok.inspect[1..-2] }
+        */
       };
 
       c_eof => do_eof;
@@ -2254,11 +2490,11 @@ class Parser::Lexer
       # Insane leading dots:
       # a #comment
       #  .b: a.b
-      c_space* %{ tm = p } ('.' | '&.')
-      => { p = tm - 1; fgoto expr_end; };
+      c_space* %{ /* TODO tm = p */ } ('.' | '&.')
+      => { /* TODO p = tm - 1; */ fgoto expr_end; };
 
       any
-      => { emit(:tNL, nil, @newline_s, @newline_s + 1)
+      => { /* TODO emit(:tNL, nil, @newline_s, @newline_s + 1) */
            fhold; fnext line_begin; fbreak; };
   *|;
 
@@ -2269,7 +2505,7 @@ class Parser::Lexer
   line_comment := |*
       '=end' c_line* c_nl_zlen
       => {
-        emit_comment(@eq_begin_s, @te)
+        /* TODO emit_comment(@eq_begin_s, @te) */
         fgoto line_begin;
       };
 
@@ -2277,8 +2513,10 @@ class Parser::Lexer
 
       c_line* zlen
       => {
+        /* TODO
         diagnostic :fatal, :embedded_document, nil,
                    range(@eq_begin_s, @eq_begin_s + '=begin'.length)
+        */
       };
   *|;
 
@@ -2286,11 +2524,11 @@ class Parser::Lexer
       w_any;
 
       '=begin' ( c_space | c_nl_zlen )
-      => { @eq_begin_s = @ts
+      => { /* TODO @eq_begin_s = @ts */
            fgoto line_comment; };
 
       '__END__' ( c_eol - zlen )
-      => { p = pe - 3 };
+      => { /* TODO p = pe - 3 */ };
 
       c_any
       => { fhold; fgoto expr_value; };
@@ -2299,5 +2537,57 @@ class Parser::Lexer
   *|;
 
   }%%
-  # %
-end
+};
+
+/* C wrapper: */
+
+ruby_lexer_state_t*
+ruby_lexer_init(ruby_version_t version, const char* src, size_t len)
+{
+  return new ruby_lexer_state_t(version, std::string(src, len));
+}
+
+void
+ruby_lexer_free(ruby_lexer_state_t* lexer)
+{
+  delete lexer;
+}
+
+void
+ruby_lexer_env_extend_static(ruby_lexer_state_t* lexer)
+{
+  lexer->static_env.push(ruby_env_t());
+}
+
+void
+ruby_lexer_env_extend_dynamic(ruby_lexer_state_t* lexer)
+{
+  if (lexer->static_env.empty()) {
+    lexer->static_env.push(ruby_env_t());
+  } else {
+    lexer->static_env.push(lexer->static_env.top());
+  }
+}
+
+void
+ruby_lexer_env_unextend(ruby_lexer_state_t* lexer)
+{
+  lexer->static_env.pop();
+}
+
+void
+ruby_lexer_env_declare(ruby_lexer_state_t* lexer, const char* name, size_t len)
+{
+  lexer->static_env.top().insert(std::string(name, len));
+}
+
+ruby_token_type_t
+ruby_lexer_advance(ruby_lexer_state_t* lexer, const char** ptr, size_t* len)
+{
+  ruby_token_t token = lexer->advance();
+
+  *ptr = token.ptr;
+  *len = token.len;
+
+  return token.type;
+}
