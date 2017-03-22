@@ -226,6 +226,16 @@ struct ruby_lexer_state_t {
     /* TODO */
   }
 
+  std::string tok_as_string() {
+    return std::string(ts, (size_t)(te - ts));
+  }
+
+  bool static_env_declared(std::string identifier) {
+    ruby_env_t& env = static_env.top();
+
+    return env.find(identifier) != env.end();
+  }
+
   /*
   ESCAPES = {
     ?a.ord => "\a", ?b.ord  => "\b", ?e.ord => "\e", ?f.ord => "\f",
@@ -1421,13 +1431,13 @@ struct ruby_lexer_state_t {
   action local_ident {
     /* TODO
     emit(:tIDENTIFIER)
-
-    if !@static_env.nil? && @static_env.declared?(tok)
-      fnext expr_endfn; fbreak;
-    else
-      fnext *arg_or_cmdarg(); fbreak;
-    end
     */
+
+    if (static_env_declared(tok_as_string())) {
+      fnext expr_endfn; fbreak;
+    } else {
+      fnext *arg_or_cmdarg(); fbreak;
+    }
   }
 
   # Variable lexing code is accessed from both expressions and
@@ -2252,17 +2262,15 @@ struct ruby_lexer_state_t {
 
       '__ENCODING__'
       => {
-        /* TODO
-        if version?(18)
-          emit(:tIDENTIFIER)
+        if (version == RUBY_18) {
+          /* TODO emit(:tIDENTIFIER) */
 
-          unless !@static_env.nil? && @static_env.declared?(tok)
+          if (!static_env_declared(tok_as_string())) {
             fnext *arg_or_cmdarg();
-          end
-        else
-          emit(:k__ENCODING__, '__ENCODING__'.freeze)
-        end
-        */
+          }
+        } else {
+          /* TODO emit(:k__ENCODING__, '__ENCODING__'.freeze) */
+        }
         fbreak;
       };
 
