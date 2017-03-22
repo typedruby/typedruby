@@ -162,6 +162,11 @@ struct ruby_lexer_state_t {
   const char* sharp_s;   // location of last encountered #
   const char* newline_s; // location of last encountered newline
 
+  // Ruby 1.9 ->() lambdas emit a distinct token if do/{ is
+  // encountered after a matching closing parenthesis.
+  size_t paren_nest;
+  std::stack<int> lambda_stack;
+
   ruby_lexer_state_t(ruby_version_t version, std::string source_buffer)
     : version(version)
     , source_buffer(source_buffer)
@@ -174,6 +179,7 @@ struct ruby_lexer_state_t {
     , top(0)
     , sharp_s(NULL)
     , newline_s(NULL)
+    , paren_nest(0)
   {
     // ensure the stack capacity is non-zero so we can just double in
     // check_stack_capacity:
@@ -392,8 +398,8 @@ struct ruby_lexer_state_t {
 
     const char* p = _p;
     // TODO - the ruby lexer sets pe to @source_pts.size + 2...
-    // investigate why and whether we need to do the same:
-    const char* pe = _pe;
+    // investigate why, but for now we'll do the same:
+    const char* pe = _pe + 2;
     const char* eof = _pe;
 
     const char* tm = NULL;
@@ -1390,11 +1396,11 @@ struct ruby_lexer_state_t {
   e_lparen = '(' % {
     cond.push(false); cmdarg.push(false);
 
-    /* TODO @paren_nest += 1 */
+    paren_nest += 1;
   };
 
   e_rparen = ')' % {
-    /* TODO @paren_nest -= 1 */
+    paren_nest -= 1;
   };
 
   # Ruby is context-sensitive wrt/ local identifiers.
@@ -1605,15 +1611,13 @@ struct ruby_lexer_state_t {
       # Command: method call without parentheses.
       w_space* e_lbrace
       => {
-        /* TODO
-        if @lambda_stack.last == @paren_nest
-          p = @ts - 1
+        if (!lambda_stack.empty() && lambda_stack.top() == paren_nest) {
+          p = ts - 1;
           fgoto expr_end;
-        else
-          emit(:tLCURLY, '{'.freeze, @te - 1, @te)
+        } else {
+          /* TODO emit(:tLCURLY, '{'.freeze, @te - 1, @te) */
           fnext expr_value; fbreak;
-        end
-        */
+        }
       };
 
       #
@@ -1777,14 +1781,12 @@ struct ruby_lexer_state_t {
   expr_endarg := |*
       e_lbrace
       => {
-        /* TODO
-        if @lambda_stack.last == @paren_nest
-          @lambda_stack.pop
-          emit(:tLAMBEG, '{'.freeze)
-        else
-          emit(:tLBRACE_ARG, '{'.freeze)
-        end
-        */
+        if (!lambda_stack.empty() && lambda_stack.top() == paren_nest) {
+          lambda_stack.pop();
+          /* TODO emit(:tLAMBEG, '{'.freeze) */
+        } else {
+          /* emit(:tLBRACE_ARG, '{'.freeze) */
+        }
         fnext expr_value;
       };
 
@@ -2015,14 +2017,12 @@ struct ruby_lexer_state_t {
       # a({b=>c})
       e_lbrace
       => {
-        /* TODO
-        if @lambda_stack.last == @paren_nest
-          @lambda_stack.pop
-          emit(:tLAMBEG, '{'.freeze)
-        else
-          emit(:tLBRACE, '{'.freeze)
-        end
-        */
+        if (!lambda_stack.empty() && lambda_stack.top() == paren_nest) {
+          lambda_stack.pop();
+          /* TODO emit(:tLAMBEG, '{'.freeze) */
+        } else {
+          /* TODO emit(:tLBRACE, '{'.freeze) */
+        }
         fbreak;
       };
 
@@ -2180,31 +2180,33 @@ struct ruby_lexer_state_t {
       => {
         /* TODO
         emit(:tLAMBDA, '->'.freeze, @ts, @ts + 2)
-
-        @lambda_stack.push @paren_nest
         */
+
+        lambda_stack.push(paren_nest);
         fnext expr_endfn; fbreak;
       };
 
       e_lbrace | 'do'
       => {
-        /* TODO
-        if @lambda_stack.last == @paren_nest
-          @lambda_stack.pop
+        if (!lambda_stack.empty() && lambda_stack.top() == paren_nest) {
+          lambda_stack.pop();
 
+          /* TODO
           if tok == '{'.freeze
             emit(:tLAMBEG, '{'.freeze)
           else # 'do'
             emit(:kDO_LAMBDA, 'do'.freeze)
           end
-        else
+          */
+        } else {
+          /* TODO
           if tok == '{'.freeze
             emit(:tLCURLY, '{'.freeze)
           else # 'do'
             emit_do
           end
-        end
-        */
+          */
+        }
 
         fnext expr_value; fbreak;
       };
@@ -2528,7 +2530,7 @@ struct ruby_lexer_state_t {
            fgoto line_comment; };
 
       '__END__' ( c_eol - zlen )
-      => { /* TODO p = pe - 3 */ };
+      => { p = pe - 3; };
 
       c_any
       => { fhold; fgoto expr_value; };
