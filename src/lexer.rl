@@ -189,6 +189,11 @@ struct ruby_lexer_state_t {
   const char* num_suffix_s; // starting position of numeric suffix
   ruby_num_xfrm_t num_xfrm; // numeric suffix-induced transformation
 
+  const char* escape_s;     // starting position of current sequence
+  std::string escape;       // last escaped sequence, as string
+
+  const char* herebody_s;   // starting position of current heredoc line
+
   ruby_lexer_state_t(ruby_version_t version, std::string source_buffer)
     : version(version)
     , source_buffer(source_buffer)
@@ -209,6 +214,8 @@ struct ruby_lexer_state_t {
     , num_digits_s(NULL)
     , num_suffix_s(NULL)
     , num_xfrm(XFRM_NULL)
+    , escape_s(NULL)
+    , herebody_s(NULL)
   {
     // ensure the stack capacity is non-zero so we can just double in
     // check_stack_capacity:
@@ -988,10 +995,8 @@ struct ruby_lexer_state_t {
 
   # Use rules in form of `e_bs escape' when you need to parse a sequence.
   e_bs = '\\' % {
-    /* TODO
-    @escape_s = p
-    @escape   = nil
-    */
+    escape_s = p;
+    escape   = "";
   };
 
   #
@@ -1030,14 +1035,12 @@ struct ruby_lexer_state_t {
   # containing another heredocs) is closed, the previous value is restored.
 
   e_heredoc_nl = c_nl % {
-    /* TODO
-    # After every heredoc was parsed, @herebody_s contains the
-    # position of next token after all heredocs.
-    if @herebody_s
-      p = @herebody_s
-      @herebody_s = nil
-    end
-    */
+    // After every heredoc was parsed, herebody_s contains the
+    // position of next token after all heredocs.
+    if (herebody_s) {
+      p = herebody_s;
+      herebody_s = NULL;
+    }
   };
 
   action extend_string {
