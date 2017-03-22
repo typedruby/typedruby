@@ -1629,15 +1629,13 @@ struct ruby_lexer_state_t {
       # See below the rationale about expr_endarg.
       w_space+ e_lparen
       => {
-        /* TODO
-        if version?(18)
-          emit(:tLPAREN2, '('.freeze, @te - 1, @te)
+        if (version == RUBY_18) {
+          /* TODO emit(:tLPAREN2, '('.freeze, @te - 1, @te) */
           fnext expr_value; fbreak;
-        else
-          emit(:tLPAREN_ARG, '('.freeze, @te - 1, @te)
+        } else {
+          /* TODO emit(:tLPAREN_ARG, '('.freeze, @te - 1, @te) */
           fnext expr_beg; fbreak;
-        end
-        */
+        }
       };
 
       # meth(1 + 2)
@@ -1787,13 +1785,11 @@ struct ruby_lexer_state_t {
 
       w_space* 'do'
       => {
-        /* TODO
-        if @cond.active?
-          emit(:kDO_COND, 'do'.freeze, @te - 2, @te)
-        else
-          emit(:kDO, 'do'.freeze, @te - 2, @te)
-        end
-        */
+        if (cond.top()) {
+          /* TODO emit(:kDO_COND, 'do'.freeze, @te - 2, @te) */
+        } else {
+          /* TODO emit(:kDO, 'do'.freeze, @te - 2, @te) */
+        }
         fnext expr_value; fbreak;
       };
 
@@ -2101,24 +2097,23 @@ struct ruby_lexer_state_t {
       => {
         fhold;
 
-        /* TODO
-        if version?(18)
-          ident = tok(@ts, @te - 2)
+        if (version == RUBY_18) {
+          if (*ts >= 'A' && *ts <= 'Z') {
+            /* TODO emit(:tCONSTANT, ident, @ts, @te - 2) */
+          } else {
+            /* TODO emit(:tIDENTIFIER, ident, @ts, @te - 2) */
+          }
+          fhold; // continue as a symbol
 
-          emit((@source_buffer.slice(@ts) =~ /[A-Z]/) ? :tCONSTANT : :tIDENTIFIER,
-               ident, @ts, @te - 2)
-          fhold; # continue as a symbol
-
-          if !@static_env.nil? && @static_env.declared?(ident)
+          if (static_env_declared(tok_as_string())) {
             fnext expr_end;
-          else
+          } else {
             fnext *arg_or_cmdarg();
-          end
-        else
-          emit(:tLABEL, tok(@ts, @te - 2), @ts, @te - 1)
+          }
+        } else {
+          /* TODO emit(:tLABEL, tok(@ts, @te - 2), @ts, @te - 1) */
           fnext expr_labelarg;
-        end
-        */
+        }
 
         fbreak;
       };
@@ -2359,16 +2354,16 @@ struct ruby_lexer_state_t {
 
       flo_int [eE]
       => {
-        /* TODO
-        if version?(18, 19, 20)
+        if (version == RUBY_18 || version == RUBY_19 || version == RUBY_20) {
+          /* TODO
           diagnostic :error,
                      :trailing_in_number, { :character => tok(@te - 1, @te) },
                      range(@te - 1, @te)
-        else
-          emit(:tINTEGER, tok(@ts, @te - 1).to_i, @ts, @te - 1)
+          */
+        } else {
+          /* TODO emit(:tINTEGER, tok(@ts, @te - 1).to_i, @ts, @te - 1) */
           fhold; fbreak;
-        end
-        */
+        }
       };
 
       flo_int flo_frac [eE]
