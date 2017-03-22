@@ -1298,16 +1298,16 @@ struct ruby_lexer_state_t {
         end
 
         emit(:tREGEXP_OPT)
-        fnext expr_end; fbreak;
         */
+        fnext expr_end; fbreak;
       };
 
       any
       => {
         /* TODO
         emit(:tREGEXP_OPT, tok(@ts, @te - 1), @ts, @te - 1)
-        fhold; fgoto expr_end;
         */
+        fhold; fgoto expr_end;
       };
   *|;
 
