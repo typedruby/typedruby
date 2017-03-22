@@ -396,6 +396,8 @@ struct ruby_lexer_state_t {
     const char* pe = _pe;
     const char* eof = _pe;
 
+    const char* tm = NULL;
+
     %% write exec;
 
     _p = p;
@@ -1352,27 +1354,27 @@ struct ruby_lexer_state_t {
   # to sheer ambiguity.
 
   ambiguous_fid_suffix =         # actual    parsed
-      [?!]    %{ /* TODO tm = p */ }      | # a?        a?
-      [?!]'=' %{ /* TODO tm = p - 2 */ }    # a!=b      a != b
+      [?!]    %{ tm = p; }     | # a?        a?
+      [?!]'=' %{ tm = p - 2; }   # a!=b      a != b
   ;
 
   ambiguous_ident_suffix =       # actual    parsed
       ambiguous_fid_suffix     |
-      '='     %{ /* TODO tm = p */ }      | # a=        a=
-      '=='    %{ /* TODO tm = p - 2 */ }  | # a==b      a == b
-      '=~'    %{ /* TODO tm = p - 2 */ }  | # a=~b      a =~ b
-      '=>'    %{ /* TODO tm = p - 2 */ }  | # a=>b      a => b
-      '==='   %{ /* TODO tm = p - 3 */ }    # a===b     a === b
+      '='     %{ tm = p; }     | # a=        a=
+      '=='    %{ tm = p - 2; } | # a==b      a == b
+      '=~'    %{ tm = p - 2; } | # a=~b      a =~ b
+      '=>'    %{ tm = p - 2; } | # a=>b      a => b
+      '==='   %{ tm = p - 3; }   # a===b     a === b
   ;
 
   ambiguous_symbol_suffix =      # actual    parsed
       ambiguous_ident_suffix |
-      '==>'   %{ /* TODO tm = p - 2 */ }    # :a==>b    :a= => b
+      '==>'   %{ tm = p - 2; }   # :a==>b    :a= => b
   ;
 
   # Ambiguous with 1.9 hash labels.
   ambiguous_const_suffix =       # actual    parsed
-      '::'    %{ /* TODO tm = p - 2 */ }    # A::B      A :: B
+      '::'    %{ tm = p - 2; }   # A::B      A :: B
   ;
 
   # Resolving kDO/kDO_COND/kDO_BLOCK ambiguity requires embedding
@@ -1547,7 +1549,7 @@ struct ruby_lexer_state_t {
 
       bareword ambiguous_fid_suffix
       => { /* TODO emit(:tFID, tok(@ts, tm), @ts, tm) */
-           fnext *arg_or_cmdarg(); /* TODO p = tm - 1 */; fbreak; };
+           fnext *arg_or_cmdarg(); p = tm - 1; fbreak; };
 
       # See the comment in `expr_fname`.
       operator_fname      |
@@ -1637,7 +1639,7 @@ struct ruby_lexer_state_t {
       # a %{1}, a %[1] (but not "a %=1=" or "a % foo")
       # a /foo/ (but not "a / foo" or "a /=foo")
       # a <<HEREDOC
-      w_space+ %{ /* TODO tm = p */ }
+      w_space+ %{ tm = p; }
       ( [%/] ( c_any - c_space_nl - '=' ) # /
       | '<<'
       )
@@ -1647,22 +1649,22 @@ struct ruby_lexer_state_t {
           # Ambiguous regexp literal.
           diagnostic :warning, :ambiguous_literal, nil, range(tm, tm + 1)
         end
-
-        p = tm - 1
         */
+
+        p = tm - 1;
         fgoto expr_beg;
       };
 
       # x *1
       # Ambiguous splat, kwsplat or block-pass.
-      w_space+ %{ /* TODO tm = p */ } ( '+' | '-' | '*' | '&' | '**' )
+      w_space+ %{ tm = p; } ( '+' | '-' | '*' | '&' | '**' )
       => {
         /* TODO
         diagnostic :warning, :ambiguous_prefix, { :prefix => tok(tm, @te) },
                    range(tm, @te)
-
-        p = tm - 1
         */
+
+        p = tm - 1;
         fgoto expr_beg;
       };
 
@@ -1685,8 +1687,8 @@ struct ruby_lexer_state_t {
 
       # a ? b
       # Ternary operator.
-      w_space+ %{ /* TODO tm = p */ } '?' c_space_nl
-      => { /* TODO p = tm - 1; */ fgoto expr_end; };
+      w_space+ %{ tm = p; } '?' c_space_nl
+      => { p = tm - 1; fgoto expr_end; };
 
       # x + 1: Binary operator or operator-assignment.
       w_space* operator_arithmetic
@@ -1937,9 +1939,9 @@ struct ruby_lexer_state_t {
       => {
         /* TODO
         emit(:tSYMBOL, tok(@ts + 1, tm), @ts, tm)
-        p = tm - 1
-        fnext expr_end; fbreak;
         */
+        p = tm - 1;
+        fnext expr_end; fbreak;
       };
 
       ':' ( bareword | global_var | class_var | instance_var |
@@ -2041,9 +2043,9 @@ struct ruby_lexer_state_t {
 
       # rescue Exception => e: Block rescue.
       # Special because it should transition to expr_mid.
-      'rescue' %{ /* TODO tm = p */ } '=>'?
-      => { /* TODO emit(:kRESCUE, 'rescue'.freeze, @ts, tm)
-           p = tm - 1 */
+      'rescue' %{ tm = p; } '=>'?
+      => { /* TODO emit(:kRESCUE, 'rescue'.freeze, @ts, tm) */
+           p = tm - 1;
            fnext expr_mid; fbreak; };
 
       # if a: Statement if.
@@ -2382,7 +2384,7 @@ struct ruby_lexer_state_t {
 
       constant ambiguous_const_suffix
       => { /* TODO emit(:tCONSTANT, tok(@ts, tm), @ts, tm) */
-           /* TODO p = tm - 1; */ fbreak; };
+           p = tm - 1; fbreak; };
 
       global_var | class_var_v | instance_var_v
       => { /* TODO p = @ts - 1; */ fcall expr_variable; };
@@ -2400,16 +2402,14 @@ struct ruby_lexer_state_t {
 
       bareword ambiguous_fid_suffix
       => {
-        /* TODO
-        if tm == @te
-          # Suffix was consumed, e.g. foo!
-          emit(:tFID)
-        else
-          # Suffix was not consumed, e.g. foo!=
-          emit(:tIDENTIFIER, tok(@ts, tm), @ts, tm)
-          p = tm - 1
-        end
-        */
+        if (tm == te) {
+          // Suffix was consumed, e.g. foo!
+          /* TODO emit(:tFID) */
+        } else {
+          // Suffix was not consumed, e.g. foo!=
+          /* emit(:tIDENTIFIER, tok(@ts, tm), @ts, tm) */
+          p = tm - 1;
+        }
         fnext expr_arg; fbreak;
       };
 
@@ -2490,8 +2490,8 @@ struct ruby_lexer_state_t {
       # Insane leading dots:
       # a #comment
       #  .b: a.b
-      c_space* %{ /* TODO tm = p */ } ('.' | '&.')
-      => { /* TODO p = tm - 1; */ fgoto expr_end; };
+      c_space* %{ tm = p; } ('.' | '&.')
+      => { p = tm - 1; fgoto expr_end; };
 
       any
       => { /* TODO emit(:tNL, nil, @newline_s, @newline_s + 1) */
