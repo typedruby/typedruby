@@ -159,8 +159,9 @@ struct ruby_lexer_state_t {
 
   %% prepush { check_stack_capacity(); }
 
-  const char* sharp_s;   // location of last encountered #
-  const char* newline_s; // location of last encountered newline
+  const char* eq_begin_s; // location of last encountered =begin
+  const char* sharp_s;    // location of last encountered #
+  const char* newline_s;  // location of last encountered newline
 
   // Ruby 1.9 ->() lambdas emit a distinct token if do/{ is
   // encountered after a matching closing parenthesis.
@@ -177,6 +178,7 @@ struct ruby_lexer_state_t {
     , te(NULL)
     , act(0)
     , top(0)
+    , eq_begin_s(NULL)
     , sharp_s(NULL)
     , newline_s(NULL)
     , paren_nest(0)
@@ -2510,7 +2512,7 @@ struct ruby_lexer_state_t {
       w_any;
 
       '=begin' ( c_space | c_nl_zlen )
-      => { /* TODO @eq_begin_s = @ts */
+      => { eq_begin_s = ts;
            fgoto line_comment; };
 
       '__END__' ( c_eol - zlen )
