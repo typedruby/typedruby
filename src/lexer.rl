@@ -1422,40 +1422,34 @@ struct ruby_lexer_state_t {
   expr_variable := |*
       global_var
       => {
-        /* TODO
-        if    tok =~ /^\$([1-9][0-9]*)$/
-          emit(:tNTH_REF, tok(@ts + 1).to_i)
-        elsif tok =~ /^\$([&`'+])$/
-          emit(:tBACK_REF)
-        else
-          emit(:tGVAR)
-        end
-        */
+        if (ts[1] >= '0' && ts[1] <= '9') {
+          /* TODO emit(:tNTH_REF, tok(@ts + 1).to_i) */
+        } else if (ts[1] == '&' || ts[1] == '`' || ts[1] == '\'' || ts[1] == '+') {
+          /* TODO emit(:tBACK_REF) */
+        } else {
+          /* emit(:tGVAR) */
+        }
 
         fnext *stack_pop(); fbreak;
       };
 
       class_var_v
       => {
-        /* TODO
-        if tok =~ /^@@[0-9]/
-          diagnostic :error, :cvar_name, { :name => tok }
-        end
+        if (ts[2] >= '0' && ts[2] <= '9') {
+          /* TODO diagnostic :error, :cvar_name, { :name => tok } */
+        }
 
-        emit(:tCVAR)
-        */
+        /* TODO emit(:tCVAR) */
         fnext *stack_pop(); fbreak;
       };
 
       instance_var_v
       => {
-        /* TODO
-        if tok =~ /^@[0-9]/
-          diagnostic :error, :ivar_name, { :name => tok }
-        end
+        if (ts[1] >= '0' && ts[1] <= '9') {
+          /* TODO diagnostic :error, :ivar_name, { :name => tok } */
+        }
 
-        emit(:tIVAR)
-        */
+        /* TODO emit(:tIVAR) */
         fnext *stack_pop(); fbreak;
       };
   *|;
@@ -1646,12 +1640,12 @@ struct ruby_lexer_state_t {
       | '<<'
       )
       => {
-        /* TODO
-        if tok(tm, tm + 1) == '/'.freeze
+        if (*tm == '/') {
+          /* TODO
           # Ambiguous regexp literal.
           diagnostic :warning, :ambiguous_literal, nil, range(tm, tm + 1)
-        end
-        */
+          */
+        }
 
         p = tm - 1;
         fgoto expr_beg;
@@ -1837,13 +1831,11 @@ struct ruby_lexer_state_t {
       #   -5 to [tUMINUS_NUM] [tINTEGER, 5]
       [+\-][0-9]
       => {
-        /* TODO
         fhold;
-        if tok.start_with? '-'.freeze
-          emit(:tUMINUS_NUM, '-'.freeze, @ts, @ts + 1)
+        if (*ts == '-') {
+          /* TODO emit(:tUMINUS_NUM, '-'.freeze, @ts, @ts + 1) */
           fnext expr_end; fbreak;
-        end
-        */
+        }
       };
 
       # splat *a
@@ -2187,21 +2179,17 @@ struct ruby_lexer_state_t {
         if (!lambda_stack.empty() && lambda_stack.top() == paren_nest) {
           lambda_stack.pop();
 
-          /* TODO
-          if tok == '{'.freeze
-            emit(:tLAMBEG, '{'.freeze)
-          else # 'do'
-            emit(:kDO_LAMBDA, 'do'.freeze)
-          end
-          */
+          if (ts[0] == '{') {
+            /* TODO emit(:tLAMBEG, '{'.freeze) */
+          } else { // 'do'
+            /* TODO emit(:kDO_LAMBDA, 'do'.freeze) */
+          }
         } else {
-          /* TODO
-          if tok == '{'.freeze
-            emit(:tLCURLY, '{'.freeze)
-          else # 'do'
-            emit_do
-          end
-          */
+          if (ts[0] == '{') {
+            /* TODO emit(:tLCURLY, '{'.freeze) */
+          } else { // 'do'
+            /* TODO emit_do */
+          }
         }
 
         fnext expr_value; fbreak;
