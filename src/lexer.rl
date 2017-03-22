@@ -138,8 +138,6 @@ struct ruby_lexer_state_t {
   std::stack<bool> cmdarg;
   std::stack<ruby_env_t> static_env;
   std::queue<ruby_token_t> token_queue;
-  bool in_kwarg;
-  bool command_state;
 
   int cs;
   const char* _p;
@@ -168,6 +166,14 @@ struct ruby_lexer_state_t {
   size_t paren_nest;
   std::stack<int> lambda_stack;
 
+  // If the lexer is in `command state' (aka expr_value)
+  // at the entry to #advance, it will transition to expr_cmdarg
+  // instead of expr_arg at certain points.
+  bool command_state;
+
+  // True at the end of "def foo a:"
+  bool in_kwarg;
+
   ruby_lexer_state_t(ruby_version_t version, std::string source_buffer)
     : version(version)
     , source_buffer(source_buffer)
@@ -182,6 +188,8 @@ struct ruby_lexer_state_t {
     , sharp_s(NULL)
     , newline_s(NULL)
     , paren_nest(0)
+    , command_state(false)
+    , in_kwarg(false)
   {
     // ensure the stack capacity is non-zero so we can just double in
     // check_stack_capacity:
