@@ -191,8 +191,7 @@ struct ruby_lexer_state_t {
   }
 
   int stack_pop() {
-    /* TODO */
-    return -1;
+    return stack[--top];
   }
 
   int arg_or_cmdarg() {
@@ -466,11 +465,6 @@ struct ruby_lexer_state_t {
 
   def version?(*versions)
     versions.include?(@version)
-  end
-
-  def stack_pop
-    @top -= 1
-    @stack[@top]
   end
 
   if defined?(Encoding)
