@@ -550,6 +550,20 @@ Literal& Lexer::literal() {
   return literal_stack.top();
 }
 
+int Lexer::pop_literal() {
+  auto was_regexp = literal_stack.top().regexp();
+
+  /* TODO @dedent_level = old_literal.dedent_level */
+
+  literal_stack.pop();
+
+  if (was_regexp) {
+    return lex_en_regexp_modifiers;
+  } else {
+    return lex_en_expr_end;
+  }
+}
+
 /*
   def push_literal(*args)
     new_literal = Literal.new(self, *args)
