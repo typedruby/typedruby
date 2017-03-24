@@ -118,12 +118,6 @@ extern "C" {
 #include <string>
 #include <queue>
 
-struct ruby_token_t {
-  ruby_token_type_t type;
-  const char* ptr;
-  size_t len;
-};
-
 %% write data nofinal;
 
 typedef std::set<std::string> ruby_env_t;
@@ -134,7 +128,7 @@ typedef enum {
   XFRM_IMAGINARY,
   XFRM_IMAGINARY_RATIONAL,
   XFRM_FLOAT,
-  XFRM_IMAGINARY_FLOAT,
+  XFRM_IMAGINARY_FLOAT
 }
 ruby_num_xfrm_t;
 
@@ -157,7 +151,7 @@ enum ruby_literal_type_t {
   LIT_PERCENT_REGEXP,
   LIT_LOWERX_XSTRING,
   LIT_BACKTICK_XSTRING,
-  LIT_BACKTICK_HEREDOC,
+  LIT_BACKTICK_HEREDOC
 };
 
 struct ruby_literal_t {
@@ -226,9 +220,8 @@ struct ruby_literal_t {
 };
 
 struct ruby_lexer_state_t {
-
   ruby_version_t version;
-
+  void* context;
   std::string source_buffer;
 
   std::stack<bool> cond;
@@ -262,7 +255,7 @@ struct ruby_lexer_state_t {
   // Ruby 1.9 ->() lambdas emit a distinct token if do/{ is
   // encountered after a matching closing parenthesis.
   size_t paren_nest;
-  std::stack<int> lambda_stack;
+  std::stack<size_t> lambda_stack;
 
   // If the lexer is in `command state' (aka expr_value)
   // at the entry to #advance, it will transition to expr_cmdarg
@@ -282,8 +275,9 @@ struct ruby_lexer_state_t {
 
   const char* herebody_s;   // starting position of current heredoc line
 
-  ruby_lexer_state_t(ruby_version_t version, std::string source_buffer)
+  ruby_lexer_state_t(ruby_version_t version, void* context, std::string source_buffer)
     : version(version)
+    , context(context)
     , source_buffer(source_buffer)
     , cs(lex_en_line_begin)
     , _p(source_buffer.data())
@@ -310,6 +304,8 @@ struct ruby_lexer_state_t {
     stack.reserve(16);
 
     static_env.push(ruby_env_t());
+
+    ruby_lexer_foo();
   }
 
   bool active(std::stack<bool>& state_stack) const {
@@ -537,18 +533,50 @@ struct ruby_lexer_state_t {
     }
 
     if (cs == lex_error) {
-      return (ruby_token_t){
+      size_t start = (size_t)(p - source_buffer.data());
+      ruby_token_t token = {
         .type = T_ERROR,
-        .ptr = p - 1,
-        .len = 1,
+        .offset_start = start,
+        .offset_end = start + 1,
+        .value_ptr = p - 1,
+        .value_len = 1,
       };
+
+      return token;
     }
 
-    return (ruby_token_t){
+    ruby_token_t token = {
       .type = T_EOF,
-      .ptr = source_buffer.data(),
-      .len = 0,
+      .offset_start = source_buffer.size(),
+      .offset_end = source_buffer.size(),
+      .value_ptr = source_buffer.data(),
+      .value_len = 0,
     };
+
+    return token;
+  }
+
+  void emit0(ruby_token_type_t token_type) {
+    emit1(token_type, ts, te);
+  }
+
+  void emit1(ruby_token_type_t token_type, const char* start, const char* end) {
+    emit(token_type, start, end, start, (size_t)(end - start));
+  }
+
+  void emit(ruby_token_type_t token_type, const char* start, const char* end, const char* ptr, size_t len) {
+    size_t offset_start = (size_t)(start - source_buffer.data());
+    size_t offset_end = (size_t)(end - source_buffer.data());
+
+    ruby_token_t token = {
+      .type = token_type,
+      .offset_start = offset_start,
+      .offset_end = offset_end,
+      .value_ptr = ptr,
+      .value_len = len,
+    };
+
+    token_queue.push(token);
   }
 
 /*
@@ -797,6 +825,7 @@ struct ruby_lexer_state_t {
     KEYWORDS_BEGIN[keyword] = KEYWORDS[keyword] = :"k#{keyword.upcase}"
   end
 */
+
   %%{
   # access @;
   # getkey (@source_pts[p] || 0);
@@ -1563,9 +1592,7 @@ struct ruby_lexer_state_t {
 
   # Ruby is context-sensitive wrt/ local identifiers.
   action local_ident {
-    /* TODO
-    emit(:tIDENTIFIER)
-    */
+    emit0(T_IDENTIFIER);
 
     if (static_env_declared(tok_as_string())) {
       fnext expr_endfn; fbreak;
@@ -2038,6 +2065,7 @@ struct ruby_lexer_state_t {
         } else if (single_char_type && ts[1] == 'x') {
           type = LIT_LOWERX_XSTRING;
         } else {
+          type = LIT_PERCENT_STRING;
           /* TODO
           diagnostic :error, :unexpected_percent_str,
                  { :type => str_type }, @lexer.send(:range, ts, te - 1)
@@ -2502,6 +2530,7 @@ struct ruby_lexer_state_t {
           /* TODO emit(:tINTEGER, digits.to_i(@num_base), @ts, @num_suffix_s) */
           p = num_suffix_s - 1;
         } else {
+          fprintf(stderr, "tINTEGER: %.*s\n", (int)(te - ts), ts);
           /* TODO @num_xfrm.call(digits.to_i(@num_base)) */
         }
         fbreak;
@@ -2746,10 +2775,12 @@ struct ruby_lexer_state_t {
 
 /* C wrapper: */
 
+extern "C" {
+
 ruby_lexer_state_t*
-ruby_lexer_init(ruby_version_t version, const char* src, size_t len)
+ruby_lexer_init(ruby_version_t version, void* context, const char* src, size_t len)
 {
-  return new ruby_lexer_state_t(version, std::string(src, len));
+  return new ruby_lexer_state_t(version, context, std::string(src, len));
 }
 
 void
@@ -2786,13 +2817,10 @@ ruby_lexer_env_declare(ruby_lexer_state_t* lexer, const char* name, size_t len)
   lexer->static_env.top().insert(std::string(name, len));
 }
 
-ruby_token_type_t
-ruby_lexer_advance(ruby_lexer_state_t* lexer, const char** ptr, size_t* len)
+void
+ruby_lexer_advance(ruby_lexer_state_t* lexer)
 {
-  ruby_token_t token = lexer->advance();
+  lexer->advance();
+}
 
-  *ptr = token.ptr;
-  *len = token.len;
-
-  return token.type;
 }
