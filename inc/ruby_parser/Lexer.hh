@@ -89,9 +89,9 @@ namespace ruby_parser {
     void emit0(TokenType token_type);
     void emit1(TokenType token_type, const char* start, const char* end);
     void emit(TokenType token_type, const char* start, const char* end, const char* ptr, size_t len);
-    template<typename... Args>
-    int push_literal(Args&&... args);
+    template<typename... Args> int push_literal(Args&&... args);
     Literal& literal();
+    int pop_literal();
 
   public:
     Lexer(RubyVersion version, std::string source);

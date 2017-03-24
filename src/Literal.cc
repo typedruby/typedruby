@@ -2,8 +2,8 @@
 
 using namespace ruby_parser;
 
-Literal::Literal(LiteralType str_type, std::string delimiter, const char* str_s, const char* heredoc_e, bool indent, bool dedent_body, bool label_allowed)
-  : str_type(str_type)
+Literal::Literal(LiteralType type, std::string delimiter, const char* str_s, const char* heredoc_e, bool indent, bool dedent_body, bool label_allowed)
+  : _type(type)
   , str_s(str_s)
   , heredoc_e(heredoc_e)
   , indent(indent)
@@ -29,10 +29,10 @@ Literal::Literal(LiteralType str_type, std::string delimiter, const char* str_s,
 }
 
 bool Literal::words() const {
-  return str_type == LiteralType::UPPERW_WORDS
-      || str_type == LiteralType::LOWERW_WORDS
-      || str_type == LiteralType::UPPERI_SYMBOLS
-      || str_type == LiteralType::LOWERI_SYMBOLS
+  return _type == LiteralType::UPPERW_WORDS
+      || _type == LiteralType::LOWERW_WORDS
+      || _type == LiteralType::UPPERI_SYMBOLS
+      || _type == LiteralType::LOWERI_SYMBOLS
       ;
 }
 
@@ -41,17 +41,23 @@ bool Literal::backslash_delimited() const {
 }
 
 bool Literal::interpolate() const {
-  return str_type == LiteralType::DQUOTE_STRING
-      || str_type == LiteralType::DQUOTE_HEREDOC
-      || str_type == LiteralType::PERCENT_STRING
-      || str_type == LiteralType::UPPERQ_STRING
-      || str_type == LiteralType::UPPERW_WORDS
-      || str_type == LiteralType::UPPERI_SYMBOLS
-      || str_type == LiteralType::DQUOTE_SYMBOL
-      || str_type == LiteralType::SLASH_REGEXP
-      || str_type == LiteralType::PERCENT_REGEXP
-      || str_type == LiteralType::LOWERX_XSTRING
-      || str_type == LiteralType::BACKTICK_XSTRING
-      || str_type == LiteralType::BACKTICK_HEREDOC
+  return _type == LiteralType::DQUOTE_STRING
+      || _type == LiteralType::DQUOTE_HEREDOC
+      || _type == LiteralType::PERCENT_STRING
+      || _type == LiteralType::UPPERQ_STRING
+      || _type == LiteralType::UPPERW_WORDS
+      || _type == LiteralType::UPPERI_SYMBOLS
+      || _type == LiteralType::DQUOTE_SYMBOL
+      || _type == LiteralType::SLASH_REGEXP
+      || _type == LiteralType::PERCENT_REGEXP
+      || _type == LiteralType::LOWERX_XSTRING
+      || _type == LiteralType::BACKTICK_XSTRING
+      || _type == LiteralType::BACKTICK_HEREDOC
+      ;
+}
+
+bool Literal::regexp() const {
+  return _type == LiteralType::SLASH_REGEXP
+      || _type == LiteralType::PERCENT_REGEXP
       ;
 }
