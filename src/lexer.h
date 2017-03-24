@@ -2,6 +2,9 @@
 #define LEXER_H
 
 #include <stddef.h>
+#include <stdint.h>
+
+#include "tokens_gen.h"
 
 typedef enum {
   RUBY_18 = 18,
@@ -17,7 +20,7 @@ ruby_version_t;
 typedef struct ruby_lexer_state_t ruby_lexer_state_t;
 
 ruby_lexer_state_t*
-ruby_lexer_init(ruby_version_t version, const char* source, size_t len);
+ruby_lexer_init(ruby_version_t version, void* context, const char* source, size_t len);
 
 void
 ruby_lexer_free(ruby_lexer_state_t* lexer);
@@ -34,14 +37,18 @@ ruby_lexer_env_unextend(ruby_lexer_state_t* lexer);
 void
 ruby_lexer_env_declare(ruby_lexer_state_t* lexer, const char* name, size_t len);
 
-typedef enum {
-  T_ERROR,
-  T_EOF,
-  T_NTH_REF,
-}
-ruby_token_type_t;
+struct ruby_token_t {
+  int type;
+  size_t offset_start;
+  size_t offset_end;
+  const char* value_ptr;
+  size_t value_len;
+};
 
-ruby_token_type_t
-ruby_lexer_advance(ruby_lexer_state_t* lexer, const char** ptr, size_t* len);
+void
+ruby_lexer_advance(ruby_lexer_state_t* lexer);
+
+void
+ruby_lexer_foo();
 
 #endif
