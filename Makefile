@@ -1,10 +1,10 @@
 CXXFLAGS += -Wall -Wextra -pedantic -std=c++1y -I inc
 
 OBJECTS = \
-	src/Lexer.o \
-	src/Literal.o \
-	src/Token.o \
-	src/TypedRuby24.o \
+	src/lexer.o \
+	src/literal.o \
+	src/token.o \
+	src/grammars/typedruby.o \
 
 RAGEL ?= ragel
 BISON ?= bison

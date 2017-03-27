@@ -4,7 +4,7 @@
 #include <string>
 
 namespace ruby_parser {
-  enum class LiteralType {
+  enum class literal_type {
     SQUOTE_STRING,
     SQUOTE_HEREDOC,
     LOWERQ_STRING,
@@ -26,8 +26,8 @@ namespace ruby_parser {
     BACKTICK_HEREDOC,
   };
 
-  class Literal {
-    LiteralType _type;
+  class literal {
+    literal_type _type;
     const char* str_s;
     std::string start_delim;
     std::string end_delim;
@@ -37,7 +37,7 @@ namespace ruby_parser {
     bool label_allowed;
 
   public:
-    Literal(LiteralType _type, std::string delimiter, const char* str_s, const char* heredoc_e = nullptr, bool indent = false, bool dedent_body = false, bool label_allowed = false);
+    literal(literal_type type, std::string delimiter, const char* str_s, const char* heredoc_e = nullptr, bool indent = false, bool dedent_body = false, bool label_allowed = false);
 
     bool words() const;
 

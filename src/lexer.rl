@@ -109,7 +109,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
 */
 
-#include <ruby_parser/Lexer.hh>
+#include <ruby_parser/lexer.hh>
 
 %% write data nofinal;
 
@@ -117,7 +117,7 @@ using namespace ruby_parser;
 
 %% prepush { check_stack_capacity(); }
 
-Lexer::Lexer(RubyVersion version, std::string source_buffer)
+lexer::lexer(ruby_version version, std::string source_buffer)
   : version(version)
   , source_buffer(source_buffer)
   , cs(lex_en_line_begin)
@@ -136,7 +136,7 @@ Lexer::Lexer(RubyVersion version, std::string source_buffer)
   , num_base(0)
   , num_digits_s(nullptr)
   , num_suffix_s(nullptr)
-  , num_xfrm(NumXfrm::NONE)
+  , num_xfrm(num_xfrm_type::NONE)
   , escape_s(nullptr)
   , herebody_s(nullptr)
 {
@@ -144,10 +144,10 @@ Lexer::Lexer(RubyVersion version, std::string source_buffer)
   // check_stack_capacity:
   stack.reserve(16);
 
-  static_env.push(Environment());
+  static_env.push(environment());
 }
 
-bool Lexer::active(std::stack<bool>& state_stack) const {
+bool lexer::active(std::stack<bool>& state_stack) const {
   if (state_stack.empty()) {
     return false;
   } else {
@@ -155,7 +155,7 @@ bool Lexer::active(std::stack<bool>& state_stack) const {
   }
 }
 
-void Lexer::lexpop(std::stack<bool>& state_stack) {
+void lexer::lexpop(std::stack<bool>& state_stack) {
   bool top = state_stack.top();
   state_stack.pop();
 
@@ -167,11 +167,11 @@ void Lexer::lexpop(std::stack<bool>& state_stack) {
   state_stack.push(top);
 }
 
-int Lexer::stack_pop() {
+int lexer::stack_pop() {
   return stack[--top];
 }
 
-int Lexer::arg_or_cmdarg() {
+int lexer::arg_or_cmdarg() {
   if (command_state) {
     return lex_en_expr_cmdarg;
   } else {
@@ -179,18 +179,18 @@ int Lexer::arg_or_cmdarg() {
   }
 }
 
-void Lexer::emit_comment(const char* s, const char* e) {
+void lexer::emit_comment(const char* s, const char* e) {
   /* TODO */
   (void)s;
   (void)e;
 }
 
-std::string Lexer::tok_as_string() {
+std::string lexer::tok_as_string() {
   return std::string(ts, (size_t)(te - ts));
 }
 
-bool Lexer::static_env_declared(std::string&& identifier) {
-  Environment& env = static_env.top();
+bool lexer::static_env_declared(std::string&& identifier) {
+  environment& env = static_env.top();
 
   return env.find(identifier) != env.end();
 }
@@ -344,9 +344,9 @@ bool Lexer::static_env_declared(std::string&& identifier) {
   end
 */
 
-std::unique_ptr<Token> Lexer::advance() {
+std::unique_ptr<token> lexer::advance() {
   if (!token_queue.empty()) {
-    std::unique_ptr<Token> token = std::move(token_queue.front());
+    std::unique_ptr<token> token = std::move(token_queue.front());
     token_queue.pop();
     return token;
   }
@@ -368,7 +368,7 @@ std::unique_ptr<Token> Lexer::advance() {
   _p = p;
 
   if (!token_queue.empty()) {
-    std::unique_ptr<Token> token = std::move(token_queue.front());
+    std::unique_ptr<token> token = std::move(token_queue.front());
     token_queue.pop();
     return token;
   }
@@ -376,25 +376,25 @@ std::unique_ptr<Token> Lexer::advance() {
   if (cs == lex_error) {
     size_t start = (size_t)(p - source_buffer.data());
 
-    return std::make_unique<Token>(TokenType::T_ERROR, start, start + 1, std::string(p - 1, 1));
+    return std::make_unique<token>(token_type::T_ERROR, start, start + 1, std::string(p - 1, 1));
   }
 
-  return std::make_unique<Token>(TokenType::T_EOF, source_buffer.size(), source_buffer.size(), "");
+  return std::make_unique<token>(token_type::T_EOF, source_buffer.size(), source_buffer.size(), "");
 }
 
-void Lexer::emit0(TokenType token_type) {
-  emit1(token_type, ts, te);
+void lexer::emit0(token_type type) {
+  emit1(type, ts, te);
 }
 
-void Lexer::emit1(TokenType token_type, const char* start, const char* end) {
-  emit(token_type, start, end, start, (size_t)(end - start));
+void lexer::emit1(token_type type, const char* start, const char* end) {
+  emit(type, start, end, start, (size_t)(end - start));
 }
 
-void Lexer::emit(TokenType token_type, const char* start, const char* end, const char* ptr, size_t len) {
+void lexer::emit(token_type type, const char* start, const char* end, const char* ptr, size_t len) {
   size_t offset_start = (size_t)(start - source_buffer.data());
   size_t offset_end = (size_t)(end - source_buffer.data());
 
-  token_queue.push(std::make_unique<Token>(token_type, offset_start, offset_end, std::string(ptr, len)));
+  token_queue.push(std::make_unique<token>(type, offset_start, offset_end, std::string(ptr, len)));
 }
 
 /*
@@ -514,10 +514,10 @@ void Lexer::emit(TokenType token_type, const char* start, const char* end, const
 //
 
 template<typename... Args>
-int Lexer::push_literal(Args&&... args) {
+int lexer::push_literal(Args&&... args) {
   literal_stack.emplace(std::forward<Args>(args)...);
 
-  Literal& literal = literal_stack.top();
+  auto& literal = literal_stack.top();
 
   if (literal.words() && literal.backslash_delimited()) {
     if (literal.interpolate()) {
@@ -546,11 +546,11 @@ int Lexer::push_literal(Args&&... args) {
   }
 }
 
-Literal& Lexer::literal() {
+literal& lexer::literal() {
   return literal_stack.top();
 }
 
-int Lexer::pop_literal() {
+int lexer::pop_literal() {
   auto was_regexp = literal_stack.top().regexp();
 
   /* TODO @dedent_level = old_literal.dedent_level */
@@ -805,19 +805,19 @@ int Lexer::pop_literal() {
   flo_pow  = [eE] [+\-]? ( digit+ '_' )* digit+;
 
   int_suffix =
-    ''   % { num_xfrm = NumXfrm::NONE; }
-  | 'r'  % { num_xfrm = NumXfrm::RATIONAL; }
-  | 'i'  % { num_xfrm = NumXfrm::IMAGINARY; }
-  | 'ri' % { num_xfrm = NumXfrm::IMAGINARY_RATIONAL; };
+    ''   % { num_xfrm = num_xfrm_type::NONE; }
+  | 'r'  % { num_xfrm = num_xfrm_type::RATIONAL; }
+  | 'i'  % { num_xfrm = num_xfrm_type::IMAGINARY; }
+  | 'ri' % { num_xfrm = num_xfrm_type::IMAGINARY_RATIONAL; };
 
   flo_pow_suffix =
-    ''   % { num_xfrm = NumXfrm::FLOAT; }
-  | 'i'  % { num_xfrm = NumXfrm::IMAGINARY_FLOAT; };
+    ''   % { num_xfrm = num_xfrm_type::FLOAT; }
+  | 'i'  % { num_xfrm = num_xfrm_type::IMAGINARY_FLOAT; };
 
   flo_suffix =
     flo_pow_suffix
-  | 'r'  % { num_xfrm = NumXfrm::RATIONAL; }
-  | 'ri' % { num_xfrm = NumXfrm::IMAGINARY_RATIONAL; };
+  | 'r'  % { num_xfrm = num_xfrm_type::RATIONAL; }
+  | 'ri' % { num_xfrm = num_xfrm_type::IMAGINARY_RATIONAL; };
 
   #
   # === ESCAPE SEQUENCE PARSING ===
@@ -1427,7 +1427,7 @@ int Lexer::pop_literal() {
 
   # Ruby is context-sensitive wrt/ local identifiers.
   action local_ident {
-    emit0(TokenType::T_IDENTIFIER);
+    emit0(token_type::T_IDENTIFIER);
 
     if (static_env_declared(tok_as_string())) {
       fnext expr_endfn; fbreak;
@@ -1517,8 +1517,8 @@ int Lexer::pop_literal() {
 
       '%s' c_any
       => {
-        if (version == RubyVersion::RUBY_23) {
-          fgoto *push_literal(LiteralType::LOWERS_SYMBOL, std::string(ts + 2, 1), ts);
+        if (version == ruby_version::RUBY_23) {
+          fgoto *push_literal(literal_type::LOWERS_SYMBOL, std::string(ts + 2, 1), ts);
         } else {
           p = ts - 1;
           fgoto expr_end;
@@ -1595,7 +1595,7 @@ int Lexer::pop_literal() {
       # See below the rationale about expr_endarg.
       w_space+ e_lparen
       => {
-        if (version == RubyVersion::RUBY_18) {
+        if (version == ruby_version::RUBY_18) {
           /* TODO emit(:tLPAREN2, '('.freeze, @te - 1, @te) */
           fnext expr_value; fbreak;
         } else {
@@ -1742,7 +1742,7 @@ int Lexer::pop_literal() {
         emit(:tLPAREN_ARG, '('.freeze, @te - 1, @te)
         */
 
-        if (version == RubyVersion::RUBY_18) {
+        if (version == ruby_version::RUBY_18) {
           fnext expr_value; fbreak;
         } else {
           fnext expr_beg; fbreak;
@@ -1865,42 +1865,42 @@ int Lexer::pop_literal() {
       # /=/ (disambiguation with /=)
       '/' c_any
       => {
-        fhold; fgoto *push_literal(LiteralType::SLASH_REGEXP, std::string(ts + 0, 1), ts);
+        fhold; fgoto *push_literal(literal_type::SLASH_REGEXP, std::string(ts + 0, 1), ts);
       };
 
       # %<string>
       '%' ( any - [A-Za-z] )
       => {
-        fgoto *push_literal(LiteralType::PERCENT_STRING, std::string(ts + 1, 1), ts);
+        fgoto *push_literal(literal_type::PERCENT_STRING, std::string(ts + 1, 1), ts);
       };
 
       # %w(we are the people)
       '%' [A-Za-z]+ c_any
       => {
-        LiteralType type;
+        literal_type type;
 
         bool single_char_type = (ts + 3 == te);
 
         if (single_char_type && ts[1] == 'q') {
-          type = LiteralType::LOWERQ_STRING;
+          type = literal_type::LOWERQ_STRING;
         } else if (single_char_type && ts[1] == 'Q') {
-          type = LiteralType::UPPERQ_STRING;
+          type = literal_type::UPPERQ_STRING;
         } else if (single_char_type && ts[1] == 'w') {
-          type = LiteralType::LOWERW_WORDS;
+          type = literal_type::LOWERW_WORDS;
         } else if (single_char_type && ts[1] == 'W') {
-          type = LiteralType::UPPERW_WORDS;
+          type = literal_type::UPPERW_WORDS;
         } else if (single_char_type && ts[1] == 'i') {
-          type = LiteralType::LOWERI_SYMBOLS;
+          type = literal_type::LOWERI_SYMBOLS;
         } else if (single_char_type && ts[1] == 'I') {
-          type = LiteralType::UPPERI_SYMBOLS;
+          type = literal_type::UPPERI_SYMBOLS;
         } else if (single_char_type && ts[1] == 's') {
-          type = LiteralType::LOWERS_SYMBOL;
+          type = literal_type::LOWERS_SYMBOL;
         } else if (single_char_type && ts[1] == 'r') {
-          type = LiteralType::PERCENT_REGEXP;
+          type = literal_type::PERCENT_REGEXP;
         } else if (single_char_type && ts[1] == 'x') {
-          type = LiteralType::LOWERX_XSTRING;
+          type = literal_type::LOWERX_XSTRING;
         } else {
-          type = LiteralType::PERCENT_STRING;
+          type = literal_type::PERCENT_STRING;
           /* TODO
           diagnostic :error, :unexpected_percent_str,
                  { :type => str_type }, @lexer.send(:range, ts, te - 1)
@@ -1947,29 +1947,29 @@ int Lexer::pop_literal() {
           dedent_body = false;
         }
 
-        LiteralType type;
+        literal_type type;
 
         if (*delim_s == '"') {
-          type = LiteralType::DQUOTE_HEREDOC;
+          type = literal_type::DQUOTE_HEREDOC;
           delim_s++;
           delim_e--;
         } else if (*delim_s == '\'') {
-          type = LiteralType::SQUOTE_HEREDOC;
+          type = literal_type::SQUOTE_HEREDOC;
           delim_s++;
           delim_e--;
         } else if (*delim_s == '`') {
-          type = LiteralType::BACKTICK_HEREDOC;
+          type = literal_type::BACKTICK_HEREDOC;
           delim_s++;
           delim_e--;
         } else {
-          type = LiteralType::DQUOTE_HEREDOC;
+          type = literal_type::DQUOTE_HEREDOC;
         }
 
-        if (dedent_body && (version == RubyVersion::RUBY_18 ||
-                            version == RubyVersion::RUBY_19 ||
-                            version == RubyVersion::RUBY_20 ||
-                            version == RubyVersion::RUBY_21 ||
-                            version == RubyVersion::RUBY_22)) {
+        if (dedent_body && (version == ruby_version::RUBY_18 ||
+                            version == ruby_version::RUBY_19 ||
+                            version == ruby_version::RUBY_20 ||
+                            version == ruby_version::RUBY_21 ||
+                            version == ruby_version::RUBY_22)) {
           /* TODO emit(:tLSHFT, '<<'.freeze, @ts, @ts + 2) */
           p = ts + 1;
           fnext expr_beg; fbreak;
@@ -1991,12 +1991,12 @@ int Lexer::pop_literal() {
       # :"bar", :'baz'
       ':' ['"] # '
       => {
-        LiteralType type;
+        literal_type type;
 
         if (ts[1] == '\'') {
-          type = LiteralType::SQUOTE_SYMBOL;
+          type = literal_type::SQUOTE_SYMBOL;
         } else { // '"'
-          type = LiteralType::DQUOTE_SYMBOL;
+          type = literal_type::DQUOTE_SYMBOL;
         }
 
         fgoto *push_literal(type, std::string(ts + 1, 1), ts);
@@ -2030,7 +2030,7 @@ int Lexer::pop_literal() {
           | (c_any - c_space_nl - e_bs) % { /* TODO @escape = nil */ }
           )
       => {
-        if (version == RubyVersion::RUBY_18) {
+        if (version == ruby_version::RUBY_18) {
           /* TODO emit(:tINTEGER, ts[1]) */
         } else {
           /* TODO emit(:tCHARACTER, @escape || tok(@ts + 1))) */
@@ -2116,7 +2116,7 @@ int Lexer::pop_literal() {
       => {
         fhold;
 
-        if (version == RubyVersion::RUBY_18) {
+        if (version == ruby_version::RUBY_18) {
           if (*ts >= 'A' && *ts <= 'Z') {
             /* TODO emit(:tCONSTANT, ident, @ts, @te - 2) */
           } else {
@@ -2209,12 +2209,12 @@ int Lexer::pop_literal() {
       # "bar", 'baz'
       ['"] # '
       => {
-        LiteralType type;
+        literal_type type;
 
         if (ts[0] == '\'') {
-          type = LiteralType::SQUOTE_STRING;
+          type = literal_type::SQUOTE_STRING;
         } else { // '"'
-          type = LiteralType::DQUOTE_STRING;
+          type = literal_type::DQUOTE_STRING;
         }
 
         fgoto *push_literal(type, tok_as_string(), ts);
@@ -2300,7 +2300,7 @@ int Lexer::pop_literal() {
         emit_table(KEYWORDS)
         */
 
-        if (version == RubyVersion::RUBY_18 && ts + 3 == te && ts[0] == 'n' && ts[1] == 'o' && ts[2] == 't') {
+        if (version == ruby_version::RUBY_18 && ts + 3 == te && ts[0] == 'n' && ts[1] == 'o' && ts[2] == 't') {
           fnext expr_beg; fbreak;
         } else {
           fnext expr_arg; fbreak;
@@ -2309,7 +2309,7 @@ int Lexer::pop_literal() {
 
       '__ENCODING__'
       => {
-        if (version == RubyVersion::RUBY_18) {
+        if (version == ruby_version::RUBY_18) {
           /* TODO emit(:tIDENTIFIER) */
 
           if (!static_env_declared(tok_as_string())) {
@@ -2344,7 +2344,7 @@ int Lexer::pop_literal() {
           diagnostic :error, :trailing_in_number, { :character => '_'.freeze },
                      range(@te - 1, @te)
           */
-        } else if (num_digits_s == num_suffix_s && num_base == 8 && version == RubyVersion::RUBY_18) {
+        } else if (num_digits_s == num_suffix_s && num_base == 8 && version == ruby_version::RUBY_18) {
           // 1.8 did not raise an error on 0o.
         } else if (num_digits_s == num_suffix_s) {
           /* TODO
@@ -2361,7 +2361,7 @@ int Lexer::pop_literal() {
           }
         }
 
-        if (version == RubyVersion::RUBY_18 || version == RubyVersion::RUBY_19 || version == RubyVersion::RUBY_20) {
+        if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
           /* TODO emit(:tINTEGER, digits.to_i(@num_base), @ts, @num_suffix_s) */
           p = num_suffix_s - 1;
         } else {
@@ -2380,7 +2380,7 @@ int Lexer::pop_literal() {
 
       flo_int [eE]
       => {
-        if (version == RubyVersion::RUBY_18 || version == RubyVersion::RUBY_19 || version == RubyVersion::RUBY_20) {
+        if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
           /* TODO
           diagnostic :error,
                      :trailing_in_number, { :character => tok(@te - 1, @te) },
@@ -2394,7 +2394,7 @@ int Lexer::pop_literal() {
 
       flo_int flo_frac [eE]
       => {
-        if (version == RubyVersion::RUBY_18 || version == RubyVersion::RUBY_19 || version == RubyVersion::RUBY_20) {
+        if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
           /* TODO
           diagnostic :error,
                      :trailing_in_number, { :character => tok(@te - 1, @te) },
@@ -2415,7 +2415,7 @@ int Lexer::pop_literal() {
       => {
         /* TODO digits = tok(@ts, @num_suffix_s) */
 
-        if (version == RubyVersion::RUBY_18 || version == RubyVersion::RUBY_19 || version == RubyVersion::RUBY_20) {
+        if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
           /* TODO emit(:tFLOAT, Float(digits), @ts, @num_suffix_s) */
           p = num_suffix_s - 1;
         } else {
@@ -2431,14 +2431,14 @@ int Lexer::pop_literal() {
       # `echo foo`, "bar", 'baz'
       '`' | ['"] # '
       => {
-        LiteralType type;
+        literal_type type;
 
         if (ts[0] == '`') {
-          type = LiteralType::BACKTICK_XSTRING;
+          type = literal_type::BACKTICK_XSTRING;
         } else if (ts[0] == '\'') {
-          type = LiteralType::SQUOTE_STRING;
+          type = literal_type::SQUOTE_STRING;
         } else { // '"'
-          type = LiteralType::DQUOTE_STRING;
+          type = literal_type::DQUOTE_STRING;
         }
 
         fgoto *push_literal(type, std::string(pe - 1, 1), ts, nullptr, false, false, true);
@@ -2607,23 +2607,23 @@ int Lexer::pop_literal() {
 
 }%%
 
-void Lexer::extend_static() {
+void lexer::extend_static() {
   static_env.emplace();
 }
 
-void Lexer::extend_dynamic() {
+void lexer::extend_dynamic() {
   if (static_env.empty()) {
     static_env.emplace();
   } else {
-    Environment env = static_env.top();
+    environment& env = static_env.top();
     static_env.push(env);
   }
 }
 
-void Lexer::unextend() {
+void lexer::unextend() {
   static_env.pop();
 }
 
-void Lexer::declare(std::string& name) {
+void lexer::declare(std::string& name) {
   static_env.top().insert(name);
 }
