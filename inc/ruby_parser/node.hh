@@ -2,9 +2,9 @@
 #define RUBY_PARSER_NODE_HH
 
 namespace ruby_parser {
-    enum class NodeType {
+  enum class node_type {
+  };
 
-    };
 
     class Node {
     public:

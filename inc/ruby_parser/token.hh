@@ -5,7 +5,7 @@
 #include <string>
 
 namespace ruby_parser {
-  enum class TokenType {
+  enum class token_type {
     K_CLASS,
     K_MODULE,
     K_DEF,
@@ -151,16 +151,16 @@ namespace ruby_parser {
     T_EOF,
   };
 
-  class Token {
-    TokenType _type;
+  class token {
+    token_type _type;
     size_t _start;
     size_t _end;
     std::string _string;
 
   public:
-    Token(TokenType type, size_t start, size_t end, std::string str);
+    token(token_type type, size_t start, size_t end, std::string str);
 
-    TokenType type() const;
+    token_type type() const;
     size_t start() const;
     size_t end() const;
     const std::string& string() const;

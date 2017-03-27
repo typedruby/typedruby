@@ -7,11 +7,11 @@
 #include <set>
 #include <memory>
 
-#include "Literal.hh"
-#include "Token.hh"
+#include "literal.hh"
+#include "token.hh"
 
 namespace ruby_parser {
-  enum class RubyVersion {
+  enum class ruby_version {
     RUBY_18,
     RUBY_19,
     RUBY_20,
@@ -21,10 +21,10 @@ namespace ruby_parser {
     RUBY_24,
   };
 
-  class Lexer {
-    using Environment = std::set<std::string>;
+  class lexer {
+    using environment = std::set<std::string>;
 
-    enum class NumXfrm {
+    enum class num_xfrm_type {
       NONE,
       RATIONAL,
       IMAGINARY,
@@ -33,14 +33,14 @@ namespace ruby_parser {
       IMAGINARY_FLOAT
     };
 
-    RubyVersion version;
+    ruby_version version;
     std::string source_buffer;
 
     std::stack<bool> cond;
     std::stack<bool> cmdarg;
-    std::stack<Environment> static_env;
-    std::stack<Literal> literal_stack;
-    std::queue<std::unique_ptr<Token>> token_queue;
+    std::stack<environment> static_env;
+    std::stack<literal> literal_stack;
+    std::queue<std::unique_ptr<token>> token_queue;
 
     int cs;
     const char* _p;
@@ -52,9 +52,9 @@ namespace ruby_parser {
     std::vector<int> stack;
     int top;
 
-    const char* eq_begin_s;   // location of last encountered =begin
+    const char* eq_begin_s; // location of last encountered =begin
     const char* sharp_s;    // location of last encountered #
-    const char* newline_s;    // location of last encountered newline
+    const char* newline_s;  // location of last encountered newline
 
     // Ruby 1.9 ->() lambdas emit a distinct token if do/{ is
     // encountered after a matching closing parenthesis.
@@ -66,15 +66,15 @@ namespace ruby_parser {
     // instead of expr_arg at certain points.
     bool command_state;
 
-    bool in_kwarg;        // true at the end of "def foo a:"
+    bool in_kwarg;            // true at the end of "def foo a:"
 
-    int num_base;         // last numeric base
-    const char* num_digits_s;   // starting position of numeric digits
-    const char* num_suffix_s;   // starting position of numeric suffix
-    NumXfrm num_xfrm;       // numeric suffix-induced transformation
+    int num_base;             // last numeric base
+    const char* num_digits_s; // starting position of numeric digits
+    const char* num_suffix_s; // starting position of numeric suffix
+    num_xfrm_type num_xfrm;   // numeric suffix-induced transformation
 
     const char* escape_s;     // starting position of current sequence
-    std::string escape;     // last escaped sequence, as string
+    std::string escape;       // last escaped sequence, as string
 
     const char* herebody_s;   // starting position of current heredoc line
 
@@ -86,17 +86,17 @@ namespace ruby_parser {
     void emit_comment(const char* s, const char* e);
     std::string tok_as_string();
     bool static_env_declared(std::string&& identifier);
-    void emit0(TokenType token_type);
-    void emit1(TokenType token_type, const char* start, const char* end);
-    void emit(TokenType token_type, const char* start, const char* end, const char* ptr, size_t len);
+    void emit0(token_type type);
+    void emit1(token_type type, const char* start, const char* end);
+    void emit(token_type type, const char* start, const char* end, const char* ptr, size_t len);
     template<typename... Args> int push_literal(Args&&... args);
-    Literal& literal();
+    literal& literal();
     int pop_literal();
 
   public:
-    Lexer(RubyVersion version, std::string source);
+    lexer(ruby_version version, std::string source);
 
-    std::unique_ptr<Token> advance();
+    std::unique_ptr<token> advance();
 
     void extend_static();
     void extend_dynamic();

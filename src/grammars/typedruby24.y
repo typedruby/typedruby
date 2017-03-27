@@ -1,17 +1,12 @@
 %{
 
-#include <ruby_parser/TypedRuby24.hh>
-
-using namespace ruby_parser;
-
-TypedRuby24::TypedRuby24(std::string& filename, std::string& source)
-  : filename(filename)
-  , lexer(RubyVersion::RUBY_24, source)
-{}
-
 %}
 
-%token
+%union {
+  ruby_parser::node* node;
+}
+
+%token <token>
       kCLASS kMODULE kDEF kUNDEF kBEGIN kRESCUE kENSURE kEND kIF kUNLESS
       kTHEN kELSIF kELSE kCASE kWHEN kWHILE kUNTIL kFOR kBREAK kNEXT
       kREDO kRETRY kIN kDO kDO_COND kDO_BLOCK kDO_LAMBDA kRETURN kYIELD kSUPER
@@ -30,6 +25,8 @@ TypedRuby24::TypedRuby24(std::string& filename, std::string& source)
       tSTRING_DVAR tSTRING_END tSTRING_DEND tSTRING tSYMBOL
       tNL tEH tCOLON tCOMMA tSPACE tSEMI tLAMBDA tLAMBEG tCHARACTER
       tRATIONAL tIMAGINARY tLABEL_END tANDDOT
+
+%type <node> program
 
 %nonassoc tLOWEST
 %nonassoc tLBRACE_ARG
@@ -59,7 +56,7 @@ TypedRuby24::TypedRuby24(std::string& filename, std::string& source)
 
     top_compstmt: top_stmts opt_terms
                     {
-                      result = @builder.compstmt(val[0])
+                      $$ = builder::compstmt($1);
                     }
 
        top_stmts: // nothing

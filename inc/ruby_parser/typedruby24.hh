@@ -3,15 +3,15 @@
 
 #include <memory>
 
-#include "Node.hh"
-#include "Lexer.hh"
+#include "node.hh"
+#include "lexer.hh"
 
 namespace ruby_parser {
-    class TypedRuby24 {
+    class typedruby24 {
         std::string filename;
-        Lexer lexer;
+        lexer lexer;
     public:
-        TypedRuby24(std::string& filename, std::string& source);
+        typedruby24(std::string& filename, std::string& source);
         std::unique_ptr<Node> parse();
     };
 }
