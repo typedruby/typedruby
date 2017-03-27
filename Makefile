@@ -10,5 +10,5 @@ librubyparser.a: $(OBJECTS)
 %.cc: %.rl
 	$(RAGEL) -o $@ -C $<
 
-%.o: %.cc inc/ruby_parser/*.h
+%.o: %.cc inc/ruby_parser/*.hh
 	$(CXX) -o $@ $(CXXFLAGS) -c $<
