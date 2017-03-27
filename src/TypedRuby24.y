@@ -1,6 +1,18 @@
-class Parser::TypedRuby24
+%{
 
-token kCLASS kMODULE kDEF kUNDEF kBEGIN kRESCUE kENSURE kEND kIF kUNLESS
+#include <ruby_parser/TypedRuby24.hh>
+
+using namespace ruby_parser;
+
+TypedRuby24::TypedRuby24(std::string& filename, std::string& source)
+  : filename(filename)
+  , lexer(RubyVersion::RUBY_24, source)
+{}
+
+%}
+
+%token
+      kCLASS kMODULE kDEF kUNDEF kBEGIN kRESCUE kENSURE kEND kIF kUNLESS
       kTHEN kELSIF kELSE kCASE kWHEN kWHILE kUNTIL kFOR kBREAK kNEXT
       kREDO kRETRY kIN kDO kDO_COND kDO_BLOCK kDO_LAMBDA kRETURN kYIELD kSUPER
       kSELF kNIL kTRUE kFALSE kAND kOR kNOT kIF_MOD kUNLESS_MOD kWHILE_MOD
@@ -19,33 +31,30 @@ token kCLASS kMODULE kDEF kUNDEF kBEGIN kRESCUE kENSURE kEND kIF kUNLESS
       tNL tEH tCOLON tCOMMA tSPACE tSEMI tLAMBDA tLAMBEG tCHARACTER
       tRATIONAL tIMAGINARY tLABEL_END tANDDOT
 
-prechigh
-  right    tBANG tTILDE tUPLUS
-  right    tPOW
-  right    tUMINUS_NUM tUMINUS
-  left     tSTAR2 tDIVIDE tPERCENT
-  left     tPLUS tMINUS
-  left     tLSHFT tRSHFT
-  left     tAMPER2
-  left     tPIPE tCARET
-  left     tGT tGEQ tLT tLEQ
-  nonassoc tCMP tEQ tEQQ tNEQ tMATCH tNMATCH
-  left     tANDOP
-  left     tOROP
-  nonassoc tDOT2 tDOT3
-  right    tEH tCOLON
-  left     kRESCUE_MOD
-  right    tEQL tOP_ASGN
-  nonassoc kDEFINED
-  right    kNOT
-  left     kOR kAND
-  nonassoc kIF_MOD kUNLESS_MOD kWHILE_MOD kUNTIL_MOD
-  nonassoc tLBRACE_ARG
-  nonassoc tLOWEST
-preclow
+%nonassoc tLOWEST
+%nonassoc tLBRACE_ARG
+%nonassoc kIF_MOD kUNLESS_MOD kWHILE_MOD kUNTIL_MOD
+%left     kOR kAND
+%right    kNOT
+%nonassoc kDEFINED
+%right    tEQL tOP_ASGN
+%left     kRESCUE_MOD
+%right    tEH tCOLON
+%nonassoc tDOT2 tDOT3
+%left     tOROP
+%left     tANDOP
+%nonassoc tCMP tEQ tEQQ tNEQ tMATCH tNMATCH
+%left     tGT tGEQ tLT tLEQ
+%left     tPIPE tCARET
+%left     tAMPER2
+%left     tLSHFT tRSHFT
+%left     tPLUS tMINUS
+%left     tSTAR2 tDIVIDE tPERCENT
+%right    tUMINUS_NUM tUMINUS
+%right    tPOW
+%right    tBANG tTILDE tUPLUS
 
-rule
-
+%%
          program: top_compstmt
 
     top_compstmt: top_stmts opt_terms
@@ -53,7 +62,7 @@ rule
                       result = @builder.compstmt(val[0])
                     }
 
-       top_stmts: # nothing
+       top_stmts: // nothing
                     {
                       result = []
                     }
@@ -97,7 +106,7 @@ rule
                       result = @builder.compstmt(val[0])
                     }
 
-           stmts: # nothing
+           stmts: // nothing
                     {
                       result = []
                     }
@@ -245,7 +254,7 @@ rule
                       @builder.op_assign(val[0], val[1], val[2])
                     }
 
-     command_rhs: command_call =tOP_ASGN
+     command_rhs: command_call %prec tOP_ASGN
                 | command_call kRESCUE_MOD stmt
                     {
                       rescue_body = @builder.rescue_body(val[1],
@@ -294,7 +303,7 @@ rule
 
            fcall: operation
 
-         command: fcall command_args =tLOWEST
+         command: fcall command_args %prec tLOWEST
                     {
                       result = @builder.call_method(nil, nil, val[0],
                                   nil, val[1], nil)
@@ -308,7 +317,7 @@ rule
                       result      = @builder.block(method_call,
                                       begin_t, args, body, end_t)
                     }
-                | primary_value call_op operation2 command_args =tLOWEST
+                | primary_value call_op operation2 command_args %prec tLOWEST
                     {
                       result = @builder.call_method(val[0], val[1], val[2],
                                   nil, val[3], nil)
@@ -322,7 +331,7 @@ rule
                       result      = @builder.block(method_call,
                                       begin_t, args, body, end_t)
                     }
-                | primary_value tCOLON2 operation2 command_args =tLOWEST
+                | primary_value tCOLON2 operation2 command_args %prec tLOWEST
                     {
                       result = @builder.call_method(val[0], val[1], val[2],
                                   nil, val[3], nil)
@@ -792,7 +801,7 @@ rule
                       result = [ @builder.associate(nil, val[0], nil) ]
                     }
 
-         arg_rhs: arg =tOP_ASGN
+         arg_rhs: arg %prec tOP_ASGN
                 | arg kRESCUE_MOD arg
                     {
                       rescue_body = @builder.rescue_body(val[1],
@@ -807,13 +816,13 @@ rule
                       result = val
                     }
 
-  opt_paren_args: # nothing
+  opt_paren_args: // nothing
                     {
                       result = [ nil, [], nil ]
                     }
                 | paren_args
 
-   opt_call_args: # nothing
+   opt_call_args: // nothing
                     {
                       result = []
                     }
@@ -872,7 +881,7 @@ rule
                     {
                       result = [ val[1] ]
                     }
-                | # nothing
+                | // nothing
                     {
                       result = []
                     }
@@ -1326,7 +1335,7 @@ opt_block_args_tail:
                     {
                       result = val[1]
                     }
-                | # nothing
+                | // nothing
                     {
                       result = []
                     }
@@ -1418,7 +1427,7 @@ opt_block_args_tail:
                     }
                 |                                                                block_args_tail
 
- opt_block_param: # nothing
+ opt_block_param: // nothing
                     {
                       result = @builder.args(nil, [], nil)
                     }
@@ -1735,7 +1744,7 @@ opt_block_args_tail:
                       result = @builder.words_compose(val[0], val[1], val[2])
                     }
 
-       word_list: # nothing
+       word_list: // nothing
                     {
                       result = []
                     }
@@ -1758,7 +1767,7 @@ opt_block_args_tail:
                       result = @builder.symbols_compose(val[0], val[1], val[2])
                     }
 
-     symbol_list: # nothing
+     symbol_list: // nothing
                     {
                       result = []
                     }
@@ -1777,7 +1786,7 @@ opt_block_args_tail:
                       result = @builder.symbols_compose(val[0], val[1], val[2])
                     }
 
-      qword_list: # nothing
+      qword_list: // nothing
                     {
                       result = []
                     }
@@ -1786,7 +1795,7 @@ opt_block_args_tail:
                       result = val[0] << @builder.string_internal(val[1])
                     }
 
-       qsym_list: # nothing
+       qsym_list: // nothing
                     {
                       result = []
                     }
@@ -1795,7 +1804,7 @@ opt_block_args_tail:
                       result = val[0] << @builder.symbol_internal(val[1])
                     }
 
- string_contents: # nothing
+ string_contents: // nothing
                     {
                       result = []
                     }
@@ -1804,7 +1813,7 @@ opt_block_args_tail:
                       result = val[0] << val[1]
                     }
 
-xstring_contents: # nothing
+xstring_contents: // nothing
                     {
                       result = []
                     }
@@ -1813,7 +1822,7 @@ xstring_contents: # nothing
                       result = val[0] << val[1]
                     }
 
-regexp_contents: # nothing
+regexp_contents: // nothing
                     {
                       result = []
                     }
@@ -1874,7 +1883,7 @@ regexp_contents: # nothing
                     {
                       result = val[0]
                     }
-                | tUMINUS_NUM simple_numeric =tLOWEST
+                | tUMINUS_NUM simple_numeric %prec tLOWEST
                     {
                       result = @builder.negate(val[0], val[1])
                     }
@@ -1985,7 +1994,7 @@ keyword_variable: kNIL
                     {
                       result = [ val[0], val[2] ]
                     }
-                | # nothing
+                | // nothing
                     {
                       result = nil
                     }
@@ -1994,7 +2003,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       result = @builder.tr_genargs(val[0], val[1], val[2])
                     }
-                | # nothing
+                | // nothing
                     {
                       result = nil
                     }
@@ -2047,7 +2056,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       result = val[1]
                     }
-                | # nothing
+                | // nothing
                     {
                       result = []
                     }
@@ -2137,7 +2146,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       result = val[0]
                     }
-                | # nothing
+                | // nothing
                     {
                       result = []
                     }
@@ -2361,7 +2370,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       result = val[1]
                     }
 
-      assoc_list: # nothing
+      assoc_list: // nothing
                     {
                       result = []
                     }
@@ -2426,7 +2435,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
            terms: term
                 | terms tSEMI
 
-            none: # nothing
+            none: // nothing
                   {
                     result = nil
                   }
@@ -2549,20 +2558,5 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       @static_env.unextend
                       result = val[1]
                     }
-end
 
----- header
-
-require 'parser'
-
-Parser.check_for_encoding_support
-
----- inner
-
-  def version
-    24
-  end
-
-  def default_encoding
-    Encoding::UTF_8
-  end
+%%
