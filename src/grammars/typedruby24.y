@@ -1,9 +1,17 @@
 %{
+  #include <ruby_parser/builder.hh>
+  #include <ruby_parser/node.hh>
+  #include <ruby_parser/token.hh>
 
+  using namespace ruby_parser;
 %}
 
+%pure-parser
+
 %union {
-  ruby_parser::node* node;
+  token* token;
+  node* node;
+  node_list* list;
 }
 
 %token <token>
@@ -26,7 +34,32 @@
       tNL tEH tCOLON tCOMMA tSPACE tSEMI tLAMBDA tLAMBEG tCHARACTER
       tRATIONAL tIMAGINARY tLABEL_END tANDDOT
 
-%type <node> program
+%type <node>
+  bodystmt
+  command_asgn
+  command_call
+  command_rhs
+  compstmt
+  expr
+  expr_value
+  fitem
+  lhs
+  mlhs
+  mrhs_arg
+  opt_else
+  opt_ensure
+  stmt
+  stmt_or_begin
+  top_compstmt
+  top_stmt
+  tr_type
+
+%type <list>
+  mrhs
+  opt_rescue
+  stmts
+  top_stmts
+  undef_list
 
 %nonassoc tLOWEST
 %nonassoc tLBRACE_ARG
@@ -51,162 +84,173 @@
 %right    tPOW
 %right    tBANG tTILDE tUPLUS
 
+%{
+  template<typename T>
+  std::unique_ptr<T> owned(T* ptr) {
+    return new std::unique_ptr<T>(ptr);
+  }
+%}
+
 %%
          program: top_compstmt
 
     top_compstmt: top_stmts opt_terms
                     {
-                      $$ = builder::compstmt($1);
+                      $$ = builder::compstmt(owned($1)).release();
                     }
 
        top_stmts: // nothing
                     {
-                      result = []
+                      $$ = new node_list({});
                     }
                 | top_stmt
                     {
-                      result = [ val[0] ]
+                      $$ = new node_list({ owned($1) });
                     }
                 | top_stmts terms top_stmt
                     {
-                      result = val[0] << val[2]
+                      $1->nodes.push_back(owned($3));
+                      $$ = $1;
                     }
                 | error top_stmt
                     {
-                      result = [ val[1] ]
+                      $$ = new node_list({ owned($2) });
                     }
 
         top_stmt: stmt
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
-                      result = @builder.preexe(val[0], val[1], val[2], val[3])
+                      $$ = builder::preexe(owned($3)).release();
                     }
 
         bodystmt: compstmt opt_rescue opt_else opt_ensure
                     {
-                      rescue_bodies     = val[1]
-                      else_t,   else_   = val[2]
-                      ensure_t, ensure_ = val[3]
+                      auto rescue_bodies = owned($2);
+                      auto else_ = owned($3); // TODO needs to be a tuple of (else_t, else)
+                      auto ensure = owned($4); // TODO needs to be a tuple of (ensure_t, else)
 
-                      if rescue_bodies.empty? && !else_.nil?
-                        diagnostic :warning, :useless_else, nil, else_t
-                      end
+                      // rescue_bodies     = val[1]
+                      // else_t,   else_   = val[2]
+                      // ensure_t, ensure_ = val[3]
 
-                      result = @builder.begin_body(val[0],
-                                  rescue_bodies,
-                                  else_t,   else_,
-                                  ensure_t, ensure_)
+                      if (rescue_bodies->nodes.size() == 0 && else_ != nullptr) {
+                        // TODO diagnostic :warning, :useless_else, nil, else_t
+                      }
+
+                      $$ = builder::begin_body(owned($1),
+                            std::move(rescue_bodies),
+                            /* TODO else_t, */ std::move(else_),
+                            /* TODO ensure_t, */ std::move(ensure)).release();
                     }
 
         compstmt: stmts opt_terms
                     {
-                      result = @builder.compstmt(val[0])
+                      $$ = builder::compstmt(owned($1)).release();
                     }
 
            stmts: // nothing
                     {
-                      result = []
+                      $$ = new node_list({});
                     }
                 | stmt_or_begin
                     {
-                      result = [ val[0] ]
+                      $$ = new node_list({ owned($1) });
                     }
                 | stmts terms stmt_or_begin
                     {
-                      result = val[0] << val[2]
+                      $1->nodes.push_back(owned($3));
+                      $$ = $1;
                     }
                 | error stmt
                     {
-                      result = [ val[1] ]
+                      $$ = new node_list({ owned($2) });
                     }
 
    stmt_or_begin: stmt
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
-                      diagnostic :error, :begin_in_method, nil, val[0]
+                      /* TODO diagnostic :error, :begin_in_method, nil, val[0] */
                     }
 
             stmt: kALIAS fitem
                     {
-                      @lexer.state = :expr_fname
+                      // TODO lexer.set_state_expr_fname();
                     }
                     fitem
                     {
-                      result = @builder.alias(val[0], val[1], val[3])
+                      $$ = builder::alias(owned($2), owned($4)).release();
                     }
                 | kALIAS tGVAR tGVAR
                     {
-                      result = @builder.alias(val[0],
-                                  @builder.gvar(val[1]),
-                                  @builder.gvar(val[2]))
+                      $$ = builder::alias(
+                        builder::gvar($2->string()),
+                        builder::gvar($3->string())).release();
                     }
                 | kALIAS tGVAR tBACK_REF
                     {
-                      result = @builder.alias(val[0],
-                                  @builder.gvar(val[1]),
-                                  @builder.back_ref(val[2]))
+                      $$ = builder::alias(
+                        builder::gvar($2->string()),
+                        builder::back_ref($3->string())).release();
                     }
                 | kALIAS tGVAR tNTH_REF
                     {
-                      diagnostic :error, :nth_ref_alias, nil, val[2]
+                      // TODO diagnostic :error, :nth_ref_alias, nil, val[2]
                     }
                 | kUNDEF undef_list
                     {
-                      result = @builder.undef_method(val[0], val[1])
+                      $$ = builder::undef_method(owned($2)).release();
                     }
                 | stmt kIF_MOD expr_value
                     {
-                      result = @builder.condition_mod(val[0], nil,
-                                                      val[1], val[2])
+                      $$ = builder::condition_mod(owned($1), nullptr, owned($3)).release();
                     }
                 | stmt kUNLESS_MOD expr_value
                     {
-                      result = @builder.condition_mod(nil, val[0],
-                                                      val[1], val[2])
+                      $$ = builder::condition_mod(nullptr, owned($1), owned($3)).release();
                     }
                 | stmt kWHILE_MOD expr_value
                     {
-                      result = @builder.loop_mod(:while, val[0], val[1], val[2])
+                      $$ = builder::loop_mod(node_type::WHILE, owned($1), owned($3)).release();
                     }
                 | stmt kUNTIL_MOD expr_value
                     {
-                      result = @builder.loop_mod(:until, val[0], val[1], val[2])
+                      $$ = builder::loop_mod(node_type::UNTIL, owned($1), owned($3)).release();
                     }
                 | stmt kRESCUE_MOD stmt
                     {
-                      rescue_body = @builder.rescue_body(val[1],
-                                        nil, nil, nil,
-                                        nil, val[2])
+                      auto rescue_body = builder::rescue_body(nullptr, nullptr, owned($3));
 
-                      result = @builder.begin_body(val[0], [ rescue_body ])
+                      $$ = builder::begin_body(
+                        owned($1),
+                        std::make_unique<node_list>(std::move(rescue_body)),
+                        nullptr, nullptr).release();
                     }
                 | klEND tLCURLY compstmt tRCURLY
                     {
-                      result = @builder.postexe(val[0], val[1], val[2], val[3])
+                      $$ = builder::postexe(owned($3)).release();
                     }
                 | command_asgn
                 | mlhs tEQL command_call
                     {
-                      result = @builder.multi_assign(val[0], val[1], val[2])
+                      $$ = builder::multi_assign(owned($1), owned($3)).release();
                     }
                 | lhs tEQL mrhs
                     {
-                      result = @builder.assign(val[0], val[1],
-                                  @builder.array(nil, val[2], nil))
+                      $$ = builder::assign(owned($1), builder::array(owned($3))).release();
                     }
                 | mlhs tEQL mrhs_arg
                     {
-                      result = @builder.multi_assign(val[0], val[1], val[2])
+                      $$ = builder::multi_assign(owned($1), owned($3)).release();
                     }
                 | kDEF tIVAR tCOLON tr_type
                     {
-                      result = @builder.tr_ivardecl(val[0], val[1], val[3])
+                      $$ = builder::tr_ivardecl($2->string(), owned($4)).release();
                     }
                 | expr
 
     command_asgn: lhs tEQL command_rhs
                     {
-                      result = @builder.assign(val[0], val[1], val[2])
+                      $$ = builder::assign(owned($1), owned($3)).release();
                     }
                 | var_lhs tOP_ASGN command_rhs
                     {
