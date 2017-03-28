@@ -2,6 +2,7 @@
   #include <ruby_parser/builder.hh>
   #include <ruby_parser/node.hh>
   #include <ruby_parser/token.hh>
+  #include <ruby_parser/lexer.hh>
 
   using namespace ruby_parser;
 %}
@@ -12,6 +13,9 @@
   token* token;
   node* node;
   node_list* list;
+  size_t size;
+  bool boolean;
+  std::stack<bool>* bool_stack;
 }
 
 %token <token>
@@ -35,31 +39,168 @@
       tRATIONAL tIMAGINARY tLABEL_END tANDDOT
 
 %type <node>
+  arg
+  arg_rhs
+  arg_value
+  assoc
+  backref
+  block_arg
+  block_call
+  block_command
+  block_param_def
   bodystmt
+  bvar
+  command
   command_asgn
   command_call
   command_rhs
   compstmt
+  cpath
+  dsym
   expr
   expr_value
+  f_arg_asgn
+  f_arg_item
+  f_arglist
+  f_args
+  f_block_arg
+  f_block_kw
+  f_block_opt
+  f_block_optarg
+  f_kw
+  f_kwarg
+  f_larglist
+  f_marg
+  f_opt
   fitem
+  for_var
+  fsym
+  if_tail
+  keyword_variable
   lhs
+  literal
+  method_call
   mlhs
+  mlhs_inner
+  mlhs_item
+  mlhs_node
   mrhs_arg
+  none
+  numeric
+  opt_args_tail
+  opt_block_param
   opt_else
   opt_ensure
+  opt_f_block_arg
+  primary
+  primary_value
+  qsymbols
+  qwords
+  regexp
+  simple_numeric
+  singleton
   stmt
   stmt_or_begin
+  string1
+  string_content
+  string_dvar
+  strings
+  superclass
+  symbol
+  symbols
   top_compstmt
   top_stmt
+  tr_argsig
+  tr_blockproto
+  tr_cpath
+  tr_gendeclargs
+  tr_methodgenargs
+  tr_returnsig
   tr_type
+  tr_union_type
+  user_variable
+  var_lhs
+  var_ref
+  words
+  xstring
 
 %type <list>
+  aref_args
+  args
+  args_tail
+  assoc_list
+  assocs
+  block_args_tail
+  block_param
+  brace_block
+  brace_body
+  bv_decls
+  call_args
+  case_body
+  cases
+  cmd_brace_block
+  command_args
+  do_block
+  do_body
+  exc_list
+  exc_var
+  f_arg
+  f_block_kwarg
+  f_kwrest
+  f_marg_list
+  f_margs
+  f_optarg
+  f_rest_arg
+  lambda
+  lambda_body
+  list_none
+  mlhs_basic
+  mlhs_head
+  mlhs_post
   mrhs
+  opt_block_arg
+  opt_block_args_tail
+  opt_bv_decl
+  opt_call_args
+  opt_paren_args
   opt_rescue
+  paren_args
+  qsym_list
+  qword_list
+  regexp_contents
   stmts
+  string
+  string_contents
+  symbol_list
   top_stmts
+  tr_types
   undef_list
+  word
+  word_list
+  xstring_contents
+
+%type <token>
+  blkarg_mark
+  call_op
+  cname
+  dot_or_colon
+  f_bad_arg
+  f_label
+  f_norm_arg
+  fcall
+  fname
+  kwrest_mark
+  op
+  operation
+  operation2
+  operation3
+  rbracket
+  reswords
+  restarg_mark
+  rparen
+  then
+  do
+  term
 
 %nonassoc tLOWEST
 %nonassoc tLBRACE_ARG
@@ -129,9 +270,9 @@
                       auto else_ = owned($3); // TODO needs to be a tuple of (else_t, else)
                       auto ensure = owned($4); // TODO needs to be a tuple of (ensure_t, else)
 
-                      // rescue_bodies     = val[1]
-                      // else_t,   else_   = val[2]
-                      // ensure_t, ensure_ = val[3]
+                      // rescue_bodies     = $2
+                      // else_t,   else_   = $3
+                      // ensure_t, ensure_ = $4
 
                       if (rescue_bodies->nodes.size() == 0 && else_ != nullptr) {
                         // TODO diagnostic :warning, :useless_else, nil, else_t
@@ -169,7 +310,7 @@
    stmt_or_begin: stmt
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
-                      /* TODO diagnostic :error, :begin_in_method, nil, val[0] */
+                      /* TODO diagnostic :error, :begin_in_method, nil, owned($1) */
                     }
 
             stmt: kALIAS fitem
@@ -194,7 +335,7 @@
                     }
                 | kALIAS tGVAR tNTH_REF
                     {
-                      // TODO diagnostic :error, :nth_ref_alias, nil, val[2]
+                      // TODO diagnostic :error, :nth_ref_alias, nil, owned($3)
                     }
                 | kUNDEF undef_list
                     {
@@ -254,74 +395,74 @@
                     }
                 | var_lhs tOP_ASGN command_rhs
                     {
-                      result = @builder.op_assign(val[0], val[1], val[2])
+                      $$ = builder::op_assign(owned($1), owned($2), owned($3));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN command_rhs
                     {
-                      result = @builder.op_assign(
-                                  @builder.index(
-                                    val[0], val[1], val[2], val[3]),
-                                  val[4], val[5])
+                      $$ = builder::op_assign(
+                                  builder::index(
+                                    owned($1), owned($2), owned($3), owned($4)),
+                                  owned($5), owned($6))
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN command_rhs
                     {
-                      result = @builder.op_assign(
-                                  @builder.call_method(
-                                    val[0], val[1], val[2]),
-                                  val[3], val[4])
+                      $$ = builder::op_assign(
+                                  builder::call_method(
+                                    owned($1), owned($2), owned($3)),
+                                  owned($4), owned($5))
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN command_rhs
                     {
-                      result = @builder.op_assign(
-                                  @builder.call_method(
-                                    val[0], val[1], val[2]),
-                                  val[3], val[4])
+                      $$ = builder::op_assign(
+                                  builder::call_method(
+                                    owned($1), owned($2), owned($3)),
+                                  owned($4), owned($5))
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN command_rhs
                     {
-                      const  = @builder.const_op_assignable(
-                                  @builder.const_fetch(val[0], val[1], val[2]))
-                      result = @builder.op_assign(const, val[3], val[4])
+                      const  = builder::const_op_assignable(
+                                  builder::const_fetch(owned($1), owned($2), owned($3)))
+                      $$ = builder::op_assign(const, owned($4), owned($5))
                     }
                 | primary_value tCOLON2 tIDENTIFIER tOP_ASGN command_rhs
                     {
-                      result = @builder.op_assign(
-                                  @builder.call_method(
-                                    val[0], val[1], val[2]),
-                                  val[3], val[4])
+                      $$ = builder::op_assign(
+                                  builder::call_method(
+                                    owned($1), owned($2), owned($3)),
+                                  owned($4), owned($5))
                     }
                 | backref tOP_ASGN command_rhs
                     {
-                      @builder.op_assign(val[0], val[1], val[2])
+                      builder::op_assign(owned($1), owned($2), owned($3))
                     }
 
      command_rhs: command_call %prec tOP_ASGN
                 | command_call kRESCUE_MOD stmt
                     {
-                      rescue_body = @builder.rescue_body(val[1],
+                      rescue_body = builder::rescue_body(owned($2),
                                         nil, nil, nil,
-                                        nil, val[2])
+                                        nil, owned($3))
 
-                      result = @builder.begin_body(val[0], [ rescue_body ])
+                      $$ = builder::begin_body(owned($1), [ rescue_body ])
                     }
                 | command_asgn
 
             expr: command_call
                 | expr kAND expr
                     {
-                      result = @builder.logical_op(:and, val[0], val[1], val[2])
+                      $$ = builder::logical_op(:and, owned($1), owned($2), owned($3))
                     }
                 | expr kOR expr
                     {
-                      result = @builder.logical_op(:or, val[0], val[1], val[2])
+                      $$ = builder::logical_op(:or, owned($1), owned($2), owned($3))
                     }
                 | kNOT opt_nl expr
                     {
-                      result = @builder.not_op(val[0], nil, val[2], nil)
+                      $$ = builder::not_op(owned($1), nil, owned($3), nil)
                     }
                 | tBANG command_call
                     {
-                      result = @builder.not_op(val[0], nil, val[1], nil)
+                      $$ = builder::not_op(owned($1), nil, owned($2), nil)
                     }
                 | arg
 
@@ -333,273 +474,273 @@
    block_command: block_call
                 | block_call dot_or_colon operation2 command_args
                     {
-                      result = @builder.call_method(val[0], val[1], val[2],
-                                  nil, val[3], nil)
+                      $$ = builder::call_method(owned($1), owned($2), owned($3),
+                                  nil, owned($4), nil)
                     }
 
  cmd_brace_block: tLBRACE_ARG brace_body tRCURLY
                     {
-                      result = [ val[0], *val[1], val[2] ]
+                      $$ = [ owned($1), *owned($2), owned($3) ]
                     }
 
            fcall: operation
 
          command: fcall command_args %prec tLOWEST
                     {
-                      result = @builder.call_method(nil, nil, val[0],
-                                  nil, val[1], nil)
+                      $$ = builder::call_method(nil, nil, owned($1),
+                                  nil, owned($2), nil)
                     }
                 | fcall command_args cmd_brace_block
                     {
-                      method_call = @builder.call_method(nil, nil, val[0],
-                                        nil, val[1], nil)
+                      method_call = builder::call_method(nil, nil, owned($1),
+                                        nil, owned($2), nil)
 
-                      begin_t, args, body, end_t = val[2]
-                      result      = @builder.block(method_call,
+                      begin_t, args, body, end_t = $3
+                      result      = builder::block(method_call,
                                       begin_t, args, body, end_t)
                     }
                 | primary_value call_op operation2 command_args %prec tLOWEST
                     {
-                      result = @builder.call_method(val[0], val[1], val[2],
-                                  nil, val[3], nil)
+                      $$ = builder::call_method(owned($1), owned($2), owned($3),
+                                  nil, owned($4), nil)
                     }
                 | primary_value call_op operation2 command_args cmd_brace_block
                     {
-                      method_call = @builder.call_method(val[0], val[1], val[2],
-                                        nil, val[3], nil)
+                      method_call = builder::call_method(owned($1), owned($2), owned($3),
+                                        nil, owned($4), nil)
 
-                      begin_t, args, body, end_t = val[4]
-                      result      = @builder.block(method_call,
+                      begin_t, args, body, end_t = $5
+                      result      = builder::block(method_call,
                                       begin_t, args, body, end_t)
                     }
                 | primary_value tCOLON2 operation2 command_args %prec tLOWEST
                     {
-                      result = @builder.call_method(val[0], val[1], val[2],
-                                  nil, val[3], nil)
+                      $$ = builder::call_method(owned($1), owned($2), owned($3),
+                                  nil, owned($4), nil)
                     }
                 | primary_value tCOLON2 operation2 command_args cmd_brace_block
                     {
-                      method_call = @builder.call_method(val[0], val[1], val[2],
-                                        nil, val[3], nil)
+                      method_call = builder::call_method(owned($1), owned($2), owned($3),
+                                        nil, owned($4), nil)
 
-                      begin_t, args, body, end_t = val[4]
-                      result      = @builder.block(method_call,
+                      begin_t, args, body, end_t = $5
+                      result      = builder::block(method_call,
                                       begin_t, args, body, end_t)
                     }
                 | kSUPER command_args
                     {
-                      result = @builder.keyword_cmd(:super, val[0],
-                                  nil, val[1], nil)
+                      $$ = builder::keyword_cmd(:super, owned($1),
+                                  nil, owned($2), nil)
                     }
                 | kYIELD command_args
                     {
-                      result = @builder.keyword_cmd(:yield, val[0],
-                                  nil, val[1], nil)
+                      $$ = builder::keyword_cmd(:yield, owned($1),
+                                  nil, owned($2), nil)
                     }
                 | kRETURN call_args
                     {
-                      result = @builder.keyword_cmd(:return, val[0],
-                                  nil, val[1], nil)
+                      $$ = builder::keyword_cmd(:return, owned($1),
+                                  nil, owned($2), nil)
                     }
                 | kBREAK call_args
                     {
-                      result = @builder.keyword_cmd(:break, val[0],
-                                  nil, val[1], nil)
+                      $$ = builder::keyword_cmd(:break, owned($1),
+                                  nil, owned($2), nil)
                     }
                 | kNEXT call_args
                     {
-                      result = @builder.keyword_cmd(:next, val[0],
-                                  nil, val[1], nil)
+                      $$ = builder::keyword_cmd(:next, owned($1),
+                                  nil, owned($2), nil)
                     }
 
             mlhs: mlhs_basic
                     {
-                      result = @builder.multi_lhs(nil, val[0], nil)
+                      $$ = builder::multi_lhs(nil, owned($1), nil)
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      result = @builder.begin(val[0], val[1], val[2])
+                      $$ = builder::begin(owned($1), owned($2), owned($3))
                     }
 
       mlhs_inner: mlhs_basic
                     {
-                      result = @builder.multi_lhs(nil, val[0], nil)
+                      $$ = builder::multi_lhs(nil, owned($1), nil)
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      result = @builder.multi_lhs(val[0], val[1], val[2])
+                      $$ = builder::multi_lhs(owned($1), owned($2), owned($3))
                     }
 
       mlhs_basic: mlhs_head
                 | mlhs_head mlhs_item
                     {
-                      result = val[0].
-                                  push(val[1])
+                      $$ = $1.
+                                  push(owned($2))
                     }
                 | mlhs_head tSTAR mlhs_node
                     {
-                      result = val[0].
-                                  push(@builder.splat(val[1], val[2]))
+                      $$ = $1.
+                                  push(builder::splat(owned($2), owned($3)))
                     }
                 | mlhs_head tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      result = val[0].
-                                  push(@builder.splat(val[1], val[2])).
-                                  concat(val[4])
+                      $$ = $1.
+                                  push(builder::splat(owned($2), owned($3))).
+                                  concat(owned($5))
                     }
                 | mlhs_head tSTAR
                     {
-                      result = val[0].
-                                  push(@builder.splat(val[1]))
+                      $$ = $1.
+                                  push(builder::splat(owned($2)))
                     }
                 | mlhs_head tSTAR tCOMMA mlhs_post
                     {
-                      result = val[0].
-                                  push(@builder.splat(val[1])).
-                                  concat(val[3])
+                      $$ = $1.
+                                  push(builder::splat(owned($2))).
+                                  concat(owned($4))
                     }
                 | tSTAR mlhs_node
                     {
-                      result = [ @builder.splat(val[0], val[1]) ]
+                      $$ = [ builder::splat(owned($1), owned($2)) ]
                     }
                 | tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      result = [ @builder.splat(val[0], val[1]),
-                                 *val[3] ]
+                      $$ = [ builder::splat(owned($1), owned($2)),
+                                 *owned($4) ]
                     }
                 | tSTAR
                     {
-                      result = [ @builder.splat(val[0]) ]
+                      $$ = [ builder::splat(owned($1)) ]
                     }
                 | tSTAR tCOMMA mlhs_post
                     {
-                      result = [ @builder.splat(val[0]),
-                                 *val[2] ]
+                      $$ = [ builder::splat(owned($1)),
+                                 *owned($3) ]
                     }
 
        mlhs_item: mlhs_node
                 | tLPAREN mlhs_inner rparen
                     {
-                      result = @builder.begin(val[0], val[1], val[2])
+                      $$ = builder::begin(owned($1), owned($2), owned($3))
                     }
 
        mlhs_head: mlhs_item tCOMMA
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | mlhs_head mlhs_item tCOMMA
                     {
-                      result = val[0] << val[1]
+                      $$ = $1 << owned($2)
                     }
 
        mlhs_post: mlhs_item
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | mlhs_post tCOMMA mlhs_item
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
 
        mlhs_node: user_variable
                     {
-                      result = @builder.assignable(val[0])
+                      $$ = builder::assignable(owned($1))
                     }
                 | keyword_variable
                     {
-                      result = @builder.assignable(val[0])
+                      $$ = builder::assignable(owned($1))
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      result = @builder.index_asgn(val[0], val[1], val[2], val[3])
+                      $$ = builder::index_asgn(owned($1), owned($2), owned($3), owned($4))
                     }
                 | primary_value call_op tIDENTIFIER
                     {
-                      result = @builder.attr_asgn(val[0], val[1], val[2])
+                      $$ = builder::attr_asgn(owned($1), owned($2), owned($3))
                     }
                 | primary_value tCOLON2 tIDENTIFIER
                     {
-                      result = @builder.attr_asgn(val[0], val[1], val[2])
+                      $$ = builder::attr_asgn(owned($1), owned($2), owned($3))
                     }
                 | primary_value call_op tCONSTANT
                     {
-                      result = @builder.attr_asgn(val[0], val[1], val[2])
+                      $$ = builder::attr_asgn(owned($1), owned($2), owned($3))
                     }
                 | primary_value tCOLON2 tCONSTANT
                     {
-                      result = @builder.assignable(
-                                  @builder.const_fetch(val[0], val[1], val[2]))
+                      $$ = builder::assignable(
+                                  builder::const_fetch(owned($1), owned($2), owned($3)))
                     }
                 | tCOLON3 tCONSTANT
                     {
-                      result = @builder.assignable(
-                                  @builder.const_global(val[0], val[1]))
+                      $$ = builder::assignable(
+                                  builder::const_global(owned($1), owned($2)))
                     }
                 | backref
                     {
-                      result = @builder.assignable(val[0])
+                      $$ = builder::assignable(owned($1))
                     }
 
              lhs: user_variable
                     {
-                      result = @builder.assignable(val[0])
+                      $$ = builder::assignable(owned($1))
                     }
                 | keyword_variable
                     {
-                      result = @builder.assignable(val[0])
+                      $$ = builder::assignable(owned($1))
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      result = @builder.index_asgn(val[0], val[1], val[2], val[3])
+                      $$ = builder::index_asgn(owned($1), owned($2), owned($3), owned($4))
                     }
                 | primary_value call_op tIDENTIFIER
                     {
-                      result = @builder.attr_asgn(val[0], val[1], val[2])
+                      $$ = builder::attr_asgn(owned($1), owned($2), owned($3))
                     }
                 | primary_value tCOLON2 tIDENTIFIER
                     {
-                      result = @builder.attr_asgn(val[0], val[1], val[2])
+                      $$ = builder::attr_asgn(owned($1), owned($2), owned($3))
                     }
                 | primary_value call_op tCONSTANT
                     {
-                      result = @builder.attr_asgn(val[0], val[1], val[2])
+                      $$ = builder::attr_asgn(owned($1), owned($2), owned($3))
                     }
                 | primary_value tCOLON2 tCONSTANT
                     {
-                      result = @builder.assignable(
-                                  @builder.const_fetch(val[0], val[1], val[2]))
+                      $$ = builder::assignable(
+                                  builder::const_fetch(owned($1), owned($2), owned($3)))
                     }
                 | tCOLON3 tCONSTANT
                     {
-                      result = @builder.assignable(
-                                  @builder.const_global(val[0], val[1]))
+                      $$ = builder::assignable(
+                                  builder::const_global(owned($1), owned($2)))
                     }
                 | backref
                     {
-                      result = @builder.assignable(val[0])
+                      $$ = builder::assignable(owned($1))
                     }
 
            cname: tIDENTIFIER
                     {
-                      diagnostic :error, :module_name_const, nil, val[0]
+                      diagnostic :error, :module_name_const, nil, owned($1)
                     }
                 | tCONSTANT
 
            cpath: tCOLON3 cname
                     {
-                      result = @builder.const_global(val[0], val[1])
+                      $$ = builder::const_global(owned($1), owned($2))
                     }
                 | cname
                     {
-                      result = @builder.const(val[0])
+                      $$ = builder::const(owned($1))
                     }
                 | primary_value tCOLON2 tLBRACK2 tr_gendeclargs rbracket
                     {
-                      result = @builder.tr_gendecl(val[0], val[2], val[3], val[4])
+                      $$ = builder::tr_gendecl(owned($1), owned($3), owned($4), owned($5))
                     }
                 | primary_value tCOLON2 cname
                     {
-                      result = @builder.const_fetch(val[0], val[1], val[2])
+                      $$ = builder::const_fetch(owned($1), owned($2), owned($3))
                     }
 
            fname: tIDENTIFIER | tCONSTANT | tFID
@@ -608,7 +749,7 @@
 
             fsym: fname
                     {
-                      result = @builder.symbol(val[0])
+                      $$ = builder::symbol(owned($1))
                     }
                 | symbol
 
@@ -617,7 +758,7 @@
 
       undef_list: fitem
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | undef_list tCOMMA
                     {
@@ -625,7 +766,7 @@
                     }
                     fitem
                     {
-                      result = val[0] << val[3]
+                      $$ = $1 << owned($4)
                     }
 
               op:   tPIPE    | tCARET  | tAMPER2  | tCMP  | tEQ     | tEQQ
@@ -646,321 +787,323 @@
 
              arg: lhs tEQL arg_rhs
                     {
-                      result = @builder.assign(val[0], val[1], val[2])
+                      $$ = builder::assign(owned($1), owned($3))
                     }
                 | var_lhs tOP_ASGN arg_rhs
                     {
-                      result = @builder.op_assign(val[0], val[1], val[2])
+                      $$ = builder::op_assign(owned($1), owned($2), owned($3))
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN arg_rhs
                     {
-                      result = @builder.op_assign(
-                                  @builder.index(
-                                    val[0], val[1], val[2], val[3]),
-                                  val[4], val[5])
+                      $$ = builder::op_assign(
+                                  builder::index(
+                                    owned($1), owned($2), owned($3), owned($4)),
+                                  owned($5), owned($6))
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN arg_rhs
                     {
-                      result = @builder.op_assign(
-                                  @builder.call_method(
-                                    val[0], val[1], val[2]),
-                                  val[3], val[4])
+                      $$ = builder::op_assign(
+                                  builder::call_method(
+                                    owned($1), owned($2), owned($3)),
+                                  owned($4), owned($5))
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN arg_rhs
                     {
-                      result = @builder.op_assign(
-                                  @builder.call_method(
-                                    val[0], val[1], val[2]),
-                                  val[3], val[4])
+                      $$ = builder::op_assign(
+                                  builder::call_method(
+                                    owned($1), owned($2), owned($3)),
+                                  owned($4), owned($5))
                     }
                 | primary_value tCOLON2 tIDENTIFIER tOP_ASGN arg_rhs
                     {
-                      result = @builder.op_assign(
-                                  @builder.call_method(
-                                    val[0], val[1], val[2]),
-                                  val[3], val[4])
+                      $$ = builder::op_assign(
+                                  builder::call_method(
+                                    owned($1), owned($2), owned($3)),
+                                  owned($4), owned($5))
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN arg_rhs
                     {
-                      const  = @builder.const_op_assignable(
-                                  @builder.const_fetch(val[0], val[1], val[2]))
-                      result = @builder.op_assign(const, val[3], val[4])
+                      const  = builder::const_op_assignable(
+                                  builder::const_fetch(owned($1), owned($2), owned($3)))
+                      $$ = builder::op_assign(const, owned($4), owned($5))
                     }
                 | tCOLON3 tCONSTANT tOP_ASGN arg_rhs
                     {
-                      const  = @builder.const_op_assignable(
-                                  @builder.const_global(val[0], val[1]))
-                      result = @builder.op_assign(const, val[2], val[3])
+                      const  = builder::const_op_assignable(
+                                  builder::const_global(owned($1), owned($2)))
+                      $$ = builder::op_assign(const, owned($3), owned($4))
                     }
                 | backref tOP_ASGN arg_rhs
                     {
-                      result = @builder.op_assign(val[0], val[1], val[2])
+                      $$ = builder::op_assign(owned($1), owned($2), owned($3))
                     }
                 | arg tDOT2 arg
                     {
-                      result = @builder.range_inclusive(val[0], val[1], val[2])
+                      $$ = builder::range_inclusive(owned($1), owned($2), owned($3))
                     }
                 | arg tDOT3 arg
                     {
-                      result = @builder.range_exclusive(val[0], val[1], val[2])
+                      $$ = builder::range_exclusive(owned($1), owned($2), owned($3))
                     }
                 | arg tPLUS arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tMINUS arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tSTAR2 arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tDIVIDE arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tPERCENT arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tPOW arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | tUMINUS_NUM simple_numeric tPOW arg
                     {
-                      result = @builder.unary_op(val[0],
-                                  @builder.binary_op(
-                                    val[1], val[2], val[3]))
+                      $$ = builder::unary_op(owned($1),
+                                  builder::binary_op(
+                                    owned($2), owned($3), owned($4)))
                     }
                 | tUPLUS arg
                     {
-                      result = @builder.unary_op(val[0], val[1])
+                      $$ = builder::unary_op(owned($1), owned($2))
                     }
                 | tUMINUS arg
                     {
-                      result = @builder.unary_op(val[0], val[1])
+                      $$ = builder::unary_op(owned($1), owned($2))
                     }
                 | arg tPIPE arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tCARET arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tAMPER2 arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tCMP arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tGT arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tGEQ arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tLT arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tLEQ arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tEQ arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tEQQ arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tNEQ arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tMATCH arg
                     {
-                      result = @builder.match_op(val[0], val[1], val[2])
+                      $$ = builder::match_op(owned($1), owned($2), owned($3))
                     }
                 | arg tNMATCH arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | tBANG arg
                     {
-                      result = @builder.not_op(val[0], nil, val[1], nil)
+                      $$ = builder::not_op(owned($1), nil, owned($2), nil)
                     }
                 | tTILDE arg
                     {
-                      result = @builder.unary_op(val[0], val[1])
+                      $$ = builder::unary_op(owned($1), owned($2))
                     }
                 | arg tLSHFT arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tRSHFT arg
                     {
-                      result = @builder.binary_op(val[0], val[1], val[2])
+                      $$ = builder::binary_op(owned($1), owned($2), owned($3))
                     }
                 | arg tANDOP arg
                     {
-                      result = @builder.logical_op(:and, val[0], val[1], val[2])
+                      $$ = builder::logical_op(:and, owned($1), owned($2), owned($3))
                     }
                 | arg tOROP arg
                     {
-                      result = @builder.logical_op(:or, val[0], val[1], val[2])
+                      $$ = builder::logical_op(:or, owned($1), owned($2), owned($3))
                     }
                 | kDEFINED opt_nl arg
                     {
-                      result = @builder.keyword_cmd(:defined?, val[0], nil, [ val[2] ], nil)
+                      $$ = builder::keyword_cmd(:defined?, owned($1), nil, [ owned($3) ], nil)
                     }
                 | arg tEH arg opt_nl tCOLON arg
                     {
-                      result = @builder.ternary(val[0], val[1],
-                                                val[2], val[4], val[5])
+                      $$ = builder::ternary(owned($1), owned($2),
+                                                owned($3), owned($5), owned($6))
                     }
                 | primary
 
        arg_value: arg
 
-       aref_args: none
+       aref_args: list_none
                 | args trailer
                 | args tCOMMA assocs trailer
                     {
-                      result = val[0] << @builder.associate(nil, val[2], nil)
+                      $$ = $1 << builder::associate(nil, owned($3), nil)
                     }
                 | assocs trailer
                     {
-                      result = [ @builder.associate(nil, val[0], nil) ]
+                      $$ = [ builder::associate(nil, owned($1), nil) ]
                     }
 
          arg_rhs: arg %prec tOP_ASGN
                 | arg kRESCUE_MOD arg
                     {
-                      rescue_body = @builder.rescue_body(val[1],
+                      rescue_body = builder::rescue_body(owned($2),
                                         nil, nil, nil,
-                                        nil, val[2])
+                                        nil, owned($3))
 
-                      result = @builder.begin_body(val[0], [ rescue_body ])
+                      $$ = builder::begin_body(owned($1), [ rescue_body ])
                     }
 
       paren_args: tLPAREN2 opt_call_args rparen
                     {
-                      result = val
+                      $$ = val
                     }
 
   opt_paren_args: // nothing
                     {
-                      result = [ nil, [], nil ]
+                      $$ = [ nil, [], nil ]
                     }
                 | paren_args
 
    opt_call_args: // nothing
                     {
-                      result = []
+                      $$ = []
                     }
                 | call_args
                 | args tCOMMA
                 | args tCOMMA assocs tCOMMA
                     {
-                      result = val[0] << @builder.associate(nil, val[2], nil)
+                      $$ = $1 << builder::associate(nil, owned($3), nil)
                     }
                 | assocs tCOMMA
                     {
-                      result = [ @builder.associate(nil, val[0], nil) ]
+                      $$ = [ builder::associate(nil, owned($1), nil) ]
                     }
 
        call_args: command
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | args opt_block_arg
                     {
-                      result = val[0].concat(val[1])
+                      $$ = $1.concat(owned($2))
                     }
                 | assocs opt_block_arg
                     {
-                      result = [ @builder.associate(nil, val[0], nil) ]
-                      result.concat(val[1])
+                      $$ = [ builder::associate(nil, owned($1), nil) ]
+                      result.concat(owned($2))
                     }
                 | args tCOMMA assocs opt_block_arg
                     {
-                      assocs = @builder.associate(nil, val[2], nil)
-                      result = val[0] << assocs
-                      result.concat(val[3])
+                      assocs = builder::associate(nil, owned($3), nil)
+                      $$ = $1 << assocs
+                      result.concat(owned($4))
                     }
                 | block_arg
                     {
-                      result =  [ val[0] ]
+                      $$ =  [ owned($1) ]
                     }
 
     command_args:   {
-                      result = @lexer.cmdarg.dup
+                      $<bool_stack>$ = new std::stack<bool>(lexer.cmdarg)
                       @lexer.cmdarg.push(true)
                     }
                   call_args
                     {
-                      @lexer.cmdarg = val[0]
+                      std::stack<bool>* cmdarg = $<bool_stack>1;
+                      @lexer.cmdarg = cmdarg;
+                      delete cmdarg;
 
-                      result = val[1]
+                      $$ = $2
                     }
 
        block_arg: tAMPER arg_value
                     {
-                      result = @builder.block_pass(val[0], val[1])
+                      $$ = builder::block_pass(owned($1), owned($2))
                     }
 
    opt_block_arg: tCOMMA block_arg
                     {
-                      result = [ val[1] ]
+                      $$ = [ owned($2) ]
                     }
                 | // nothing
                     {
-                      result = []
+                      $$ = []
                     }
 
             args: arg_value
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | tSTAR arg_value
                     {
-                      result = [ @builder.splat(val[0], val[1]) ]
+                      $$ = [ builder::splat(owned($1), owned($2)) ]
                     }
                 | args tCOMMA arg_value
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
                 | args tCOMMA tSTAR arg_value
                     {
-                      result = val[0] << @builder.splat(val[2], val[3])
+                      $$ = $1 << builder::splat(owned($3), owned($4))
                     }
 
         mrhs_arg: mrhs
                     {
-                      result = @builder.array(nil, val[0], nil)
+                      $$ = builder::array(nil, owned($1), nil)
                     }
                 | arg_value
 
             mrhs: args tCOMMA arg_value
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
                 | args tCOMMA tSTAR arg_value
                     {
-                      result = val[0] << @builder.splat(val[2], val[3])
+                      $$ = $1 << builder::splat(owned($3), owned($4))
                     }
                 | tSTAR arg_value
                     {
-                      result = [ @builder.splat(val[0], val[1]) ]
+                      $$ = [ builder::splat(owned($1), owned($2)) ]
                     }
 
          primary: literal
@@ -975,22 +1118,22 @@
                 | backref
                 | tFID
                     {
-                      result = @builder.call_method(nil, nil, val[0])
+                      $$ = builder::call_method(nil, nil, owned($1))
                     }
                 | kBEGIN
                     {
-                      result = @lexer.cmdarg.dup
+                      $<bool_stack>$ = @lexer.cmdarg.dup
                       @lexer.cmdarg.clear
                     }
                     bodystmt kEND
                     {
-                      @lexer.cmdarg = val[1]
+                      @lexer.cmdarg = $<bool_stack>2
 
-                      result = @builder.begin_keyword(val[0], val[2], val[3])
+                      $$ = builder::begin_keyword(owned($1), owned($3), owned($4))
                     }
                 | tLPAREN_ARG
                     {
-                      result = @lexer.cmdarg.dup
+                      $<bool_stack>$ = new std::stack<bool>(lexer.cmdarg);
                       @lexer.cmdarg.clear
                     }
                     stmt
@@ -999,9 +1142,11 @@
                     }
                     rparen
                     {
-                      @lexer.cmdarg = val[1]
+                      std::stack<bool>* cmdarg = $<bool_stack>2;
+                      lexer.cmdarg = *cmdarg;
+                      delete cmdarg;
 
-                      result = @builder.begin(val[0], val[2], val[4])
+                      $$ = builder::begin(owned($1), owned($3), owned($5))
                     }
                 | tLPAREN_ARG
                     {
@@ -1009,97 +1154,92 @@
                     }
                     opt_nl tRPAREN
                     {
-                      result = @builder.begin(val[0], nil, val[3])
+                      $$ = builder::begin(owned($1), nil, owned($4))
                     }
                 | tLPAREN compstmt tRPAREN
                     {
-                      result = @builder.begin(val[0], val[1], val[2])
+                      $$ = builder::begin(owned($1), owned($2), owned($3))
                     }
                 | tLPAREN expr tCOLON tr_type tRPAREN
                     {
-                      result = @builder.tr_cast(val[0], val[1], val[2], val[3], val[4])
+                      $$ = builder::tr_cast(owned($1), owned($2), owned($3), owned($4), owned($5))
                     }
                 | primary_value tCOLON2 tCONSTANT
                     {
-                      result = @builder.const_fetch(val[0], val[1], val[2])
+                      $$ = builder::const_fetch(owned($1), owned($2), owned($3))
                     }
                 | tCOLON3 tCONSTANT
                     {
-                      result = @builder.const_global(val[0], val[1])
+                      $$ = builder::const_global(owned($1), owned($2))
                     }
                 | tLBRACK aref_args tRBRACK
                     {
-                      result = @builder.array(val[0], val[1], val[2])
+                      $$ = builder::array(owned($1), owned($2), owned($3))
                     }
                 | tLBRACE assoc_list tRCURLY
                     {
-                      result = @builder.associate(val[0], val[1], val[2])
+                      $$ = builder::associate(owned($1), owned($2), owned($3))
                     }
                 | kRETURN
                     {
-                      result = @builder.keyword_cmd(:return, val[0])
+                      $$ = builder::keyword_cmd(:return, owned($1))
                     }
                 | kYIELD tLPAREN2 call_args rparen
                     {
-                      result = @builder.keyword_cmd(:yield, val[0], val[1], val[2], val[3])
+                      $$ = builder::keyword_cmd(:yield, owned($1), owned($2), owned($3), owned($4))
                     }
                 | kYIELD tLPAREN2 rparen
                     {
-                      result = @builder.keyword_cmd(:yield, val[0], val[1], [], val[2])
+                      $$ = builder::keyword_cmd(:yield, owned($1), owned($2), [], owned($3))
                     }
                 | kYIELD
                     {
-                      result = @builder.keyword_cmd(:yield, val[0])
+                      $$ = builder::keyword_cmd(:yield, owned($1))
                     }
                 | kDEFINED opt_nl tLPAREN2 expr rparen
                     {
-                      result = @builder.keyword_cmd(:defined?, val[0],
-                                                    val[2], [ val[3] ], val[4])
+                      $$ = builder::keyword_cmd(:defined?, owned($1),
+                                                    owned($3), [ owned($4) ], owned($5))
                     }
                 | kNOT tLPAREN2 expr rparen
                     {
-                      result = @builder.not_op(val[0], val[1], val[2], val[3])
+                      $$ = builder::not_op(owned($1), owned($2), owned($3), owned($4))
                     }
                 | kNOT tLPAREN2 rparen
                     {
-                      result = @builder.not_op(val[0], val[1], nil, val[2])
+                      $$ = builder::not_op(owned($1), owned($2), nil, owned($3))
                     }
                 | fcall brace_block
                     {
-                      method_call = @builder.call_method(nil, nil, val[0])
+                      method_call = builder::call_method(nil, nil, owned($1))
 
-                      begin_t, args, body, end_t = val[1]
-                      result      = @builder.block(method_call,
+                      begin_t, args, body, end_t = $2
+                      result      = builder::block(method_call,
                                       begin_t, args, body, end_t)
                     }
                 | method_call
                 | method_call brace_block
                     {
-                      begin_t, args, body, end_t = val[1]
-                      result      = @builder.block(val[0],
+                      begin_t, args, body, end_t = $2
+                      result      = builder::block(owned($1),
                                       begin_t, args, body, end_t)
                     }
                 | tLAMBDA lambda
                     {
-                      lambda_call = @builder.call_lambda(val[0])
+                      lambda_call = builder::call_lambda(owned($1))
 
-                      args, (begin_t, body, end_t) = val[1]
-                      result      = @builder.block(lambda_call,
+                      args, (begin_t, body, end_t) = $2
+                      result      = builder::block(lambda_call,
                                       begin_t, args, body, end_t)
                     }
                 | kIF expr_value then compstmt if_tail kEND
                     {
-                      else_t, else_ = val[4]
-                      result = @builder.condition(val[0], val[1], val[2],
-                                                  val[3], else_t,
-                                                  else_,  val[5])
+                      $$ = builder::condition(owned($1), owned($2), owned($3),
+                                                  owned($4), owned($5), owned($6))
                     }
                 | kUNLESS expr_value then compstmt opt_else kEND
                     {
-                      else_t, else_ = val[4]
-                      result = @builder.condition(val[0], val[1], val[2],
-                                                  else_,  else_t,
-                                                  val[3], val[5])
+                      $$ = builder::condition(owned($1), owned($2), owned($3), owned($5), owned($4), owned($6))
                     }
                 | kWHILE
                     {
@@ -1111,8 +1251,8 @@
                     }
                     compstmt kEND
                     {
-                      result = @builder.loop(:while, val[0], val[2], val[3],
-                                             val[5], val[6])
+                      $$ = builder::loop(:while, owned($1), owned($3), owned($4),
+                                             owned($6), owned($7))
                     }
                 | kUNTIL
                     {
@@ -1124,24 +1264,24 @@
                     }
                     compstmt kEND
                     {
-                      result = @builder.loop(:until, val[0], val[2], val[3],
-                                             val[5], val[6])
+                      $$ = builder::loop(:until, owned($1), owned($3), owned($4),
+                                             owned($6), owned($7))
                     }
                 | kCASE expr_value opt_terms case_body kEND
                     {
-                      *when_bodies, (else_t, else_body) = *val[3]
+                      *when_bodies, (else_t, else_body) = *owned($4)
 
-                      result = @builder.case(val[0], val[1],
+                      $$ = builder::case(owned($1), owned($2),
                                              when_bodies, else_t, else_body,
-                                             val[4])
+                                             owned($5))
                     }
                 | kCASE            opt_terms case_body kEND
                     {
-                      *when_bodies, (else_t, else_body) = *val[2]
+                      *when_bodies, (else_t, else_body) = *owned($3)
 
-                      result = @builder.case(val[0], nil,
+                      $$ = builder::case(owned($1), nil,
                                              when_bodies, else_t, else_body,
-                                             val[3])
+                                             owned($4))
                     }
                 | kFOR for_var kIN
                     {
@@ -1153,9 +1293,9 @@
                     }
                     compstmt kEND
                     {
-                      result = @builder.for(val[0], val[1],
-                                            val[2], val[4],
-                                            val[5], val[7], val[8])
+                      $$ = builder::for(owned($1), owned($2),
+                                            owned($3), owned($5),
+                                            owned($6), owned($8), owned($9))
                     }
                 | kCLASS cpath superclass
                     {
@@ -1165,20 +1305,20 @@
                     bodystmt kEND
                     {
                       if in_def?
-                        diagnostic :error, :class_in_def, nil, val[0]
+                        diagnostic :error, :class_in_def, nil, owned($1)
                       end
 
-                      lt_t, superclass = val[2]
-                      result = @builder.def_class(val[0], val[1],
+                      lt_t, superclass = $3
+                      $$ = builder::def_class(owned($1), owned($2),
                                                   lt_t, superclass,
-                                                  val[4], val[5])
+                                                  owned($5), owned($6))
 
                       @lexer.pop_cmdarg
                       @static_env.unextend
                     }
                 | kCLASS tLSHFT expr term
                     {
-                      result = @def_level
+                      $<size>$ = @def_level
                       @def_level = 0
 
                       @static_env.extend_static
@@ -1186,13 +1326,13 @@
                     }
                     bodystmt kEND
                     {
-                      result = @builder.def_sclass(val[0], val[1], val[2],
-                                                   val[5], val[6])
+                      $$ = builder::def_sclass(owned($1), owned($2), owned($3),
+                                                   owned($6), owned($7))
 
                       @lexer.pop_cmdarg
                       @static_env.unextend
 
-                      @def_level = val[4]
+                      @def_level = $<size>5;
                     }
                 | kMODULE cpath
                     {
@@ -1202,11 +1342,11 @@
                     bodystmt kEND
                     {
                       if in_def?
-                        diagnostic :error, :module_in_def, nil, val[0]
+                        diagnostic :error, :module_in_def, nil, owned($1)
                       end
 
-                      result = @builder.def_module(val[0], val[1],
-                                                   val[3], val[4])
+                      $$ = builder::def_module(owned($1), owned($2),
+                                                   owned($4), owned($5))
 
                       @lexer.pop_cmdarg
                       @static_env.unextend
@@ -1219,8 +1359,8 @@
                     }
                     f_arglist bodystmt kEND
                     {
-                      result = @builder.def_method(val[0], val[1],
-                                  val[3], val[4], val[5])
+                      $$ = builder::def_method(owned($1), owned($2),
+                                  owned($4), owned($5), owned($6))
 
                       @lexer.pop_cmdarg
                       @static_env.unextend
@@ -1238,8 +1378,8 @@
                     }
                     f_arglist bodystmt kEND
                     {
-                      result = @builder.def_singleton(val[0], val[1], val[2],
-                                  val[4], val[6], val[7], val[8])
+                      $$ = builder::def_singleton(owned($1), owned($2), owned($3),
+                                  owned($5), owned($7), owned($8), owned($9))
 
                       @lexer.pop_cmdarg
                       @static_env.unextend
@@ -1247,19 +1387,19 @@
                     }
                 | kBREAK
                     {
-                      result = @builder.keyword_cmd(:break, val[0])
+                      $$ = builder::keyword_cmd(:break, owned($1))
                     }
                 | kNEXT
                     {
-                      result = @builder.keyword_cmd(:next, val[0])
+                      $$ = builder::keyword_cmd(:next, owned($1))
                     }
                 | kREDO
                     {
-                      result = @builder.keyword_cmd(:redo, val[0])
+                      $$ = builder::keyword_cmd(:redo, owned($1))
                     }
                 | kRETRY
                     {
-                      result = @builder.keyword_cmd(:retry, val[0])
+                      $$ = builder::keyword_cmd(:retry, owned($1))
                     }
 
    primary_value: primary
@@ -1268,7 +1408,7 @@
                 | kTHEN
                 | term kTHEN
                     {
-                      result = val[1]
+                      $$ = $2
                     }
 
               do: term
@@ -1277,18 +1417,14 @@
          if_tail: opt_else
                 | kELSIF expr_value then compstmt if_tail
                     {
-                      else_t, else_ = val[4]
-                      result = [ val[0],
-                                 @builder.condition(val[0], val[1], val[2],
-                                                    val[3], else_t,
-                                                    else_,  nil),
-                               ]
+                      $$ = builder::condition(owned($1), owned($2), owned($3),
+                                              owned($4), owned($5), nullptr)
                     }
 
         opt_else: none
                 | kELSE compstmt
                     {
-                      result = val
+                      $$ = $2
                     }
 
          for_var: lhs
@@ -1296,181 +1432,181 @@
 
           f_marg: f_norm_arg
                     {
-                      result = @builder.arg(val[0])
+                      $$ = builder::arg(owned($1))
                     }
                 | tLPAREN f_margs rparen
                     {
-                      result = @builder.multi_lhs(val[0], val[1], val[2])
+                      $$ = builder::multi_lhs(owned($1), owned($2), owned($3))
                     }
 
      f_marg_list: f_marg
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | f_marg_list tCOMMA f_marg
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
 
          f_margs: f_marg_list
                 | f_marg_list tCOMMA tSTAR f_norm_arg
                     {
-                      result = val[0].
-                                  push(@builder.restarg(val[2], val[3]))
+                      $$ = $1.
+                                  push(builder::restarg(owned($3), owned($4)))
                     }
                 | f_marg_list tCOMMA tSTAR f_norm_arg tCOMMA f_marg_list
                     {
-                      result = val[0].
-                                  push(@builder.restarg(val[2], val[3])).
-                                  concat(val[5])
+                      $$ = $1.
+                                  push(builder::restarg(owned($3), owned($4))).
+                                  concat(owned($6))
                     }
                 | f_marg_list tCOMMA tSTAR
                     {
-                      result = val[0].
-                                  push(@builder.restarg(val[2]))
+                      $$ = $1.
+                                  push(builder::restarg(owned($3)))
                     }
                 | f_marg_list tCOMMA tSTAR            tCOMMA f_marg_list
                     {
-                      result = val[0].
-                                  push(@builder.restarg(val[2])).
-                                  concat(val[4])
+                      $$ = $1.
+                                  push(builder::restarg(owned($3))).
+                                  concat(owned($5))
                     }
                 |                    tSTAR f_norm_arg
                     {
-                      result = [ @builder.restarg(val[0], val[1]) ]
+                      $$ = [ builder::restarg(owned($1), owned($2)) ]
                     }
                 |                    tSTAR f_norm_arg tCOMMA f_marg_list
                     {
-                      result = [ @builder.restarg(val[0], val[1]),
-                                 *val[3] ]
+                      $$ = [ builder::restarg(owned($1), owned($2)),
+                                 *owned($4) ]
                     }
                 |                    tSTAR
                     {
-                      result = [ @builder.restarg(val[0]) ]
+                      $$ = [ builder::restarg(owned($1)) ]
                     }
                 |                    tSTAR tCOMMA f_marg_list
                     {
-                      result = [ @builder.restarg(val[0]),
-                                 *val[2] ]
+                      $$ = [ builder::restarg(owned($1)),
+                                 *owned($3) ]
                     }
 
  block_args_tail: f_block_kwarg tCOMMA f_kwrest opt_f_block_arg
                     {
-                      result = val[0].concat(val[2]).concat(val[3])
+                      $$ = $1.concat(owned($3)).concat(owned($4))
                     }
                 | f_block_kwarg opt_f_block_arg
                     {
-                      result = val[0].concat(val[1])
+                      $$ = $1.concat(owned($2))
                     }
                 | f_kwrest opt_f_block_arg
                     {
-                      result = val[0].concat(val[1])
+                      $$ = $1.concat(owned($2))
                     }
                 | f_block_arg
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
 
 opt_block_args_tail:
                   tCOMMA block_args_tail
                     {
-                      result = val[1]
+                      $$ = $2
                     }
                 | // nothing
                     {
-                      result = []
+                      $$ = []
                     }
 
      block_param: f_arg tCOMMA f_block_optarg tCOMMA f_rest_arg              opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[5])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($6))
                     }
                 | f_arg tCOMMA f_block_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[6]).
-                                  concat(val[7])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($7)).
+                                  concat(owned($8))
                     }
                 | f_arg tCOMMA f_block_optarg                                opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 | f_arg tCOMMA f_block_optarg tCOMMA                   f_arg opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[5])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($6))
                     }
                 | f_arg tCOMMA                       f_rest_arg              opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 | f_arg tCOMMA
                 | f_arg tCOMMA                       f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[5])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($6))
                     }
                 | f_arg                                                      opt_block_args_tail
                     {
-                      if val[1].empty? && val[0].size == 1
-                        result = [@builder.procarg0(val[0][0])]
+                      if owned($2).empty? && owned($1).size == 1
+                        $$ = [builder::procarg0(owned($1)[0])]
                       else
-                        result = val[0].concat(val[1])
+                        $$ = $1.concat(owned($2))
                       end
                     }
                 | f_block_optarg tCOMMA              f_rest_arg              opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 | f_block_optarg tCOMMA              f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[5])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($6))
                     }
                 | f_block_optarg                                             opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[1])
+                      $$ = $1.
+                                  concat(owned($2))
                     }
                 | f_block_optarg tCOMMA                                f_arg opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 |                                    f_rest_arg              opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[1])
+                      $$ = $1.
+                                  concat(owned($2))
                     }
                 |                                    f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 |                                                                block_args_tail
 
  opt_block_param: // nothing
                     {
-                      result = @builder.args(nil, [], nil)
+                      $$ = builder::args(nil, [], nil)
                     }
                 | block_param_def
                     {
@@ -1478,195 +1614,202 @@ opt_block_args_tail:
                     }
                   tr_returnsig
                     {
-                      result = val[0]
+                      $$ = $1
 
-                      if val[2]
-                        result = @builder.prototype(nil, result, val[2])
+                      if owned($3)
+                        $$ = builder::prototype(nil, result, owned($3))
                       end
                     }
 
  block_param_def: tPIPE opt_bv_decl tPIPE
                     {
-                      result = @builder.args(val[0], val[1], val[2])
+                      $$ = builder::args(owned($1), owned($2), owned($3))
                     }
                 | tOROP
                     {
-                      result = @builder.args(val[0], [], val[0])
+                      $$ = builder::args(owned($1), [], owned($1))
                     }
                 | tPIPE block_param opt_bv_decl tPIPE
                     {
-                      result = @builder.args(val[0], val[1].concat(val[2]), val[3])
+                      $$ = builder::args(owned($1), owned($2).concat(owned($3)), owned($4))
                     }
 
      opt_bv_decl: opt_nl
                     {
-                      result = []
+                      $$ = []
                     }
                 | opt_nl tSEMI bv_decls opt_nl
                     {
-                      result = val[2]
+                      $$ = $3
                     }
 
         bv_decls: bvar
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | bv_decls tCOMMA bvar
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
 
             bvar: tIDENTIFIER
                     {
-                      @static_env.declare val[0][0]
-                      result = @builder.shadowarg(val[0])
+                      @static_env.declare owned($1)[0]
+                      $$ = builder::shadowarg(owned($1))
                     }
                 | f_bad_arg
+                    {
+                      $$ = nullptr;
+                    }
 
           lambda:   {
                       @static_env.extend_dynamic
                     }
                   f_larglist
                     {
-                      result = @lexer.cmdarg.dup
+                      $<bool_stack>$ = new std::stack<bool>(lexer.cmdarg);
                       @lexer.cmdarg.clear
                     }
                   lambda_body
                     {
-                      @lexer.cmdarg = val[2]
+                      std::stack<bool>* cmdarg = $<bool_stack>3;
+                      @lexer.cmdarg = *cmdarg;
+                      delete cmdarg;
                       @lexer.cmdarg.lexpop
 
-                      result = [ val[1], val[3] ]
+                      $$ = [ owned($2), owned($4) ]
 
                       @static_env.unextend
                     }
 
      f_larglist: tLPAREN2 f_args opt_bv_decl tRPAREN
                     {
-                      result = @builder.args(val[0], val[1].concat(val[2]), val[3])
+                      $$ = builder::args(owned($1), owned($2).concat(owned($3)), owned($4))
                     }
                 | f_args
                     {
-                      result = @builder.args(nil, val[0], nil)
+                      $$ = builder::args(nil, owned($1), nil)
                     }
 
      lambda_body: tLAMBEG compstmt tRCURLY
                     {
-                      result = [ val[0], val[1], val[2] ]
+                      $$ = [ owned($1), owned($2), owned($3) ]
                     }
                 | kDO_LAMBDA compstmt kEND
                     {
-                      result = [ val[0], val[1], val[2] ]
+                      $$ = [ owned($1), owned($2), owned($3) ]
                     }
 
         do_block: kDO_BLOCK do_body kEND
                     {
-                      result = [ val[0], *val[1], val[2] ]
+                      $$ = [ owned($1), *owned($2), owned($3) ]
                     }
 
       block_call: command do_block
                     {
-                      begin_t, block_args, body, end_t = val[1]
-                      result      = @builder.block(val[0],
+                      begin_t, block_args, body, end_t = $2
+                      result      = builder::block(owned($1),
                                       begin_t, block_args, body, end_t)
                     }
                 | block_call dot_or_colon operation2 opt_paren_args
                     {
-                      lparen_t, args, rparen_t = val[3]
-                      result = @builder.call_method(val[0], val[1], val[2],
+                      lparen_t, args, rparen_t = $4
+                      $$ = builder::call_method(owned($1), owned($2), owned($3),
                                   lparen_t, args, rparen_t)
                     }
                 | block_call dot_or_colon operation2 opt_paren_args brace_block
                     {
-                      lparen_t, args, rparen_t = val[3]
-                      method_call = @builder.call_method(val[0], val[1], val[2],
+                      lparen_t, args, rparen_t = $4
+                      method_call = builder::call_method(owned($1), owned($2), owned($3),
                                       lparen_t, args, rparen_t)
 
-                      begin_t, args, body, end_t = val[4]
-                      result      = @builder.block(method_call,
+                      begin_t, args, body, end_t = $5
+                      result      = builder::block(method_call,
                                       begin_t, args, body, end_t)
                     }
                 | block_call dot_or_colon operation2 command_args do_block
                     {
-                      method_call = @builder.call_method(val[0], val[1], val[2],
-                                      nil, val[3], nil)
+                      method_call = builder::call_method(owned($1), owned($2), owned($3),
+                                      nil, owned($4), nil)
 
-                      begin_t, args, body, end_t = val[4]
-                      result      = @builder.block(method_call,
+                      begin_t, args, body, end_t = $5
+                      result      = builder::block(method_call,
                                       begin_t, args, body, end_t)
                     }
 
      method_call: fcall paren_args
                     {
-                      lparen_t, args, rparen_t = val[1]
-                      result = @builder.call_method(nil, nil, val[0],
+                      lparen_t, args, rparen_t = $2
+                      $$ = builder::call_method(nil, nil, owned($1),
                                   lparen_t, args, rparen_t)
                     }
                 | primary_value call_op operation2 opt_paren_args
                     {
-                      lparen_t, args, rparen_t = val[3]
-                      result = @builder.call_method(val[0], val[1], val[2],
+                      lparen_t, args, rparen_t = $4
+                      $$ = builder::call_method(owned($1), owned($2), owned($3),
                                   lparen_t, args, rparen_t)
                     }
                 | primary_value tCOLON2 operation2 paren_args
                     {
-                      lparen_t, args, rparen_t = val[3]
-                      result = @builder.call_method(val[0], val[1], val[2],
+                      lparen_t, args, rparen_t = $4
+                      $$ = builder::call_method(owned($1), owned($2), owned($3),
                                   lparen_t, args, rparen_t)
                     }
                 | primary_value tCOLON2 operation3
                     {
-                      result = @builder.call_method(val[0], val[1], val[2])
+                      $$ = builder::call_method(owned($1), owned($2), owned($3))
                     }
                 | primary_value call_op paren_args
                     {
-                      lparen_t, args, rparen_t = val[2]
-                      result = @builder.call_method(val[0], val[1], nil,
+                      lparen_t, args, rparen_t = $3
+                      $$ = builder::call_method(owned($1), owned($2), nil,
                                   lparen_t, args, rparen_t)
                     }
                 | primary_value tCOLON2 paren_args
                     {
-                      lparen_t, args, rparen_t = val[2]
-                      result = @builder.call_method(val[0], val[1], nil,
+                      lparen_t, args, rparen_t = $3
+                      $$ = builder::call_method(owned($1), owned($2), nil,
                                   lparen_t, args, rparen_t)
                     }
                 | kSUPER paren_args
                     {
-                      lparen_t, args, rparen_t = val[1]
-                      result = @builder.keyword_cmd(:super, val[0],
+                      lparen_t, args, rparen_t = $2
+                      $$ = builder::keyword_cmd(:super, owned($1),
                                   lparen_t, args, rparen_t)
                     }
                 | kSUPER
                     {
-                      result = @builder.keyword_cmd(:zsuper, val[0])
+                      $$ = builder::keyword_cmd(:zsuper, owned($1))
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      result = @builder.index(val[0], val[1], val[2], val[3])
+                      $$ = builder::index(owned($1), owned($2), owned($3), owned($4))
                     }
 
      brace_block: tLCURLY brace_body tRCURLY
                     {
-                      result = [ val[0], *val[1], val[2] ]
+                      $$ = [ owned($1), *owned($2), owned($3) ]
                     }
                 | kDO do_body kEND
                     {
-                      result = [ val[0], *val[1], val[2] ]
+                      $$ = [ owned($1), *owned($2), owned($3) ]
                     }
 
       brace_body:   {
                       @static_env.extend_dynamic
                     }
                     {
-                      result = @lexer.cmdarg.dup
+                      $<bool_stack>$ = new std::stack<bool>(lexer.cmdarg);
                       @lexer.cmdarg.clear
                     }
                     opt_block_param compstmt
                     {
-                      result = [ val[2], val[3] ]
+                      $$ = [ owned($3), owned($4) ]
 
                       @static_env.unextend
-                      @lexer.cmdarg = val[1]
+                      std::stack<bool_stack>* cmdarg = $<bool_stack>2;
+                      @lexer.cmdarg = *cmdarg;
+                      delete cmdarg;
                       @lexer.cmdarg.pop
                     }
 
@@ -1674,64 +1817,67 @@ opt_block_args_tail:
                       @static_env.extend_dynamic
                     }
                     {
-                      result = @lexer.cmdarg.dup
+                      $<bool_stack>$ = new std::stack<bool>(lexer.cmdarg);
                       @lexer.cmdarg.clear
                     }
                     opt_block_param compstmt
                     {
-                      result = [ val[2], val[3] ]
+                      $$ = [ owned($3), owned($4) ]
 
                       @static_env.unextend
-                      @lexer.cmdarg = val[1]
+
+                      std::stack<bool>* cmdarg = $<bool_stack>2;
+                      lexer.cmdarg = *cmdarg;
+                      delete cmdarg;
                       @lexer.cmdarg.pop
                     }
 
        case_body: kWHEN args then compstmt cases
                     {
-                      result = [ @builder.when(val[0], val[1], val[2], val[3]),
-                                 *val[4] ]
+                      $$ = [ builder::when(owned($1), owned($2), owned($3), owned($4)),
+                                 *owned($5) ]
                     }
 
            cases: opt_else
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | case_body
 
       opt_rescue: kRESCUE exc_list exc_var then compstmt opt_rescue
                     {
-                      assoc_t, exc_var = val[2]
+                      assoc_t, exc_var = $3
 
-                      if val[1]
-                        exc_list = @builder.array(nil, val[1], nil)
+                      if owned($2)
+                        exc_list = builder::array(nil, owned($2), nil)
                       end
 
-                      result = [ @builder.rescue_body(val[0],
+                      $$ = [ builder::rescue_body(owned($1),
                                       exc_list, assoc_t, exc_var,
-                                      val[3], val[4]),
-                                 *val[5] ]
+                                      owned($4), owned($5)),
+                                 *owned($6) ]
                     }
                 |
                     {
-                      result = []
+                      $$ = []
                     }
 
         exc_list: arg_value
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | mrhs
-                | none
+                | list_none
 
          exc_var: tASSOC lhs
                     {
-                      result = [ val[0], val[1] ]
+                      $$ = [ owned($1), owned($2) ]
                     }
-                | none
+                | list_none
 
       opt_ensure: kENSURE compstmt
                     {
-                      result = [ val[0], val[1] ]
+                      $$ = [ owned($1), owned($2) ]
                     }
                 | none
 
@@ -1741,144 +1887,144 @@ opt_block_args_tail:
 
          strings: string
                     {
-                      result = @builder.string_compose(nil, val[0], nil)
+                      $$ = builder::string_compose(nil, owned($1), nil)
                     }
 
           string: string1
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | string string1
                     {
-                      result = val[0] << val[1]
+                      $$ = $1 << owned($2)
                     }
 
          string1: tSTRING_BEG string_contents tSTRING_END
                     {
-                      string = @builder.string_compose(val[0], val[1], val[2])
-                      result = @builder.dedent_string(string, @lexer.dedent_level)
+                      string = builder::string_compose(owned($1), owned($2), owned($3))
+                      $$ = builder::dedent_string(string, @lexer.dedent_level)
                     }
                 | tSTRING
                     {
-                      string = @builder.string(val[0])
-                      result = @builder.dedent_string(string, @lexer.dedent_level)
+                      string = builder::string(owned($1))
+                      $$ = builder::dedent_string(string, @lexer.dedent_level)
                     }
                 | tCHARACTER
                     {
-                      result = @builder.character(val[0])
+                      $$ = builder::character(owned($1))
                     }
 
          xstring: tXSTRING_BEG xstring_contents tSTRING_END
                     {
-                      string = @builder.xstring_compose(val[0], val[1], val[2])
-                      result = @builder.dedent_string(string, @lexer.dedent_level)
+                      string = builder::xstring_compose(owned($1), owned($2), owned($3))
+                      $$ = builder::dedent_string(string, @lexer.dedent_level)
                     }
 
           regexp: tREGEXP_BEG regexp_contents tSTRING_END tREGEXP_OPT
                     {
-                      opts   = @builder.regexp_options(val[3])
-                      result = @builder.regexp_compose(val[0], val[1], val[2], opts)
+                      opts   = builder::regexp_options(owned($4))
+                      $$ = builder::regexp_compose(owned($1), owned($2), owned($3), opts)
                     }
 
            words: tWORDS_BEG word_list tSTRING_END
                     {
-                      result = @builder.words_compose(val[0], val[1], val[2])
+                      $$ = builder::words_compose(owned($1), owned($2), owned($3))
                     }
 
        word_list: // nothing
                     {
-                      result = []
+                      $$ = []
                     }
                 | word_list word tSPACE
                     {
-                      result = val[0] << @builder.word(val[1])
+                      $$ = $1 << builder::word(owned($2))
                     }
 
             word: string_content
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | word string_content
                     {
-                      result = val[0] << val[1]
+                      $$ = $1 << owned($2)
                     }
 
          symbols: tSYMBOLS_BEG symbol_list tSTRING_END
                     {
-                      result = @builder.symbols_compose(val[0], val[1], val[2])
+                      $$ = builder::symbols_compose(owned($1), owned($2), owned($3))
                     }
 
      symbol_list: // nothing
                     {
-                      result = []
+                      $$ = []
                     }
                 | symbol_list word tSPACE
                     {
-                      result = val[0] << @builder.word(val[1])
+                      $$ = $1 << builder::word(owned($2))
                     }
 
           qwords: tQWORDS_BEG qword_list tSTRING_END
                     {
-                      result = @builder.words_compose(val[0], val[1], val[2])
+                      $$ = builder::words_compose(owned($1), owned($2), owned($3))
                     }
 
         qsymbols: tQSYMBOLS_BEG qsym_list tSTRING_END
                     {
-                      result = @builder.symbols_compose(val[0], val[1], val[2])
+                      $$ = builder::symbols_compose(owned($1), owned($2), owned($3))
                     }
 
       qword_list: // nothing
                     {
-                      result = []
+                      $$ = []
                     }
                 | qword_list tSTRING_CONTENT tSPACE
                     {
-                      result = val[0] << @builder.string_internal(val[1])
+                      $$ = $1 << builder::string_internal(owned($2))
                     }
 
        qsym_list: // nothing
                     {
-                      result = []
+                      $$ = []
                     }
                 | qsym_list tSTRING_CONTENT tSPACE
                     {
-                      result = val[0] << @builder.symbol_internal(val[1])
+                      $$ = $1 << builder::symbol_internal(owned($2))
                     }
 
  string_contents: // nothing
                     {
-                      result = []
+                      $$ = []
                     }
                 | string_contents string_content
                     {
-                      result = val[0] << val[1]
+                      $$ = $1 << owned($2)
                     }
 
 xstring_contents: // nothing
                     {
-                      result = []
+                      $$ = []
                     }
                 | xstring_contents string_content
                     {
-                      result = val[0] << val[1]
+                      $$ = $1 << owned($2)
                     }
 
 regexp_contents: // nothing
                     {
-                      result = []
+                      $$ = []
                     }
                 | regexp_contents string_content
                     {
-                      result = val[0] << val[1]
+                      $$ = $1 << owned($2)
                     }
 
   string_content: tSTRING_CONTENT
                     {
-                      result = @builder.string_internal(val[0])
+                      $$ = builder::string_internal(owned($1))
                     }
                 | tSTRING_DVAR string_dvar
                     {
-                      result = val[1]
+                      $$ = $2
                     }
                 | tSTRING_DBEG
                     {
@@ -1890,20 +2036,20 @@ regexp_contents: // nothing
                       @lexer.cond.lexpop
                       @lexer.cmdarg.lexpop
 
-                      result = @builder.begin(val[0], val[2], val[3])
+                      $$ = builder::begin(owned($1), owned($3), owned($4))
                     }
 
      string_dvar: tGVAR
                     {
-                      result = @builder.gvar(val[0])
+                      $$ = builder::gvar(owned($1))
                     }
                 | tIVAR
                     {
-                      result = @builder.ivar(val[0])
+                      $$ = builder::ivar(owned($1))
                     }
                 | tCVAR
                     {
-                      result = @builder.cvar(val[0])
+                      $$ = builder::cvar(owned($1))
                     }
                 | backref
 
@@ -1911,120 +2057,120 @@ regexp_contents: // nothing
           symbol: tSYMBOL
                     {
                       @lexer.state = :expr_endarg
-                      result = @builder.symbol(val[0])
+                      $$ = builder::symbol(owned($1))
                     }
 
             dsym: tSYMBEG xstring_contents tSTRING_END
                     {
                       @lexer.state = :expr_endarg
-                      result = @builder.symbol_compose(val[0], val[1], val[2])
+                      $$ = builder::symbol_compose(owned($1), owned($2), owned($3))
                     }
 
          numeric: simple_numeric
                     {
-                      result = val[0]
+                      $$ = $1
                     }
                 | tUMINUS_NUM simple_numeric %prec tLOWEST
                     {
-                      result = @builder.negate(val[0], val[1])
+                      $$ = builder::negate(owned($1), owned($2))
                     }
 
   simple_numeric: tINTEGER
                     {
                       @lexer.state = :expr_endarg
-                      result = @builder.integer(val[0])
+                      $$ = builder::integer(owned($1))
                     }
                 | tFLOAT
                     {
                       @lexer.state = :expr_endarg
-                      result = @builder.float(val[0])
+                      $$ = builder::float(owned($1))
                     }
                 | tRATIONAL
                     {
                       @lexer.state = :expr_endarg
-                      result = @builder.rational(val[0])
+                      $$ = builder::rational(owned($1))
                     }
                 | tIMAGINARY
                     {
                       @lexer.state = :expr_endarg
-                      result = @builder.complex(val[0])
+                      $$ = builder::complex(owned($1))
                     }
 
    user_variable: tIDENTIFIER
                     {
-                      result = @builder.ident(val[0])
+                      $$ = builder::ident(owned($1))
                     }
                 | tIVAR
                     {
-                      result = @builder.ivar(val[0])
+                      $$ = builder::ivar(owned($1))
                     }
                 | tGVAR
                     {
-                      result = @builder.gvar(val[0])
+                      $$ = builder::gvar(owned($1))
                     }
                 | tCONSTANT
                     {
-                      result = @builder.const(val[0])
+                      $$ = builder::const(owned($1))
                     }
                 | tCVAR
                     {
-                      result = @builder.cvar(val[0])
+                      $$ = builder::cvar(owned($1))
                     }
 
 keyword_variable: kNIL
                     {
-                      result = @builder.nil(val[0])
+                      $$ = builder::nil(owned($1))
                     }
                 | kSELF
                     {
-                      result = @builder.self(val[0])
+                      $$ = builder::self(owned($1))
                     }
                 | kTRUE
                     {
-                      result = @builder.true(val[0])
+                      $$ = builder::true(owned($1))
                     }
                 | kFALSE
                     {
-                      result = @builder.false(val[0])
+                      $$ = builder::false(owned($1))
                     }
                 | k__FILE__
                     {
-                      result = @builder.__FILE__(val[0])
+                      $$ = builder::__FILE__(owned($1))
                     }
                 | k__LINE__
                     {
-                      result = @builder.__LINE__(val[0])
+                      $$ = builder::__LINE__(owned($1))
                     }
                 | k__ENCODING__
                     {
-                      result = @builder.__ENCODING__(val[0])
+                      $$ = builder::__ENCODING__(owned($1))
                     }
 
          var_ref: user_variable
                     {
-                      result = @builder.accessible(val[0])
+                      $$ = builder::accessible(owned($1))
                     }
                 | keyword_variable
                     {
-                      result = @builder.accessible(val[0])
+                      $$ = builder::accessible(owned($1))
                     }
 
          var_lhs: user_variable
                     {
-                      result = @builder.assignable(val[0])
+                      $$ = builder::assignable(owned($1))
                     }
                 | keyword_variable
                     {
-                      result = @builder.assignable(val[0])
+                      $$ = builder::assignable(owned($1))
                     }
 
          backref: tNTH_REF
                     {
-                      result = @builder.nth_ref(val[0])
+                      $$ = builder::nth_ref(owned($1))
                     }
                 | tBACK_REF
                     {
-                      result = @builder.back_ref(val[0])
+                      $$ = builder::back_ref(owned($1))
                     }
 
       superclass: tLT
@@ -2033,20 +2179,20 @@ keyword_variable: kNIL
                     }
                     expr_value term
                     {
-                      result = [ val[0], val[2] ]
+                      $$ = [ owned($1), owned($3) ]
                     }
                 | // nothing
                     {
-                      result = nil
+                      $$ = nil
                     }
 
 tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
-                      result = @builder.tr_genargs(val[0], val[1], val[2])
+                      $$ = builder::tr_genargs(owned($1), owned($2), owned($3))
                     }
                 | // nothing
                     {
-                      result = nil
+                      $$ = nil
                     }
 
        f_arglist: tr_methodgenargs tLPAREN2 f_args rparen
@@ -2055,392 +2201,396 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                   tr_returnsig
                     {
-                      result = @builder.args(val[1], val[2], val[3])
+                      $$ = builder::args(owned($2), owned($3), owned($4))
 
-                      if val[0] || val[5]
-                        result = @builder.prototype(val[0], result, val[5])
+                      if owned($1) || owned($6)
+                        $$ = builder::prototype(owned($1), result, owned($6))
                       end
                     }
                 | tr_methodgenargs
                     {
-                      result = @lexer.in_kwarg
+                      $<boolean>$ = @lexer.in_kwarg
                       @lexer.in_kwarg = true
                     }
                   f_args tr_returnsig term
                     {
-                      @lexer.in_kwarg = val[1]
-                      result = @builder.args(nil, val[2], nil)
+                      @lexer.in_kwarg = $<boolean>2;
+                      $$ = builder::args(nil, owned($3), nil)
 
-                      if val[0] || val[3]
-                        result = @builder.prototype(val[0], result, val[3])
+                      if owned($1) || owned($4)
+                        $$ = builder::prototype(owned($1), result, owned($4))
                       end
                     }
 
        args_tail: f_kwarg tCOMMA f_kwrest opt_f_block_arg
                     {
-                      result = val[0].concat(val[2]).concat(val[3])
+                      $$ = $1.concat(owned($3)).concat(owned($4))
                     }
                 | f_kwarg opt_f_block_arg
                     {
-                      result = val[0].concat(val[1])
+                      $$ = $1.concat(owned($2))
                     }
                 | f_kwrest opt_f_block_arg
                     {
-                      result = val[0].concat(val[1])
+                      $$ = $1.concat(owned($2))
                     }
                 | f_block_arg
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
 
    opt_args_tail: tCOMMA args_tail
                     {
-                      result = val[1]
+                      $$ = $2
                     }
                 | // nothing
                     {
-                      result = []
+                      $$ = []
                     }
 
           f_args: f_arg tCOMMA f_optarg tCOMMA f_rest_arg              opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[5])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($6))
                     }
                 | f_arg tCOMMA f_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[6]).
-                                  concat(val[7])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($7)).
+                                  concat(owned($8))
                     }
                 | f_arg tCOMMA f_optarg                                opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 | f_arg tCOMMA f_optarg tCOMMA                   f_arg opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[5])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($6))
                     }
                 | f_arg tCOMMA                 f_rest_arg              opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 | f_arg tCOMMA                 f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[5])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($6))
                     }
                 | f_arg                                                opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[1])
+                      $$ = $1.
+                                  concat(owned($2))
                     }
                 |              f_optarg tCOMMA f_rest_arg              opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 |              f_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[4]).
-                                  concat(val[5])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($5)).
+                                  concat(owned($6))
                     }
                 |              f_optarg                                opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[1])
+                      $$ = $1.
+                                  concat(owned($2))
                     }
                 |              f_optarg tCOMMA                   f_arg opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 |                              f_rest_arg              opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[1])
+                      $$ = $1.
+                                  concat(owned($2))
                     }
                 |                              f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      result = val[0].
-                                  concat(val[2]).
-                                  concat(val[3])
+                      $$ = $1.
+                                  concat(owned($3)).
+                                  concat(owned($4))
                     }
                 |                                                          args_tail
                     {
-                      result = val[0]
+                      $$ = $1
                     }
                 | // nothing
                     {
-                      result = []
+                      $$ = []
                     }
 
        f_bad_arg: tIVAR
                     {
-                      diagnostic :error, :argument_ivar, nil, val[0]
+                      diagnostic :error, :argument_ivar, nil, owned($1)
                     }
                 | tGVAR
                     {
-                      diagnostic :error, :argument_gvar, nil, val[0]
+                      diagnostic :error, :argument_gvar, nil, owned($1)
                     }
                 | tCVAR
                     {
-                      diagnostic :error, :argument_cvar, nil, val[0]
+                      diagnostic :error, :argument_cvar, nil, owned($1)
                     }
 
       f_norm_arg: f_bad_arg
                 | tIDENTIFIER
                     {
-                      @static_env.declare val[0][0]
+                      @static_env.declare owned($1)[0]
 
-                      result = val[0]
+                      $$ = $1
                     }
 
       f_arg_asgn: f_norm_arg
                     {
-                      result = val[0]
+                      $$ = $1
                     }
 
       f_arg_item: tr_argsig f_arg_asgn
                     {
-                      result = @builder.arg(val[1])
+                      $$ = builder::arg(owned($2))
 
-                      if val[0]
-                        result = @builder.typed_arg(val[0], result)
+                      if owned($1)
+                        $$ = builder::typed_arg(owned($1), result)
                       end
                     }
                 | tLPAREN f_margs rparen
                     {
-                      result = @builder.multi_lhs(val[0], val[1], val[2])
+                      $$ = builder::multi_lhs(owned($1), owned($2), owned($3))
                     }
 
            f_arg: f_arg_item
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | f_arg tCOMMA f_arg_item
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
 
          f_label: tLABEL
                     {
-                      check_kwarg_name(val[0])
+                      check_kwarg_name(owned($1))
 
-                      @static_env.declare val[0][0]
+                      @static_env.declare owned($1)[0]
 
-                      result = val[0]
+                      $$ = $1
                     }
 
             f_kw: tr_argsig f_label arg_value
                     {
-                      result = @builder.kwoptarg(val[1], val[2])
+                      $$ = builder::kwoptarg(owned($2), owned($3))
 
-                      if val[0]
-                        result = @builder.typed_arg(val[0], result)
+                      if owned($1)
+                        $$ = builder::typed_arg(owned($1), result)
                       end
                     }
                 | tr_argsig f_label
                     {
-                      result = @builder.kwarg(val[1])
+                      $$ = builder::kwarg(owned($2))
 
-                      if val[0]
-                        result = @builder.typed_arg(val[0], result)
+                      if owned($1)
+                        $$ = builder::typed_arg(owned($1), result)
                       end
                     }
 
       f_block_kw: tr_argsig f_label primary_value
                     {
-                      result = @builder.kwoptarg(val[1], val[2])
+                      $$ = builder::kwoptarg(owned($2), owned($3))
 
-                      if val[0]
-                        result = @builder.typed_arg(val[0], result)
+                      if owned($1)
+                        $$ = builder::typed_arg(owned($1), result)
                       end
                     }
                 | tr_argsig f_label
                     {
-                      result = @builder.kwarg(val[1])
+                      $$ = builder::kwarg(owned($2))
 
-                      if val[0]
-                        result = @builder.typed_arg(val[0], result)
+                      if owned($1)
+                        $$ = builder::typed_arg(owned($1), result)
                       end
                     }
 
    f_block_kwarg: f_block_kw
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | f_block_kwarg tCOMMA f_block_kw
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
 
          f_kwarg: f_kw
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | f_kwarg tCOMMA f_kw
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
 
      kwrest_mark: tPOW | tDSTAR
 
         f_kwrest: kwrest_mark tIDENTIFIER
                     {
-                      @static_env.declare val[1][0]
+                      @static_env.declare owned($2)[0]
 
-                      result = [ @builder.kwrestarg(val[0], val[1]) ]
+                      $$ = [ builder::kwrestarg(owned($1), owned($2)) ]
                     }
                 | kwrest_mark
                     {
-                      result = [ @builder.kwrestarg(val[0]) ]
+                      $$ = [ builder::kwrestarg(owned($1)) ]
                     }
 
            f_opt: tr_argsig f_arg_asgn tEQL arg_value
                     {
-                      result = @builder.optarg(val[1], val[2], val[3])
+                      $$ = builder::optarg(owned($2), owned($4))
 
-                      if val[0]
-                        result = @builder.typed_arg(val[0], result)
+                      if owned($1)
+                        $$ = builder::typed_arg(owned($1), result)
                       end
                     }
 
      f_block_opt: tr_argsig f_arg_asgn tEQL primary_value
                     {
-                      result = @builder.optarg(val[1], val[2], val[3])
+                      $$ = builder::optarg(owned($2), owned($4))
 
-                      if val[0]
-                        result = @builder.typed_arg(val[0], result)
+                      if owned($1)
+                        $$ = builder::typed_arg(owned($1), result)
                       end
                     }
 
   f_block_optarg: f_block_opt
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | f_block_optarg tCOMMA f_block_opt
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
 
         f_optarg: f_opt
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | f_optarg tCOMMA f_opt
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
 
     restarg_mark: tSTAR2 | tSTAR
 
       f_rest_arg: tr_argsig restarg_mark tIDENTIFIER
                     {
-                      @static_env.declare val[2][0]
+                      token* ident = $3;
 
-                      restarg = @builder.restarg(val[1], val[2])
+                      @static_env.declare(ident->string())
 
-                      if val[0]
-                        restarg = @builder.typed_arg(val[0], restarg)
+                      restarg = builder::restarg(owned($2), ident->string());
+
+                      if owned($1)
+                        restarg = builder::typed_arg(owned($1), restarg)
                       end
 
-                      result = [ restarg ]
+                      $$ = [ restarg ]
                     }
                 | tr_argsig restarg_mark
                     {
-                      restarg = @builder.restarg(val[1], val[2])
+                      restarg = builder::restarg(owned($2), nullptr)
 
-                      if val[0]
-                        restarg = @builder.typed_arg(val[0], restarg)
+                      if owned($1)
+                        restarg = builder::typed_arg(owned($1), restarg)
                       end
 
-                      result = [ restarg ]
+                      $$ = [ restarg ]
                     }
 
      blkarg_mark: tAMPER2 | tAMPER
 
      f_block_arg: tr_argsig blkarg_mark tIDENTIFIER
                     {
-                      @static_env.declare val[2][0]
+                      token* ident = $3;
 
-                      result = @builder.blockarg(val[1], val[2])
+                      @static_env.declare(ident->string())
 
-                      if val[0]
-                        result = @builder.typed_arg(val[0], result)
+                      $$ = builder::blockarg(owned($2), ident->string());
+
+                      if owned($1)
+                        $$ = builder::typed_arg(owned($1), result)
                       end
                     }
                 | tr_argsig blkarg_mark
                     {
-                      result = @builder.blockarg(val[1], nil)
+                      $$ = builder::blockarg(owned($2), nil)
 
-                      if val[0]
-                        result = @builder.typed_arg(val[0], result)
+                      if owned($1)
+                        $$ = builder::typed_arg(owned($1), result)
                       end
                     }
 
  opt_f_block_arg: tCOMMA f_block_arg
                     {
-                      result = [ val[1] ]
+                      $$ = [ owned($2) ]
                     }
                 |
                     {
-                      result = []
+                      $$ = []
                     }
 
        singleton: var_ref
                 | tLPAREN2 expr rparen
                     {
-                      result = val[1]
+                      $$ = $2
                     }
 
       assoc_list: // nothing
                     {
-                      result = []
+                      $$ = []
                     }
                 | assocs trailer
 
           assocs: assoc
                     {
-                      result = [ val[0] ]
+                      $$ = [ owned($1) ]
                     }
                 | assocs tCOMMA assoc
                     {
-                      result = val[0] << val[2]
+                      $$ = $1 << owned($3)
                     }
 
            assoc: arg_value tASSOC arg_value
                     {
-                      result = @builder.pair(val[0], val[1], val[2])
+                      $$ = builder::pair(owned($1), owned($2), owned($3))
                     }
                 | tLABEL arg_value
                     {
-                      result = @builder.pair_keyword(val[0], val[1])
+                      $$ = builder::pair_keyword(owned($1), owned($2))
                     }
                 | tSTRING_BEG string_contents tLABEL_END arg_value
                     {
-                      result = @builder.pair_quoted(val[0], val[1], val[2], val[3])
+                      $$ = builder::pair_quoted(owned($1), owned($2), owned($3), owned($4))
                     }
                 | tDSTAR arg_value
                     {
-                      result = @builder.kwsplat(val[0], val[1])
+                      $$ = builder::kwsplat(owned($1), owned($2))
                     }
 
        operation: tIDENTIFIER | tCONSTANT | tFID
@@ -2449,21 +2599,21 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
     dot_or_colon: call_op | tCOLON2
          call_op: tDOT
                     {
-                      result = [:dot, val[0][1]]
+                      $$ = [:dot, owned($1)[1]]
                     }
                 | tANDDOT
                     {
-                      result = [:anddot, val[0][1]]
+                      $$ = [:anddot, owned($1)[1]]
                     }
        opt_terms:  | terms
           opt_nl:  | tNL
           rparen: opt_nl tRPAREN
                     {
-                      result = val[1]
+                      $$ = $2
                     }
         rbracket: opt_nl tRBRACK
                     {
-                      result = val[1]
+                      $$ = $2
                     }
          trailer:  | tNL | tCOMMA
 
@@ -2478,126 +2628,131 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
             none: // nothing
                   {
-                    result = nil
+                    $$ = nullptr;
+                  }
+
+       list_none: // nothing
+                  {
+                    $$ = nullptr;
                   }
 
         tr_cpath: tCOLON3 tCONSTANT
                     {
-                      result = @builder.const_global(val[0], val[1])
+                      $$ = builder::const_global(owned($1), owned($2))
                     }
                 | tCONSTANT
                     {
-                      result = @builder.const(val[0])
+                      $$ = builder::const(owned($1))
                     }
                 | tr_cpath tCOLON2 tCONSTANT
                     {
-                      result = @builder.const_fetch(val[0], val[1], val[2])
+                      $$ = builder::const_fetch(owned($1), owned($2), owned($3))
                     }
 
        tr_types: tr_types tCOMMA tr_type
                    {
-                     result = val[0] << val[2]
+                     $$ = $1 << owned($3)
                    }
                | tr_type
                    {
-                     result = [val[0]]
+                     $$ = [owned($1)]
                    }
 
          tr_type: tr_cpath
                     {
-                      result = @builder.tr_cpath(val[0])
+                      $$ = builder::tr_cpath(owned($1))
                     }
                 | tr_cpath tCOLON2 tLBRACK2 tr_types rbracket
                     {
-                      result = @builder.tr_geninst(val[0], val[2], val[3], val[4])
+                      $$ = builder::tr_geninst(owned($1), owned($3), owned($4), owned($5))
                     }
                 | tLBRACK tr_type rbracket
                     {
-                      result = @builder.tr_array(val[0], val[1], val[2])
+                      $$ = builder::tr_array(owned($1), owned($2), owned($3))
                     }
                 | tLBRACK tr_type tCOMMA tr_types rbracket
                     {
-                      types = val[3]
-                      types.unshift(val[1])
-                      result = @builder.tr_tuple(val[0], types, val[4])
+                      types = $4
+                      types.unshift(owned($2))
+                      $$ = builder::tr_tuple(owned($1), types, owned($5))
                     }
                 | tLBRACE tr_type tASSOC tr_type tRCURLY
                     {
-                      result = @builder.tr_hash(val[0], val[1], val[2], val[3], val[4])
+                      $$ = builder::tr_hash(owned($1), owned($2), owned($3), owned($4), owned($5))
                     }
                 | tLBRACE tr_blockproto tr_returnsig tRCURLY
                     {
                       prototype =
-                        if val[2]
-                          @builder.prototype(nil, val[1], val[2])
+                        if owned($3)
+                          builder::prototype(nil, owned($2), owned($3))
                         else
-                          val[1]
+                          owned($2)
                         end
 
-                      result = @builder.tr_proc(val[0], prototype, val[3])
+                      $$ = builder::tr_proc(owned($1), prototype, owned($4))
                     }
                 | tTILDE tr_type
                     {
-                      result = @builder.tr_nillable(val[0], val[1])
+                      $$ = builder::tr_nillable(owned($1), owned($2))
                     }
                 | kNIL
                     {
-                      result = @builder.tr_nil(val[0])
+                      $$ = builder::tr_nil(owned($1))
                     }
                 | tSYMBOL
                     {
-                      result =
-                        case val[0][0]
+                      $$ =
+                        case owned($1)[0]
                         when "self", "instance", "class", "any"
-                          @builder.tr_special(val[0])
+                          builder::tr_special(owned($1))
                         else
-                          diagnostic :error, :bad_special_type, { value: val[0][0] }, val[0]
+                          diagnostic :error, :bad_special_type, { value: owned($1)[0] }, owned($1)
                         end
                     }
                 | tLPAREN tr_union_type rparen
                     {
-                      result = val[1]
+                      $$ = $2
                     }
 
    tr_union_type: tr_union_type tPIPE tr_type
                     {
-                      result = @builder.tr_or(val[0], val[2])
+                      $$ = builder::tr_or(owned($1), owned($3))
                     }
                 | tr_type
 
        tr_argsig: tr_type
                     {
-                      result = val[0]
+                      $$ = $1
                       @lexer.state = :expr_beg
                     }
                 |
                     {
-                      result = nil
+                      $$ = nil
                     }
 
     tr_returnsig: tASSOC tr_type
                     {
-                      result = val[1]
+                      $$ = $2
                     }
                 |
                     {
-                      result = nil
+                      $$ = nil
                     }
 
   tr_gendeclargs: tr_gendeclargs tCOMMA tCONSTANT
                     {
-                      result = val[0] << @builder.tr_gendeclarg(val[2])
+                      $$ = $1 << builder::tr_gendeclarg(owned($3))
                     }
                 | tCONSTANT
                     {
-                      result = [@builder.tr_gendeclarg(val[0])]
+                      $$ = [builder::tr_gendeclarg(owned($1))]
                     }
 
    tr_blockproto: { @static_env.extend_dynamic }
                   block_param_def
                     {
                       @static_env.unextend
-                      result = val[1]
+                      $$ = $2
                     }
 
 %%
