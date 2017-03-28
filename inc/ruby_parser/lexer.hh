@@ -93,6 +93,8 @@ namespace ruby_parser {
     literal& literal();
     int pop_literal();
 
+    void set_state_expr_fname();
+
   public:
     lexer(ruby_version version, std::string source);
 
