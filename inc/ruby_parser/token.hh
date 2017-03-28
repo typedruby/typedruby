@@ -3,6 +3,7 @@
 
 #include <cstddef>
 #include <string>
+#include <memory>
 
 namespace ruby_parser {
   enum class token_type {
@@ -165,6 +166,8 @@ namespace ruby_parser {
     size_t end() const;
     const std::string& string() const;
   };
+
+  using token_ptr = std::unique_ptr<token>;
 }
 
 #endif
