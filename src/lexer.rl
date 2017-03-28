@@ -344,9 +344,9 @@ bool lexer::static_env_declared(std::string&& identifier) {
   end
 */
 
-std::unique_ptr<token> lexer::advance() {
+token_ptr lexer::advance() {
   if (!token_queue.empty()) {
-    std::unique_ptr<token> token = std::move(token_queue.front());
+    token_ptr token = std::move(token_queue.front());
     token_queue.pop();
     return token;
   }
@@ -368,7 +368,7 @@ std::unique_ptr<token> lexer::advance() {
   _p = p;
 
   if (!token_queue.empty()) {
-    std::unique_ptr<token> token = std::move(token_queue.front());
+    token_ptr token = std::move(token_queue.front());
     token_queue.pop();
     return token;
   }

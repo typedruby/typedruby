@@ -3,6 +3,8 @@
   #include <ruby_parser/node.hh>
   #include <ruby_parser/token.hh>
   #include <ruby_parser/lexer.hh>
+  #include <iterator>
+  #include <utility>
 
   using namespace ruby_parser;
 %}
@@ -10,7 +12,8 @@
 %pure-parser
 
 %union {
-  token* token;
+  token_ptr* token;
+  node_delimited_block_ptr* delimited_block;
   node* node;
   node_list* list;
   size_t size;
@@ -133,15 +136,12 @@
   block_args_tail
   block_param
   brace_block
-  brace_body
   bv_decls
   call_args
   case_body
   cases
-  cmd_brace_block
   command_args
   do_block
-  do_body
   exc_list
   exc_var
   f_arg
@@ -202,6 +202,11 @@
   do
   term
 
+%type <delimited_block>
+  cmd_brace_block
+  brace_body
+  do_body
+
 %nonassoc tLOWEST
 %nonassoc tLBRACE_ARG
 %nonassoc kIF_MOD kUNLESS_MOD kWHILE_MOD kUNTIL_MOD
@@ -227,8 +232,15 @@
 
 %{
   template<typename T>
-  std::unique_ptr<T> owned(T* ptr) {
+  static std::unique_ptr<T> owned(T* ptr) {
     return new std::unique_ptr<T>(ptr);
+  }
+
+  template<typename T>
+  static std::unique_ptr<T> take(std::unique_ptr<T>* raw_ptr) {
+    auto ptr = std::move(*raw_ptr);
+    delete raw_ptr;
+    return ptr;
   }
 %}
 
@@ -267,21 +279,21 @@
         bodystmt: compstmt opt_rescue opt_else opt_ensure
                     {
                       auto rescue_bodies = owned($2);
-                      auto else_ = owned($3); // TODO needs to be a tuple of (else_t, else)
-                      auto ensure = owned($4); // TODO needs to be a tuple of (ensure_t, else)
 
-                      // rescue_bodies     = $2
-                      // else_t,   else_   = $3
-                      // ensure_t, ensure_ = $4
+                      auto else_ = owned($3); // TODO needs to be a tuple of (else_t, else)
+                      token_ptr else_t = nullptr;
+
+                      auto ensure = owned($4); // TODO needs to be a tuple of (ensure_t, else)
+                      token_ptr ensure_t = nullptr;
 
                       if (rescue_bodies->nodes.size() == 0 && else_ != nullptr) {
-                        // TODO diagnostic :warning, :useless_else, nil, else_t
+                        // TODO diagnostic :warning, :useless_else, nullptr, else_t
                       }
 
                       $$ = builder::begin_body(owned($1),
                             std::move(rescue_bodies),
-                            /* TODO else_t, */ std::move(else_),
-                            /* TODO ensure_t, */ std::move(ensure)).release();
+                            std::move(else_t), std::move(else_),
+                            std::move(ensure_t), std::move(ensure)).release();
                     }
 
         compstmt: stmts opt_terms
@@ -310,7 +322,7 @@
    stmt_or_begin: stmt
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
-                      /* TODO diagnostic :error, :begin_in_method, nil, owned($1) */
+                      /* TODO diagnostic :error, :begin_in_method, nullptr, owned($1) */
                     }
 
             stmt: kALIAS fitem
@@ -319,23 +331,23 @@
                     }
                     fitem
                     {
-                      $$ = builder::alias(owned($2), owned($4)).release();
+                      $$ = builder::alias(take($1), owned($2), owned($4)).release();
                     }
                 | kALIAS tGVAR tGVAR
                     {
-                      $$ = builder::alias(
-                        builder::gvar($2->string()),
-                        builder::gvar($3->string())).release();
+                      $$ = builder::alias(take($1),
+                        builder::gvar(take($2)),
+                        builder::gvar(take($3))).release();
                     }
                 | kALIAS tGVAR tBACK_REF
                     {
-                      $$ = builder::alias(
-                        builder::gvar($2->string()),
-                        builder::back_ref($3->string())).release();
+                      $$ = builder::alias(take($1),
+                        builder::gvar(take($2)),
+                        builder::back_ref(take($3))).release();
                     }
                 | kALIAS tGVAR tNTH_REF
                     {
-                      // TODO diagnostic :error, :nth_ref_alias, nil, owned($3)
+                      // TODO diagnostic :error, :nth_ref_alias, nullptr, owned($3)
                     }
                 | kUNDEF undef_list
                     {
@@ -359,7 +371,7 @@
                     }
                 | stmt kRESCUE_MOD stmt
                     {
-                      auto rescue_body = builder::rescue_body(nullptr, nullptr, owned($3));
+                      auto rescue_body = builder::rescue_body(take($2), nullptr, nullptr, nullptr, nullptr, owned($3));
 
                       $$ = builder::begin_body(
                         owned($1),
@@ -377,7 +389,7 @@
                     }
                 | lhs tEQL mrhs
                     {
-                      $$ = builder::assign(owned($1), builder::array(owned($3))).release();
+                      $$ = builder::assign(owned($1), take($<token>2), builder::array(nullptr, owned($3), nullptr)).release();
                     }
                 | mlhs tEQL mrhs_arg
                     {
@@ -385,84 +397,88 @@
                     }
                 | kDEF tIVAR tCOLON tr_type
                     {
-                      $$ = builder::tr_ivardecl($2->string(), owned($4)).release();
+                      $$ = builder::tr_ivardecl(take($2), owned($4)).release();
                     }
                 | expr
 
     command_asgn: lhs tEQL command_rhs
                     {
-                      $$ = builder::assign(owned($1), owned($3)).release();
+                      $$ = builder::assign(owned($1), take($<token>2), owned($3)).release();
                     }
                 | var_lhs tOP_ASGN command_rhs
                     {
-                      $$ = builder::op_assign(owned($1), owned($2), owned($3));
+                      $$ = builder::op_assign(owned($1), take($2), owned($3)).release();
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN command_rhs
                     {
                       $$ = builder::op_assign(
                                   builder::index(
-                                    owned($1), owned($2), owned($3), owned($4)),
-                                  owned($5), owned($6))
+                                    owned($1), take($2), owned($3), take($4)),
+                                  take($5), owned($6)).release();
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN command_rhs
                     {
                       $$ = builder::op_assign(
                                   builder::call_method(
-                                    owned($1), owned($2), owned($3)),
-                                  owned($4), owned($5))
+                                    owned($1), take($2), take($3)),
+                                  take($4), owned($5)).release();
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN command_rhs
                     {
                       $$ = builder::op_assign(
                                   builder::call_method(
-                                    owned($1), owned($2), owned($3)),
-                                  owned($4), owned($5))
+                                    owned($1), take($2), take($3)),
+                                  take($4), owned($5)).release();
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN command_rhs
                     {
-                      const  = builder::const_op_assignable(
-                                  builder::const_fetch(owned($1), owned($2), owned($3)))
-                      $$ = builder::op_assign(const, owned($4), owned($5))
+                      auto const_node = builder::const_op_assignable(
+                                  builder::const_fetch(owned($1), take($2), take($3)));
+                      $$ = builder::op_assign(std::move(const_node), take($4), owned($5)).release();
                     }
                 | primary_value tCOLON2 tIDENTIFIER tOP_ASGN command_rhs
                     {
                       $$ = builder::op_assign(
                                   builder::call_method(
-                                    owned($1), owned($2), owned($3)),
-                                  owned($4), owned($5))
+                                    owned($1), take($2), take($3)),
+                                  take($4), owned($5)).release();
                     }
                 | backref tOP_ASGN command_rhs
                     {
-                      builder::op_assign(owned($1), owned($2), owned($3))
+                      builder::op_assign(owned($1), take($2), owned($3))
                     }
 
      command_rhs: command_call %prec tOP_ASGN
                 | command_call kRESCUE_MOD stmt
                     {
-                      rescue_body = builder::rescue_body(owned($2),
-                                        nil, nil, nil,
-                                        nil, owned($3))
+                      auto rescue_body =
+                        builder::rescue_body(take($2),
+                                        nullptr, nullptr, nullptr,
+                                        nullptr, owned($3));
 
-                      $$ = builder::begin_body(owned($1), [ rescue_body ])
+                      auto rescue_bodies =
+                        std::make_unique<node_list>(std::vector<node_ptr> { std::move(rescue_body) });
+
+                      $$ = builder::begin_body(owned($1), std::move(rescue_bodies)).release();
                     }
                 | command_asgn
 
             expr: command_call
                 | expr kAND expr
                     {
-                      $$ = builder::logical_op(:and, owned($1), owned($2), owned($3))
+                      $$ = builder::logical_op(node_type::AND, owned($1), take($2), owned($3)).release();
                     }
                 | expr kOR expr
                     {
-                      $$ = builder::logical_op(:or, owned($1), owned($2), owned($3))
+                      $$ = builder::logical_op(node_type::OR, owned($1), take($2), owned($3)).release();
                     }
                 | kNOT opt_nl expr
                     {
-                      $$ = builder::not_op(owned($1), nil, owned($3), nil)
+                      $$ = builder::not_op(take($1), nullptr, owned($3), nullptr).release();
                     }
                 | tBANG command_call
                     {
-                      $$ = builder::not_op(owned($1), nil, owned($2), nil)
+                      $$ = builder::not_op(take($1), nullptr, owned($2), nullptr).release();
                     }
                 | arg
 
@@ -474,154 +490,204 @@
    block_command: block_call
                 | block_call dot_or_colon operation2 command_args
                     {
-                      $$ = builder::call_method(owned($1), owned($2), owned($3),
-                                  nil, owned($4), nil)
+                      $$ = builder::call_method(owned($1), take($2), take($3),
+                                  nullptr, owned($4), nullptr).release();
                     }
 
  cmd_brace_block: tLBRACE_ARG brace_body tRCURLY
                     {
-                      $$ = [ owned($1), *owned($2), owned($3) ]
+                      /* TODO $$ = [ owned($1), *owned($2), owned($3) ] */
+                      $$ = nullptr;
                     }
 
            fcall: operation
 
          command: fcall command_args %prec tLOWEST
                     {
-                      $$ = builder::call_method(nil, nil, owned($1),
-                                  nil, owned($2), nil)
+                      $$ = builder::call_method(nullptr, nullptr, take($1),
+                                  nullptr, owned($2), nullptr).release();
                     }
                 | fcall command_args cmd_brace_block
                     {
-                      method_call = builder::call_method(nil, nil, owned($1),
-                                        nil, owned($2), nil)
+                      auto method_call = builder::call_method(nullptr, nullptr, take($1),
+                                                              nullptr, owned($2), nullptr);
 
-                      begin_t, args, body, end_t = $3
-                      result      = builder::block(method_call,
-                                      begin_t, args, body, end_t)
+                      auto delimited_block = take($3);
+
+                      $$ = builder::block(std::move(method_call),
+                                      std::move(delimited_block->begin),
+                                      std::move(delimited_block->args),
+                                      std::move(delimited_block->body),
+                                      std::move(delimited_block->end)).release();
                     }
                 | primary_value call_op operation2 command_args %prec tLOWEST
                     {
-                      $$ = builder::call_method(owned($1), owned($2), owned($3),
-                                  nil, owned($4), nil)
+                      $$ = builder::call_method(owned($1), take($2), take($3),
+                                  nullptr, owned($4), nullptr).release();
                     }
                 | primary_value call_op operation2 command_args cmd_brace_block
                     {
-                      method_call = builder::call_method(owned($1), owned($2), owned($3),
-                                        nil, owned($4), nil)
+                      auto method_call = builder::call_method(owned($1), take($2), take($3),
+                                        nullptr, owned($4), nullptr);
 
-                      begin_t, args, body, end_t = $5
-                      result      = builder::block(method_call,
-                                      begin_t, args, body, end_t)
+                      auto delimited_block = take($5);
+
+                      $$ = builder::block(std::move(method_call),
+                                      std::move(delimited_block->begin),
+                                      std::move(delimited_block->args),
+                                      std::move(delimited_block->body),
+                                      std::move(delimited_block->end)).release();
                     }
                 | primary_value tCOLON2 operation2 command_args %prec tLOWEST
                     {
-                      $$ = builder::call_method(owned($1), owned($2), owned($3),
-                                  nil, owned($4), nil)
+                      $$ = builder::call_method(owned($1), take($2), take($3),
+                                  nullptr, owned($4), nullptr).release();
                     }
                 | primary_value tCOLON2 operation2 command_args cmd_brace_block
                     {
-                      method_call = builder::call_method(owned($1), owned($2), owned($3),
-                                        nil, owned($4), nil)
+                      auto method_call = builder::call_method(owned($1), take($2), take($3),
+                                        nullptr, owned($4), nullptr);
 
-                      begin_t, args, body, end_t = $5
-                      result      = builder::block(method_call,
-                                      begin_t, args, body, end_t)
+                      auto delimited_block = take($5);
+
+                      $$ = builder::block(std::move(method_call),
+                                      std::move(delimited_block->begin),
+                                      std::move(delimited_block->args),
+                                      std::move(delimited_block->body),
+                                      std::move(delimited_block->end)).release();
                     }
                 | kSUPER command_args
                     {
-                      $$ = builder::keyword_cmd(:super, owned($1),
-                                  nil, owned($2), nil)
+                      $$ = builder::keyword_cmd(node_type::SUPER, take($1),
+                                  nullptr, owned($2), nullptr).release();
                     }
                 | kYIELD command_args
                     {
-                      $$ = builder::keyword_cmd(:yield, owned($1),
-                                  nil, owned($2), nil)
+                      $$ = builder::keyword_cmd(node_type::YIELD, take($1),
+                                  nullptr, owned($2), nullptr).release();
                     }
                 | kRETURN call_args
                     {
-                      $$ = builder::keyword_cmd(:return, owned($1),
-                                  nil, owned($2), nil)
+                      $$ = builder::keyword_cmd(node_type::RETURN, take($1),
+                                  nullptr, owned($2), nullptr).release();
                     }
                 | kBREAK call_args
                     {
-                      $$ = builder::keyword_cmd(:break, owned($1),
-                                  nil, owned($2), nil)
+                      $$ = builder::keyword_cmd(node_type::BREAK, take($1),
+                                  nullptr, owned($2), nullptr).release();
                     }
                 | kNEXT call_args
                     {
-                      $$ = builder::keyword_cmd(:next, owned($1),
-                                  nil, owned($2), nil)
+                      $$ = builder::keyword_cmd(node_type::NEXT, take($1),
+                                  nullptr, owned($2), nullptr).release();
                     }
 
             mlhs: mlhs_basic
                     {
-                      $$ = builder::multi_lhs(nil, owned($1), nil)
+                      $$ = builder::multi_lhs(nullptr, owned($1), nullptr).release();
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      $$ = builder::begin(owned($1), owned($2), owned($3))
+                      $$ = builder::begin(take($1), owned($2), take($3)).release();
                     }
 
       mlhs_inner: mlhs_basic
                     {
-                      $$ = builder::multi_lhs(nil, owned($1), nil)
+                      $$ = builder::multi_lhs(nullptr, owned($1), nullptr).release();
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      $$ = builder::multi_lhs(owned($1), owned($2), owned($3))
+                      auto inner = std::make_unique<node_list>(std::vector<node_ptr> { owned($2) });
+                      $$ = builder::multi_lhs(take($1), std::move(inner), take($3)).release();
                     }
 
       mlhs_basic: mlhs_head
                 | mlhs_head mlhs_item
                     {
-                      $$ = $1.
-                                  push(owned($2))
+                      $1->nodes.push_back(owned($2));
+                      $$ = $1;
                     }
                 | mlhs_head tSTAR mlhs_node
                     {
-                      $$ = $1.
-                                  push(builder::splat(owned($2), owned($3)))
+                      $1->nodes.push_back(builder::splat(take($2), owned($3)));
+                      $$ = $1;
                     }
                 | mlhs_head tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      $$ = $1.
-                                  push(builder::splat(owned($2), owned($3))).
-                                  concat(owned($5))
+                      auto post = owned($5);
+
+                      $1->nodes.push_back(builder::splat(take($2), owned($3)));
+
+                      $1->nodes.insert($1->nodes.end(),
+                        std::make_move_iterator(post->nodes.begin()),
+                        std::make_move_iterator(post->nodes.end()));
+
+                      $$ = $1;
                     }
                 | mlhs_head tSTAR
                     {
-                      $$ = $1.
-                                  push(builder::splat(owned($2)))
+                      $1->nodes.push_back(builder::splat(take($2)));
+                      $$ = $1;
                     }
                 | mlhs_head tSTAR tCOMMA mlhs_post
                     {
-                      $$ = $1.
-                                  push(builder::splat(owned($2))).
-                                  concat(owned($4))
+                      auto post = owned($4);
+
+                      $1->nodes.push_back(builder::splat(take($2)));
+
+                      $1->nodes.insert($1->nodes.end(),
+                        std::make_move_iterator(post->nodes.begin()),
+                        std::make_move_iterator(post->nodes.end()));
+
+                      $$ = $1;
                     }
                 | tSTAR mlhs_node
                     {
-                      $$ = [ builder::splat(owned($1), owned($2)) ]
+                      $$ = std::make_unique<node_list>(
+                        std::vector<node_ptr> {
+                          builder::splat(take($1), owned($2)) }).release();
                     }
                 | tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      $$ = [ builder::splat(owned($1), owned($2)),
-                                 *owned($4) ]
+                      auto items = std::make_unique<node_list>(
+                        std::vector<node_ptr> {
+                          builder::splat(take($1), owned($2)) });
+
+                      auto post = owned($4);
+
+                      items->nodes.insert(items->nodes.end(),
+                        std::make_move_iterator(post->nodes.begin()),
+                        std::make_move_iterator(post->nodes.end()));
+
+
+                      $$ = items.release();
                     }
                 | tSTAR
                     {
-                      $$ = [ builder::splat(owned($1)) ]
+                      $$ = std::make_unique<node_list>(
+                        std::vector<node_ptr> {
+                          builder::splat(take($1)) }).release();
                     }
                 | tSTAR tCOMMA mlhs_post
                     {
-                      $$ = [ builder::splat(owned($1)),
-                                 *owned($3) ]
+                      auto items = std::make_unique<node_list>(
+                        std::vector<node_ptr> {
+                          builder::splat(take($1)) });
+
+                      auto post = owned($3);
+
+                      items->nodes.insert(items->nodes.end(),
+                        std::make_move_iterator(post->nodes.begin()),
+                        std::make_move_iterator(post->nodes.end()));
+
+
+                      $$ = items.release();
                     }
 
        mlhs_item: mlhs_node
                 | tLPAREN mlhs_inner rparen
                     {
-                      $$ = builder::begin(owned($1), owned($2), owned($3))
+                      $$ = builder::begin(take($1), owned($2), take($3)).release();
                     }
 
        mlhs_head: mlhs_item tCOMMA
@@ -722,7 +788,7 @@
 
            cname: tIDENTIFIER
                     {
-                      diagnostic :error, :module_name_const, nil, owned($1)
+                      diagnostic :error, :module_name_const, nullptr, owned($1)
                     }
                 | tCONSTANT
 
@@ -937,7 +1003,7 @@
                     }
                 | tBANG arg
                     {
-                      $$ = builder::not_op(owned($1), nil, owned($2), nil)
+                      $$ = builder::not_op(owned($1), nullptr, owned($2), nullptr)
                     }
                 | tTILDE arg
                     {
@@ -961,7 +1027,7 @@
                     }
                 | kDEFINED opt_nl arg
                     {
-                      $$ = builder::keyword_cmd(:defined?, owned($1), nil, [ owned($3) ], nil)
+                      $$ = builder::keyword_cmd(:defined?, owned($1), nullptr, [ owned($3) ], nullptr)
                     }
                 | arg tEH arg opt_nl tCOLON arg
                     {
@@ -976,19 +1042,19 @@
                 | args trailer
                 | args tCOMMA assocs trailer
                     {
-                      $$ = $1 << builder::associate(nil, owned($3), nil)
+                      $$ = $1 << builder::associate(nullptr, owned($3), nullptr)
                     }
                 | assocs trailer
                     {
-                      $$ = [ builder::associate(nil, owned($1), nil) ]
+                      $$ = [ builder::associate(nullptr, owned($1), nullptr) ]
                     }
 
          arg_rhs: arg %prec tOP_ASGN
                 | arg kRESCUE_MOD arg
                     {
                       rescue_body = builder::rescue_body(owned($2),
-                                        nil, nil, nil,
-                                        nil, owned($3))
+                                        nullptr, nullptr, nullptr,
+                                        nullptr, owned($3))
 
                       $$ = builder::begin_body(owned($1), [ rescue_body ])
                     }
@@ -1000,7 +1066,7 @@
 
   opt_paren_args: // nothing
                     {
-                      $$ = [ nil, [], nil ]
+                      $$ = [ nullptr, [], nullptr ]
                     }
                 | paren_args
 
@@ -1012,11 +1078,11 @@
                 | args tCOMMA
                 | args tCOMMA assocs tCOMMA
                     {
-                      $$ = $1 << builder::associate(nil, owned($3), nil)
+                      $$ = $1 << builder::associate(nullptr, owned($3), nullptr)
                     }
                 | assocs tCOMMA
                     {
-                      $$ = [ builder::associate(nil, owned($1), nil) ]
+                      $$ = [ builder::associate(nullptr, owned($1), nullptr) ]
                     }
 
        call_args: command
@@ -1029,12 +1095,12 @@
                     }
                 | assocs opt_block_arg
                     {
-                      $$ = [ builder::associate(nil, owned($1), nil) ]
+                      $$ = [ builder::associate(nullptr, owned($1), nullptr) ]
                       result.concat(owned($2))
                     }
                 | args tCOMMA assocs opt_block_arg
                     {
-                      assocs = builder::associate(nil, owned($3), nil)
+                      assocs = builder::associate(nullptr, owned($3), nullptr)
                       $$ = $1 << assocs
                       result.concat(owned($4))
                     }
@@ -1089,7 +1155,7 @@
 
         mrhs_arg: mrhs
                     {
-                      $$ = builder::array(nil, owned($1), nil)
+                      $$ = builder::array(nullptr, owned($1), nullptr)
                     }
                 | arg_value
 
@@ -1118,7 +1184,7 @@
                 | backref
                 | tFID
                     {
-                      $$ = builder::call_method(nil, nil, owned($1))
+                      $$ = builder::call_method(nullptr, nullptr, owned($1))
                     }
                 | kBEGIN
                     {
@@ -1154,7 +1220,7 @@
                     }
                     opt_nl tRPAREN
                     {
-                      $$ = builder::begin(owned($1), nil, owned($4))
+                      $$ = builder::begin(owned($1), nullptr, owned($4))
                     }
                 | tLPAREN compstmt tRPAREN
                     {
@@ -1207,11 +1273,11 @@
                     }
                 | kNOT tLPAREN2 rparen
                     {
-                      $$ = builder::not_op(owned($1), owned($2), nil, owned($3))
+                      $$ = builder::not_op(owned($1), owned($2), nullptr, owned($3))
                     }
                 | fcall brace_block
                     {
-                      method_call = builder::call_method(nil, nil, owned($1))
+                      method_call = builder::call_method(nullptr, nullptr, owned($1))
 
                       begin_t, args, body, end_t = $2
                       result      = builder::block(method_call,
@@ -1279,7 +1345,7 @@
                     {
                       *when_bodies, (else_t, else_body) = *owned($3)
 
-                      $$ = builder::case(owned($1), nil,
+                      $$ = builder::case(owned($1), nullptr,
                                              when_bodies, else_t, else_body,
                                              owned($4))
                     }
@@ -1305,7 +1371,7 @@
                     bodystmt kEND
                     {
                       if in_def?
-                        diagnostic :error, :class_in_def, nil, owned($1)
+                        diagnostic :error, :class_in_def, nullptr, owned($1)
                       end
 
                       lt_t, superclass = $3
@@ -1342,7 +1408,7 @@
                     bodystmt kEND
                     {
                       if in_def?
-                        diagnostic :error, :module_in_def, nil, owned($1)
+                        diagnostic :error, :module_in_def, nullptr, owned($1)
                       end
 
                       $$ = builder::def_module(owned($1), owned($2),
@@ -1606,7 +1672,7 @@ opt_block_args_tail:
 
  opt_block_param: // nothing
                     {
-                      $$ = builder::args(nil, [], nil)
+                      $$ = builder::args(nullptr, [], nullptr)
                     }
                 | block_param_def
                     {
@@ -1617,7 +1683,7 @@ opt_block_args_tail:
                       $$ = $1
 
                       if owned($3)
-                        $$ = builder::prototype(nil, result, owned($3))
+                        $$ = builder::prototype(nullptr, result, owned($3))
                       end
                     }
 
@@ -1688,7 +1754,7 @@ opt_block_args_tail:
                     }
                 | f_args
                     {
-                      $$ = builder::args(nil, owned($1), nil)
+                      $$ = builder::args(nullptr, owned($1), nullptr)
                     }
 
      lambda_body: tLAMBEG compstmt tRCURLY
@@ -1730,7 +1796,7 @@ opt_block_args_tail:
                 | block_call dot_or_colon operation2 command_args do_block
                     {
                       method_call = builder::call_method(owned($1), owned($2), owned($3),
-                                      nil, owned($4), nil)
+                                      nullptr, owned($4), nullptr)
 
                       begin_t, args, body, end_t = $5
                       result      = builder::block(method_call,
@@ -1740,7 +1806,7 @@ opt_block_args_tail:
      method_call: fcall paren_args
                     {
                       lparen_t, args, rparen_t = $2
-                      $$ = builder::call_method(nil, nil, owned($1),
+                      $$ = builder::call_method(nullptr, nullptr, owned($1),
                                   lparen_t, args, rparen_t)
                     }
                 | primary_value call_op operation2 opt_paren_args
@@ -1762,13 +1828,13 @@ opt_block_args_tail:
                 | primary_value call_op paren_args
                     {
                       lparen_t, args, rparen_t = $3
-                      $$ = builder::call_method(owned($1), owned($2), nil,
+                      $$ = builder::call_method(owned($1), owned($2), nullptr,
                                   lparen_t, args, rparen_t)
                     }
                 | primary_value tCOLON2 paren_args
                     {
                       lparen_t, args, rparen_t = $3
-                      $$ = builder::call_method(owned($1), owned($2), nil,
+                      $$ = builder::call_method(owned($1), owned($2), nullptr,
                                   lparen_t, args, rparen_t)
                     }
                 | kSUPER paren_args
@@ -1849,7 +1915,7 @@ opt_block_args_tail:
                       assoc_t, exc_var = $3
 
                       if owned($2)
-                        exc_list = builder::array(nil, owned($2), nil)
+                        exc_list = builder::array(nullptr, owned($2), nullptr)
                       end
 
                       $$ = [ builder::rescue_body(owned($1),
@@ -1887,7 +1953,7 @@ opt_block_args_tail:
 
          strings: string
                     {
-                      $$ = builder::string_compose(nil, owned($1), nil)
+                      $$ = builder::string_compose(nullptr, owned($1), nullptr)
                     }
 
           string: string1
@@ -2119,7 +2185,7 @@ regexp_contents: // nothing
 
 keyword_variable: kNIL
                     {
-                      $$ = builder::nil(owned($1))
+                      $$ = builder::nullptr(owned($1))
                     }
                 | kSELF
                     {
@@ -2183,7 +2249,7 @@ keyword_variable: kNIL
                     }
                 | // nothing
                     {
-                      $$ = nil
+                      $$ = nullptr
                     }
 
 tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
@@ -2192,7 +2258,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | // nothing
                     {
-                      $$ = nil
+                      $$ = nullptr
                     }
 
        f_arglist: tr_methodgenargs tLPAREN2 f_args rparen
@@ -2215,7 +2281,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                   f_args tr_returnsig term
                     {
                       @lexer.in_kwarg = $<boolean>2;
-                      $$ = builder::args(nil, owned($3), nil)
+                      $$ = builder::args(nullptr, owned($3), nullptr)
 
                       if owned($1) || owned($4)
                         $$ = builder::prototype(owned($1), result, owned($4))
@@ -2340,15 +2406,15 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
        f_bad_arg: tIVAR
                     {
-                      diagnostic :error, :argument_ivar, nil, owned($1)
+                      diagnostic :error, :argument_ivar, nullptr, owned($1)
                     }
                 | tGVAR
                     {
-                      diagnostic :error, :argument_gvar, nil, owned($1)
+                      diagnostic :error, :argument_gvar, nullptr, owned($1)
                     }
                 | tCVAR
                     {
-                      diagnostic :error, :argument_cvar, nil, owned($1)
+                      diagnostic :error, :argument_cvar, nullptr, owned($1)
                     }
 
       f_norm_arg: f_bad_arg
@@ -2539,7 +2605,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tr_argsig blkarg_mark
                     {
-                      $$ = builder::blockarg(owned($2), nil)
+                      $$ = builder::blockarg(owned($2), nullptr)
 
                       if owned($1)
                         $$ = builder::typed_arg(owned($1), result)
@@ -2684,7 +2750,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       prototype =
                         if owned($3)
-                          builder::prototype(nil, owned($2), owned($3))
+                          builder::prototype(nullptr, owned($2), owned($3))
                         else
                           owned($2)
                         end
@@ -2727,7 +2793,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 |
                     {
-                      $$ = nil
+                      $$ = nullptr
                     }
 
     tr_returnsig: tASSOC tr_type
@@ -2736,7 +2802,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 |
                     {
-                      $$ = nil
+                      $$ = nullptr
                     }
 
   tr_gendeclargs: tr_gendeclargs tCOMMA tCONSTANT

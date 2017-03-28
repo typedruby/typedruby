@@ -40,7 +40,7 @@ namespace ruby_parser {
     std::stack<bool> cmdarg;
     std::stack<environment> static_env;
     std::stack<literal> literal_stack;
-    std::queue<std::unique_ptr<token>> token_queue;
+    std::queue<token_ptr> token_queue;
 
     int cs;
     const char* _p;
@@ -98,7 +98,7 @@ namespace ruby_parser {
   public:
     lexer(ruby_version version, std::string source);
 
-    std::unique_ptr<token> advance();
+    token_ptr advance();
 
     void extend_static();
     void extend_dynamic();
