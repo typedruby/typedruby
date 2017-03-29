@@ -568,6 +568,10 @@ void lexer::set_state_expr_fname() {
   cs = lex_en_expr_fname;
 }
 
+void lexer::set_state_expr_endarg() {
+  cs = lex_en_expr_endarg;
+}
+
 /*
   def push_literal(*args)
     new_literal = Literal.new(self, *args)
