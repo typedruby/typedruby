@@ -107,12 +107,17 @@ namespace ruby_parser {
     RETURN                = 97,
     BREAK                 = 98,
     NEXT                  = 99,
+    DEFINED               = 100,
+    REDO                  = 101,
+    RETRY                 = 102,
 
     // internal pseudo-nodes
     // TODO - move these out of node.hh and into something specific to the
     // parser
-    NODE_LIST            = -1,
-    NODE_DELIMITED_BLOCK = -2,
+    NODE_LIST             = -1,
+    NODE_DELIMITED        = -2,
+    NODE_DELIMITED_BLOCK  = -3,
+    NODE_WITH_TOKEN       = -4,
   };
 
   struct node {
@@ -120,7 +125,6 @@ namespace ruby_parser {
 
     node(node_type type) : type(type) {}
   };
-
   using node_ptr = std::unique_ptr<node>;
 
   struct node_list : public node {
@@ -129,6 +133,16 @@ namespace ruby_parser {
     node_list(decltype(nodes)&& nodes) : node(node_type::NODE_LIST), nodes(std::move(nodes)) {}
   };
   using node_list_ptr = std::unique_ptr<node_list>;
+
+  struct node_delimited : public node {
+    token_ptr begin;
+    node_ptr inner;
+    token_ptr end;
+
+    node_delimited(token_ptr&& begin, node_ptr&& inner, token_ptr&& end)
+      : node(node_type::NODE_DELIMITED), begin(std::move(begin)), inner(std::move(inner)), end(std::move(end)) {}
+  };
+  using node_delimited_ptr = std::unique_ptr<node_delimited>;
 
   struct node_delimited_block : public node {
     token_ptr begin;
@@ -140,6 +154,15 @@ namespace ruby_parser {
       : node(node_type::NODE_DELIMITED_BLOCK), begin(std::move(begin)), args(std::move(args)), body(std::move(body)), end(std::move(end)) {}
   };
   using node_delimited_block_ptr = std::unique_ptr<node_delimited_block>;
+
+  struct node_with_token : public node {
+    token_ptr token_;
+    node_ptr node_;
+
+    node_with_token(token_ptr&& token_, node_ptr&& node_)
+      : node(node_type::NODE_WITH_TOKEN), token_(std::move(token_)), node_(std::move(node_)) {}
+  };
+  using node_with_token_ptr = std::unique_ptr<node_with_token>;
 
   struct begin_node : public node {
     std::vector<std::unique_ptr<node>> nodes;
