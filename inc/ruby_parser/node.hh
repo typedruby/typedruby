@@ -110,12 +110,13 @@ namespace ruby_parser {
     DEFINED               = 100,
     REDO                  = 101,
     RETRY                 = 102,
+    ZSUPER                = 103,
 
     // internal pseudo-nodes
     // TODO - move these out of node.hh and into something specific to the
     // parser
     NODE_LIST             = -1,
-    NODE_DELIMITED        = -2,
+    NODE_DELIMITED_LIST   = -2,
     NODE_DELIMITED_BLOCK  = -3,
     NODE_WITH_TOKEN       = -4,
   };
@@ -134,15 +135,15 @@ namespace ruby_parser {
   };
   using node_list_ptr = std::unique_ptr<node_list>;
 
-  struct node_delimited : public node {
+  struct node_delimited_list : public node {
     token_ptr begin;
-    node_ptr inner;
+    node_list_ptr inner;
     token_ptr end;
 
-    node_delimited(token_ptr&& begin, node_ptr&& inner, token_ptr&& end)
-      : node(node_type::NODE_DELIMITED), begin(std::move(begin)), inner(std::move(inner)), end(std::move(end)) {}
+    node_delimited_list(token_ptr&& begin, node_list_ptr&& inner, token_ptr&& end)
+      : node(node_type::NODE_DELIMITED_LIST), begin(std::move(begin)), inner(std::move(inner)), end(std::move(end)) {}
   };
-  using node_delimited_ptr = std::unique_ptr<node_delimited>;
+  using node_delimited_list_ptr = std::unique_ptr<node_delimited_list>;
 
   struct node_delimited_block : public node {
     token_ptr begin;
