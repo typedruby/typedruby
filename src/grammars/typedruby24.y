@@ -256,11 +256,17 @@
 
   template<typename To, typename From>
   static std::unique_ptr<To> static_unique_cast(std::unique_ptr<From> from) {
-    return std::unique_ptr<To> { from.release() };
+    return std::unique_ptr<To> { static_cast<To*>(from.release()) };
   }
 
-  static node_list_ptr make_node_list(std::initializer_list<node_ptr> args) {
-    return std::make_unique<node_list>(std::vector<node_ptr>(args));
+  static node_list_ptr make_node_list() {
+    return std::make_unique<node_list>(std::vector<node_ptr>());
+  }
+
+  static node_list_ptr make_node_list(node_ptr&& node) {
+    std::vector<node_ptr> vec;
+    vec.push_back(std::move(node));
+    return std::make_unique<node_list>(std::move(vec));
   }
 
   static void concat_node_list(node_list_ptr& a, node_list_ptr&& b) {
@@ -282,11 +288,11 @@
 
        top_stmts: // nothing
                     {
-                      $$ = new node_list({});
+                      $$ = make_node_list().release();
                     }
                 | top_stmt
                     {
-                      $$ = new node_list({ owned($1) });
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | top_stmts terms top_stmt
                     {
@@ -295,7 +301,7 @@
                     }
                 | error top_stmt
                     {
-                      $$ = new node_list({ owned($2) });
+                      $$ = make_node_list(owned($2)).release();
                     }
 
         top_stmt: stmt
@@ -328,11 +334,11 @@
 
            stmts: // nothing
                     {
-                      $$ = new node_list({});
+                      $$ = make_node_list().release();
                     }
                 | stmt_or_begin
                     {
-                      $$ = new node_list({ owned($1) });
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | stmts terms stmt_or_begin
                     {
@@ -341,7 +347,7 @@
                     }
                 | error stmt
                     {
-                      $$ = new node_list({ owned($2) });
+                      $$ = make_node_list(owned($2)).release();
                     }
 
    stmt_or_begin: stmt
@@ -400,7 +406,7 @@
 
                       $$ = builder::begin_body(
                         owned($1),
-                        std::make_unique<node_list>(std::move(rescue_body)),
+                        make_node_list(std::move(rescue_body)),
                         nullptr, nullptr).release();
                     }
                 | klEND tLCURLY compstmt tRCURLY
@@ -481,7 +487,7 @@
                                         nullptr, nullptr, nullptr,
                                         nullptr, owned($3));
 
-                      auto rescue_bodies = make_node_list({ std::move(rescue_body) });
+                      auto rescue_bodies = make_node_list(std::move(rescue_body));
 
                       $$ = builder::begin_body(owned($1), std::move(rescue_bodies)).release();
                     }
@@ -621,7 +627,7 @@
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      auto inner = make_node_list({ owned($2) });
+                      auto inner = make_node_list(owned($2));
                       $$ = builder::multi_lhs(take($1), std::move(inner), take($3)).release();
                     }
 
@@ -673,11 +679,11 @@
                     }
                 | tSTAR
                     {
-                      $$ = make_node_list({ builder::splat(take($1)) }).release();
+                      $$ = make_node_list(builder::splat(take($1))).release();
                     }
                 | tSTAR tCOMMA mlhs_post
                     {
-                      auto items = make_node_list({ builder::splat(take($1)) });
+                      auto items = make_node_list(builder::splat(take($1)));
 
                       concat_node_list(items, owned($3));
 
@@ -692,7 +698,7 @@
 
        mlhs_head: mlhs_item tCOMMA
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | mlhs_head mlhs_item tCOMMA
                     {
@@ -702,7 +708,7 @@
 
        mlhs_post: mlhs_item
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | mlhs_post tCOMMA mlhs_item
                     {
@@ -826,7 +832,7 @@
 
       undef_list: fitem
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | undef_list tCOMMA
                     {
@@ -1032,7 +1038,7 @@
                     }
                 | kDEFINED opt_nl arg
                     {
-                      auto args = make_node_list({ owned($3) });
+                      auto args = make_node_list(owned($3));
 
                       $$ = builder::keyword_cmd(node_type::DEFINED, take($1), nullptr, std::move(args), nullptr).release();
                     }
@@ -1064,7 +1070,7 @@
                                           nullptr, nullptr, nullptr,
                                           nullptr, owned($3));
 
-                      auto rescue_bodies = make_node_list({ std::move(rescue_body) });
+                      auto rescue_bodies = make_node_list(std::move(rescue_body));
 
                       $$ = builder::begin_body(owned($1), std::move(rescue_bodies)).release();
                     }
@@ -1076,13 +1082,13 @@
 
   opt_paren_args: // nothing
                     {
-                      $$ = put(std::make_unique<node_delimited_list>(nullptr, make_node_list({}), nullptr));
+                      $$ = put(std::make_unique<node_delimited_list>(nullptr, make_node_list(), nullptr));
                     }
                 | paren_args
 
    opt_call_args: // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | call_args
                 | args tCOMMA
@@ -1099,7 +1105,7 @@
 
        call_args: command
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | args opt_block_arg
                     {
@@ -1132,7 +1138,7 @@
                     }
                 | block_arg
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
 
     command_args:   {
@@ -1155,16 +1161,16 @@
 
    opt_block_arg: tCOMMA block_arg
                     {
-                      $$ = make_node_list({ owned($2) }).release();
+                      $$ = make_node_list(owned($2)).release();
                     }
                 | // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
 
             args: arg_value
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | tSTAR arg_value
                     {
@@ -1290,7 +1296,7 @@
                     }
                 | kYIELD tLPAREN2 rparen
                     {
-                      auto args = make_node_list({});
+                      auto args = make_node_list();
 
                       $$ = builder::keyword_cmd(node_type::YIELD, take($1), take($2), std::move(args), take($3)).release();
                     }
@@ -1300,7 +1306,7 @@
                     }
                 | kDEFINED opt_nl tLPAREN2 expr rparen
                     {
-                      auto args = make_node_list({ owned($4) });
+                      auto args = make_node_list(owned($4));
 
                       $$ = builder::keyword_cmd(node_type::DEFINED, take($1),
                                                     take($3), std::move(args), take($5)).release();
@@ -1590,7 +1596,7 @@
 
      f_marg_list: f_marg
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | f_marg_list tCOMMA f_marg
                     {
@@ -1675,7 +1681,7 @@
                     }
                 | f_block_arg
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
 
 opt_block_args_tail:
@@ -1685,7 +1691,7 @@ opt_block_args_tail:
                     }
                 | // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
 
      block_param: f_arg tCOMMA f_block_optarg tCOMMA f_rest_arg              opt_block_args_tail
@@ -1742,7 +1748,7 @@ opt_block_args_tail:
                       auto block_args_tail = owned($2);
 
                       if (block_args_tail->nodes.size() == 0 && args->nodes.size() == 1) {
-                        $$ = make_node_list({ builder::procarg0(std::move(args->nodes[0])) }).release();
+                        $$ = make_node_list(builder::procarg0(std::move(args->nodes[0]))).release();
                       } else {
                         concat_node_list(args, std::move(block_args_tail));
                         $$ = args.release();
@@ -1793,7 +1799,7 @@ opt_block_args_tail:
 
  opt_block_param: // nothing
                     {
-                      $$ = builder::args(nullptr, make_node_list({}), nullptr).release();
+                      $$ = builder::args(nullptr, make_node_list(), nullptr).release();
                     }
                 | block_param_def
                     {
@@ -1818,7 +1824,7 @@ opt_block_args_tail:
                 | tOROP
                     {
                       auto tok = take($1);
-                      $$ = builder::args(std::make_unique<token>(*tok), make_node_list({}), std::make_unique<token>(*tok)).release();
+                      $$ = builder::args(std::make_unique<token>(*tok), make_node_list(), std::make_unique<token>(*tok)).release();
                     }
                 | tPIPE block_param opt_bv_decl tPIPE
                     {
@@ -1829,7 +1835,7 @@ opt_block_args_tail:
 
      opt_bv_decl: opt_nl
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | opt_nl tSEMI bv_decls opt_nl
                     {
@@ -1838,7 +1844,7 @@ opt_block_args_tail:
 
         bv_decls: bvar
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | bv_decls tCOMMA bvar
                     {
@@ -1871,8 +1877,11 @@ opt_block_args_tail:
                       delete cmdarg;
                       // TODO @lexer.cmdarg.lexpop
 
-                      $$ = put(std::make_unique<node_delimited_block>(
-                        nullptr, owned($2), owned($4), nullptr));
+                      auto delimited_block = take($4);
+
+                      delimited_block->args = owned($2);
+
+                      $$ = put(std::move(delimited_block));
 
                       // TODO @static_env.unextend
                     }
@@ -2060,7 +2069,7 @@ opt_block_args_tail:
                     }
                     opt_block_param compstmt
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(nullptr, owned($3), owned($4)));
+                      $$ = put(std::make_unique<node_delimited_block>(nullptr, owned($3), owned($4), nullptr));
 
                       // TODO @static_env.unextend
                       auto cmdarg = $<bool_stack>2;
@@ -2078,7 +2087,7 @@ opt_block_args_tail:
                     }
                     opt_block_param compstmt
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(nullptr, owned($3), owned($4)));
+                      $$ = put(std::make_unique<node_delimited_block>(nullptr, owned($3), owned($4), nullptr));
 
                       // TODO @static_env.unextend
 
@@ -2097,7 +2106,7 @@ opt_block_args_tail:
 
            cases: opt_else
                     {
-                      $$ = make_node_list({ static_unique_cast<node>(owned($1)) }).release();
+                      $$ = make_node_list(static_unique_cast<node>(take($1))).release();
                     }
                 | case_body
 
@@ -2120,12 +2129,12 @@ opt_block_args_tail:
                     }
                 |
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
 
         exc_list: arg_value
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | mrhs
                 | list_none
@@ -2159,7 +2168,7 @@ opt_block_args_tail:
 
           string: string1
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | string string1
                     {
@@ -2201,7 +2210,7 @@ opt_block_args_tail:
 
        word_list: // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | word_list word tSPACE
                     {
@@ -2211,7 +2220,7 @@ opt_block_args_tail:
 
             word: string_content
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | word string_content
                     {
@@ -2226,7 +2235,7 @@ opt_block_args_tail:
 
      symbol_list: // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | symbol_list word tSPACE
                     {
@@ -2246,7 +2255,7 @@ opt_block_args_tail:
 
       qword_list: // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | qword_list tSTRING_CONTENT tSPACE
                     {
@@ -2256,7 +2265,7 @@ opt_block_args_tail:
 
        qsym_list: // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | qsym_list tSTRING_CONTENT tSPACE
                     {
@@ -2266,7 +2275,7 @@ opt_block_args_tail:
 
  string_contents: // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | string_contents string_content
                     {
@@ -2276,7 +2285,7 @@ opt_block_args_tail:
 
 xstring_contents: // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | xstring_contents string_content
                     {
@@ -2286,7 +2295,7 @@ xstring_contents: // nothing
 
 regexp_contents: // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | regexp_contents string_content
                     {
@@ -2533,7 +2542,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | f_block_arg
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
 
    opt_args_tail: tCOMMA args_tail
@@ -2542,7 +2551,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
 
           f_args: f_arg tCOMMA f_optarg tCOMMA f_rest_arg              opt_args_tail
@@ -2645,7 +2654,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
 
        f_bad_arg: tIVAR
@@ -2692,7 +2701,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
            f_arg: f_arg_item
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | f_arg tCOMMA f_arg_item
                     {
@@ -2759,7 +2768,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
    f_block_kwarg: f_block_kw
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | f_block_kwarg tCOMMA f_block_kw
                     {
@@ -2769,7 +2778,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
          f_kwarg: f_kw
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | f_kwarg tCOMMA f_kw
                     {
@@ -2787,7 +2796,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | kwrest_mark
                     {
-                      $$ = make_node_list({ builder::kwrestarg(take($1)) }).release();
+                      $$ = make_node_list(builder::kwrestarg(take($1))).release();
                     }
 
            f_opt: tr_argsig f_arg_asgn tEQL arg_value
@@ -2816,7 +2825,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
   f_block_optarg: f_block_opt
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | f_block_optarg tCOMMA f_block_opt
                     {
@@ -2826,7 +2835,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
         f_optarg: f_opt
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | f_optarg tCOMMA f_opt
                     {
@@ -2849,7 +2858,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         restarg = builder::typed_arg(std::move(argsig), std::move(restarg));
                       }
 
-                      $$ = make_node_list({ std::move(restarg) }).release();
+                      $$ = make_node_list(std::move(restarg)).release();
                     }
                 | tr_argsig restarg_mark
                     {
@@ -2860,7 +2869,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         restarg = builder::typed_arg(std::move(argsig), std::move(restarg));
                       }
 
-                      $$ = make_node_list({ std::move(restarg) }).release();
+                      $$ = make_node_list(std::move(restarg)).release();
                     }
 
      blkarg_mark: tAMPER2 | tAMPER
@@ -2878,7 +2887,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         blockarg = builder::typed_arg(std::move(argsig), std::move(blockarg));
                       }
 
-                      $$ = make_node_list({ std::move(blockarg) }).release();
+                      $$ = make_node_list(std::move(blockarg)).release();
                     }
                 | tr_argsig blkarg_mark
                     {
@@ -2889,16 +2898,16 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         blockarg = builder::typed_arg(std::move(argsig), std::move(blockarg));
                       }
 
-                      $$ = make_node_list({ std::move(blockarg) }).release();
+                      $$ = make_node_list(std::move(blockarg)).release();
                     }
 
  opt_f_block_arg: tCOMMA f_block_arg
                     {
-                      $$ = make_node_list({ owned($2) }).release();
+                      $$ = make_node_list(owned($2)).release();
                     }
                 |
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
 
        singleton: var_ref
@@ -2909,13 +2918,13 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
       assoc_list: // nothing
                     {
-                      $$ = make_node_list({}).release();
+                      $$ = make_node_list().release();
                     }
                 | assocs trailer
 
           assocs: assoc
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
                 | assocs tCOMMA assoc
                     {
@@ -3007,7 +3016,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                | tr_type
                     {
-                      $$ = make_node_list({ owned($1) }).release();
+                      $$ = make_node_list(owned($1)).release();
                     }
 
          tr_type: tr_cpath
@@ -3095,7 +3104,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tCONSTANT
                     {
-                      $$ = make_node_list({ builder::tr_gendeclarg(take($1)) }).release();
+                      $$ = make_node_list(builder::tr_gendeclarg(take($1))).release();
                     }
 
    tr_blockproto: { /* TODO @static_env.extend_dynamic */ }
