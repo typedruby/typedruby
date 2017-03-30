@@ -476,7 +476,7 @@
                     }
                 | backref tOP_ASGN command_rhs
                     {
-                      builder::op_assign(owned($1), take($2), owned($3))
+                      builder::op_assign(owned($1), take($2), owned($3));
                     }
 
      command_rhs: command_call %prec tOP_ASGN
@@ -1151,7 +1151,7 @@
                       // TODO lexer.cmdarg = *cmdarg;
                       delete cmdarg;
 
-                      $$ = $2
+                      $$ = $2;
                     }
 
        block_arg: tAMPER arg_value
@@ -1552,7 +1552,7 @@
                 | kTHEN
                 | term kTHEN
                     {
-                      $$ = $2
+                      $$ = $2;
                     }
 
               do: term
@@ -1687,7 +1687,7 @@
 opt_block_args_tail:
                   tCOMMA block_args_tail
                     {
-                      $$ = $2
+                      $$ = $2;
                     }
                 | // nothing
                     {
@@ -2969,17 +2969,17 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
           opt_nl:  | tNL
           rparen: opt_nl tRPAREN
                     {
-                      $$ = $2
+                      $$ = $2;
                     }
         rbracket: opt_nl tRBRACK
                     {
-                      $$ = $2
+                      $$ = $2;
                     }
          trailer:  | tNL | tCOMMA
 
             term: tSEMI
                   {
-                    yyerrok
+                    yyerrok;
                   }
                 | tNL
 
@@ -3090,11 +3090,11 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
     tr_returnsig: tASSOC tr_type
                     {
-                      $$ = $2
+                      $$ = $2;
                     }
                 |
                     {
-                      $$ = nullptr
+                      $$ = nullptr;
                     }
 
   tr_gendeclargs: tr_gendeclargs tCOMMA tCONSTANT
