@@ -12,6 +12,9 @@ OBJECTS = \
 RAGEL ?= ragel
 BISON ?= bison
 
+src/builder.o: CXXFLAGS += -Wno-unused-parameter
+src/lexer.o: CXXFLAGS += -Wno-unused-const-variable
+
 .SUFFIXES:
 
 .PHONY: all clean
