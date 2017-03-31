@@ -2,6 +2,7 @@
 #define RUBY_PARSER_STATE_STACK_HH
 
 #include <stack>
+#include <memory>
 
 namespace ruby_parser {
   class state_stack {
@@ -14,6 +15,8 @@ namespace ruby_parser {
     void clear();
     bool active() const;
   };
+
+  using state_stack_ptr = std::unique_ptr<state_stack>;
 }
 
 #endif

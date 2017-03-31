@@ -25,9 +25,9 @@
   node_with_token_ptr* with_token;
   node_ptr* node;
   node_list_ptr* list;
+  state_stack_ptr* state_stack;
   size_t size;
   bool boolean;
-  std::unique_ptr<state_stack>* state_stack;
 }
 
 // mirrored in inc/ruby_parser/token.hh
