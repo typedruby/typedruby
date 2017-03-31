@@ -115,7 +115,7 @@ namespace ruby_parser {
     void extend_static();
     void extend_dynamic();
     void unextend();
-    void declare(std::string& name);
+    void declare(const std::string& name);
   };
 }
 

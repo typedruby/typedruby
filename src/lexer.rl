@@ -2786,6 +2786,6 @@ void lexer::unextend() {
   static_env.pop();
 }
 
-void lexer::declare(std::string& name) {
+void lexer::declare(const std::string& name) {
   static_env.top().insert(name);
 }
