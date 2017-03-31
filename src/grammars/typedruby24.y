@@ -27,7 +27,7 @@
   node_list_ptr* list;
   size_t size;
   bool boolean;
-  std::unique_ptr<state_stack>* bool_stack;
+  std::unique_ptr<state_stack>* state_stack;
 }
 
 // mirrored in inc/ruby_parser/token.hh
@@ -1312,12 +1312,12 @@
                     }
 
     command_args:   {
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                       p.lexer->cmdarg.push(true);
                     }
                   call_args
                     {
-                      p.lexer->cmdarg = *take($<bool_stack>1);
+                      p.lexer->cmdarg = *take($<state_stack>1);
 
                       $$ = $2;
                     }
@@ -1398,18 +1398,18 @@
                     }
                 | kBEGIN
                     {
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                       p.lexer->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
-                      p.lexer->cmdarg = *take($<bool_stack>2);
+                      p.lexer->cmdarg = *take($<state_stack>2);
 
                       $$ = put(builder::begin_keyword(take($1), take($3), take($4)));
                     }
                 | tLPAREN_ARG
                     {
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                       p.lexer->cmdarg.clear();
                     }
                     stmt
@@ -1418,7 +1418,7 @@
                     }
                     rparen
                     {
-                      p.lexer->cmdarg = *take($<bool_stack>2);
+                      p.lexer->cmdarg = *take($<state_stack>2);
 
                       $$ = put(builder::begin(take($1), take($3), take($5)));
                     }
@@ -1609,7 +1609,7 @@
                 | kCLASS cpath superclass
                     {
                       p.lexer->extend_static();
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     bodystmt kEND
                     {
@@ -1626,7 +1626,7 @@
                                                   std::move(lt_t), std::move(superclass),
                                                   take($5), take($6)));
 
-                      p.lexer->cmdarg = *take($<bool_stack>4);
+                      p.lexer->cmdarg = *take($<state_stack>4);
                       p.lexer->unextend();
                     }
                 | kCLASS tLSHFT expr term
@@ -1635,14 +1635,14 @@
                       p.def_level = 0;
 
                       p.lexer->extend_static();
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     bodystmt kEND
                     {
                       $$ = put(builder::def_sclass(take($1), take($2), take($3),
                                                    take($6), take($7)));
 
-                      p.lexer->cmdarg = *take($<bool_stack>5);
+                      p.lexer->cmdarg = *take($<state_stack>5);
                       p.lexer->unextend();
 
                       p.def_level = $<size>5;
@@ -1650,7 +1650,7 @@
                 | kMODULE cpath
                     {
                       p.lexer->extend_static();
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     bodystmt kEND
                     {
@@ -1660,21 +1660,21 @@
 
                       $$ = put(builder::def_module(take($1), take($2), take($4), take($5)));
 
-                      p.lexer->cmdarg = *take($<bool_stack>3);
+                      p.lexer->cmdarg = *take($<state_stack>3);
                       p.lexer->unextend();
                     }
                 | kDEF fname
                     {
                       p.def_level++;
                       p.lexer->extend_static();
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     f_arglist bodystmt kEND
                     {
                       $$ = put(builder::def_method(take($1), take($2),
                                   take($4), take($5), take($6)));
 
-                      p.lexer->cmdarg = *take($<bool_stack>3);
+                      p.lexer->cmdarg = *take($<state_stack>3);
                       p.lexer->unextend();
                       p.def_level--;
                     }
@@ -1686,14 +1686,14 @@
                     {
                       p.def_level++;
                       p.lexer->extend_static();
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     f_arglist bodystmt kEND
                     {
                       $$ = put(builder::def_singleton(take($1), take($2), take($3),
                                   take($5), take($7), take($8), take($9)));
 
-                      p.lexer->cmdarg = *take($<bool_stack>6);
+                      p.lexer->cmdarg = *take($<state_stack>6);
                       p.lexer->unextend();
                       p.def_level--;
                     }
@@ -2042,12 +2042,12 @@ opt_block_args_tail:
                     }
                   f_larglist
                     {
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                       p.lexer->cmdarg.clear();
                     }
                   lambda_body
                     {
-                      p.lexer->cmdarg = *take($<bool_stack>3);
+                      p.lexer->cmdarg = *take($<state_stack>3);
                       p.lexer->cmdarg.lexpop();
 
                       auto delimited_block = take($4);
@@ -2237,7 +2237,7 @@ opt_block_args_tail:
                       p.lexer->extend_dynamic();
                     }
                     {
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                       p.lexer->cmdarg.clear();
                     }
                     opt_block_param compstmt
@@ -2245,7 +2245,7 @@ opt_block_args_tail:
                       $$ = put(std::make_unique<node_delimited_block>(nullptr, take($3), take($4), nullptr));
 
                       p.lexer->unextend();
-                      p.lexer->cmdarg = *take($<bool_stack>2);
+                      p.lexer->cmdarg = *take($<state_stack>2);
                       p.lexer->cmdarg.pop();
                     }
 
@@ -2253,7 +2253,7 @@ opt_block_args_tail:
                       p.lexer->extend_dynamic();
                     }
                     {
-                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      $<state_stack>$ = put_copy(p.lexer->cmdarg);
                       p.lexer->cmdarg.clear();
                     }
                     opt_block_param compstmt
@@ -2262,7 +2262,7 @@ opt_block_args_tail:
 
                       p.lexer->unextend();
 
-                      p.lexer->cmdarg = *take($<bool_stack>2);
+                      p.lexer->cmdarg = *take($<state_stack>2);
                       p.lexer->cmdarg.pop();
                     }
 
