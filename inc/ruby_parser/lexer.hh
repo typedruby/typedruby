@@ -69,8 +69,6 @@ namespace ruby_parser {
     // instead of expr_arg at certain points.
     bool command_state;
 
-    bool in_kwarg;            // true at the end of "def foo a:"
-
     int num_base;             // last numeric base
     const char* num_digits_s; // starting position of numeric digits
     const char* num_suffix_s; // starting position of numeric suffix
@@ -102,6 +100,8 @@ namespace ruby_parser {
   public:
     state_stack cond;
     state_stack cmdarg;
+
+    bool in_kwarg;            // true at the end of "def foo a:"
 
     lexer(ruby_version version, const std::string& source_buffer_);
 
