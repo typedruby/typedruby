@@ -1604,9 +1604,9 @@
                     }
                     bodystmt kEND
                     {
-                      // TODO if in_def?
-                      // TODO   diagnostic :error, :class_in_def, nullptr, owned($1)
-                      // TODO end
+                      if (p.def_level > 0) {
+                        // TODO   diagnostic :error, :class_in_def, nullptr, owned($1)
+                      }
 
                       auto superclass_ = take($3);
 
@@ -1622,8 +1622,8 @@
                     }
                 | kCLASS tLSHFT expr term
                     {
-                      // TODO $<size>$ = @def_level
-                      // TODO @def_level = 0
+                      $<size>$ = p.def_level;
+                      p.def_level = 0;
 
                       p.lexer->extend_static();
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
@@ -1636,7 +1636,7 @@
                       p.lexer->cmdarg = *take($<bool_stack>5);
                       p.lexer->unextend();
 
-                      // TODO @def_level = $<size>5;
+                      p.def_level = $<size>5;
                     }
                 | kMODULE cpath
                     {
@@ -1645,9 +1645,9 @@
                     }
                     bodystmt kEND
                     {
-                      // TODO if in_def?
-                      // TODO   diagnostic :error, :module_in_def, nullptr, owned($1)
-                      // TODO end
+                      if (p.def_level > 0) {
+                        // TODO   diagnostic :error, :module_in_def, nullptr, owned($1)
+                      }
 
                       $$ = builder::def_module(take($1), owned($2), owned($4), take($5)).release();
 
@@ -1656,7 +1656,7 @@
                     }
                 | kDEF fname
                     {
-                      // TODO @def_level += 1
+                      p.def_level++;
                       p.lexer->extend_static();
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
@@ -1667,7 +1667,7 @@
 
                       p.lexer->cmdarg = *take($<bool_stack>3);
                       p.lexer->unextend();
-                      // TODO @def_level -= 1
+                      p.def_level--;
                     }
                 | kDEF singleton dot_or_colon
                     {
@@ -1675,7 +1675,7 @@
                     }
                     fname
                     {
-                      // TODO @def_level += 1
+                      p.def_level++;
                       p.lexer->extend_static();
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
@@ -1686,7 +1686,7 @@
 
                       p.lexer->cmdarg = *take($<bool_stack>6);
                       p.lexer->unextend();
-                      // TODO @def_level -= 1
+                      p.def_level--;
                     }
                 | kBREAK
                     {
