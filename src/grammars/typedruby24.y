@@ -23,8 +23,8 @@
   node_delimited_list_ptr* delimited_list;
   node_delimited_block_ptr* delimited_block;
   node_with_token_ptr* with_token;
-  node* node;
-  node_list* list;
+  node_ptr* node;
+  node_list_ptr* list;
   size_t size;
   bool boolean;
   std::unique_ptr<state_stack>* bool_stack;
@@ -202,7 +202,6 @@
   expr_value
   f_arg_item
   f_arglist
-  f_block_arg
   f_block_kw
   f_block_opt
   f_kw
@@ -270,6 +269,7 @@
   exc_list
   f_arg
   f_args
+  f_block_arg
   f_block_kwarg
   f_block_optarg
   f_kwarg
@@ -374,11 +374,6 @@
 
 %{
   template<typename T>
-  static std::unique_ptr<T> owned(T* ptr) {
-    return std::unique_ptr<T>(ptr);
-  }
-
-  template<typename T>
   static std::unique_ptr<T> take(std::unique_ptr<T>* raw_ptr) {
     auto ptr = std::move(*raw_ptr);
     delete raw_ptr;
@@ -446,36 +441,37 @@
 
     top_compstmt: top_stmts opt_terms
                     {
-                      $$ = builder::compstmt(owned($1)).release();
+                      $$ = put(builder::compstmt(take($1)));
                     }
 
        top_stmts: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | top_stmt
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | top_stmts terms top_stmt
                     {
-                      $1->nodes.push_back(owned($3));
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
                       $$ = $1;
                     }
                 | error top_stmt
                     {
-                      $$ = make_node_list(owned($2)).release();
+                      $$ = put(make_node_list(take($2)));
                     }
 
         top_stmt: stmt
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
-                      $$ = builder::preexe(owned($3)).release();
+                      $$ = put(builder::preexe(take($3)));
                     }
 
         bodystmt: compstmt opt_rescue opt_else opt_ensure
                     {
-                      auto rescue_bodies = owned($2);
+                      auto rescue_bodies = take($2);
                       auto else_ = take($3);
 
                       auto ensure = take($4);
@@ -484,39 +480,40 @@
                         // TODO diagnostic :warning, :useless_else, nullptr, else_t
                       }
 
-                      $$ = builder::begin_body(owned($1),
+                      $$ = put(builder::begin_body(take($1),
                             std::move(rescue_bodies),
                             std::move(else_->token_), std::move(else_->node_),
-                            std::move(ensure->token_), std::move(ensure->node_)).release();
+                            std::move(ensure->token_), std::move(ensure->node_)));
                     }
 
         compstmt: stmts opt_terms
                     {
-                      $$ = builder::compstmt(owned($1)).release();
+                      $$ = put(builder::compstmt(take($1)));
                     }
 
            stmts: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | stmt_or_begin
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | stmts terms stmt_or_begin
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
                 | error stmt
                     {
-                      $$ = make_node_list(owned($2)).release();
+                      $$ = put(make_node_list(take($2)));
                     }
 
    stmt_or_begin: stmt
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
-                      /* TODO diagnostic :error, :begin_in_method, nullptr, owned($1) */
+                      /* TODO diagnostic :error, :begin_in_method, nullptr, take($1) */
                     }
 
             stmt: kALIAS fitem
@@ -525,121 +522,121 @@
                     }
                     fitem
                     {
-                      $$ = builder::alias(take($1), owned($2), owned($4)).release();
+                      $$ = put(builder::alias(take($1), take($2), take($4)));
                     }
                 | kALIAS tGVAR tGVAR
                     {
-                      $$ = builder::alias(take($1),
+                      $$ = put(builder::alias(take($1),
                         builder::gvar(take($2)),
-                        builder::gvar(take($3))).release();
+                        builder::gvar(take($3))));
                     }
                 | kALIAS tGVAR tBACK_REF
                     {
-                      $$ = builder::alias(take($1),
+                      $$ = put(builder::alias(take($1),
                         builder::gvar(take($2)),
-                        builder::back_ref(take($3))).release();
+                        builder::back_ref(take($3))));
                     }
                 | kALIAS tGVAR tNTH_REF
                     {
-                      // TODO diagnostic :error, :nth_ref_alias, nullptr, owned($3)
+                      // TODO diagnostic :error, :nth_ref_alias, nullptr, take($3)
                     }
                 | kUNDEF undef_list
                     {
-                      $$ = builder::undef_method(owned($2)).release();
+                      $$ = put(builder::undef_method(take($2)));
                     }
                 | stmt kIF_MOD expr_value
                     {
-                      $$ = builder::condition_mod(owned($1), nullptr, owned($3)).release();
+                      $$ = put(builder::condition_mod(take($1), nullptr, take($3)));
                     }
                 | stmt kUNLESS_MOD expr_value
                     {
-                      $$ = builder::condition_mod(nullptr, owned($1), owned($3)).release();
+                      $$ = put(builder::condition_mod(nullptr, take($1), take($3)));
                     }
                 | stmt kWHILE_MOD expr_value
                     {
-                      $$ = builder::loop_mod(node_type::WHILE, owned($1), owned($3)).release();
+                      $$ = put(builder::loop_mod(node_type::WHILE, take($1), take($3)));
                     }
                 | stmt kUNTIL_MOD expr_value
                     {
-                      $$ = builder::loop_mod(node_type::UNTIL, owned($1), owned($3)).release();
+                      $$ = put(builder::loop_mod(node_type::UNTIL, take($1), take($3)));
                     }
                 | stmt kRESCUE_MOD stmt
                     {
-                      auto rescue_body = builder::rescue_body(take($2), nullptr, nullptr, nullptr, nullptr, owned($3));
+                      auto rescue_body = builder::rescue_body(take($2), nullptr, nullptr, nullptr, nullptr, take($3));
 
-                      $$ = builder::begin_body(
-                        owned($1),
+                      $$ = put(builder::begin_body(
+                        take($1),
                         make_node_list(std::move(rescue_body)),
-                        nullptr, nullptr).release();
+                        nullptr, nullptr));
                     }
                 | klEND tLCURLY compstmt tRCURLY
                     {
-                      $$ = builder::postexe(owned($3)).release();
+                      $$ = put(builder::postexe(take($3)));
                     }
                 | command_asgn
                 | mlhs tEQL command_call
                     {
-                      $$ = builder::multi_assign(owned($1), owned($3)).release();
+                      $$ = put(builder::multi_assign(take($1), take($3)));
                     }
                 | lhs tEQL mrhs
                     {
-                      $$ = builder::assign(owned($1), take($2), builder::array(nullptr, owned($3), nullptr)).release();
+                      $$ = put(builder::assign(take($1), take($2), builder::array(nullptr, take($3), nullptr)));
                     }
                 | mlhs tEQL mrhs_arg
                     {
-                      $$ = builder::multi_assign(owned($1), owned($3)).release();
+                      $$ = put(builder::multi_assign(take($1), take($3)));
                     }
                 | kDEF tIVAR tCOLON tr_type
                     {
-                      $$ = builder::tr_ivardecl(take($2), owned($4)).release();
+                      $$ = put(builder::tr_ivardecl(take($2), take($4)));
                     }
                 | expr
 
     command_asgn: lhs tEQL command_rhs
                     {
-                      $$ = builder::assign(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::assign(take($1), take($2), take($3)));
                     }
                 | var_lhs tOP_ASGN command_rhs
                     {
-                      $$ = builder::op_assign(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::op_assign(take($1), take($2), take($3)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN command_rhs
                     {
-                      $$ = builder::op_assign(
+                      $$ = put(builder::op_assign(
                                   builder::index(
-                                    owned($1), take($2), owned($3), take($4)),
-                                  take($5), owned($6)).release();
+                                    take($1), take($2), take($3), take($4)),
+                                  take($5), take($6)));
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN command_rhs
                     {
-                      $$ = builder::op_assign(
+                      $$ = put(builder::op_assign(
                                   builder::call_method(
-                                    owned($1), take($2), take($3)),
-                                  take($4), owned($5)).release();
+                                    take($1), take($2), take($3)),
+                                  take($4), take($5)));
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN command_rhs
                     {
-                      $$ = builder::op_assign(
+                      $$ = put(builder::op_assign(
                                   builder::call_method(
-                                    owned($1), take($2), take($3)),
-                                  take($4), owned($5)).release();
+                                    take($1), take($2), take($3)),
+                                  take($4), take($5)));
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN command_rhs
                     {
                       auto const_node = builder::const_op_assignable(
-                                  builder::const_fetch(owned($1), take($2), take($3)));
-                      $$ = builder::op_assign(std::move(const_node), take($4), owned($5)).release();
+                                  builder::const_fetch(take($1), take($2), take($3)));
+                      $$ = put(builder::op_assign(std::move(const_node), take($4), take($5)));
                     }
                 | primary_value tCOLON2 tIDENTIFIER tOP_ASGN command_rhs
                     {
-                      $$ = builder::op_assign(
+                      $$ = put(builder::op_assign(
                                   builder::call_method(
-                                    owned($1), take($2), take($3)),
-                                  take($4), owned($5)).release();
+                                    take($1), take($2), take($3)),
+                                  take($4), take($5)));
                     }
                 | backref tOP_ASGN command_rhs
                     {
-                      builder::op_assign(owned($1), take($2), owned($3));
+                      builder::op_assign(take($1), take($2), take($3));
                     }
 
      command_rhs: command_call %prec tOP_ASGN
@@ -648,30 +645,30 @@
                       auto rescue_body =
                         builder::rescue_body(take($2),
                                         nullptr, nullptr, nullptr,
-                                        nullptr, owned($3));
+                                        nullptr, take($3));
 
                       auto rescue_bodies = make_node_list(std::move(rescue_body));
 
-                      $$ = builder::begin_body(owned($1), std::move(rescue_bodies)).release();
+                      $$ = put(builder::begin_body(take($1), std::move(rescue_bodies)));
                     }
                 | command_asgn
 
             expr: command_call
                 | expr kAND expr
                     {
-                      $$ = builder::logical_op(node_type::AND, owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::logical_op(node_type::AND, take($1), take($2), take($3)));
                     }
                 | expr kOR expr
                     {
-                      $$ = builder::logical_op(node_type::OR, owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::logical_op(node_type::OR, take($1), take($2), take($3)));
                     }
                 | kNOT opt_nl expr
                     {
-                      $$ = builder::not_op(take($1), nullptr, owned($3), nullptr).release();
+                      $$ = put(builder::not_op(take($1), nullptr, take($3), nullptr));
                     }
                 | tBANG command_call
                     {
-                      $$ = builder::not_op(take($1), nullptr, owned($2), nullptr).release();
+                      $$ = put(builder::not_op(take($1), nullptr, take($2), nullptr));
                     }
                 | arg
 
@@ -683,8 +680,8 @@
    block_command: block_call
                 | block_call dot_or_colon operation2 command_args
                     {
-                      $$ = builder::call_method(owned($1), take($2), take($3),
-                                  nullptr, owned($4), nullptr).release();
+                      $$ = put(builder::call_method(take($1), take($2), take($3),
+                                  nullptr, take($4), nullptr));
                     }
 
  cmd_brace_block: tLBRACE_ARG brace_body tRCURLY
@@ -699,287 +696,292 @@
 
          command: fcall command_args %prec tLOWEST
                     {
-                      $$ = builder::call_method(nullptr, nullptr, take($1),
-                                  nullptr, owned($2), nullptr).release();
+                      $$ = put(builder::call_method(nullptr, nullptr, take($1),
+                                  nullptr, take($2), nullptr));
                     }
                 | fcall command_args cmd_brace_block
                     {
                       auto method_call = builder::call_method(nullptr, nullptr, take($1),
-                                                              nullptr, owned($2), nullptr);
+                                                              nullptr, take($2), nullptr);
 
                       auto delimited_block = take($3);
 
-                      $$ = builder::block(std::move(method_call),
+                      $$ = put(builder::block(std::move(method_call),
                                       std::move(delimited_block->begin),
                                       std::move(delimited_block->args),
                                       std::move(delimited_block->body),
-                                      std::move(delimited_block->end)).release();
+                                      std::move(delimited_block->end)));
                     }
                 | primary_value call_op operation2 command_args %prec tLOWEST
                     {
-                      $$ = builder::call_method(owned($1), take($2), take($3),
-                                  nullptr, owned($4), nullptr).release();
+                      $$ = put(builder::call_method(take($1), take($2), take($3),
+                                  nullptr, take($4), nullptr));
                     }
                 | primary_value call_op operation2 command_args cmd_brace_block
                     {
-                      auto method_call = builder::call_method(owned($1), take($2), take($3),
-                                        nullptr, owned($4), nullptr);
+                      auto method_call = builder::call_method(take($1), take($2), take($3),
+                                        nullptr, take($4), nullptr);
 
                       auto delimited_block = take($5);
 
-                      $$ = builder::block(std::move(method_call),
+                      $$ = put(builder::block(std::move(method_call),
                                       std::move(delimited_block->begin),
                                       std::move(delimited_block->args),
                                       std::move(delimited_block->body),
-                                      std::move(delimited_block->end)).release();
+                                      std::move(delimited_block->end)));
                     }
                 | primary_value tCOLON2 operation2 command_args %prec tLOWEST
                     {
-                      $$ = builder::call_method(owned($1), take($2), take($3),
-                                  nullptr, owned($4), nullptr).release();
+                      $$ = put(builder::call_method(take($1), take($2), take($3),
+                                  nullptr, take($4), nullptr));
                     }
                 | primary_value tCOLON2 operation2 command_args cmd_brace_block
                     {
-                      auto method_call = builder::call_method(owned($1), take($2), take($3),
-                                        nullptr, owned($4), nullptr);
+                      auto method_call = builder::call_method(take($1), take($2), take($3),
+                                        nullptr, take($4), nullptr);
 
                       auto delimited_block = take($5);
 
-                      $$ = builder::block(std::move(method_call),
+                      $$ = put(builder::block(std::move(method_call),
                                       std::move(delimited_block->begin),
                                       std::move(delimited_block->args),
                                       std::move(delimited_block->body),
-                                      std::move(delimited_block->end)).release();
+                                      std::move(delimited_block->end)));
                     }
                 | kSUPER command_args
                     {
-                      $$ = builder::keyword_cmd(node_type::SUPER, take($1),
-                                  nullptr, owned($2), nullptr).release();
+                      $$ = put(builder::keyword_cmd(node_type::SUPER, take($1),
+                                  nullptr, take($2), nullptr));
                     }
                 | kYIELD command_args
                     {
-                      $$ = builder::keyword_cmd(node_type::YIELD, take($1),
-                                  nullptr, owned($2), nullptr).release();
+                      $$ = put(builder::keyword_cmd(node_type::YIELD, take($1),
+                                  nullptr, take($2), nullptr));
                     }
                 | kRETURN call_args
                     {
-                      $$ = builder::keyword_cmd(node_type::RETURN, take($1),
-                                  nullptr, owned($2), nullptr).release();
+                      $$ = put(builder::keyword_cmd(node_type::RETURN, take($1),
+                                  nullptr, take($2), nullptr));
                     }
                 | kBREAK call_args
                     {
-                      $$ = builder::keyword_cmd(node_type::BREAK, take($1),
-                                  nullptr, owned($2), nullptr).release();
+                      $$ = put(builder::keyword_cmd(node_type::BREAK, take($1),
+                                  nullptr, take($2), nullptr));
                     }
                 | kNEXT call_args
                     {
-                      $$ = builder::keyword_cmd(node_type::NEXT, take($1),
-                                  nullptr, owned($2), nullptr).release();
+                      $$ = put(builder::keyword_cmd(node_type::NEXT, take($1),
+                                  nullptr, take($2), nullptr));
                     }
 
             mlhs: mlhs_basic
                     {
-                      $$ = builder::multi_lhs(nullptr, owned($1), nullptr).release();
+                      $$ = put(builder::multi_lhs(nullptr, take($1), nullptr));
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      $$ = builder::begin(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::begin(take($1), take($2), take($3)));
                     }
 
       mlhs_inner: mlhs_basic
                     {
-                      $$ = builder::multi_lhs(nullptr, owned($1), nullptr).release();
+                      $$ = put(builder::multi_lhs(nullptr, take($1), nullptr));
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      auto inner = make_node_list(owned($2));
-                      $$ = builder::multi_lhs(take($1), std::move(inner), take($3)).release();
+                      auto inner = make_node_list(take($2));
+                      $$ = put(builder::multi_lhs(take($1), std::move(inner), take($3)));
                     }
 
       mlhs_basic: mlhs_head
                 | mlhs_head mlhs_item
                     {
-                      $1->nodes.push_back(owned($2));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($2));
+                      $$ = put(std::move(list));
                     }
                 | mlhs_head tSTAR mlhs_node
                     {
-                      $1->nodes.push_back(builder::splat(take($2), owned($3)));
+                      auto list = take($1);
+                      list->nodes.push_back(builder::splat(take($2), take($3)));
                       $$ = $1;
                     }
                 | mlhs_head tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      auto head = owned($1);
+                      auto head = take($1);
 
-                      head->nodes.push_back(builder::splat(take($2), owned($3)));
-                      concat_node_list(head, owned($5));
+                      head->nodes.push_back(builder::splat(take($2), take($3)));
+                      concat_node_list(head, take($5));
 
-                      $$ = head.release();
+                      $$ = put(std::move(head));
                     }
                 | mlhs_head tSTAR
                     {
-                      $1->nodes.push_back(builder::splat(take($2)));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(builder::splat(take($2)));
+                      $$ = put(std::move(list));
                     }
                 | mlhs_head tSTAR tCOMMA mlhs_post
                     {
-                      auto head = owned($1);
+                      auto head = take($1);
 
                       head->nodes.push_back(builder::splat(take($2)));
-                      concat_node_list(head, owned($4));
+                      concat_node_list(head, take($4));
 
-                      $$ = head.release();
+                      $$ = put(std::move(head));
                     }
                 | tSTAR mlhs_node
                     {
-                      $$ = make_node_list({ builder::splat(take($1), owned($2)) }).release();
+                      $$ = put(make_node_list({ builder::splat(take($1), take($2)) }));
                     }
                 | tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      auto items = make_node_list({ builder::splat(take($1), owned($2)) });
+                      auto items = make_node_list({ builder::splat(take($1), take($2)) });
 
-                      concat_node_list(items, owned($4));
+                      concat_node_list(items, take($4));
 
-                      $$ = items.release();
+                      $$ = put(std::move(items));
                     }
                 | tSTAR
                     {
-                      $$ = make_node_list(builder::splat(take($1))).release();
+                      $$ = put(make_node_list(builder::splat(take($1))));
                     }
                 | tSTAR tCOMMA mlhs_post
                     {
                       auto items = make_node_list(builder::splat(take($1)));
 
-                      concat_node_list(items, owned($3));
+                      concat_node_list(items, take($3));
 
-                      $$ = items.release();
+                      $$ = put(std::move(items));
                     }
 
        mlhs_item: mlhs_node
                 | tLPAREN mlhs_inner rparen
                     {
-                      $$ = builder::begin(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::begin(take($1), take($2), take($3)));
                     }
 
        mlhs_head: mlhs_item tCOMMA
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | mlhs_head mlhs_item tCOMMA
                     {
-                      $1->nodes.push_back(owned($2));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($2));
+                      $$ = put(std::move(list));
                     }
 
        mlhs_post: mlhs_item
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | mlhs_post tCOMMA mlhs_item
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
 
        mlhs_node: user_variable
                     {
-                      $$ = builder::assignable(owned($1)).release();
+                      $$ = put(builder::assignable(take($1)));
                     }
                 | keyword_variable
                     {
-                      $$ = builder::assignable(owned($1)).release();
+                      $$ = put(builder::assignable(take($1)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = builder::index_asgn(owned($1), take($2), owned($3), take($4)).release();
+                      $$ = put(builder::index_asgn(take($1), take($2), take($3), take($4)));
                     }
                 | primary_value call_op tIDENTIFIER
                     {
-                      $$ = builder::attr_asgn(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value tCOLON2 tIDENTIFIER
                     {
-                      $$ = builder::attr_asgn(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value call_op tCONSTANT
                     {
-                      $$ = builder::attr_asgn(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value tCOLON2 tCONSTANT
                     {
-                      $$ = builder::assignable(
-                                  builder::const_fetch(owned($1), take($2), take($3))).release();
+                      $$ = put(builder::assignable(
+                                  builder::const_fetch(take($1), take($2), take($3))));
                     }
                 | tCOLON3 tCONSTANT
                     {
-                      $$ = builder::assignable(
-                                  builder::const_global(take($1), take($2))).release();
+                      $$ = put(builder::assignable(
+                                  builder::const_global(take($1), take($2))));
                     }
                 | backref
                     {
-                      $$ = builder::assignable(owned($1)).release();
+                      $$ = put(builder::assignable(take($1)));
                     }
 
              lhs: user_variable
                     {
-                      $$ = builder::assignable(owned($1)).release();
+                      $$ = put(builder::assignable(take($1)));
                     }
                 | keyword_variable
                     {
-                      $$ = builder::assignable(owned($1)).release();
+                      $$ = put(builder::assignable(take($1)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = builder::index_asgn(owned($1), take($2), owned($3), take($4)).release();
+                      $$ = put(builder::index_asgn(take($1), take($2), take($3), take($4)));
                     }
                 | primary_value call_op tIDENTIFIER
                     {
-                      $$ = builder::attr_asgn(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value tCOLON2 tIDENTIFIER
                     {
-                      $$ = builder::attr_asgn(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value call_op tCONSTANT
                     {
-                      $$ = builder::attr_asgn(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value tCOLON2 tCONSTANT
                     {
-                      $$ = builder::assignable(
-                                  builder::const_fetch(owned($1), take($2), take($3))).release();
+                      $$ = put(builder::assignable(
+                                  builder::const_fetch(take($1), take($2), take($3))));
                     }
                 | tCOLON3 tCONSTANT
                     {
-                      $$ = builder::assignable(
-                                  builder::const_global(take($1), take($2))).release();
+                      $$ = put(builder::assignable(
+                                  builder::const_global(take($1), take($2))));
                     }
                 | backref
                     {
-                      $$ = builder::assignable(owned($1)).release();
+                      $$ = put(builder::assignable(take($1)));
                     }
 
            cname: tIDENTIFIER
                     {
-                      // TODO diagnostic :error, :module_name_const, nullptr, owned($1)
+                      // TODO diagnostic :error, :module_name_const, nullptr, take($1)
                     }
                 | tCONSTANT
 
            cpath: tCOLON3 cname
                     {
-                      $$ = builder::const_global(take($1), take($2)).release();
+                      $$ = put(builder::const_global(take($1), take($2)));
                     }
                 | cname
                     {
-                      $$ = builder::const_(take($1)).release();
+                      $$ = put(builder::const_(take($1)));
                     }
                 | primary_value tCOLON2 tLBRACK2 tr_gendeclargs rbracket
                     {
-                      $$ = builder::tr_gendecl(owned($1), take($3), owned($4), take($5)).release();
+                      $$ = put(builder::tr_gendecl(take($1), take($3), take($4), take($5)));
                     }
                 | primary_value tCOLON2 cname
                     {
-                      $$ = builder::const_fetch(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::const_fetch(take($1), take($2), take($3)));
                     }
 
            fname: tIDENTIFIER | tCONSTANT | tFID
@@ -988,7 +990,7 @@
 
             fsym: fname
                     {
-                      $$ = builder::symbol(take($1)).release();
+                      $$ = put(builder::symbol(take($1)));
                     }
                 | symbol
 
@@ -997,7 +999,7 @@
 
       undef_list: fitem
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | undef_list tCOMMA
                     {
@@ -1005,8 +1007,9 @@
                     }
                     fitem
                     {
-                      $1->nodes.push_back(owned($4));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($4));
+                      $$ = put(std::move(list));
                     }
 
               op:   tPIPE    | tCARET  | tAMPER2  | tCMP  | tEQ     | tEQQ
@@ -1027,190 +1030,190 @@
 
              arg: lhs tEQL arg_rhs
                     {
-                      $$ = builder::assign(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::assign(take($1), take($2), take($3)));
                     }
                 | var_lhs tOP_ASGN arg_rhs
                     {
-                      $$ = builder::op_assign(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::op_assign(take($1), take($2), take($3)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN arg_rhs
                     {
-                      $$ = builder::op_assign(
+                      $$ = put(builder::op_assign(
                                   builder::index(
-                                    owned($1), take($2), owned($3), take($4)),
-                                  take($5), owned($6)).release();
+                                    take($1), take($2), take($3), take($4)),
+                                  take($5), take($6)));
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN arg_rhs
                     {
-                      $$ = builder::op_assign(
+                      $$ = put(builder::op_assign(
                                   builder::call_method(
-                                    owned($1), take($2), take($3)),
-                                  take($4), owned($5)).release();
+                                    take($1), take($2), take($3)),
+                                  take($4), take($5)));
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN arg_rhs
                     {
-                      $$ = builder::op_assign(
+                      $$ = put(builder::op_assign(
                                   builder::call_method(
-                                    owned($1), take($2), take($3)),
-                                  take($4), owned($5)).release();
+                                    take($1), take($2), take($3)),
+                                  take($4), take($5)));
                     }
                 | primary_value tCOLON2 tIDENTIFIER tOP_ASGN arg_rhs
                     {
-                      $$ = builder::op_assign(
+                      $$ = put(builder::op_assign(
                                   builder::call_method(
-                                    owned($1), take($2), take($3)),
-                                  take($4), owned($5)).release();
+                                    take($1), take($2), take($3)),
+                                  take($4), take($5)));
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN arg_rhs
                     {
                       auto const_ = builder::const_op_assignable(
-                                      builder::const_fetch(owned($1), take($2), take($3)));
+                                      builder::const_fetch(take($1), take($2), take($3)));
 
-                      $$ = builder::op_assign(std::move(const_), take($4), owned($5)).release();
+                      $$ = put(builder::op_assign(std::move(const_), take($4), take($5)));
                     }
                 | tCOLON3 tCONSTANT tOP_ASGN arg_rhs
                     {
                       auto const_ = builder::const_op_assignable(
                                   builder::const_global(take($1), take($2)));
 
-                      $$ = builder::op_assign(std::move(const_), take($3), owned($4)).release();
+                      $$ = put(builder::op_assign(std::move(const_), take($3), take($4)));
                     }
                 | backref tOP_ASGN arg_rhs
                     {
-                      $$ = builder::op_assign(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::op_assign(take($1), take($2), take($3)));
                     }
                 | arg tDOT2 arg
                     {
-                      $$ = builder::range_inclusive(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::range_inclusive(take($1), take($2), take($3)));
                     }
                 | arg tDOT3 arg
                     {
-                      $$ = builder::range_exclusive(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::range_exclusive(take($1), take($2), take($3)));
                     }
                 | arg tPLUS arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tMINUS arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tSTAR2 arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tDIVIDE arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tPERCENT arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tPOW arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | tUMINUS_NUM simple_numeric tPOW arg
                     {
-                      $$ = builder::unary_op(take($1),
+                      $$ = put(builder::unary_op(take($1),
                                   builder::binary_op(
-                                    owned($2), take($3), owned($4))).release();
+                                    take($2), take($3), take($4))));
                     }
                 | tUPLUS arg
                     {
-                      $$ = builder::unary_op(take($1), owned($2)).release();
+                      $$ = put(builder::unary_op(take($1), take($2)));
                     }
                 | tUMINUS arg
                     {
-                      $$ = builder::unary_op(take($1), owned($2)).release();
+                      $$ = put(builder::unary_op(take($1), take($2)));
                     }
                 | arg tPIPE arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tCARET arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tAMPER2 arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tCMP arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tGT arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tGEQ arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tLT arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tLEQ arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tEQ arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tEQQ arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tNEQ arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tMATCH arg
                     {
-                      $$ = builder::match_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::match_op(take($1), take($2), take($3)));
                     }
                 | arg tNMATCH arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | tBANG arg
                     {
-                      $$ = builder::not_op(take($1), nullptr, owned($2), nullptr).release();
+                      $$ = put(builder::not_op(take($1), nullptr, take($2), nullptr));
                     }
                 | tTILDE arg
                     {
-                      $$ = builder::unary_op(take($1), owned($2)).release();
+                      $$ = put(builder::unary_op(take($1), take($2)));
                     }
                 | arg tLSHFT arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tRSHFT arg
                     {
-                      $$ = builder::binary_op(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
                     }
                 | arg tANDOP arg
                     {
-                      $$ = builder::logical_op(node_type::AND, owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::logical_op(node_type::AND, take($1), take($2), take($3)));
                     }
                 | arg tOROP arg
                     {
-                      $$ = builder::logical_op(node_type::OR, owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::logical_op(node_type::OR, take($1), take($2), take($3)));
                     }
                 | kDEFINED opt_nl arg
                     {
-                      auto args = make_node_list(owned($3));
+                      auto args = make_node_list(take($3));
 
-                      $$ = builder::keyword_cmd(node_type::DEFINED, take($1), nullptr, std::move(args), nullptr).release();
+                      $$ = put(builder::keyword_cmd(node_type::DEFINED, take($1), nullptr, std::move(args), nullptr));
                     }
                 | arg tEH arg opt_nl tCOLON arg
                     {
-                      $$ = builder::ternary(owned($1), take($2),
-                                                owned($3), take($5), owned($6)).release();
+                      $$ = put(builder::ternary(take($1), take($2),
+                                                take($3), take($5), take($6)));
                     }
                 | primary
 
@@ -1220,12 +1223,13 @@
                 | args trailer
                 | args tCOMMA assocs trailer
                     {
-                      $1->nodes.push_back(builder::associate(nullptr, owned($3), nullptr));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(builder::associate(nullptr, take($3), nullptr));
+                      $$ = put(std::move(list));
                     }
                 | assocs trailer
                     {
-                      $$ = make_node_list({ builder::associate(nullptr, owned($1), nullptr) }).release();
+                      $$ = put(make_node_list({ builder::associate(nullptr, take($1), nullptr) }));
                     }
 
          arg_rhs: arg %prec tOP_ASGN
@@ -1233,16 +1237,16 @@
                     {
                       auto rescue_body = builder::rescue_body(take($2),
                                           nullptr, nullptr, nullptr,
-                                          nullptr, owned($3));
+                                          nullptr, take($3));
 
                       auto rescue_bodies = make_node_list(std::move(rescue_body));
 
-                      $$ = builder::begin_body(owned($1), std::move(rescue_bodies)).release();
+                      $$ = put(builder::begin_body(take($1), std::move(rescue_bodies)));
                     }
 
       paren_args: tLPAREN2 opt_call_args rparen
                     {
-                      $$ = put(std::make_unique<node_delimited_list>(take($1), owned($2), take($3)));
+                      $$ = put(std::make_unique<node_delimited_list>(take($1), take($2), take($3)));
                     }
 
   opt_paren_args: // nothing
@@ -1253,57 +1257,58 @@
 
    opt_call_args: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | call_args
                 | args tCOMMA
                 | args tCOMMA assocs tCOMMA
                     {
-                      $1->nodes.push_back(builder::associate(nullptr, owned($3), nullptr));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(builder::associate(nullptr, take($3), nullptr));
+                      $$ = put(std::move(list));
                     }
                 | assocs tCOMMA
                     {
-                      $$ = make_node_list({
-                          builder::associate(nullptr, owned($1), nullptr) }).release();
+                      $$ = put(make_node_list({
+                          builder::associate(nullptr, take($1), nullptr) }));
                     }
 
        call_args: command
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | args opt_block_arg
                     {
-                      auto args = owned($1);
+                      auto args = take($1);
 
-                      concat_node_list(args, owned($2));
+                      concat_node_list(args, take($2));
 
-                      $$ = args.release();
+                      $$ = put(std::move(args));
                     }
                 | assocs opt_block_arg
                     {
                       auto args = make_node_list({
-                          builder::associate(nullptr, owned($1), nullptr) });
+                          builder::associate(nullptr, take($1), nullptr) });
 
-                      concat_node_list(args, owned($2));
+                      concat_node_list(args, take($2));
 
-                      $$ = args.release();
+                      $$ = put(std::move(args));
                     }
                 | args tCOMMA assocs opt_block_arg
                     {
-                      auto args = owned($1);
+                      auto args = take($1);
 
-                      auto assocs = builder::associate(nullptr, owned($3), nullptr);
+                      auto assocs = builder::associate(nullptr, take($3), nullptr);
 
                       args->nodes.push_back(std::move(assocs));
 
-                      concat_node_list(args, owned($4));
+                      concat_node_list(args, take($4));
 
-                      $$ = args.release();
+                      $$ = put(std::move(args));
                     }
                 | block_arg
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
 
     command_args:   {
@@ -1319,58 +1324,62 @@
 
        block_arg: tAMPER arg_value
                     {
-                      $$ = builder::block_pass(take($1), owned($2)).release();
+                      $$ = put(builder::block_pass(take($1), take($2)));
                     }
 
    opt_block_arg: tCOMMA block_arg
                     {
-                      $$ = make_node_list(owned($2)).release();
+                      $$ = put(make_node_list(take($2)));
                     }
                 | // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
 
             args: arg_value
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | tSTAR arg_value
                     {
-                      $$ = make_node_list({
-                          builder::splat(take($1), owned($2)) }).release();
+                      $$ = put(make_node_list({
+                          builder::splat(take($1), take($2)) }));
                     }
                 | args tCOMMA arg_value
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
                 | args tCOMMA tSTAR arg_value
                     {
-                      $1->nodes.push_back(builder::splat(take($3), owned($4)));
+                      auto list = take($1);
+                      list->nodes.push_back(builder::splat(take($3), take($4)));
                       $$ = $1;
                     }
 
         mrhs_arg: mrhs
                     {
-                      $$ = builder::array(nullptr, owned($1), nullptr).release();
+                      $$ = put(builder::array(nullptr, take($1), nullptr));
                     }
                 | arg_value
 
             mrhs: args tCOMMA arg_value
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
                 | args tCOMMA tSTAR arg_value
                     {
-                      $1->nodes.push_back(builder::splat(take($3), owned($4)));
+                      auto list = take($1);
+                      list->nodes.push_back(builder::splat(take($3), take($4)));
                       $$ = $1;
                     }
                 | tSTAR arg_value
                     {
-                      $$ = make_node_list({
-                          builder::splat(take($1), owned($2)) }).release();
+                      $$ = put(make_node_list({
+                          builder::splat(take($1), take($2)) }));
                     }
 
          primary: literal
@@ -1385,7 +1394,7 @@
                 | backref
                 | tFID
                     {
-                      $$ = builder::call_method(nullptr, nullptr, take($1)).release();
+                      $$ = put(builder::call_method(nullptr, nullptr, take($1)));
                     }
                 | kBEGIN
                     {
@@ -1396,7 +1405,7 @@
                     {
                       p.lexer->cmdarg = *take($<bool_stack>2);
 
-                      $$ = builder::begin_keyword(take($1), owned($3), take($4)).release();
+                      $$ = put(builder::begin_keyword(take($1), take($3), take($4)));
                     }
                 | tLPAREN_ARG
                     {
@@ -1411,7 +1420,7 @@
                     {
                       p.lexer->cmdarg = *take($<bool_stack>2);
 
-                      $$ = builder::begin(take($1), owned($3), take($5)).release();
+                      $$ = put(builder::begin(take($1), take($3), take($5)));
                     }
                 | tLPAREN_ARG
                     {
@@ -1419,64 +1428,64 @@
                     }
                     opt_nl tRPAREN
                     {
-                      $$ = builder::begin(take($1), nullptr, take($4)).release();
+                      $$ = put(builder::begin(take($1), nullptr, take($4)));
                     }
                 | tLPAREN compstmt tRPAREN
                     {
-                      $$ = builder::begin(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::begin(take($1), take($2), take($3)));
                     }
                 | tLPAREN expr tCOLON tr_type tRPAREN
                     {
-                      $$ = builder::tr_cast(take($1), owned($2), take($3), owned($4), take($5)).release();
+                      $$ = put(builder::tr_cast(take($1), take($2), take($3), take($4), take($5)));
                     }
                 | primary_value tCOLON2 tCONSTANT
                     {
-                      $$ = builder::const_fetch(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::const_fetch(take($1), take($2), take($3)));
                     }
                 | tCOLON3 tCONSTANT
                     {
-                      $$ = builder::const_global(take($1), take($2)).release();
+                      $$ = put(builder::const_global(take($1), take($2)));
                     }
                 | tLBRACK aref_args tRBRACK
                     {
-                      $$ = builder::array(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::array(take($1), take($2), take($3)));
                     }
                 | tLBRACE assoc_list tRCURLY
                     {
-                      $$ = builder::associate(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::associate(take($1), take($2), take($3)));
                     }
                 | kRETURN
                     {
-                      $$ = builder::keyword_cmd(node_type::RETURN, take($1)).release();
+                      $$ = put(builder::keyword_cmd(node_type::RETURN, take($1)));
                     }
                 | kYIELD tLPAREN2 call_args rparen
                     {
-                      $$ = builder::keyword_cmd(node_type::YIELD, take($1), take($2), owned($3), take($4)).release();
+                      $$ = put(builder::keyword_cmd(node_type::YIELD, take($1), take($2), take($3), take($4)));
                     }
                 | kYIELD tLPAREN2 rparen
                     {
                       auto args = make_node_list();
 
-                      $$ = builder::keyword_cmd(node_type::YIELD, take($1), take($2), std::move(args), take($3)).release();
+                      $$ = put(builder::keyword_cmd(node_type::YIELD, take($1), take($2), std::move(args), take($3)));
                     }
                 | kYIELD
                     {
-                      $$ = builder::keyword_cmd(node_type::YIELD, take($1)).release();
+                      $$ = put(builder::keyword_cmd(node_type::YIELD, take($1)));
                     }
                 | kDEFINED opt_nl tLPAREN2 expr rparen
                     {
-                      auto args = make_node_list(owned($4));
+                      auto args = make_node_list(take($4));
 
-                      $$ = builder::keyword_cmd(node_type::DEFINED, take($1),
-                                                    take($3), std::move(args), take($5)).release();
+                      $$ = put(builder::keyword_cmd(node_type::DEFINED, take($1),
+                                                    take($3), std::move(args), take($5)));
                     }
                 | kNOT tLPAREN2 expr rparen
                     {
-                      $$ = builder::not_op(take($1), take($2), owned($3), take($4)).release();
+                      $$ = put(builder::not_op(take($1), take($2), take($3), take($4)));
                     }
                 | kNOT tLPAREN2 rparen
                     {
-                      $$ = builder::not_op(take($1), take($2), nullptr, take($3)).release();
+                      $$ = put(builder::not_op(take($1), take($2), nullptr, take($3)));
                     }
                 | fcall brace_block
                     {
@@ -1484,22 +1493,22 @@
 
                       auto delimited_block = take($2);
 
-                      $$ = builder::block(std::move(method_call),
+                      $$ = put(builder::block(std::move(method_call),
                         std::move(delimited_block->begin),
                         std::move(delimited_block->args),
                         std::move(delimited_block->body),
-                        std::move(delimited_block->end)).release();
+                        std::move(delimited_block->end)));
                     }
                 | method_call
                 | method_call brace_block
                     {
                       auto delimited_block = take($2);
 
-                      $$ = builder::block(owned($1),
+                      $$ = put(builder::block(take($1),
                         std::move(delimited_block->begin),
                         std::move(delimited_block->args),
                         std::move(delimited_block->body),
-                        std::move(delimited_block->end)).release();
+                        std::move(delimited_block->end)));
                     }
                 | tLAMBDA lambda
                     {
@@ -1507,31 +1516,31 @@
 
                       auto lambda = take($2);
 
-                      $$ = builder::block(std::move(lambda_call),
+                      $$ = put(builder::block(std::move(lambda_call),
                         std::move(lambda->begin),
                         std::move(lambda->args),
                         std::move(lambda->body),
-                        std::move(lambda->end)).release();
+                        std::move(lambda->end)));
                     }
                 | kIF expr_value then compstmt if_tail kEND
                     {
                       auto else_ = take($5);
 
-                      $$ = builder::condition(
-                        take($1), owned($2),
-                        take($3), owned($4),
+                      $$ = put(builder::condition(
+                        take($1), take($2),
+                        take($3), take($4),
                         std::move(else_->token_), std::move(else_->node_),
-                        take($6)).release();
+                        take($6)));
                     }
                 | kUNLESS expr_value then compstmt opt_else kEND
                     {
                       auto else_ = take($5);
 
-                      $$ = builder::condition(
-                        take($1), owned($2),
+                      $$ = put(builder::condition(
+                        take($1), take($2),
                         take($3), std::move(else_->node_),
-                        std::move(else_->token_), owned($4),
-                        take($6)).release();
+                        std::move(else_->token_), take($4),
+                        take($6)));
                     }
                 | kWHILE
                     {
@@ -1543,8 +1552,8 @@
                     }
                     compstmt kEND
                     {
-                      $$ = builder::loop(node_type::WHILE, take($1), owned($3), take($4),
-                                             owned($6), take($7)).release();
+                      $$ = put(builder::loop(node_type::WHILE, take($1), take($3), take($4),
+                                             take($6), take($7)));
                     }
                 | kUNTIL
                     {
@@ -1556,32 +1565,32 @@
                     }
                     compstmt kEND
                     {
-                      $$ = builder::loop(node_type::UNTIL, take($1), owned($3), take($4),
-                                             owned($6), take($7)).release();
+                      $$ = put(builder::loop(node_type::UNTIL, take($1), take($3), take($4),
+                                             take($6), take($7)));
                     }
                 | kCASE expr_value opt_terms case_body kEND
                     {
-                      auto case_body = owned($4);
+                      auto case_body = take($4);
 
                       auto else_ = static_unique_cast<node_with_token>(std::move(case_body->nodes.back()));
                       case_body->nodes.pop_back();
 
-                      $$ = builder::case_(take($1), owned($2),
+                      $$ = put(builder::case_(take($1), take($2),
                         std::move(case_body),
                         std::move(else_->token_), std::move(else_->node_),
-                        take($5)).release();
+                        take($5)));
                     }
                 | kCASE            opt_terms case_body kEND
                     {
-                      auto case_body = owned($3);
+                      auto case_body = take($3);
 
                       auto else_ = static_unique_cast<node_with_token>(std::move(case_body->nodes.back()));
                       case_body->nodes.pop_back();
 
-                      $$ = builder::case_(take($1), nullptr,
+                      $$ = put(builder::case_(take($1), nullptr,
                         std::move(case_body),
                         std::move(else_->token_), std::move(else_->node_),
-                        take($4)).release();
+                        take($4)));
                     }
                 | kFOR for_var kIN
                     {
@@ -1593,9 +1602,9 @@
                     }
                     compstmt kEND
                     {
-                      $$ = builder::for_(take($1), owned($2),
-                                            take($3), owned($5),
-                                            take($6), owned($8), take($9)).release();
+                      $$ = put(builder::for_(take($1), take($2),
+                                            take($3), take($5),
+                                            take($6), take($8), take($9)));
                     }
                 | kCLASS cpath superclass
                     {
@@ -1605,7 +1614,7 @@
                     bodystmt kEND
                     {
                       if (p.def_level > 0) {
-                        // TODO   diagnostic :error, :class_in_def, nullptr, owned($1)
+                        // TODO   diagnostic :error, :class_in_def, nullptr, take($1)
                       }
 
                       auto superclass_ = take($3);
@@ -1613,9 +1622,9 @@
                       auto lt_t       = superclass_ ? std::move(superclass_->token_) : nullptr;
                       auto superclass = superclass_ ? std::move(superclass_->node_)  : nullptr;
 
-                      $$ = builder::def_class(take($1), owned($2),
+                      $$ = put(builder::def_class(take($1), take($2),
                                                   std::move(lt_t), std::move(superclass),
-                                                  owned($5), take($6)).release();
+                                                  take($5), take($6)));
 
                       p.lexer->cmdarg = *take($<bool_stack>4);
                       p.lexer->unextend();
@@ -1630,8 +1639,8 @@
                     }
                     bodystmt kEND
                     {
-                      $$ = builder::def_sclass(take($1), take($2), owned($3),
-                                                   owned($6), take($7)).release();
+                      $$ = put(builder::def_sclass(take($1), take($2), take($3),
+                                                   take($6), take($7)));
 
                       p.lexer->cmdarg = *take($<bool_stack>5);
                       p.lexer->unextend();
@@ -1646,10 +1655,10 @@
                     bodystmt kEND
                     {
                       if (p.def_level > 0) {
-                        // TODO   diagnostic :error, :module_in_def, nullptr, owned($1)
+                        // TODO   diagnostic :error, :module_in_def, nullptr, take($1)
                       }
 
-                      $$ = builder::def_module(take($1), owned($2), owned($4), take($5)).release();
+                      $$ = put(builder::def_module(take($1), take($2), take($4), take($5)));
 
                       p.lexer->cmdarg = *take($<bool_stack>3);
                       p.lexer->unextend();
@@ -1662,8 +1671,8 @@
                     }
                     f_arglist bodystmt kEND
                     {
-                      $$ = builder::def_method(take($1), take($2),
-                                  owned($4), owned($5), take($6)).release();
+                      $$ = put(builder::def_method(take($1), take($2),
+                                  take($4), take($5), take($6)));
 
                       p.lexer->cmdarg = *take($<bool_stack>3);
                       p.lexer->unextend();
@@ -1681,8 +1690,8 @@
                     }
                     f_arglist bodystmt kEND
                     {
-                      $$ = builder::def_singleton(take($1), owned($2), take($3),
-                                  take($5), owned($7), owned($8), take($9)).release();
+                      $$ = put(builder::def_singleton(take($1), take($2), take($3),
+                                  take($5), take($7), take($8), take($9)));
 
                       p.lexer->cmdarg = *take($<bool_stack>6);
                       p.lexer->unextend();
@@ -1690,19 +1699,19 @@
                     }
                 | kBREAK
                     {
-                      $$ = builder::keyword_cmd(node_type::BREAK, take($1)).release();
+                      $$ = put(builder::keyword_cmd(node_type::BREAK, take($1)));
                     }
                 | kNEXT
                     {
-                      $$ = builder::keyword_cmd(node_type::NEXT, take($1)).release();
+                      $$ = put(builder::keyword_cmd(node_type::NEXT, take($1)));
                     }
                 | kREDO
                     {
-                      $$ = builder::keyword_cmd(node_type::REDO, take($1)).release();
+                      $$ = put(builder::keyword_cmd(node_type::REDO, take($1)));
                     }
                 | kRETRY
                     {
-                      $$ = builder::keyword_cmd(node_type::RETRY, take($1)).release();
+                      $$ = put(builder::keyword_cmd(node_type::RETRY, take($1)));
                     }
 
    primary_value: primary
@@ -1727,8 +1736,8 @@
                       $$ = put(std::make_unique<node_with_token>(
                         std::make_unique<token>(*elsif_t),
                         builder::condition(
-                          std::make_unique<token>(*elsif_t), owned($2), take($3),
-                          owned($4), std::move(else_->token_), std::move(else_->node_),
+                          std::make_unique<token>(*elsif_t), take($2), take($3),
+                          take($4), std::move(else_->token_), std::move(else_->node_),
                           nullptr)));
                     }
 
@@ -1738,7 +1747,7 @@
                     }
                 | kELSE compstmt
                     {
-                      $$ = put(std::make_unique<node_with_token>(take($1), owned($2)));
+                      $$ = put(std::make_unique<node_with_token>(take($1), take($2)));
                     }
 
          for_var: lhs
@@ -1746,101 +1755,106 @@
 
           f_marg: f_norm_arg
                     {
-                      $$ = builder::arg(take($1)).release();
+                      $$ = put(builder::arg(take($1)));
                     }
                 | tLPAREN f_margs rparen
                     {
-                      $$ = builder::multi_lhs(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::multi_lhs(take($1), take($2), take($3)));
                     }
 
      f_marg_list: f_marg
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | f_marg_list tCOMMA f_marg
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
 
          f_margs: f_marg_list
                 | f_marg_list tCOMMA tSTAR f_norm_arg
                     {
-                      $1->nodes.push_back(builder::restarg(take($3), take($4)));
+                      auto list = take($1);
+                      list->nodes.push_back(builder::restarg(take($3), take($4)));
                       $$ = $1;
                     }
                 | f_marg_list tCOMMA tSTAR f_norm_arg tCOMMA f_marg_list
                     {
-                      auto args = owned($1);
+                      auto args = take($1);
 
                       args->nodes.push_back(builder::restarg(take($3), take($4)));
-                      concat_node_list(args, owned($6));
+                      concat_node_list(args, take($6));
 
-                      $$ = args.release();
+                      $$ = put(std::move(args));
                     }
                 | f_marg_list tCOMMA tSTAR
                     {
-                      $1->nodes.push_back(builder::restarg(take($3)));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(builder::restarg(take($3)));
+                      $$ = put(std::move(list));
                     }
                 | f_marg_list tCOMMA tSTAR            tCOMMA f_marg_list
                     {
-                      auto args = owned($1);
+                      auto args = take($1);
 
                       args->nodes.push_back(builder::restarg(take($3)));
-                      concat_node_list(args, owned($5));
+                      concat_node_list(args, take($5));
 
-                      $$ = args.release();
+                      $$ = put(std::move(args));
                     }
                 |                    tSTAR f_norm_arg
                     {
-                      $$ = make_node_list({
-                          builder::restarg(take($1), take($2)) }).release();
+                      $$ = put(make_node_list({
+                          builder::restarg(take($1), take($2)) }));
                     }
                 |                    tSTAR f_norm_arg tCOMMA f_marg_list
                     {
-                      $4->nodes.insert($4->nodes.begin(), builder::restarg(take($1), take($2)));
-                      $$ = $4;
+                      auto args = take($4);
+                      args->nodes.insert(args->nodes.begin(), builder::restarg(take($1), take($2)));
+                      $$ = put(std::move(args));
                     }
                 |                    tSTAR
                     {
-                      $$ = make_node_list({
-                          builder::restarg(take($1)) }).release();
+                      $$ = put(make_node_list({
+                          builder::restarg(take($1)) }));
                     }
                 |                    tSTAR tCOMMA f_marg_list
                     {
-                      $3->nodes.insert($3->nodes.begin(), builder::restarg(take($1)));
-                      $$ = $3;
+                      auto args = take($3);
+                      args->nodes.insert(args->nodes.begin(), builder::restarg(take($1)));
+                      $$ = put(std::move(args));
                     }
 
  block_args_tail: f_block_kwarg tCOMMA f_kwrest opt_f_block_arg
                     {
-                      auto args = owned($1);
+                      auto args = take($1);
 
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($3));
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($3));
 
-                      $$ = args.release();
+                      $$ = put(std::move(args));
                     }
                 | f_block_kwarg opt_f_block_arg
                     {
-                      auto args = owned($1);
+                      auto args = take($1);
 
-                      concat_node_list(args, owned($2));
+                      concat_node_list(args, take($2));
 
-                      $$ = args.release();
+                      $$ = put(std::move(args));
                     }
                 | f_kwrest opt_f_block_arg
                     {
-                      auto args = owned($1);
+                      auto args = take($1);
 
-                      concat_node_list(args, owned($2));
+                      concat_node_list(args, take($2));
 
-                      $$ = args.release();
+                      $$ = put(std::move(args));
                     }
                 | f_block_arg
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
 
 opt_block_args_tail:
@@ -1850,115 +1864,115 @@ opt_block_args_tail:
                     }
                 | // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
 
      block_param: f_arg tCOMMA f_block_optarg tCOMMA f_rest_arg              opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($6));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($6));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA f_block_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($7));
-                      concat_node_list(args, owned($8));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($7));
+                      concat_node_list(args, take($8));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA f_block_optarg                                opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA f_block_optarg tCOMMA                   f_arg opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($6));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($6));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA                       f_rest_arg              opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA
                 | f_arg tCOMMA                       f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($6));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($6));
+                      $$ = put(std::move(args));
                     }
                 | f_arg                                                      opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      auto block_args_tail = owned($2);
+                      auto args = take($1);
+                      auto block_args_tail = take($2);
 
                       if (block_args_tail->nodes.size() == 0 && args->nodes.size() == 1) {
-                        $$ = make_node_list(builder::procarg0(std::move(args->nodes[0]))).release();
+                        $$ = put(make_node_list(builder::procarg0(std::move(args->nodes[0]))));
                       } else {
                         concat_node_list(args, std::move(block_args_tail));
-                        $$ = args.release();
+                        $$ = put(std::move(args));
                       }
                     }
                 | f_block_optarg tCOMMA              f_rest_arg              opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 | f_block_optarg tCOMMA              f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($6));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($6));
+                      $$ = put(std::move(args));
                     }
                 | f_block_optarg                                             opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($2));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($2));
+                      $$ = put(std::move(args));
                     }
                 | f_block_optarg tCOMMA                                f_arg opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 |                                    f_rest_arg              opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($2));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($2));
+                      $$ = put(std::move(args));
                     }
                 |                                    f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 |                                                                block_args_tail
 
  opt_block_param: // nothing
                     {
-                      $$ = builder::args(nullptr, make_node_list(), nullptr).release();
+                      $$ = put(builder::args(nullptr, make_node_list(), nullptr));
                     }
                 | block_param_def
                     {
@@ -1966,35 +1980,35 @@ opt_block_args_tail:
                     }
                   tr_returnsig
                     {
-                      auto args = owned($1);
-                      auto return_sig = owned($3);
+                      auto args = take($1);
+                      auto return_sig = take($3);
 
                       if (return_sig) {
-                        $$ = builder::prototype(nullptr, std::move(args), std::move(return_sig)).release();
+                        $$ = put(builder::prototype(nullptr, std::move(args), std::move(return_sig)));
                       } else {
-                        $$ = args.release();
+                        $$ = put(std::move(args));
                       }
                     }
 
  block_param_def: tPIPE opt_bv_decl tPIPE
                     {
-                      $$ = builder::args(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::args(take($1), take($2), take($3)));
                     }
                 | tOROP
                     {
                       auto tok = take($1);
-                      $$ = builder::args(std::make_unique<token>(*tok), make_node_list(), std::make_unique<token>(*tok)).release();
+                      $$ = put(builder::args(std::make_unique<token>(*tok), make_node_list(), std::make_unique<token>(*tok)));
                     }
                 | tPIPE block_param opt_bv_decl tPIPE
                     {
-                      auto params = owned($2);
-                      concat_node_list(params, owned($3));
-                      $$ = builder::args(take($1), std::move(params), take($4)).release();
+                      auto params = take($2);
+                      concat_node_list(params, take($3));
+                      $$ = put(builder::args(take($1), std::move(params), take($4)));
                     }
 
      opt_bv_decl: opt_nl
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | opt_nl tSEMI bv_decls opt_nl
                     {
@@ -2003,19 +2017,20 @@ opt_block_args_tail:
 
         bv_decls: bvar
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | bv_decls tCOMMA bvar
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
 
             bvar: tIDENTIFIER
                     {
                       auto ident = take($1);
                       p.lexer->declare(ident->string());
-                      $$ = builder::shadowarg(std::move(ident)).release();
+                      $$ = put(builder::shadowarg(std::move(ident)));
                     }
                 | f_bad_arg
                     {
@@ -2037,7 +2052,7 @@ opt_block_args_tail:
 
                       auto delimited_block = take($4);
 
-                      delimited_block->args = owned($2);
+                      delimited_block->args = take($2);
 
                       $$ = put(std::move(delimited_block));
 
@@ -2046,22 +2061,22 @@ opt_block_args_tail:
 
      f_larglist: tLPAREN2 f_args opt_bv_decl tRPAREN
                     {
-                      auto args = owned($2);
-                      concat_node_list(args, owned($3));
-                      $$ = builder::args(take($1), std::move(args), take($4)).release();
+                      auto args = take($2);
+                      concat_node_list(args, take($3));
+                      $$ = put(builder::args(take($1), std::move(args), take($4)));
                     }
                 | f_args
                     {
-                      $$ = builder::args(nullptr, owned($1), nullptr).release();
+                      $$ = put(builder::args(nullptr, take($1), nullptr));
                     }
 
      lambda_body: tLAMBEG compstmt tRCURLY
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(take($1), nullptr, owned($2), take($3)));
+                      $$ = put(std::make_unique<node_delimited_block>(take($1), nullptr, take($2), take($3)));
                     }
                 | kDO_LAMBDA compstmt kEND
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(take($1), nullptr, owned($2), take($3)));
+                      $$ = put(std::make_unique<node_delimited_block>(take($1), nullptr, take($2), take($3)));
                     }
 
         do_block: kDO_BLOCK do_body kEND
@@ -2076,127 +2091,127 @@ opt_block_args_tail:
                     {
                       auto delimited_block = take($2);
 
-                      $$ = builder::block(owned($1),
+                      $$ = put(builder::block(take($1),
                           std::move(delimited_block->begin),
                           std::move(delimited_block->args),
                           std::move(delimited_block->body),
                           std::move(delimited_block->end)
-                        ).release();
+                        ));
                     }
                 | block_call dot_or_colon operation2 opt_paren_args
                     {
                       auto delimited = take($4);
 
-                      $$ = builder::call_method(owned($1), take($2), take($3),
+                      $$ = put(builder::call_method(take($1), take($2), take($3),
                                   std::move(delimited->begin),
                                   std::move(delimited->inner),
-                                  std::move(delimited->end)).release();
+                                  std::move(delimited->end)));
                     }
                 | block_call dot_or_colon operation2 opt_paren_args brace_block
                     {
                       auto delimited = take($4);
 
                       auto method_call =
-                        builder::call_method(owned($1), take($2), take($3),
+                        builder::call_method(take($1), take($2), take($3),
                           std::move(delimited->begin),
                           std::move(delimited->inner),
                           std::move(delimited->end));
 
                       auto block = take($5);
 
-                      $$ =
+                      $$ = put(
                         builder::block(std::move(method_call),
                           std::move(block->begin),
                           std::move(block->args),
                           std::move(block->body),
-                          std::move(block->end)).release();
+                          std::move(block->end)));
                     }
                 | block_call dot_or_colon operation2 command_args do_block
                     {
                       auto method_call =
-                        builder::call_method(owned($1), take($2), take($3),
-                          nullptr, owned($4), nullptr);
+                        builder::call_method(take($1), take($2), take($3),
+                          nullptr, take($4), nullptr);
 
                       auto block = take($5);
 
-                      $$ =
+                      $$ = put(
                         builder::block(std::move(method_call),
                           std::move(block->begin),
                           std::move(block->args),
                           std::move(block->body),
-                          std::move(block->end)).release();
+                          std::move(block->end)));
                     }
 
      method_call: fcall paren_args
                     {
                       auto delimited = take($2);
 
-                      $$ = builder::call_method(nullptr, nullptr, take($1),
+                      $$ = put(builder::call_method(nullptr, nullptr, take($1),
                         std::move(delimited->begin),
                         std::move(delimited->inner),
-                        std::move(delimited->end)).release();
+                        std::move(delimited->end)));
                     }
                 | primary_value call_op operation2 opt_paren_args
                     {
                       auto delimited = take($4);
 
-                      $$ =
-                        builder::call_method(owned($1), take($2), take($3),
+                      $$ = put(
+                        builder::call_method(take($1), take($2), take($3),
                           std::move(delimited->begin),
                           std::move(delimited->inner),
-                          std::move(delimited->end)).release();
+                          std::move(delimited->end)));
                     }
                 | primary_value tCOLON2 operation2 paren_args
                     {
                       auto delimited = take($4);
 
-                      $$ =
-                        builder::call_method(owned($1), take($2), take($3),
+                      $$ = put(
+                        builder::call_method(take($1), take($2), take($3),
                           std::move(delimited->begin),
                           std::move(delimited->inner),
-                          std::move(delimited->end)).release();
+                          std::move(delimited->end)));
                     }
                 | primary_value tCOLON2 operation3
                     {
-                      $$ = builder::call_method(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::call_method(take($1), take($2), take($3)));
                     }
                 | primary_value call_op paren_args
                     {
                       auto delimited = take($3);
 
-                      $$ =
-                        builder::call_method(owned($1), take($2), nullptr,
+                      $$ = put(
+                        builder::call_method(take($1), take($2), nullptr,
                           std::move(delimited->begin),
                           std::move(delimited->inner),
-                          std::move(delimited->end)).release();
+                          std::move(delimited->end)));
                     }
                 | primary_value tCOLON2 paren_args
                     {
                       auto delimited = take($3);
 
-                      $$ =
-                        builder::call_method(owned($1), take($2), nullptr,
+                      $$ = put(
+                        builder::call_method(take($1), take($2), nullptr,
                           std::move(delimited->begin),
                           std::move(delimited->inner),
-                          std::move(delimited->end)).release();
+                          std::move(delimited->end)));
                     }
                 | kSUPER paren_args
                     {
                       auto delimited = take($2);
 
-                      $$ =
+                      $$ = put(
                         builder::keyword_cmd(node_type::SUPER, take($1),
                           std::move(delimited->begin),
                           std::move(delimited->inner),
-                          std::move(delimited->end)).release();
+                          std::move(delimited->end)));
                     }
                 | kSUPER
                     {
-                      $$ = builder::keyword_cmd(node_type::ZSUPER, take($1)).release();
+                      $$ = put(builder::keyword_cmd(node_type::ZSUPER, take($1)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = builder::index(owned($1), take($2), owned($3), take($4)).release();
+                      $$ = put(builder::index(take($1), take($2), take($3), take($4)));
                     }
 
      brace_block: tLCURLY brace_body tRCURLY
@@ -2227,7 +2242,7 @@ opt_block_args_tail:
                     }
                     opt_block_param compstmt
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(nullptr, owned($3), owned($4), nullptr));
+                      $$ = put(std::make_unique<node_delimited_block>(nullptr, take($3), take($4), nullptr));
 
                       p.lexer->unextend();
                       p.lexer->cmdarg = *take($<bool_stack>2);
@@ -2243,7 +2258,7 @@ opt_block_args_tail:
                     }
                     opt_block_param compstmt
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(nullptr, owned($3), owned($4), nullptr));
+                      $$ = put(std::make_unique<node_delimited_block>(nullptr, take($3), take($4), nullptr));
 
                       p.lexer->unextend();
 
@@ -2253,14 +2268,15 @@ opt_block_args_tail:
 
        case_body: kWHEN args then compstmt cases
                     {
-                      $$ = $5;
-                      $$->nodes.insert($$->nodes.begin(),
-                        builder::when(take($1), owned($2), take($3), owned($4)));
+                      auto cases = take($5);
+                      cases->nodes.insert(cases->nodes.begin(),
+                        builder::when(take($1), take($2), take($3), take($4)));
+                      $$ = put(std::move(cases));
                     }
 
            cases: opt_else
                     {
-                      $$ = make_node_list(static_unique_cast<node>(take($1))).release();
+                      $$ = put(make_node_list(static_unique_cast<node>(take($1))));
                     }
                 | case_body
 
@@ -2268,34 +2284,36 @@ opt_block_args_tail:
                     {
                       auto exc_var = take($3);
 
-                      auto exc_list_ = owned($2);
+                      auto exc_list_ = take($2);
 
                       auto exc_list = exc_list_
                         ? builder::array(nullptr, std::move(exc_list_), nullptr)
                         : nullptr;
 
-                      $$ = $6;
+                      auto rescues = take($6);
 
-                      $$->nodes.insert($$->nodes.begin(),
+                      rescues->nodes.insert(rescues->nodes.begin(),
                         builder::rescue_body(take($1),
                           std::move(exc_list), std::move(exc_var->token_), std::move(exc_var->node_),
-                          take($4), owned($5)));
+                          take($4), take($5)));
+
+                      $$ = put(std::move(rescues));
                     }
                 |
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
 
         exc_list: arg_value
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | mrhs
                 | list_none
 
          exc_var: tASSOC lhs
                     {
-                      $$ = put(std::make_unique<node_with_token>(take($1), owned($2)));
+                      $$ = put(std::make_unique<node_with_token>(take($1), take($2)));
                     }
                 | // nothing
                     {
@@ -2304,7 +2322,7 @@ opt_block_args_tail:
 
       opt_ensure: kENSURE compstmt
                     {
-                      $$ = put(std::make_unique<node_with_token>(take($1), owned($2)));
+                      $$ = put(std::make_unique<node_with_token>(take($1), take($2)));
                     }
                 | // nothing
                     {
@@ -2317,149 +2335,158 @@ opt_block_args_tail:
 
          strings: string
                     {
-                      $$ = builder::string_compose(nullptr, owned($1), nullptr).release();
+                      $$ = put(builder::string_compose(nullptr, take($1), nullptr));
                     }
 
           string: string1
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | string string1
                     {
-                      $1->nodes.push_back(owned($2));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($2));
+                      $$ = put(std::move(list));
                     }
 
          string1: tSTRING_BEG string_contents tSTRING_END
                     {
-                      auto str = builder::string_compose(take($1), owned($2), take($3));
-                      $$ = builder::dedent_string(std::move(str), 0 /* TODO @lexer.dedent_level */).release();
+                      auto str = builder::string_compose(take($1), take($2), take($3));
+                      $$ = put(builder::dedent_string(std::move(str), 0 /* TODO @lexer.dedent_level */));
                     }
                 | tSTRING
                     {
                       auto str = builder::string(take($1));
-                      $$ = builder::dedent_string(std::move(str), 0 /* TODO @lexer.dedent_level */).release();
+                      $$ = put(builder::dedent_string(std::move(str), 0 /* TODO @lexer.dedent_level */));
                     }
                 | tCHARACTER
                     {
-                      $$ = builder::character(take($1)).release();
+                      $$ = put(builder::character(take($1)));
                     }
 
          xstring: tXSTRING_BEG xstring_contents tSTRING_END
                     {
-                      auto xstr = builder::xstring_compose(take($1), owned($2), take($3));
-                      $$ = builder::dedent_string(std::move(xstr), 0 /* TODO @lexer.dedent_level */).release();
+                      auto xstr = builder::xstring_compose(take($1), take($2), take($3));
+                      $$ = put(builder::dedent_string(std::move(xstr), 0 /* TODO @lexer.dedent_level */));
                     }
 
           regexp: tREGEXP_BEG regexp_contents tSTRING_END tREGEXP_OPT
                     {
                       auto opts = builder::regexp_options(take($4));
-                      $$ = builder::regexp_compose(take($1), owned($2), take($3), std::move(opts)).release();
+                      $$ = put(builder::regexp_compose(take($1), take($2), take($3), std::move(opts)));
                     }
 
            words: tWORDS_BEG word_list tSTRING_END
                     {
-                      $$ = builder::words_compose(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::words_compose(take($1), take($2), take($3)));
                     }
 
        word_list: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | word_list word tSPACE
                     {
-                      $1->nodes.push_back(builder::word(owned($2)));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(builder::word(take($2)));
+                      $$ = put(std::move(list));
                     }
 
             word: string_content
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | word string_content
                     {
-                      $1->nodes.push_back(owned($2));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($2));
+                      $$ = put(std::move(list));
                     }
 
          symbols: tSYMBOLS_BEG symbol_list tSTRING_END
                     {
-                      $$ = builder::symbols_compose(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::symbols_compose(take($1), take($2), take($3)));
                     }
 
      symbol_list: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | symbol_list word tSPACE
                     {
-                      $1->nodes.push_back(builder::word(owned($2)));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(builder::word(take($2)));
+                      $$ = put(std::move(list));
                     }
 
           qwords: tQWORDS_BEG qword_list tSTRING_END
                     {
-                      $$ = builder::words_compose(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::words_compose(take($1), take($2), take($3)));
                     }
 
         qsymbols: tQSYMBOLS_BEG qsym_list tSTRING_END
                     {
-                      $$ = builder::symbols_compose(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::symbols_compose(take($1), take($2), take($3)));
                     }
 
       qword_list: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | qword_list tSTRING_CONTENT tSPACE
                     {
-                      $1->nodes.push_back(builder::string_internal(take($2)));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(builder::string_internal(take($2)));
+                      $$ = put(std::move(list));
                     }
 
        qsym_list: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | qsym_list tSTRING_CONTENT tSPACE
                     {
-                      $1->nodes.push_back(builder::symbol_internal(take($2)));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(builder::symbol_internal(take($2)));
+                      $$ = put(std::move(list));
                     }
 
  string_contents: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | string_contents string_content
                     {
-                      $1->nodes.push_back(owned($2));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($2));
+                      $$ = put(std::move(list));
                     }
 
 xstring_contents: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | xstring_contents string_content
                     {
-                      $1->nodes.push_back(owned($2));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($2));
+                      $$ = put(std::move(list));
                     }
 
 regexp_contents: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | regexp_contents string_content
                     {
-                      $1->nodes.push_back(owned($2));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($2));
+                      $$ = put(std::move(list));
                     }
 
   string_content: tSTRING_CONTENT
                     {
-                      $$ = builder::string_internal(take($1)).release();
+                      $$ = put(builder::string_internal(take($1)));
                     }
                 | tSTRING_DVAR string_dvar
                     {
@@ -2475,20 +2502,20 @@ regexp_contents: // nothing
                       p.lexer->cond.lexpop();
                       p.lexer->cmdarg.lexpop();
 
-                      $$ = builder::begin(take($1), owned($3), take($4)).release();
+                      $$ = put(builder::begin(take($1), take($3), take($4)));
                     }
 
      string_dvar: tGVAR
                     {
-                      $$ = builder::gvar(take($1)).release();
+                      $$ = put(builder::gvar(take($1)));
                     }
                 | tIVAR
                     {
-                      $$ = builder::ivar(take($1)).release();
+                      $$ = put(builder::ivar(take($1)));
                     }
                 | tCVAR
                     {
-                      $$ = builder::cvar(take($1)).release();
+                      $$ = put(builder::cvar(take($1)));
                     }
                 | backref
 
@@ -2496,13 +2523,13 @@ regexp_contents: // nothing
           symbol: tSYMBOL
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = builder::symbol(take($1)).release();
+                      $$ = put(builder::symbol(take($1)));
                     }
 
             dsym: tSYMBEG xstring_contents tSTRING_END
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = builder::symbol_compose(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::symbol_compose(take($1), take($2), take($3)));
                     }
 
          numeric: simple_numeric
@@ -2511,115 +2538,115 @@ regexp_contents: // nothing
                     }
                 | tUMINUS_NUM simple_numeric %prec tLOWEST
                     {
-                      $$ = builder::negate(take($1), owned($2)).release();
+                      $$ = put(builder::negate(take($1), take($2)));
                     }
 
   simple_numeric: tINTEGER
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = builder::integer(take($1)).release();
+                      $$ = put(builder::integer(take($1)));
                     }
                 | tFLOAT
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = builder::float_(take($1)).release();
+                      $$ = put(builder::float_(take($1)));
                     }
                 | tRATIONAL
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = builder::rational(take($1)).release();
+                      $$ = put(builder::rational(take($1)));
                     }
                 | tIMAGINARY
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = builder::complex(take($1)).release();
+                      $$ = put(builder::complex(take($1)));
                     }
                 | tRATIONAL_IMAGINARY
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = builder::rational_complex(take($1)).release();
+                      $$ = put(builder::rational_complex(take($1)));
                     }
                 | tFLOAT_IMAGINARY
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = builder::float_complex(take($1)).release();
+                      $$ = put(builder::float_complex(take($1)));
                     }
 
    user_variable: tIDENTIFIER
                     {
-                      $$ = builder::ident(take($1)).release();
+                      $$ = put(builder::ident(take($1)));
                     }
                 | tIVAR
                     {
-                      $$ = builder::ivar(take($1)).release();
+                      $$ = put(builder::ivar(take($1)));
                     }
                 | tGVAR
                     {
-                      $$ = builder::gvar(take($1)).release();
+                      $$ = put(builder::gvar(take($1)));
                     }
                 | tCONSTANT
                     {
-                      $$ = builder::const_(take($1)).release();
+                      $$ = put(builder::const_(take($1)));
                     }
                 | tCVAR
                     {
-                      $$ = builder::cvar(take($1)).release();
+                      $$ = put(builder::cvar(take($1)));
                     }
 
 keyword_variable: kNIL
                     {
-                      $$ = builder::nil(take($1)).release();
+                      $$ = put(builder::nil(take($1)));
                     }
                 | kSELF
                     {
-                      $$ = builder::self(take($1)).release();
+                      $$ = put(builder::self(take($1)));
                     }
                 | kTRUE
                     {
-                      $$ = builder::true_(take($1)).release();
+                      $$ = put(builder::true_(take($1)));
                     }
                 | kFALSE
                     {
-                      $$ = builder::false_(take($1)).release();
+                      $$ = put(builder::false_(take($1)));
                     }
                 | k__FILE__
                     {
-                      $$ = builder::file_literal(take($1)).release();
+                      $$ = put(builder::file_literal(take($1)));
                     }
                 | k__LINE__
                     {
-                      $$ = builder::line_literal(take($1)).release();
+                      $$ = put(builder::line_literal(take($1)));
                     }
                 | k__ENCODING__
                     {
-                      $$ = builder::encoding_literal(take($1)).release();
+                      $$ = put(builder::encoding_literal(take($1)));
                     }
 
          var_ref: user_variable
                     {
-                      $$ = builder::accessible(owned($1)).release();
+                      $$ = put(builder::accessible(take($1)));
                     }
                 | keyword_variable
                     {
-                      $$ = builder::accessible(owned($1)).release();
+                      $$ = put(builder::accessible(take($1)));
                     }
 
          var_lhs: user_variable
                     {
-                      $$ = builder::assignable(owned($1)).release();
+                      $$ = put(builder::assignable(take($1)));
                     }
                 | keyword_variable
                     {
-                      $$ = builder::assignable(owned($1)).release();
+                      $$ = put(builder::assignable(take($1)));
                     }
 
          backref: tNTH_REF
                     {
-                      $$ = builder::nth_ref(take($1)).release();
+                      $$ = put(builder::nth_ref(take($1)));
                     }
                 | tBACK_REF
                     {
-                      $$ = builder::back_ref(take($1)).release();
+                      $$ = put(builder::back_ref(take($1)));
                     }
 
       superclass: tLT
@@ -2628,7 +2655,7 @@ keyword_variable: kNIL
                     }
                     expr_value term
                     {
-                      $$ = put(std::make_unique<node_with_token>(take($1), owned($3)));
+                      $$ = put(std::make_unique<node_with_token>(take($1), take($3)));
                     }
                 | // nothing
                     {
@@ -2637,7 +2664,7 @@ keyword_variable: kNIL
 
 tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
-                      $$ = builder::tr_genargs(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::tr_genargs(take($1), take($2), take($3)));
                     }
                 | // nothing
                     {
@@ -2650,17 +2677,17 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                   tr_returnsig
                     {
-                      auto genargs = owned($1);
-                      auto args = builder::args(take($2), owned($3), take($4));
-                      auto returnsig = owned($6);
+                      auto genargs = take($1);
+                      auto args = builder::args(take($2), take($3), take($4));
+                      auto returnsig = take($6);
 
                       if (genargs || returnsig) {
-                        $$ = builder::prototype(
+                        $$ = put(builder::prototype(
                           std::move(genargs),
                           std::move(args),
-                          std::move(returnsig)).release();
+                          std::move(returnsig)));
                       } else {
-                        $$ = args.release();
+                        $$ = put(std::move(args));
                       }
                     }
                 | tr_methodgenargs
@@ -2672,42 +2699,42 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       p.lexer->in_kwarg = $<boolean>2;
 
-                      auto genargs = owned($1);
-                      auto args = builder::args(nullptr, owned($3), nullptr);
-                      auto returnsig = owned($4);
+                      auto genargs = take($1);
+                      auto args = builder::args(nullptr, take($3), nullptr);
+                      auto returnsig = take($4);
 
                       if (genargs || returnsig) {
-                        $$ = builder::prototype(
+                        $$ = put(builder::prototype(
                           std::move(genargs),
                           std::move(args),
-                          std::move(returnsig)).release();
+                          std::move(returnsig)));
                       } else {
-                        $$ = args.release();
+                        $$ = put(std::move(args));
                       }
                     }
 
        args_tail: f_kwarg tCOMMA f_kwrest opt_f_block_arg
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 | f_kwarg opt_f_block_arg
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($2));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($2));
+                      $$ = put(std::move(args));
                     }
                 | f_kwrest opt_f_block_arg
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($2));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($2));
+                      $$ = put(std::move(args));
                     }
                 | f_block_arg
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
 
    opt_args_tail: tCOMMA args_tail
@@ -2716,102 +2743,102 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
 
           f_args: f_arg tCOMMA f_optarg tCOMMA f_rest_arg              opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($6));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($6));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA f_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($7));
-                      concat_node_list(args, owned($8));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($7));
+                      concat_node_list(args, take($8));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA f_optarg                                opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA f_optarg tCOMMA                   f_arg opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($6));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($6));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA                 f_rest_arg              opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 | f_arg tCOMMA                 f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($6));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($6));
+                      $$ = put(std::move(args));
                     }
                 | f_arg                                                opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($2));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($2));
+                      $$ = put(std::move(args));
                     }
                 |              f_optarg tCOMMA f_rest_arg              opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 |              f_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($5));
-                      concat_node_list(args, owned($6));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($5));
+                      concat_node_list(args, take($6));
+                      $$ = put(std::move(args));
                     }
                 |              f_optarg                                opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($2));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($2));
+                      $$ = put(std::move(args));
                     }
                 |              f_optarg tCOMMA                   f_arg opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 |                              f_rest_arg              opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($2));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($2));
+                      $$ = put(std::move(args));
                     }
                 |                              f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      auto args = owned($1);
-                      concat_node_list(args, owned($3));
-                      concat_node_list(args, owned($4));
-                      $$ = args.release();
+                      auto args = take($1);
+                      concat_node_list(args, take($3));
+                      concat_node_list(args, take($4));
+                      $$ = put(std::move(args));
                     }
                 |                                                          args_tail
                     {
@@ -2819,20 +2846,20 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
 
        f_bad_arg: tIVAR
                     {
-                      // TODO diagnostic :error, :argument_ivar, nullptr, owned($1)
+                      // TODO diagnostic :error, :argument_ivar, nullptr, take($1)
                     }
                 | tGVAR
                     {
-                      // TODO diagnostic :error, :argument_gvar, nullptr, owned($1)
+                      // TODO diagnostic :error, :argument_gvar, nullptr, take($1)
                     }
                 | tCVAR
                     {
-                      // TODO diagnostic :error, :argument_cvar, nullptr, owned($1)
+                      // TODO diagnostic :error, :argument_cvar, nullptr, take($1)
                     }
 
       f_norm_arg: f_bad_arg
@@ -2852,28 +2879,29 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
       f_arg_item: tr_argsig f_arg_asgn
                     {
-                      auto argsig = owned($1);
+                      auto argsig = take($1);
                       auto arg = builder::arg(take($2));
 
                       if (argsig) {
-                        $$ = builder::typed_arg(std::move(argsig), std::move(arg)).release();
+                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
                       } else {
-                        $$ = arg.release();
+                        $$ = put(std::move(arg));
                       }
                     }
                 | tLPAREN f_margs rparen
                     {
-                      $$ = builder::multi_lhs(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::multi_lhs(take($1), take($2), take($3)));
                     }
 
            f_arg: f_arg_item
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | f_arg tCOMMA f_arg_item
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
 
          f_label: tLABEL
@@ -2889,68 +2917,70 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
             f_kw: tr_argsig f_label arg_value
                     {
-                      auto argsig = owned($1);
-                      auto arg = builder::kwoptarg(take($2), owned($3));
+                      auto argsig = take($1);
+                      auto arg = builder::kwoptarg(take($2), take($3));
 
                       if (argsig) {
-                        $$ = builder::typed_arg(std::move(argsig), std::move(arg)).release();
+                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
                       } else {
-                        $$ = arg.release();
+                        $$ = put(std::move(arg));
                       }
                     }
                 | tr_argsig f_label
                     {
-                      auto argsig = owned($1);
+                      auto argsig = take($1);
                       auto arg = builder::kwarg(take($2));
 
                       if (argsig) {
-                        $$ = builder::typed_arg(std::move(argsig), std::move(arg)).release();
+                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
                       } else {
-                        $$ = arg.release();
+                        $$ = put(std::move(arg));
                       }
                     }
 
       f_block_kw: tr_argsig f_label primary_value
                     {
-                      auto argsig = owned($1);
-                      auto arg = builder::kwoptarg(take($2), owned($3));
+                      auto argsig = take($1);
+                      auto arg = builder::kwoptarg(take($2), take($3));
 
                       if (argsig) {
-                        $$ = builder::typed_arg(std::move(argsig), std::move(arg)).release();
+                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
                       } else {
-                        $$ = arg.release();
+                        $$ = put(std::move(arg));
                       }
                     }
                 | tr_argsig f_label
                     {
-                      auto argsig = owned($1);
+                      auto argsig = take($1);
                       auto arg = builder::kwarg(take($2));
 
                       if (argsig) {
-                        $$ = builder::typed_arg(std::move(argsig), std::move(arg)).release();
+                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
                       } else {
-                        $$ = arg.release();
+                        $$ = put(std::move(arg));
                       }
                     }
 
    f_block_kwarg: f_block_kw
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | f_block_kwarg tCOMMA f_block_kw
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
 
          f_kwarg: f_kw
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | f_kwarg tCOMMA f_kw
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
 
      kwrest_mark: tPOW | tDSTAR
@@ -2961,62 +2991,64 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
                       p.lexer->declare(ident->string());
 
-                      $$ = make_node_list({ builder::kwrestarg(take($1), std::move(ident)) }).release();
+                      $$ = put(make_node_list({ builder::kwrestarg(take($1), std::move(ident)) }));
                     }
                 | kwrest_mark
                     {
-                      $$ = make_node_list(builder::kwrestarg(take($1))).release();
+                      $$ = put(make_node_list(builder::kwrestarg(take($1))));
                     }
 
            f_opt: tr_argsig f_arg_asgn tEQL arg_value
                     {
-                      auto argsig = owned($1);
-                      auto arg = builder::optarg(take($2), take($3), owned($4));
+                      auto argsig = take($1);
+                      auto arg = builder::optarg(take($2), take($3), take($4));
 
                       if (argsig) {
-                        $$ = builder::typed_arg(std::move(argsig), std::move(arg)).release();
+                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
                       } else {
-                        $$ = arg.release();
+                        $$ = put(std::move(arg));
                       }
                     }
 
      f_block_opt: tr_argsig f_arg_asgn tEQL primary_value
                     {
-                      auto argsig = owned($1);
-                      auto arg = builder::optarg(take($2), take($3), owned($4));
+                      auto argsig = take($1);
+                      auto arg = builder::optarg(take($2), take($3), take($4));
 
                       if (argsig) {
-                        $$ = builder::typed_arg(std::move(argsig), std::move(arg)).release();
+                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
                       } else {
-                        $$ = arg.release();
+                        $$ = put(std::move(arg));
                       }
                     }
 
   f_block_optarg: f_block_opt
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | f_block_optarg tCOMMA f_block_opt
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
 
         f_optarg: f_opt
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | f_optarg tCOMMA f_opt
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
 
     restarg_mark: tSTAR2 | tSTAR
 
       f_rest_arg: tr_argsig restarg_mark tIDENTIFIER
                     {
-                      auto argsig = owned($1);
+                      auto argsig = take($1);
                       auto ident = take($3);
 
                       p.lexer->declare(ident->string());
@@ -3027,25 +3059,25 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         restarg = builder::typed_arg(std::move(argsig), std::move(restarg));
                       }
 
-                      $$ = make_node_list(std::move(restarg)).release();
+                      $$ = put(make_node_list(std::move(restarg)));
                     }
                 | tr_argsig restarg_mark
                     {
-                      auto argsig = owned($1);
+                      auto argsig = take($1);
                       auto restarg = builder::restarg(take($2), nullptr);
 
                       if (restarg) {
                         restarg = builder::typed_arg(std::move(argsig), std::move(restarg));
                       }
 
-                      $$ = make_node_list(std::move(restarg)).release();
+                      $$ = put(make_node_list(std::move(restarg)));
                     }
 
      blkarg_mark: tAMPER2 | tAMPER
 
      f_block_arg: tr_argsig blkarg_mark tIDENTIFIER
                     {
-                      auto argsig = owned($1);
+                      auto argsig = take($1);
                       auto ident = take($3);
 
                       p.lexer->declare(ident->string());
@@ -3056,27 +3088,27 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         blockarg = builder::typed_arg(std::move(argsig), std::move(blockarg));
                       }
 
-                      $$ = make_node_list(std::move(blockarg)).release();
+                      $$ = put(make_node_list(std::move(blockarg)));
                     }
                 | tr_argsig blkarg_mark
                     {
-                      auto argsig = owned($1);
+                      auto argsig = take($1);
                       auto blockarg = builder::blockarg(take($2), nullptr);
 
                       if (blockarg) {
                         blockarg = builder::typed_arg(std::move(argsig), std::move(blockarg));
                       }
 
-                      $$ = make_node_list(std::move(blockarg)).release();
+                      $$ = put(make_node_list(std::move(blockarg)));
                     }
 
  opt_f_block_arg: tCOMMA f_block_arg
                     {
-                      $$ = make_node_list(owned($2)).release();
+                      $$ = put(make_node_list(take($2)));
                     }
                 |
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
 
        singleton: var_ref
@@ -3087,35 +3119,36 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
       assoc_list: // nothing
                     {
-                      $$ = make_node_list().release();
+                      $$ = put(make_node_list());
                     }
                 | assocs trailer
 
           assocs: assoc
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
                 | assocs tCOMMA assoc
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
 
            assoc: arg_value tASSOC arg_value
                     {
-                      $$ = builder::pair(owned($1), take($2), owned($3)).release();
+                      $$ = put(builder::pair(take($1), take($2), take($3)));
                     }
                 | tLABEL arg_value
                     {
-                      $$ = builder::pair_keyword(take($1), owned($2)).release();
+                      $$ = put(builder::pair_keyword(take($1), take($2)));
                     }
                 | tSTRING_BEG string_contents tLABEL_END arg_value
                     {
-                      $$ = builder::pair_quoted(take($1), owned($2), take($3), owned($4)).release();
+                      $$ = put(builder::pair_quoted(take($1), take($2), take($3), take($4)));
                     }
                 | tDSTAR arg_value
                     {
-                      $$ = builder::kwsplat(take($1), owned($2)).release();
+                      $$ = put(builder::kwsplat(take($1), take($2)));
                     }
 
        operation: tIDENTIFIER | tCONSTANT | tFID
@@ -3125,13 +3158,13 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
          call_op: tDOT
                     {
                       // what is this???
-                      // $$ = [:dot, owned($1)[1]]
+                      // $$ = put([:dot, take($1)[1]]
                       $$ = $1;
                     }
                 | tANDDOT
                     {
                       // what is this???
-                      // $$ = [:anddot, owned($1)[1]]
+                      // $$ = [:anddot, take($1)[1]]
                       $$ = $1;
                     }
        opt_terms:  | terms
@@ -3167,74 +3200,75 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
         tr_cpath: tCOLON3 tCONSTANT
                     {
-                      $$ = builder::const_global(take($1), take($2)).release();
+                      $$ = put(builder::const_global(take($1), take($2)));
                     }
                 | tCONSTANT
                     {
-                      $$ = builder::const_(take($1)).release();
+                      $$ = put(builder::const_(take($1)));
                     }
                 | tr_cpath tCOLON2 tCONSTANT
                     {
-                      $$ = builder::const_fetch(owned($1), take($2), take($3)).release();
+                      $$ = put(builder::const_fetch(take($1), take($2), take($3)));
                     }
 
        tr_types: tr_types tCOMMA tr_type
                     {
-                      $1->nodes.push_back(owned($3));
-                      $$ = $1;
+                      auto list = take($1);
+                      list->nodes.push_back(take($3));
+                      $$ = put(std::move(list));
                     }
                | tr_type
                     {
-                      $$ = make_node_list(owned($1)).release();
+                      $$ = put(make_node_list(take($1)));
                     }
 
          tr_type: tr_cpath
                     {
-                      $$ = builder::tr_cpath(owned($1)).release();
+                      $$ = put(builder::tr_cpath(take($1)));
                     }
                 | tr_cpath tCOLON2 tLBRACK2 tr_types rbracket
                     {
-                      $$ = builder::tr_geninst(owned($1), take($3), owned($4), take($5)).release();
+                      $$ = put(builder::tr_geninst(take($1), take($3), take($4), take($5)));
                     }
                 | tLBRACK tr_type rbracket
                     {
-                      $$ = builder::tr_array(take($1), owned($2), take($3)).release();
+                      $$ = put(builder::tr_array(take($1), take($2), take($3)));
                     }
                 | tLBRACK tr_type tCOMMA tr_types rbracket
                     {
-                      auto types = owned($4);
+                      auto types = take($4);
 
-                      types->nodes.insert(types->nodes.begin(), owned($2));
+                      types->nodes.insert(types->nodes.begin(), take($2));
 
-                      $$ = builder::tr_tuple(take($1), std::move(types), take($5)).release();
+                      $$ = put(builder::tr_tuple(take($1), std::move(types), take($5)));
                     }
                 | tLBRACE tr_type tASSOC tr_type tRCURLY
                     {
-                      $$ = builder::tr_hash(take($1), owned($2), take($3), owned($4), take($5)).release();
+                      $$ = put(builder::tr_hash(take($1), take($2), take($3), take($4), take($5)));
                     }
                 | tLBRACE tr_blockproto tr_returnsig tRCURLY
                     {
-                      auto blockproto = owned($2);
-                      auto returnsig = owned($3);
+                      auto blockproto = take($2);
+                      auto returnsig = take($3);
 
                       auto prototype = returnsig
                         ? builder::prototype(nullptr, std::move(blockproto), std::move(returnsig))
                         : std::move(blockproto);
 
-                      $$ = builder::tr_proc(take($1), std::move(prototype), take($4)).release();
+                      $$ = put(builder::tr_proc(take($1), std::move(prototype), take($4)));
                     }
                 | tTILDE tr_type
                     {
-                      $$ = builder::tr_nillable(take($1), owned($2)).release();
+                      $$ = put(builder::tr_nillable(take($1), take($2)));
                     }
                 | kNIL
                     {
-                      $$ = builder::tr_nil(take($1)).release();
+                      $$ = put(builder::tr_nil(take($1)));
                     }
                 | tSYMBOL
                     {
-                      $$ = builder::tr_special(take($1)).release();
-                      // diagnostic :error, :bad_special_type, { value: owned($1)[0] }, owned($1)
+                      $$ = put(builder::tr_special(take($1)));
+                      // diagnostic :error, :bad_special_type, { value: take($1)[0] }, take($1)
                     }
                 | tLPAREN tr_union_type rparen
                     {
@@ -3243,7 +3277,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
    tr_union_type: tr_union_type tPIPE tr_type
                     {
-                      $$ = builder::tr_or(owned($1), owned($3)).release();
+                      $$ = put(builder::tr_or(take($1), take($3)));
                     }
                 | tr_type
 
@@ -3268,12 +3302,13 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
   tr_gendeclargs: tr_gendeclargs tCOMMA tCONSTANT
                     {
-                      $1->nodes.push_back(builder::tr_gendeclarg(take($3)));
+                      auto list = take($1);
+                      list->nodes.push_back(builder::tr_gendeclarg(take($3)));
                       $$ = $1;
                     }
                 | tCONSTANT
                     {
-                      $$ = make_node_list(builder::tr_gendeclarg(take($1))).release();
+                      $$ = put(make_node_list(builder::tr_gendeclarg(take($1))));
                     }
 
    tr_blockproto: { p.lexer->extend_dynamic(); }
