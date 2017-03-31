@@ -1600,7 +1600,7 @@
                 | kCLASS cpath superclass
                     {
                       // TODO @static_env.extend_static
-                      // TODO @lexer.push_cmdarg
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     bodystmt kEND
                     {
@@ -1617,7 +1617,7 @@
                                                   std::move(lt_t), std::move(superclass),
                                                   owned($5), take($6)).release();
 
-                      // TODO @lexer.pop_cmdarg
+                      p.lexer->cmdarg = *take($<bool_stack>4);
                       // TODO @static_env.unextend
                     }
                 | kCLASS tLSHFT expr term
@@ -1626,14 +1626,14 @@
                       // TODO @def_level = 0
 
                       // TODO @static_env.extend_static
-                      // TODO @lexer.push_cmdarg
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     bodystmt kEND
                     {
                       $$ = builder::def_sclass(take($1), take($2), owned($3),
                                                    owned($6), take($7)).release();
 
-                      // TODO @lexer.pop_cmdarg
+                      p.lexer->cmdarg = *take($<bool_stack>5);
                       // TODO @static_env.unextend
 
                       // TODO @def_level = $<size>5;
@@ -1641,7 +1641,7 @@
                 | kMODULE cpath
                     {
                       // TODO @static_env.extend_static
-                      // TODO @lexer.push_cmdarg
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     bodystmt kEND
                     {
@@ -1651,21 +1651,21 @@
 
                       $$ = builder::def_module(take($1), owned($2), owned($4), take($5)).release();
 
-                      // TODO @lexer.pop_cmdarg
+                      p.lexer->cmdarg = *take($<bool_stack>3);
                       // TODO @static_env.unextend
                     }
                 | kDEF fname
                     {
                       // TODO @def_level += 1
                       // TODO @static_env.extend_static
-                      // TODO @lexer.push_cmdarg
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     f_arglist bodystmt kEND
                     {
                       $$ = builder::def_method(take($1), take($2),
                                   owned($4), owned($5), take($6)).release();
 
-                      // TODO @lexer.pop_cmdarg
+                      p.lexer->cmdarg = *take($<bool_stack>3);
                       // TODO @static_env.unextend
                       // TODO @def_level -= 1
                     }
@@ -1677,14 +1677,14 @@
                     {
                       // TODO @def_level += 1
                       // TODO @static_env.extend_static
-                      // TODO @lexer.push_cmdarg
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     f_arglist bodystmt kEND
                     {
                       $$ = builder::def_singleton(take($1), owned($2), take($3),
                                   take($5), owned($7), owned($8), take($9)).release();
 
-                      // TODO @lexer.pop_cmdarg
+                      p.lexer->cmdarg = *take($<bool_stack>6);
                       // TODO @static_env.unextend
                       // TODO @def_level -= 1
                     }
