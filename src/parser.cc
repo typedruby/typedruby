@@ -14,9 +14,17 @@ parser::typedruby24::typedruby24(const std::string& source)
 {}
 
 void parser::base::check_kwarg_name(const token_ptr& name) {
-    char c = name->string().at(0);
+  char c = name->string().at(0);
 
-    if (c >= 'A' && c <= 'Z') {
-        // diagnostic :error, :argument_const, nil, name_t
-    }
+  if (c >= 'A' && c <= 'Z') {
+    // diagnostic :error, :argument_const, nil, name_t
+  }
+}
+extern "C" {
+  int ruby_parser_typedruby24_yyparse(parser::typedruby24&);
+}
+
+node_ptr parser::typedruby24::parse() {
+  ruby_parser_typedruby24_yyparse(*this);
+  return std::move(ast);
 }

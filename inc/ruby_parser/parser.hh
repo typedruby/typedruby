@@ -4,11 +4,13 @@
 #include <memory>
 
 #include "lexer.hh"
+#include "node.hh"
 
 namespace ruby_parser {
   namespace parser {
     class base {
     public:
+      node_ptr ast;
       std::unique_ptr<lexer> lexer;
       size_t def_level;
 
@@ -19,7 +21,9 @@ namespace ruby_parser {
 
     class typedruby24 : public base {
     public:
-        typedruby24(const std::string& source);
+      typedruby24(const std::string& source);
+
+      node_ptr parse();
     };
   }
 };
