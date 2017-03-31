@@ -110,6 +110,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
 #include <ruby_parser/lexer.hh>
+#include <cassert>
 
 %% write data nofinal;
 
@@ -117,9 +118,9 @@ using namespace ruby_parser;
 
 %% prepush { check_stack_capacity(); }
 
-lexer::lexer(ruby_version version, std::string source_buffer)
+lexer::lexer(ruby_version version, const std::string& source_buffer_)
   : version(version)
-  , source_buffer(source_buffer)
+  , source_buffer(source_buffer_)
   , cs(lex_en_line_begin)
   , _p(source_buffer.data())
   , _pe(source_buffer.data() + source_buffer.size())
@@ -145,6 +146,12 @@ lexer::lexer(ruby_version version, std::string source_buffer)
   stack.reserve(16);
 
   static_env.push(environment());
+}
+
+void lexer::check_stack_capacity() {
+  if (stack.size() == stack.capacity()) {
+    stack.reserve(stack.capacity() * 2);
+  }
 }
 
 bool lexer::active(std::stack<bool>& state_stack) const {
@@ -185,15 +192,176 @@ void lexer::emit_comment(const char* s, const char* e) {
   (void)e;
 }
 
-std::string lexer::tok_as_string() {
-  return std::string(ts, (size_t)(te - ts));
+std::string lexer::tok() {
+  return tok(ts);
 }
 
-bool lexer::static_env_declared(std::string&& identifier) {
+std::string lexer::tok(const char* start) {
+  return tok(start, te);
+}
+
+std::string lexer::tok(const char* start, const char* end) {
+  assert(start <= end);
+
+  return std::string(start, (size_t)(end - start));
+}
+
+bool lexer::static_env_declared(std::string& identifier) {
   environment& env = static_env.top();
 
   return env.find(identifier) != env.end();
 }
+
+static const lexer::token_table PUNCTUATION = {
+  { "=", token_type::tEQL },
+  { "&", token_type::tAMPER2 },
+  { "|", token_type::tPIPE },
+  { "!", token_type::tBANG },
+  { "^", token_type::tCARET },
+  { "+", token_type::tPLUS },
+  { "-", token_type::tMINUS },
+  { "*", token_type::tSTAR2 },
+  { "/", token_type::tDIVIDE },
+  { "%", token_type::tPERCENT },
+  { "~", token_type::tTILDE },
+  { ",", token_type::tCOMMA },
+  { ";", token_type::tSEMI },
+  { ".", token_type::tDOT },
+  { "..", token_type::tDOT2 },
+  { "...", token_type::tDOT3 },
+  { "[", token_type::tLBRACK2 },
+  { "]", token_type::tRBRACK },
+  { "(", token_type::tLPAREN2 },
+  { ")", token_type::tRPAREN },
+  { "?", token_type::tEH },
+  { ":", token_type::tCOLON },
+  { "&&", token_type::tANDOP },
+  { "||", token_type::tOROP },
+  { "-@", token_type::tUMINUS },
+  { "+@", token_type::tUPLUS },
+  { "~@", token_type::tTILDE },
+  { "**", token_type::tPOW },
+  { "->", token_type::tLAMBDA },
+  { "=~", token_type::tMATCH },
+  { "!~", token_type::tNMATCH },
+  { "==", token_type::tEQ },
+  { "!=", token_type::tNEQ },
+  { ">", token_type::tGT },
+  { ">>", token_type::tRSHFT },
+  { ">=", token_type::tGEQ },
+  { "<", token_type::tLT },
+  { "<<", token_type::tLSHFT },
+  { "<=", token_type::tLEQ },
+  { "=>", token_type::tASSOC },
+  { "::", token_type::tCOLON2 },
+  { "===", token_type::tEQQ },
+  { "<=>", token_type::tCMP },
+  { "[]", token_type::tAREF },
+  { "[]=", token_type::tASET },
+  { "{", token_type::tLCURLY },
+  { "}", token_type::tRCURLY },
+  { "`", token_type::tBACK_REF2 },
+  { "!@", token_type::tBANG },
+  { "&.", token_type::tANDDOT },
+};
+
+static const lexer::token_table PUNCTUATION_BEGIN = {
+  { "&", token_type::tAMPER },
+  { "*", token_type::tSTAR },
+  { "**", token_type::tDSTAR },
+  { "+", token_type::tUPLUS },
+  { "-", token_type::tUMINUS },
+  { "::", token_type::tCOLON3 },
+  { "(", token_type::tLPAREN },
+  { "{", token_type::tLBRACE },
+  { "[", token_type::tLBRACK },
+};
+
+static const lexer::token_table KEYWORDS = {
+  { "if", token_type::kIF_MOD },
+  { "unless", token_type::kUNLESS_MOD },
+  { "while", token_type::kWHILE_MOD },
+  { "until", token_type::kUNTIL_MOD },
+  { "rescue", token_type::kRESCUE_MOD },
+  { "defined?", token_type::kDEFINED },
+  { "BEGIN", token_type::klBEGIN },
+  { "END", token_type::klEND },
+  { "class", token_type::kCLASS },
+  { "module", token_type::kMODULE },
+  { "def", token_type::kDEF },
+  { "undef", token_type::kUNDEF },
+  { "begin", token_type::kBEGIN },
+  { "end", token_type::kEND },
+  { "then", token_type::kTHEN },
+  { "elsif", token_type::kELSIF },
+  { "else", token_type::kELSE },
+  { "ensure", token_type::kENSURE },
+  { "case", token_type::kCASE },
+  { "when", token_type::kWHEN },
+  { "for", token_type::kFOR },
+  { "break", token_type::kBREAK },
+  { "next", token_type::kNEXT },
+  { "redo", token_type::kREDO },
+  { "retry", token_type::kRETRY },
+  { "in", token_type::kIN },
+  { "do", token_type::kDO },
+  { "return", token_type::kRETURN },
+  { "yield", token_type::kYIELD },
+  { "super", token_type::kSUPER },
+  { "self", token_type::kSELF },
+  { "nil", token_type::kNIL },
+  { "true", token_type::kTRUE },
+  { "false", token_type::kFALSE },
+  { "and", token_type::kAND },
+  { "or", token_type::kOR },
+  { "not", token_type::kNOT },
+  { "alias", token_type::kALIAS },
+  { "__FILE__", token_type::k__FILE__ },
+  { "__LINE__", token_type::k__LINE__ },
+  { "__ENCODING__", token_type::k__ENCODING__ },
+};
+
+static const lexer::token_table KEYWORDS_BEGIN = {
+  { "if", token_type::kIF },
+  { "unless", token_type::kUNLESS },
+  { "while", token_type::kWHILE },
+  { "until", token_type::kUNTIL },
+  { "rescue", token_type::kRESCUE },
+  { "defined?", token_type::kDEFINED },
+  { "class", token_type::kCLASS },
+  { "module", token_type::kMODULE },
+  { "def", token_type::kDEF },
+  { "undef", token_type::kUNDEF },
+  { "begin", token_type::kBEGIN },
+  { "end", token_type::kEND },
+  { "then", token_type::kTHEN },
+  { "elsif", token_type::kELSIF },
+  { "else", token_type::kELSE },
+  { "ensure", token_type::kENSURE },
+  { "case", token_type::kCASE },
+  { "when", token_type::kWHEN },
+  { "for", token_type::kFOR },
+  { "break", token_type::kBREAK },
+  { "next", token_type::kNEXT },
+  { "redo", token_type::kREDO },
+  { "retry", token_type::kRETRY },
+  { "in", token_type::kIN },
+  { "do", token_type::kDO },
+  { "return", token_type::kRETURN },
+  { "yield", token_type::kYIELD },
+  { "super", token_type::kSUPER },
+  { "self", token_type::kSELF },
+  { "nil", token_type::kNIL },
+  { "true", token_type::kTRUE },
+  { "false", token_type::kFALSE },
+  { "and", token_type::kAND },
+  { "or", token_type::kOR },
+  { "not", token_type::kNOT },
+  { "alias", token_type::kALIAS },
+  { "__FILE__", token_type::k__FILE__ },
+  { "__LINE__", token_type::k__LINE__ },
+  { "__ENCODING__", token_type::k__ENCODING__ },
+};
 
   /*
   ESCAPES = {
@@ -376,25 +544,40 @@ token_ptr lexer::advance() {
   if (cs == lex_error) {
     size_t start = (size_t)(p - source_buffer.data());
 
-    return std::make_unique<token>(token_type::T_ERROR, start, start + 1, std::string(p - 1, 1));
+    return std::make_unique<token>(token_type::error, start, start + 1, std::string(p - 1, 1));
   }
 
-  return std::make_unique<token>(token_type::T_EOF, source_buffer.size(), source_buffer.size(), "");
+  return std::make_unique<token>(token_type::eof, source_buffer.size(), source_buffer.size(), "");
 }
 
-void lexer::emit0(token_type type) {
-  emit1(type, ts, te);
+void lexer::emit(token_type type) {
+  emit(type, tok());
 }
 
-void lexer::emit1(token_type type, const char* start, const char* end) {
-  emit(type, start, end, start, (size_t)(end - start));
+void lexer::emit(token_type type, const std::string& str) {
+  emit(type, str, ts, te);
 }
 
-void lexer::emit(token_type type, const char* start, const char* end, const char* ptr, size_t len) {
+void lexer::emit(token_type type, const std::string& str, const char* start, const char* end) {
   size_t offset_start = (size_t)(start - source_buffer.data());
   size_t offset_end = (size_t)(end - source_buffer.data());
 
-  token_queue.push(std::make_unique<token>(type, offset_start, offset_end, std::string(ptr, len)));
+  token_queue.push(std::make_unique<token>(type, offset_start, offset_end, str));
+}
+
+void lexer::emit_do(bool do_block) {
+  if (active(cond)) {
+    emit(token_type::kDO_COND, "do");
+  } else if (active(cmdarg) || do_block) {
+    emit(token_type::kDO_BLOCK, "do");
+  } else {
+    emit(token_type::kDO, "do");
+  }
+}
+
+void lexer::emit_table(const token_table& table) {
+  auto value = tok();
+  emit(table.at(value), value);
 }
 
 /*
@@ -426,10 +609,10 @@ void lexer::emit(token_type type, const char* start, const char* end, const char
     if @token_queue.any?
       @token_queue.shift
     elsif @cs == klass.lex_error
-      [ false, [ '$error'.freeze, range(p - 1, p) ] ]
+      [ false, [ "$error", range(p - 1, p) ] ]
     else
       eof = @source_pts.size
-      [ false, [ '$eof'.freeze,   range(eof, eof) ] ]
+      [ false, [ "$eof",   range(eof, eof) ] ]
     end
   end
 
@@ -453,38 +636,8 @@ void lexer::emit(token_type type, const char* start, const char* end, const char
     end
   end
 
-  def tok(s = @ts, e = @te)
-    @source_buffer.slice(s...e)
-  end
-
   def range(s = @ts, e = @te)
     Parser::Source::Range.new(@source_buffer, s, e)
-  end
-
-  def emit(type, value = tok, s = @ts, e = @te)
-    token = [ type, [ value, range(s, e) ] ]
-
-    @token_queue.push(token)
-
-    @tokens.push(token) if @tokens
-
-    token
-  end
-
-  def emit_table(table, s = @ts, e = @te)
-    value = tok(s, e)
-
-    emit(table[value], value, s, e)
-  end
-
-  def emit_do(do_block=false)
-    if @cond.active?
-      emit(:kDO_COND, 'do'.freeze)
-    elsif @cmdarg.active? || do_block
-      emit(:kDO_BLOCK, 'do'.freeze)
-    else
-      emit(:kDO, 'do'.freeze)
-    end
   end
 
   def emit_comment(s = @ts, e = @te)
@@ -622,26 +775,6 @@ void lexer::set_state_expr_endarg() {
   end
 
   # Mapping of strings to parser tokens.
-
-  PUNCTUATION = {
-    '='   => :tEQL,     '&'   => :tAMPER2,  '|'   => :tPIPE,
-    '!'   => :tBANG,    '^'   => :tCARET,   '+'   => :tPLUS,
-    '-'   => :tMINUS,   '*'   => :tSTAR2,   '/'   => :tDIVIDE,
-    '%'   => :tPERCENT, '~'   => :tTILDE,   ','   => :tCOMMA,
-    ';'   => :tSEMI,    '.'   => :tDOT,     '..'  => :tDOT2,
-    '...' => :tDOT3,    '['   => :tLBRACK2, ']'   => :tRBRACK,
-    '('   => :tLPAREN2, ')'   => :tRPAREN,  '?'   => :tEH,
-    ':'   => :tCOLON,   '&&'  => :tANDOP,   '||'  => :tOROP,
-    '-@'  => :tUMINUS,  '+@'  => :tUPLUS,   '~@'  => :tTILDE,
-    '**'  => :tPOW,     '->'  => :tLAMBDA,  '=~'  => :tMATCH,
-    '!~'  => :tNMATCH,  '=='  => :tEQ,      '!='  => :tNEQ,
-    '>'   => :tGT,      '>>'  => :tRSHFT,   '>='  => :tGEQ,
-    '<'   => :tLT,      '<<'  => :tLSHFT,   '<='  => :tLEQ,
-    '=>'  => :tASSOC,   '::'  => :tCOLON2,  '===' => :tEQQ,
-    '<=>' => :tCMP,     '[]'  => :tAREF,    '[]=' => :tASET,
-    '{'   => :tLCURLY,  '}'   => :tRCURLY,  '`'   => :tBACK_REF2,
-    '!@'  => :tBANG,    '&.'  => :tANDDOT,
-  }
 
   PUNCTUATION_BEGIN = {
     '&'   => :tAMPER,   '*'   => :tSTAR,    '**'  => :tDSTAR,
@@ -972,7 +1105,7 @@ void lexer::set_state_expr_endarg() {
   # Use rules in form of `e_bs escape' when you need to parse a sequence.
   e_bs = '\\' % {
     escape_s = p;
-    escape   = "";
+    escape   = nullptr;
   };
 
   #
@@ -1074,7 +1207,7 @@ void lexer::set_state_expr_endarg() {
       if current_literal.regexp?
         # Regular expressions should include escape sequences in their
         # escaped form. On the other hand, escaped newlines are removed.
-        current_literal.extend_string(tok.gsub("\\\n".freeze, ''.freeze), @ts, @te)
+        current_literal.extend_string(tok.gsub("\\\n".freeze, ""), @ts, @te)
       else
         current_literal.extend_string(@escape || tok, @ts, @te)
       end
@@ -1094,11 +1227,11 @@ void lexer::set_state_expr_endarg() {
     end
 
     if current_literal.heredoc?
-      line = tok(@herebody_s, @ts).gsub(/\r+$/, ''.freeze)
+      line = tok(@herebody_s, @ts).gsub(/\r+$/, "")
 
       if version?(18, 19, 20)
         # See ruby:c48b4209c
-        line = line.gsub(/\r.*$/, ''.freeze)
+        line = line.gsub(/\r.*$/, "")
       end
 
       # Try ending the heredoc with the complete most recently
@@ -1170,7 +1303,7 @@ void lexer::set_state_expr_endarg() {
     current_literal.flush_string
     current_literal.extend_content
 
-    emit(:tSTRING_DVAR, nil, @ts, @ts + 1)
+    emit(token_type::tSTRING_DVAR, nil, @ts, @ts + 1)
 
     p = @ts
     fcall expr_variable;
@@ -1208,9 +1341,9 @@ void lexer::set_state_expr_endarg() {
     if current_literal
       if current_literal.end_interp_brace_and_try_closing
         if version?(18, 19)
-          emit(:tRCURLY, '}'.freeze, p - 1, p)
+          emit(token_type::tRCURLY, "}", p - 1, p)
         else
-          emit(:tSTRING_DEND, '}'.freeze, p - 1, p)
+          emit(token_type::tSTRING_DEND, "}", p - 1, p)
         end
 
         if current_literal.saved_herebody_s
@@ -1231,7 +1364,7 @@ void lexer::set_state_expr_endarg() {
     current_literal.flush_string
     current_literal.extend_content
 
-    emit(:tSTRING_DBEG, '#{'.freeze)
+    emit(token_type::tSTRING_DBEG, "#{")
 
     if current_literal.heredoc?
       current_literal.saved_herebody_s = @herebody_s
@@ -1313,7 +1446,7 @@ void lexer::set_state_expr_endarg() {
                      { :options => unknown_options.join }
         end
 
-        emit(:tREGEXP_OPT)
+        emit(token_type::tREGEXP_OPT)
         */
         fnext expr_end; fbreak;
       };
@@ -1321,7 +1454,7 @@ void lexer::set_state_expr_endarg() {
       any
       => {
         /* TODO
-        emit(:tREGEXP_OPT, tok(@ts, @te - 1), @ts, @te - 1)
+        emit(token_type::tREGEXP_OPT, tok(@ts, @te - 1), @ts, @te - 1)
         */
         fhold; fgoto expr_end;
       };
@@ -1435,9 +1568,11 @@ void lexer::set_state_expr_endarg() {
 
   # Ruby is context-sensitive wrt/ local identifiers.
   action local_ident {
-    emit0(token_type::T_IDENTIFIER);
+    auto ident = tok();
 
-    if (static_env_declared(tok_as_string())) {
+    emit(token_type::tIDENTIFIER, ident);
+
+    if (static_env_declared(ident)) {
       fnext expr_endfn; fbreak;
     } else {
       fnext *arg_or_cmdarg(); fbreak;
@@ -1451,11 +1586,11 @@ void lexer::set_state_expr_endarg() {
       global_var
       => {
         if (ts[1] >= '0' && ts[1] <= '9') {
-          /* TODO emit(:tNTH_REF, tok(@ts + 1).to_i) */
+          emit(token_type::tNTH_REF, tok(ts + 1));
         } else if (ts[1] == '&' || ts[1] == '`' || ts[1] == '\'' || ts[1] == '+') {
-          /* TODO emit(:tBACK_REF) */
+          emit(token_type::tBACK_REF);
         } else {
-          /* emit(:tGVAR) */
+          emit(token_type::tGVAR);
         }
 
         fnext *stack_pop(); fbreak;
@@ -1467,7 +1602,7 @@ void lexer::set_state_expr_endarg() {
           /* TODO diagnostic :error, :cvar_name, { :name => tok } */
         }
 
-        /* TODO emit(:tCVAR) */
+        emit(token_type::tCVAR);
         fnext *stack_pop(); fbreak;
       };
 
@@ -1477,7 +1612,7 @@ void lexer::set_state_expr_endarg() {
           /* TODO diagnostic :error, :ivar_name, { :name => tok } */
         }
 
-        /* TODO emit(:tIVAR) */
+        emit(token_type::tIVAR);
         fnext *stack_pop(); fbreak;
       };
   *|;
@@ -1493,15 +1628,15 @@ void lexer::set_state_expr_endarg() {
   #
   expr_fname := |*
       keyword
-      => { /* TODO emit_table(KEYWORDS_BEGIN); */
+      => { emit_table(KEYWORDS_BEGIN);
            fnext expr_endfn; fbreak; };
 
       constant
-      => { /* TODO emit(:tCONSTANT) */
+      => { emit(token_type::tCONSTANT);
            fnext expr_endfn; fbreak; };
 
       bareword [?=!]?
-      => { /* TODO emit(:tIDENTIFIER) */
+      => { emit(token_type::tIDENTIFIER);
            fnext expr_endfn; fbreak; };
 
       global_var
@@ -1514,7 +1649,7 @@ void lexer::set_state_expr_endarg() {
       operator_fname      |
       operator_arithmetic |
       operator_rest
-      => { /* TODO emit_table(PUNCTUATION) */
+      => { emit_table(PUNCTUATION);
            fnext expr_endfn; fbreak; };
 
       '::'
@@ -1548,7 +1683,7 @@ void lexer::set_state_expr_endarg() {
   #
   expr_endfn := |*
       label ( any - ':' )
-      => { /* TODO emit(:tLABEL, tok(@ts, @te - 2), @ts, @te - 1) */
+      => { emit(token_type::tLABEL, tok(ts, te - 2), ts, te - 1);
            fhold; fnext expr_labelarg; fbreak; };
 
       w_space_comment;
@@ -1565,22 +1700,22 @@ void lexer::set_state_expr_endarg() {
   #
   expr_dot := |*
       constant
-      => { /* TODO emit(:tCONSTANT) */
+      => { emit(token_type::tCONSTANT);
            fnext *arg_or_cmdarg(); fbreak; };
 
       call_or_var
-      => { /* TODO emit(:tIDENTIFIER) */
+      => { emit(token_type::tIDENTIFIER);
            fnext *arg_or_cmdarg(); fbreak; };
 
       bareword ambiguous_fid_suffix
-      => { /* TODO emit(:tFID, tok(@ts, tm), @ts, tm) */
+      => { emit(token_type::tFID, tok(ts, tm), ts, tm);
            fnext *arg_or_cmdarg(); p = tm - 1; fbreak; };
 
       # See the comment in `expr_fname`.
       operator_fname      |
       operator_arithmetic |
       operator_rest
-      => { /* TODO emit_table(PUNCTUATION) */
+      => { emit_table(PUNCTUATION);
            fnext expr_arg; fbreak; };
 
       w_any;
@@ -1604,10 +1739,10 @@ void lexer::set_state_expr_endarg() {
       w_space+ e_lparen
       => {
         if (version == ruby_version::RUBY_18) {
-          /* TODO emit(:tLPAREN2, '('.freeze, @te - 1, @te) */
+          emit(token_type::tLPAREN2, "(", te - 1, te);
           fnext expr_value; fbreak;
         } else {
-          /* TODO emit(:tLPAREN_ARG, '('.freeze, @te - 1, @te) */
+          emit(token_type::tLPAREN_ARG, "(", te - 1, te);
           fnext expr_beg; fbreak;
         }
       };
@@ -1615,13 +1750,13 @@ void lexer::set_state_expr_endarg() {
       # meth(1 + 2)
       # Regular method call.
       e_lparen
-      => { /* TODO emit(:tLPAREN2, '('.freeze) */
+      => { emit(token_type::tLPAREN2, "(");
            fnext expr_beg; fbreak; };
 
       # meth [...]
       # Array argument. Compare with indexing `meth[...]`.
       w_space+ e_lbrack
-      => { /* TODO emit(:tLBRACK, '['.freeze, @te - 1, @te) */
+      => { emit(token_type::tLBRACK, "[", te - 1, te);
            fnext expr_beg; fbreak; };
 
       # cmd {}
@@ -1632,7 +1767,7 @@ void lexer::set_state_expr_endarg() {
           p = ts - 1;
           fgoto expr_end;
         } else {
-          /* TODO emit(:tLCURLY, '{'.freeze, @te - 1, @te) */
+          emit(token_type::tLCURLY, "{", te - 1, te);
           fnext expr_value; fbreak;
         }
       };
@@ -1746,9 +1881,7 @@ void lexer::set_state_expr_endarg() {
   expr_cmdarg := |*
       w_space+ e_lparen
       => {
-        /* TODO
-        emit(:tLPAREN_ARG, '('.freeze, @te - 1, @te)
-        */
+        emit(token_type::tLPAREN_ARG, "(", te - 1, te);
 
         if (version == ruby_version::RUBY_18) {
           fnext expr_value; fbreak;
@@ -1759,10 +1892,10 @@ void lexer::set_state_expr_endarg() {
 
       w_space* 'do'
       => {
-        if (cond.top()) {
-          /* TODO emit(:kDO_COND, 'do'.freeze, @te - 2, @te) */
+        if (active(cond)) {
+          emit(token_type::kDO_COND, "do", te - 2, te);
         } else {
-          /* TODO emit(:kDO, 'do'.freeze, @te - 2, @te) */
+          emit(token_type::kDO, "do", te - 2, te);
         }
         fnext expr_value; fbreak;
       };
@@ -1797,15 +1930,15 @@ void lexer::set_state_expr_endarg() {
       => {
         if (!lambda_stack.empty() && lambda_stack.top() == paren_nest) {
           lambda_stack.pop();
-          /* TODO emit(:tLAMBEG, '{'.freeze) */
+          emit(token_type::tLAMBEG, "{");
         } else {
-          /* emit(:tLBRACE_ARG, '{'.freeze) */
+          emit(token_type::tLBRACE_ARG, "{");
         }
         fnext expr_value;
       };
 
       'do'
-      => { /* TODO emit_do(true) */
+      => { emit_do(true);
            fnext expr_value; fbreak; };
 
       w_space_comment;
@@ -1823,7 +1956,7 @@ void lexer::set_state_expr_endarg() {
   #
   expr_mid := |*
       keyword_modifier
-      => { /* TODO emit_table(KEYWORDS) */
+      => { emit_table(KEYWORDS);
            fnext expr_beg; fbreak; };
 
       bareword
@@ -1855,14 +1988,14 @@ void lexer::set_state_expr_endarg() {
       => {
         fhold;
         if (*ts == '-') {
-          /* TODO emit(:tUMINUS_NUM, '-'.freeze, @ts, @ts + 1) */
+          emit(token_type::tUMINUS_NUM, "-", ts, ts + 1);
           fnext expr_end; fbreak;
         }
       };
 
       # splat *a
       '*'
-      => { /* TODO emit(:tSTAR, '*'.freeze) */
+      => { emit(token_type::tSTAR, "*");
            fbreak; };
 
       #
@@ -1978,7 +2111,7 @@ void lexer::set_state_expr_endarg() {
                             version == ruby_version::RUBY_20 ||
                             version == ruby_version::RUBY_21 ||
                             version == ruby_version::RUBY_22)) {
-          /* TODO emit(:tLSHFT, '<<'.freeze, @ts, @ts + 2) */
+          emit(token_type::tLSHFT, "<<", ts, ts + 2);
           p = ts + 1;
           fnext expr_beg; fbreak;
         } else {
@@ -2012,9 +2145,7 @@ void lexer::set_state_expr_endarg() {
 
       ':' bareword ambiguous_symbol_suffix
       => {
-        /* TODO
-        emit(:tSYMBOL, tok(@ts + 1, tm), @ts, tm)
-        */
+        emit(token_type::tSYMBOL, tok(ts + 1, tm), ts, tm);
         p = tm - 1;
         fnext expr_end; fbreak;
       };
@@ -2022,9 +2153,7 @@ void lexer::set_state_expr_endarg() {
       ':' ( bareword | global_var | class_var | instance_var |
             operator_fname | operator_arithmetic | operator_rest )
       => {
-        /* TODO
-        emit(:tSYMBOL, tok(@ts + 1), @ts)
-        */
+        emit(token_type::tSYMBOL, tok(ts + 1), ts, te);
         fnext expr_end; fbreak;
       };
 
@@ -2035,13 +2164,13 @@ void lexer::set_state_expr_endarg() {
       # Character constant, like ?a, ?\n, ?\u1000, and so on
       # Don't accept \u escape with multiple codepoints, like \u{1 2 3}
       '?' ( e_bs ( escape - ( '\u{' (xdigit+ [ \t]+)+ xdigit+ '}' ))
-          | (c_any - c_space_nl - e_bs) % { /* TODO @escape = nil */ }
+          | (c_any - c_space_nl - e_bs) % { escape = nullptr; }
           )
       => {
         if (version == ruby_version::RUBY_18) {
-          /* TODO emit(:tINTEGER, ts[1]) */
+          emit(token_type::tINTEGER, std::to_string(static_cast<unsigned char>(ts[1])));
         } else {
-          /* TODO emit(:tCHARACTER, @escape || tok(@ts + 1))) */
+          emit(token_type::tCHARACTER, escape ? *escape : tok(ts + 1));
         }
 
         fnext expr_end; fbreak;
@@ -2082,38 +2211,38 @@ void lexer::set_state_expr_endarg() {
       => {
         if (!lambda_stack.empty() && lambda_stack.top() == paren_nest) {
           lambda_stack.pop();
-          /* TODO emit(:tLAMBEG, '{'.freeze) */
+          emit(token_type::tLAMBEG, "{");
         } else {
-          /* TODO emit(:tLBRACE, '{'.freeze) */
+          emit(token_type::tLBRACE, "{");
         }
         fbreak;
       };
 
       # a([1, 2])
       e_lbrack
-      => { /* TODO emit(:tLBRACK, '['.freeze) */
+      => { emit(token_type::tLBRACK, "[");
            fbreak; };
 
       # a()
       e_lparen
-      => { /* TODO emit(:tLPAREN, '('.freeze) */
+      => { emit(token_type::tLPAREN, "(");
            fbreak; };
 
       # a(+b)
       punctuation_begin
-      => { /* TODO emit_table(PUNCTUATION_BEGIN) */
+      => { emit_table(PUNCTUATION_BEGIN);
            fbreak; };
 
       # rescue Exception => e: Block rescue.
       # Special because it should transition to expr_mid.
       'rescue' %{ tm = p; } '=>'?
-      => { /* TODO emit(:kRESCUE, 'rescue'.freeze, @ts, tm) */
+      => { emit(token_type::kRESCUE, "rescue", ts, tm);
            p = tm - 1;
            fnext expr_mid; fbreak; };
 
       # if a: Statement if.
       keyword_modifier
-      => { /* TODO emit_table(KEYWORDS_BEGIN) */
+      => { emit_table(KEYWORDS_BEGIN);
            fnext expr_value; fbreak; };
 
       #
@@ -2125,20 +2254,22 @@ void lexer::set_state_expr_endarg() {
         fhold;
 
         if (version == ruby_version::RUBY_18) {
+          auto ident = tok(ts, te - 2);
+
           if (*ts >= 'A' && *ts <= 'Z') {
-            /* TODO emit(:tCONSTANT, ident, @ts, @te - 2) */
+            emit(token_type::tCONSTANT, ident, ts, te - 2);
           } else {
-            /* TODO emit(:tIDENTIFIER, ident, @ts, @te - 2) */
+            emit(token_type::tIDENTIFIER, ident, ts, te - 2);
           }
           fhold; // continue as a symbol
 
-          if (static_env_declared(tok_as_string())) {
+          if (static_env_declared(ident)) {
             fnext expr_end;
           } else {
             fnext *arg_or_cmdarg();
           }
         } else {
-          /* TODO emit(:tLABEL, tok(@ts, @te - 2), @ts, @te - 1) */
+          emit(token_type::tLABEL, tok(ts, te - 2), ts, te - 1);
           fnext expr_labelarg;
         }
 
@@ -2225,7 +2356,7 @@ void lexer::set_state_expr_endarg() {
           type = literal_type::DQUOTE_STRING;
         }
 
-        fgoto *push_literal(type, tok_as_string(), ts);
+        fgoto *push_literal(type, tok(), ts);
       };
 
       w_space_comment;
@@ -2246,9 +2377,7 @@ void lexer::set_state_expr_endarg() {
 
       '->'
       => {
-        /* TODO
-        emit(:tLAMBDA, '->'.freeze, @ts, @ts + 2)
-        */
+        emit(token_type::tLAMBDA, "->", ts, ts + 2);
 
         lambda_stack.push(paren_nest);
         fnext expr_endfn; fbreak;
@@ -2260,15 +2389,15 @@ void lexer::set_state_expr_endarg() {
           lambda_stack.pop();
 
           if (ts[0] == '{') {
-            /* TODO emit(:tLAMBEG, '{'.freeze) */
+            emit(token_type::tLAMBEG, "{");
           } else { // 'do'
-            /* TODO emit(:kDO_LAMBDA, 'do'.freeze) */
+            emit(token_type::kDO_LAMBDA, "do");
           }
         } else {
           if (ts[0] == '{') {
-            /* TODO emit(:tLCURLY, '{'.freeze) */
+            emit(token_type::tLCURLY, "{");
           } else { // 'do'
-            /* TODO emit_do */
+            emit_do();
           }
         }
 
@@ -2280,33 +2409,31 @@ void lexer::set_state_expr_endarg() {
       #
 
       keyword_with_fname
-      => { /* TODO emit_table(KEYWORDS) */
+      => { emit_table(KEYWORDS);
            fnext expr_fname; fbreak; };
 
       'class' w_any* '<<'
-      => { /* TODO emit(:kCLASS, 'class'.freeze, @ts, @ts + 5)
-           emit(:tLSHFT, '<<'.freeze,    @te - 2, @te) */
+      => { emit(token_type::kCLASS, "class", ts, ts + 5);
+           emit(token_type::tLSHFT, "<<",    te - 2, te);
            fnext expr_value; fbreak; };
 
       # a if b:c: Syntax error.
       keyword_modifier
-      => { /* TODO emit_table(KEYWORDS) */
+      => { emit_table(KEYWORDS);
            fnext expr_beg; fbreak; };
 
       # elsif b:c: elsif b(:c)
       keyword_with_value
-      => { /* TODO emit_table(KEYWORDS) */
+      => { emit_table(KEYWORDS);
            fnext expr_value; fbreak; };
 
       keyword_with_mid
-      => { /* TODO emit_table(KEYWORDS) */
+      => { emit_table(KEYWORDS);
            fnext expr_mid; fbreak; };
 
       keyword_with_arg
       => {
-        /* TODO
-        emit_table(KEYWORDS)
-        */
+        emit_table(KEYWORDS);
 
         if (version == ruby_version::RUBY_18 && ts + 3 == te && ts[0] == 'n' && ts[1] == 'o' && ts[2] == 't') {
           fnext expr_beg; fbreak;
@@ -2318,19 +2445,21 @@ void lexer::set_state_expr_endarg() {
       '__ENCODING__'
       => {
         if (version == ruby_version::RUBY_18) {
-          /* TODO emit(:tIDENTIFIER) */
+          auto ident = tok();
 
-          if (!static_env_declared(tok_as_string())) {
+          emit(token_type::tIDENTIFIER, ident);
+
+          if (!static_env_declared(ident)) {
             fnext *arg_or_cmdarg();
           }
         } else {
-          /* TODO emit(:k__ENCODING__, '__ENCODING__'.freeze) */
+          emit(token_type::k__ENCODING__, "__ENCODING__");
         }
         fbreak;
       };
 
       keyword_with_end
-      => { /* TODO emit_table(KEYWORDS) */
+      => { emit_table(KEYWORDS);
            fbreak; };
 
       #
@@ -2349,7 +2478,7 @@ void lexer::set_state_expr_endarg() {
 
         if (num_suffix_s[-1] == '_') {
           /* TODO
-          diagnostic :error, :trailing_in_number, { :character => '_'.freeze },
+          diagnostic :error, :trailing_in_number, { :character => "_" },
                      range(@te - 1, @te)
           */
         } else if (num_digits_s == num_suffix_s && num_base == 8 && version == ruby_version::RUBY_18) {
@@ -2370,10 +2499,9 @@ void lexer::set_state_expr_endarg() {
         }
 
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          /* TODO emit(:tINTEGER, digits.to_i(@num_base), @ts, @num_suffix_s) */
+          /* TODO emit(token_type::tINTEGER, digits.to_i(@num_base), @ts, @num_suffix_s) */
           p = num_suffix_s - 1;
         } else {
-          fprintf(stderr, "tINTEGER: %.*s\n", (int)(te - ts), ts);
           /* TODO @num_xfrm.call(digits.to_i(@num_base)) */
         }
         fbreak;
@@ -2395,7 +2523,7 @@ void lexer::set_state_expr_endarg() {
                      range(@te - 1, @te)
           */
         } else {
-          /* TODO emit(:tINTEGER, tok(@ts, @te - 1).to_i, @ts, @te - 1) */
+          emit(token_type::tINTEGER, tok(ts, te - 1), ts, te - 1);
           fhold; fbreak;
         }
       };
@@ -2409,9 +2537,7 @@ void lexer::set_state_expr_endarg() {
                      range(@te - 1, @te)
           */
         } else {
-          /* TODO
-          emit(:tFLOAT, tok(@ts, @te - 1).to_f, @ts, @te - 1)
-          */
+          emit(token_type::tFLOAT, tok(ts, te - 1), ts, te - 1);
           fhold; fbreak;
         }
       };
@@ -2421,10 +2547,10 @@ void lexer::set_state_expr_endarg() {
       | flo_frac          %{ num_suffix_s = p; } flo_suffix
       )
       => {
-        /* TODO digits = tok(@ts, @num_suffix_s) */
+        auto digits = tok(ts, num_suffix_s);
 
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          /* TODO emit(:tFLOAT, Float(digits), @ts, @num_suffix_s) */
+          emit(token_type::tFLOAT, digits, ts, num_suffix_s);
           p = num_suffix_s - 1;
         } else {
           /* TODO @num_xfrm.call(digits) */
@@ -2457,11 +2583,11 @@ void lexer::set_state_expr_endarg() {
       #
 
       constant
-      => { /* TODO emit(:tCONSTANT) */
+      => { emit(token_type::tCONSTANT);
            fnext *arg_or_cmdarg(); fbreak; };
 
       constant ambiguous_const_suffix
-      => { /* TODO emit(:tCONSTANT, tok(@ts, tm), @ts, tm) */
+      => { emit(token_type::tCONSTANT, tok(ts, tm), ts, tm);
            p = tm - 1; fbreak; };
 
       global_var | class_var_v | instance_var_v
@@ -2472,7 +2598,7 @@ void lexer::set_state_expr_endarg() {
       #
 
       '.' | '&.' | '::'
-      => { /* TODO emit_table(PUNCTUATION) */
+      => { emit_table(PUNCTUATION);
            fnext expr_dot; fbreak; };
 
       call_or_var
@@ -2482,10 +2608,10 @@ void lexer::set_state_expr_endarg() {
       => {
         if (tm == te) {
           // Suffix was consumed, e.g. foo!
-          /* TODO emit(:tFID) */
+          emit(token_type::tFID);
         } else {
           // Suffix was not consumed, e.g. foo!=
-          /* emit(:tIDENTIFIER, tok(@ts, tm), @ts, tm) */
+          /* emit(token_type::tIDENTIFIER, tok(@ts, tm), @ts, tm) */
           p = tm - 1;
         }
         fnext expr_arg; fbreak;
@@ -2499,12 +2625,12 @@ void lexer::set_state_expr_endarg() {
       | operator_arithmetic
       | operator_rest
       )
-      => { /* TODO emit_table(PUNCTUATION) */
+      => { emit_table(PUNCTUATION);
            fnext expr_beg; fbreak; };
 
       e_rbrace | e_rparen | ']'
       => {
-        /* TODO emit_table(PUNCTUATION) */
+        emit_table(PUNCTUATION);
         lexpop(cond); lexpop(cmdarg);
 
         if (ts[0] == '}' || ts[0] == ']') {
@@ -2518,19 +2644,19 @@ void lexer::set_state_expr_endarg() {
       };
 
       operator_arithmetic '='
-      => { /* TODO emit(:tOP_ASGN, tok(@ts, @te - 1)) */
+      => { emit(token_type::tOP_ASGN, tok(ts, te - 1));
            fnext expr_beg; fbreak; };
 
       '?'
-      => { /* TODO emit(:tEH, '?'.freeze) */
+      => { emit(token_type::tEH, "?");
            fnext expr_value; fbreak; };
 
       e_lbrack
-      => { /* TODO emit(:tLBRACK2, '['.freeze) */
+      => { emit(token_type::tLBRACK2, "[");
            fnext expr_beg; fbreak; };
 
       punctuation_end
-      => { /* TODO emit_table(PUNCTUATION) */
+      => { emit_table(PUNCTUATION);
            fnext expr_beg; fbreak; };
 
       #
@@ -2543,7 +2669,7 @@ void lexer::set_state_expr_endarg() {
       => { fgoto leading_dot; };
 
       ';'
-      => { /* TODO emit(:tSEMI, ';'.freeze) */
+      => { emit(token_type::tSEMI, ";");
            fnext expr_value; fbreak; };
 
       '\\' c_line {
@@ -2571,7 +2697,7 @@ void lexer::set_state_expr_endarg() {
       => { p = tm - 1; fgoto expr_end; };
 
       any
-      => { /* TODO emit(:tNL, nil, @newline_s, @newline_s + 1) */
+      => { emit(token_type::tNL, std::string(), newline_s, newline_s + 1);
            fhold; fnext line_begin; fbreak; };
   *|;
 
@@ -2582,7 +2708,7 @@ void lexer::set_state_expr_endarg() {
   line_comment := |*
       '=end' c_line* c_nl_zlen
       => {
-        /* TODO emit_comment(@eq_begin_s, @te) */
+        emit_comment(eq_begin_s, te);
         fgoto line_begin;
       };
 

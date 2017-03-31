@@ -1,3 +1,4 @@
 /librubyparser.a
+/main
 /src/Lexer.cc
 *.o
