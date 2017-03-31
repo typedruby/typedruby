@@ -97,6 +97,8 @@ namespace ruby_parser {
     literal& literal();
     int pop_literal();
 
+    token_ptr advance_();
+
   public:
     state_stack cond;
     state_stack cmdarg;
