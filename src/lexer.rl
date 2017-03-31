@@ -1022,26 +1022,26 @@ void lexer::set_state_expr_value() {
   }
 
   action slash_c_char {
-    /* TODO
-    @escape = encode_escape(@escape[0].ord & 0x9f)
-    */
+    // TODO multibyte
+    char c = escape->at(0) & 0x9f;
+    escape = std::make_unique<std::string>(&c, 1);
   }
 
   action slash_m_char {
-    /* TODO
-    @escape = encode_escape(@escape[0].ord | 0x80)
-    */
+    // TODO multibyte
+    char c = escape->at(0) | 0x80;
+    escape = std::make_unique<std::string>(&c, 1);
   }
 
   maybe_escaped_char = (
         '\\' c_any      %unescape_char
-    | ( c_any - [\\] )  % { /* TODO @escape = @source_buffer.slice(p - 1).chr */ }
+    | ( c_any - [\\] )  % { escape = std::make_unique<std::string>(p - 1, 1); /* TODO multibyte */ }
   );
 
   maybe_escaped_ctrl_char = ( # why?!
         '\\' c_any      %unescape_char %slash_c_char
-    |   '?'             % { /* TODO @escape = "\x7f" */ }
-    | ( c_any - [\\?] ) % { /* TODO @escape = @source_buffer.slice(p - 1).chr */ } %slash_c_char
+    |   '?'             % { escape = std::make_unique<std::string>("\x7f"); }
+    | ( c_any - [\\?] ) % { escape = std::make_unique<std::string>(p - 1, 1); /* TODO multibyte */ } %slash_c_char
   );
 
   escape = (
