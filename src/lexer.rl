@@ -580,6 +580,29 @@ void lexer::emit_table(const token_table& table) {
   emit(table.at(value), value);
 }
 
+void lexer::emit_num(const std::string& num) {
+  switch (num_xfrm) {
+    case num_xfrm_type::NONE:
+      emit(token_type::tINTEGER, num);
+      break;
+    case num_xfrm_type::RATIONAL:
+      emit(token_type::tRATIONAL, num);
+      break;
+    case num_xfrm_type::IMAGINARY:
+      emit(token_type::tIMAGINARY, num);
+      break;
+    case num_xfrm_type::RATIONAL_IMAGINARY:
+      emit(token_type::tRATIONAL_IMAGINARY, num);
+      break;
+    case num_xfrm_type::FLOAT:
+      emit(token_type::tFLOAT, num);
+      break;
+    case num_xfrm_type::FLOAT_IMAGINARY:
+      emit(token_type::tFLOAT_IMAGINARY, num);
+      break;
+  }
+}
+
 /*
   # Return next token: [type, value].
   def advance
@@ -949,16 +972,16 @@ void lexer::set_state_expr_endarg() {
     ''   % { num_xfrm = num_xfrm_type::NONE; }
   | 'r'  % { num_xfrm = num_xfrm_type::RATIONAL; }
   | 'i'  % { num_xfrm = num_xfrm_type::IMAGINARY; }
-  | 'ri' % { num_xfrm = num_xfrm_type::IMAGINARY_RATIONAL; };
+  | 'ri' % { num_xfrm = num_xfrm_type::RATIONAL_IMAGINARY; };
 
   flo_pow_suffix =
     ''   % { num_xfrm = num_xfrm_type::FLOAT; }
-  | 'i'  % { num_xfrm = num_xfrm_type::IMAGINARY_FLOAT; };
+  | 'i'  % { num_xfrm = num_xfrm_type::FLOAT_IMAGINARY; };
 
   flo_suffix =
     flo_pow_suffix
   | 'r'  % { num_xfrm = num_xfrm_type::RATIONAL; }
-  | 'ri' % { num_xfrm = num_xfrm_type::IMAGINARY_RATIONAL; };
+  | 'ri' % { num_xfrm = num_xfrm_type::RATIONAL_IMAGINARY; };
 
   #
   # === ESCAPE SEQUENCE PARSING ===
@@ -2474,7 +2497,7 @@ void lexer::set_state_expr_endarg() {
       | '0'   digit* '_'? %{ num_base = 8;  num_digits_s = ts; } int_dec
       ) %{ num_suffix_s = p; } int_suffix
       => {
-        // TODO std::string digits(num_digits_s, (size_t)(num_suffix_s - num_digits_s));
+        auto digits = tok(num_digits_s, num_suffix_s);
 
         if (num_suffix_s[-1] == '_') {
           /* TODO
@@ -2499,10 +2522,10 @@ void lexer::set_state_expr_endarg() {
         }
 
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          /* TODO emit(token_type::tINTEGER, digits.to_i(@num_base), @ts, @num_suffix_s) */
+          emit(token_type::tINTEGER, digits, ts, num_suffix_s);
           p = num_suffix_s - 1;
         } else {
-          /* TODO @num_xfrm.call(digits.to_i(@num_base)) */
+          emit_num(digits);
         }
         fbreak;
       };
@@ -2553,7 +2576,7 @@ void lexer::set_state_expr_endarg() {
           emit(token_type::tFLOAT, digits, ts, num_suffix_s);
           p = num_suffix_s - 1;
         } else {
-          /* TODO @num_xfrm.call(digits) */
+          emit_num(digits);
         }
         fbreak;
       };
