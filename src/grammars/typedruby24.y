@@ -175,6 +175,8 @@
   tIMAGINARY          1140
   tLABEL_END          1141
   tANDDOT             1142
+  tRATIONAL_IMAGINARY 1143
+  tFLOAT_IMAGINARY    1144
 
 %type <node>
   arg
@@ -2534,6 +2536,16 @@ regexp_contents: // nothing
                     {
                       // TODO @lexer.state = :expr_endarg
                       $$ = builder::complex(take($1)).release();
+                    }
+                | tRATIONAL_IMAGINARY
+                    {
+                      // TODO @lexer.state = :expr_endarg
+                      $$ = builder::rational_complex(take($1)).release();
+                    }
+                | tFLOAT_IMAGINARY
+                    {
+                      // TODO @lexer.state = :expr_endarg
+                      $$ = builder::float_complex(take($1)).release();
                     }
 
    user_variable: tIDENTIFIER

@@ -50,6 +50,7 @@ namespace ruby_parser {
     node_ptr false_(token_ptr tok);
     node_ptr file_literal(token_ptr tok);
     node_ptr float_(token_ptr tok);
+    node_ptr float_complex(token_ptr tok);
     node_ptr for_(token_ptr for_, node_ptr iterator, token_ptr in, node_ptr iteratee, token_ptr do_, node_ptr body, token_ptr end);
     node_ptr gvar(token_ptr tok);
     node_ptr ident(token_ptr tok);
@@ -85,6 +86,7 @@ namespace ruby_parser {
     node_ptr range_exclusive(node_ptr lhs, token_ptr oper, node_ptr rhs);
     node_ptr range_inclusive(node_ptr lhs, token_ptr oper, node_ptr rhs);
     node_ptr rational(token_ptr tok);
+    node_ptr rational_complex(token_ptr tok);
     node_ptr regexp_compose(token_ptr begin, node_list_ptr parts, token_ptr end, node_ptr options);
     node_ptr regexp_options(token_ptr regopt);
     node_ptr rescue_body(token_ptr rescue, node_ptr exc_list, token_ptr assoc, node_ptr exc_var, token_ptr then, node_ptr body);
