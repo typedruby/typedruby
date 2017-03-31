@@ -492,7 +492,7 @@ static const lexer::token_table KEYWORDS_BEGIN = {
   end
 */
 
-token_ptr lexer::advance() {
+token_ptr lexer::advance_() {
   if (!token_queue.empty()) {
     token_ptr token = std::move(token_queue.front());
     token_queue.pop();
@@ -2768,6 +2768,10 @@ void lexer::set_state_expr_value() {
   *|;
 
 }%%
+
+token_ptr lexer::advance() {
+  return advance_();
+}
 
 void lexer::extend_static() {
   static_env.emplace();
