@@ -4,6 +4,7 @@
   #include <ruby_parser/token.hh>
   #include <ruby_parser/lexer.hh>
   #include <ruby_parser/parser.hh>
+  #include <ruby_parser/state_stack.hh>
   #include <iterator>
   #include <iostream>
   #include <utility>
@@ -26,7 +27,7 @@
   node_list* list;
   size_t size;
   bool boolean;
-  std::unique_ptr<std::stack<bool>>* bool_stack;
+  std::unique_ptr<state_stack>* bool_stack;
 }
 
 // mirrored in inc/ruby_parser/token.hh
@@ -1389,7 +1390,7 @@
                 | kBEGIN
                     {
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
-                      p.lexer->cmdarg = std::stack<bool>();
+                      p.lexer->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
@@ -1400,7 +1401,7 @@
                 | tLPAREN_ARG
                     {
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
-                      p.lexer->cmdarg = std::stack<bool>();
+                      p.lexer->cmdarg.clear();
                     }
                     stmt
                     {
@@ -2026,12 +2027,12 @@ opt_block_args_tail:
                   f_larglist
                     {
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
-                      p.lexer->cmdarg = std::stack<bool>();
+                      p.lexer->cmdarg.clear();
                     }
                   lambda_body
                     {
                       p.lexer->cmdarg = *take($<bool_stack>3);
-                      p.lexer->lexpop(p.lexer->cmdarg);
+                      p.lexer->cmdarg.lexpop();
 
                       auto delimited_block = take($4);
 
@@ -2221,7 +2222,7 @@ opt_block_args_tail:
                     }
                     {
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
-                      p.lexer->cmdarg = std::stack<bool>();
+                      p.lexer->cmdarg.clear();
                     }
                     opt_block_param compstmt
                     {
@@ -2237,7 +2238,7 @@ opt_block_args_tail:
                     }
                     {
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
-                      p.lexer->cmdarg = std::stack<bool>();
+                      p.lexer->cmdarg.clear();
                     }
                     opt_block_param compstmt
                     {
@@ -2470,8 +2471,8 @@ regexp_contents: // nothing
                     }
                     compstmt tSTRING_DEND
                     {
-                      p.lexer->lexpop(p.lexer->cond);
-                      p.lexer->lexpop(p.lexer->cmdarg);
+                      p.lexer->cond.lexpop();
+                      p.lexer->cmdarg.lexpop();
 
                       $$ = builder::begin(take($1), owned($3), take($4)).release();
                     }

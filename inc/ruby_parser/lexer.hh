@@ -10,6 +10,7 @@
 
 #include "literal.hh"
 #include "token.hh"
+#include "state_stack.hh"
 
 namespace ruby_parser {
   enum class ruby_version {
@@ -81,7 +82,6 @@ namespace ruby_parser {
     const char* herebody_s;   // starting position of current heredoc line
 
     void check_stack_capacity();
-    bool active(std::stack<bool>& state_stack) const;
     int stack_pop();
     int arg_or_cmdarg();
     void emit_comment(const char* s, const char* e);
@@ -100,8 +100,8 @@ namespace ruby_parser {
     int pop_literal();
 
   public:
-    std::stack<bool> cond;
-    std::stack<bool> cmdarg;
+    state_stack cond;
+    state_stack cmdarg;
 
     lexer(ruby_version version, const std::string& source_buffer_);
 
@@ -111,8 +111,6 @@ namespace ruby_parser {
     void set_state_expr_endarg();
     void set_state_expr_fname();
     void set_state_expr_value();
-
-    void lexpop(std::stack<bool>& state_stack);
 
     void extend_static();
     void extend_dynamic();
