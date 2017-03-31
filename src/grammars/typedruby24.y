@@ -3,13 +3,19 @@
   #include <ruby_parser/node.hh>
   #include <ruby_parser/token.hh>
   #include <ruby_parser/lexer.hh>
+  #include <ruby_parser/parser.hh>
   #include <iterator>
+  #include <iostream>
   #include <utility>
+  #include <cstdlib>
 
   using namespace ruby_parser;
 %}
 
 %pure-parser
+
+%lex-param { parser::typedruby24& p }
+%parse-param { parser::typedruby24& p }
 
 %union {
   token_ptr* token;
@@ -23,25 +29,152 @@
   std::stack<bool>* bool_stack;
 }
 
+// mirrored in inc/ruby_parser/token.hh
+// if any of these token values are changed here, the header must be updated
+// as well.
 %token <token>
-      kCLASS kMODULE kDEF kUNDEF kBEGIN kRESCUE kENSURE kEND kIF kUNLESS
-      kTHEN kELSIF kELSE kCASE kWHEN kWHILE kUNTIL kFOR kBREAK kNEXT
-      kREDO kRETRY kIN kDO kDO_COND kDO_BLOCK kDO_LAMBDA kRETURN kYIELD kSUPER
-      kSELF kNIL kTRUE kFALSE kAND kOR kNOT kIF_MOD kUNLESS_MOD kWHILE_MOD
-      kUNTIL_MOD kRESCUE_MOD kALIAS kDEFINED klBEGIN klEND k__LINE__
-      k__FILE__ k__ENCODING__ tIDENTIFIER tFID tGVAR tIVAR tCONSTANT
-      tLABEL tCVAR tNTH_REF tBACK_REF tSTRING_CONTENT tINTEGER tFLOAT
-      tUPLUS tUMINUS tUMINUS_NUM tPOW tCMP tEQ tEQQ tNEQ tEQL
-      tGEQ tLEQ tANDOP tOROP tMATCH tNMATCH tDOT tDOT2 tDOT3 tAREF
-      tASET tLSHFT tRSHFT tCOLON2 tCOLON3 tOP_ASGN tASSOC tLPAREN
-      tLPAREN2 tRPAREN tLPAREN_ARG tLBRACK tLBRACK2 tRBRACK tLBRACE
-      tLBRACE_ARG tSTAR tSTAR2 tAMPER tAMPER2 tTILDE tPERCENT tDIVIDE
-      tDSTAR tPLUS tMINUS tLT tGT tPIPE tBANG tCARET tLCURLY tRCURLY
-      tBACK_REF2 tSYMBEG tSTRING_BEG tXSTRING_BEG tREGEXP_BEG tREGEXP_OPT
-      tWORDS_BEG tQWORDS_BEG tSYMBOLS_BEG tQSYMBOLS_BEG tSTRING_DBEG
-      tSTRING_DVAR tSTRING_END tSTRING_DEND tSTRING tSYMBOL
-      tNL tEH tCOLON tCOMMA tSPACE tSEMI tLAMBDA tLAMBEG tCHARACTER
-      tRATIONAL tIMAGINARY tLABEL_END tANDDOT
+  kCLASS              1001
+  kMODULE             1002
+  kDEF                1003
+  kUNDEF              1004
+  kBEGIN              1005
+  kRESCUE             1006
+  kENSURE             1007
+  kEND                1008
+  kIF                 1009
+  kUNLESS             1010
+  kTHEN               1011
+  kELSIF              1012
+  kELSE               1013
+  kCASE               1014
+  kWHEN               1015
+  kWHILE              1016
+  kUNTIL              1017
+  kFOR                1018
+  kBREAK              1019
+  kNEXT               1020
+  kREDO               1021
+  kRETRY              1022
+  kIN                 1023
+  kDO                 1024
+  kDO_COND            1025
+  kDO_BLOCK           1026
+  kDO_LAMBDA          1027
+  kRETURN             1028
+  kYIELD              1029
+  kSUPER              1030
+  kSELF               1031
+  kNIL                1032
+  kTRUE               1033
+  kFALSE              1034
+  kAND                1035
+  kOR                 1036
+  kNOT                1037
+  kIF_MOD             1038
+  kUNLESS_MOD         1039
+  kWHILE_MOD          1040
+  kUNTIL_MOD          1041
+  kRESCUE_MOD         1042
+  kALIAS              1043
+  kDEFINED            1044
+  klBEGIN             1045
+  klEND               1046
+  k__LINE__           1047
+  k__FILE__           1048
+  k__ENCODING__       1049
+  tIDENTIFIER         1050
+  tFID                1051
+  tGVAR               1052
+  tIVAR               1053
+  tCONSTANT           1054
+  tLABEL              1055
+  tCVAR               1056
+  tNTH_REF            1057
+  tBACK_REF           1058
+  tSTRING_CONTENT     1059
+  tINTEGER            1060
+  tFLOAT              1061
+  tUPLUS              1062
+  tUMINUS             1063
+  tUMINUS_NUM         1064
+  tPOW                1065
+  tCMP                1066
+  tEQ                 1067
+  tEQQ                1068
+  tNEQ                1069
+  tEQL                1070
+  tGEQ                1071
+  tLEQ                1072
+  tANDOP              1073
+  tOROP               1074
+  tMATCH              1075
+  tNMATCH             1076
+  tDOT                1077
+  tDOT2               1078
+  tDOT3               1079
+  tAREF               1080
+  tASET               1081
+  tLSHFT              1082
+  tRSHFT              1083
+  tCOLON2             1084
+  tCOLON3             1085
+  tOP_ASGN            1086
+  tASSOC              1087
+  tLPAREN             1088
+  tLPAREN2            1089
+  tRPAREN             1090
+  tLPAREN_ARG         1091
+  tLBRACK             1092
+  tLBRACK2            1093
+  tRBRACK             1094
+  tLBRACE             1095
+  tLBRACE_ARG         1096
+  tSTAR               1097
+  tSTAR2              1098
+  tAMPER              1099
+  tAMPER2             1100
+  tTILDE              1101
+  tPERCENT            1102
+  tDIVIDE             1103
+  tDSTAR              1104
+  tPLUS               1105
+  tMINUS              1106
+  tLT                 1107
+  tGT                 1108
+  tPIPE               1109
+  tBANG               1110
+  tCARET              1111
+  tLCURLY             1112
+  tRCURLY             1113
+  tBACK_REF2          1114
+  tSYMBEG             1115
+  tSTRING_BEG         1116
+  tXSTRING_BEG        1117
+  tREGEXP_BEG         1118
+  tREGEXP_OPT         1119
+  tWORDS_BEG          1120
+  tQWORDS_BEG         1121
+  tSYMBOLS_BEG        1122
+  tQSYMBOLS_BEG       1123
+  tSTRING_DBEG        1124
+  tSTRING_DVAR        1125
+  tSTRING_END         1126
+  tSTRING_DEND        1127
+  tSTRING             1128
+  tSYMBOL             1129
+  tNL                 1130
+  tEH                 1131
+  tCOLON              1132
+  tCOMMA              1133
+  tSPACE              1134
+  tSEMI               1135
+  tLAMBDA             1136
+  tLAMBEG             1137
+  tCHARACTER          1138
+  tRATIONAL           1139
+  tIMAGINARY          1140
+  tLABEL_END          1141
+  tANDDOT             1142
 
 %type <node>
   arg
@@ -275,6 +408,28 @@
       std::make_move_iterator(b->nodes.begin()),
       std::make_move_iterator(b->nodes.end())
     );
+  }
+
+  static int yyerror(parser::typedruby24& p, std::string message) {
+    (void)p;
+    std::cerr << message << std::endl;
+    abort();
+  }
+
+  static int yylex(YYSTYPE *lval, parser::typedruby24& p) {
+    auto token = p.lexer->advance();
+
+    int token_type = static_cast<int>(token->type());
+
+    if (token_type < 0) {
+      // some sort of lex error!
+      std::cerr << "lex error" << std::endl;
+      abort();
+    }
+
+    lval->token = put(std::move(token));
+
+    return token_type;
   }
 %}
 

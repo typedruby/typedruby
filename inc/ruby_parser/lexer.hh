@@ -6,6 +6,7 @@
 #include <queue>
 #include <set>
 #include <memory>
+#include <map>
 
 #include "literal.hh"
 #include "token.hh"
@@ -22,7 +23,9 @@ namespace ruby_parser {
   };
 
   class lexer {
+  public:
     using environment = std::set<std::string>;
+    using token_table = std::map<std::string, token_type>;
 
     enum class num_xfrm_type {
       NONE,
@@ -33,8 +36,9 @@ namespace ruby_parser {
       IMAGINARY_FLOAT
     };
 
+  private:
     ruby_version version;
-    std::string source_buffer;
+    const std::string source_buffer;
 
     std::stack<bool> cond;
     std::stack<bool> cmdarg;
@@ -73,8 +77,8 @@ namespace ruby_parser {
     const char* num_suffix_s; // starting position of numeric suffix
     num_xfrm_type num_xfrm;   // numeric suffix-induced transformation
 
-    const char* escape_s;     // starting position of current sequence
-    std::string escape;       // last escaped sequence, as string
+    const char* escape_s;                // starting position of current sequence
+    std::unique_ptr<std::string> escape; // last escaped sequence, as string
 
     const char* herebody_s;   // starting position of current heredoc line
 
@@ -84,11 +88,15 @@ namespace ruby_parser {
     int stack_pop();
     int arg_or_cmdarg();
     void emit_comment(const char* s, const char* e);
-    std::string tok_as_string();
-    bool static_env_declared(std::string&& identifier);
-    void emit0(token_type type);
-    void emit1(token_type type, const char* start, const char* end);
-    void emit(token_type type, const char* start, const char* end, const char* ptr, size_t len);
+    std::string tok();
+    std::string tok(const char* start);
+    std::string tok(const char* start, const char* end);
+    bool static_env_declared(std::string& identifier);
+    void emit(token_type type);
+    void emit(token_type type, const std::string& str);
+    void emit(token_type type, const std::string& str, const char* start, const char* end);
+    void emit_do(bool do_block = false);
+    void emit_table(const token_table& table);
     template<typename... Args> int push_literal(Args&&... args);
     literal& literal();
     int pop_literal();
@@ -97,7 +105,7 @@ namespace ruby_parser {
     void set_state_expr_endarg();
 
   public:
-    lexer(ruby_version version, std::string source);
+    lexer(ruby_version version, const std::string& source_buffer_);
 
     token_ptr advance();
 
