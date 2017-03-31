@@ -4,6 +4,7 @@ OBJECTS = \
 	src/lexer.o \
 	src/literal.o \
 	src/parser.o \
+	src/state_stack.o \
 	src/token.o \
 	src/grammars/typedruby24.o \
 

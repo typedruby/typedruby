@@ -154,26 +154,6 @@ void lexer::check_stack_capacity() {
   }
 }
 
-bool lexer::active(std::stack<bool>& state_stack) const {
-  if (state_stack.empty()) {
-    return false;
-  } else {
-    return state_stack.top();
-  }
-}
-
-void lexer::lexpop(std::stack<bool>& state_stack) {
-  bool top = state_stack.top();
-  state_stack.pop();
-
-  if (!top) {
-    top = state_stack.top();
-    state_stack.pop();
-  }
-
-  state_stack.push(top);
-}
-
 int lexer::stack_pop() {
   return stack[--top];
 }
@@ -566,9 +546,9 @@ void lexer::emit(token_type type, const std::string& str, const char* start, con
 }
 
 void lexer::emit_do(bool do_block) {
-  if (active(cond)) {
+  if (cond.active()) {
     emit(token_type::kDO_COND, "do");
-  } else if (active(cmdarg) || do_block) {
+  } else if (cmdarg.active() || do_block) {
     emit(token_type::kDO_BLOCK, "do");
   } else {
     emit(token_type::kDO, "do");
@@ -1940,7 +1920,7 @@ void lexer::set_state_expr_value() {
 
       w_space* 'do'
       => {
-        if (active(cond)) {
+        if (cond.active()) {
           emit(token_type::kDO_COND, "do", te - 2, te);
         } else {
           emit(token_type::kDO, "do", te - 2, te);
@@ -2679,7 +2659,7 @@ void lexer::set_state_expr_value() {
       e_rbrace | e_rparen | ']'
       => {
         emit_table(PUNCTUATION);
-        lexpop(cond); lexpop(cmdarg);
+        cond.lexpop(); cmdarg.lexpop();
 
         if (ts[0] == '}' || ts[0] == ']') {
           fnext expr_endarg;
