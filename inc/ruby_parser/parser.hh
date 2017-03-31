@@ -10,6 +10,7 @@ namespace ruby_parser {
         class base {
         public:
             std::unique_ptr<lexer> lexer;
+            size_t def_level;
             base(ruby_version version, const std::string& source);
         };
 
