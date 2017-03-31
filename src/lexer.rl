@@ -133,13 +133,13 @@ lexer::lexer(ruby_version version, const std::string& source_buffer_)
   , newline_s(nullptr)
   , paren_nest(0)
   , command_state(false)
-  , in_kwarg(false)
   , num_base(0)
   , num_digits_s(nullptr)
   , num_suffix_s(nullptr)
   , num_xfrm(num_xfrm_type::NONE)
   , escape_s(nullptr)
   , herebody_s(nullptr)
+  , in_kwarg(false)
 {
   // ensure the stack capacity is non-zero so we can just double in
   // check_stack_capacity:

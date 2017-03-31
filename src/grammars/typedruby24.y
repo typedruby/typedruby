@@ -2664,12 +2664,13 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tr_methodgenargs
                     {
-                      // TODO $<boolean>$ = @lexer.in_kwarg;
-                      // TODO @lexer.in_kwarg = true
+                      $<boolean>$ = p.lexer->in_kwarg;
+                      p.lexer->in_kwarg = true;
                     }
                   f_args tr_returnsig term
                     {
-                      // TODO @lexer.in_kwarg = $<boolean>2;
+                      p.lexer->in_kwarg = $<boolean>2;
+
                       auto genargs = owned($1);
                       auto args = builder::args(nullptr, owned($3), nullptr);
                       auto returnsig = owned($4);
