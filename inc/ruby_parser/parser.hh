@@ -12,6 +12,8 @@ namespace ruby_parser {
             std::unique_ptr<lexer> lexer;
             size_t def_level;
             base(ruby_version version, const std::string& source);
+
+            void check_kwarg_name(const token_ptr& name);
         };
 
         class typedruby24 : public base {

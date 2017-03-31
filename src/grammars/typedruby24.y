@@ -2880,7 +2880,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       auto label = take($1);
 
-                      // TODO check_kwarg_name(label);
+                      p.check_kwarg_name(label);
 
                       p.lexer->declare(label->string());
 
