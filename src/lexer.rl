@@ -187,7 +187,7 @@ int lexer::arg_or_cmdarg() {
 }
 
 void lexer::emit_comment(const char* s, const char* e) {
-  /* TODO */
+  /* unused for now */
   (void)s;
   (void)e;
 }
