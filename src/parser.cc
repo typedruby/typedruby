@@ -12,3 +12,11 @@ parser::base::base(ruby_version version, const std::string& source)
 parser::typedruby24::typedruby24(const std::string& source)
     : base(ruby_version::RUBY_24, source)
 {}
+
+void parser::base::check_kwarg_name(const token_ptr& name) {
+    char c = name->string().at(0);
+
+    if (c >= 'A' && c <= 'Z') {
+        // diagnostic :error, :argument_const, nil, name_t
+    }
+}
