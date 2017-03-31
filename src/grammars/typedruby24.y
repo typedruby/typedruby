@@ -1599,7 +1599,7 @@
                     }
                 | kCLASS cpath superclass
                     {
-                      // TODO @static_env.extend_static
+                      p.lexer->extend_static();
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     bodystmt kEND
@@ -1618,14 +1618,14 @@
                                                   owned($5), take($6)).release();
 
                       p.lexer->cmdarg = *take($<bool_stack>4);
-                      // TODO @static_env.unextend
+                      p.lexer->unextend();
                     }
                 | kCLASS tLSHFT expr term
                     {
                       // TODO $<size>$ = @def_level
                       // TODO @def_level = 0
 
-                      // TODO @static_env.extend_static
+                      p.lexer->extend_static();
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     bodystmt kEND
@@ -1634,13 +1634,13 @@
                                                    owned($6), take($7)).release();
 
                       p.lexer->cmdarg = *take($<bool_stack>5);
-                      // TODO @static_env.unextend
+                      p.lexer->unextend();
 
                       // TODO @def_level = $<size>5;
                     }
                 | kMODULE cpath
                     {
-                      // TODO @static_env.extend_static
+                      p.lexer->extend_static();
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     bodystmt kEND
@@ -1652,12 +1652,12 @@
                       $$ = builder::def_module(take($1), owned($2), owned($4), take($5)).release();
 
                       p.lexer->cmdarg = *take($<bool_stack>3);
-                      // TODO @static_env.unextend
+                      p.lexer->unextend();
                     }
                 | kDEF fname
                     {
                       // TODO @def_level += 1
-                      // TODO @static_env.extend_static
+                      p.lexer->extend_static();
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     f_arglist bodystmt kEND
@@ -1666,7 +1666,7 @@
                                   owned($4), owned($5), take($6)).release();
 
                       p.lexer->cmdarg = *take($<bool_stack>3);
-                      // TODO @static_env.unextend
+                      p.lexer->unextend();
                       // TODO @def_level -= 1
                     }
                 | kDEF singleton dot_or_colon
@@ -1676,7 +1676,7 @@
                     fname
                     {
                       // TODO @def_level += 1
-                      // TODO @static_env.extend_static
+                      p.lexer->extend_static();
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
                     }
                     f_arglist bodystmt kEND
@@ -1685,7 +1685,7 @@
                                   take($5), owned($7), owned($8), take($9)).release();
 
                       p.lexer->cmdarg = *take($<bool_stack>6);
-                      // TODO @static_env.unextend
+                      p.lexer->unextend();
                       // TODO @def_level -= 1
                     }
                 | kBREAK
@@ -2013,8 +2013,9 @@ opt_block_args_tail:
 
             bvar: tIDENTIFIER
                     {
-                      // TODO @static_env.declare owned($1)[0]
-                      $$ = builder::shadowarg(take($1)).release();
+                      auto ident = take($1);
+                      p.lexer->declare(ident->string());
+                      $$ = builder::shadowarg(std::move(ident)).release();
                     }
                 | f_bad_arg
                     {
@@ -2022,7 +2023,7 @@ opt_block_args_tail:
                     }
 
           lambda:   {
-                      // TODO @static_env.extend_dynamic
+                      p.lexer->extend_dynamic();
                     }
                   f_larglist
                     {
@@ -2040,7 +2041,7 @@ opt_block_args_tail:
 
                       $$ = put(std::move(delimited_block));
 
-                      // TODO @static_env.unextend
+                      p.lexer->unextend();
                     }
 
      f_larglist: tLPAREN2 f_args opt_bv_decl tRPAREN
@@ -2218,7 +2219,7 @@ opt_block_args_tail:
                     }
 
       brace_body:   {
-                      // TODO @static_env.extend_dynamic
+                      p.lexer->extend_dynamic();
                     }
                     {
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
@@ -2228,13 +2229,13 @@ opt_block_args_tail:
                     {
                       $$ = put(std::make_unique<node_delimited_block>(nullptr, owned($3), owned($4), nullptr));
 
-                      // TODO @static_env.unextend
+                      p.lexer->unextend();
                       p.lexer->cmdarg = *take($<bool_stack>2);
                       p.lexer->cmdarg.pop();
                     }
 
          do_body:   {
-                      // TODO @static_env.extend_dynamic
+                      p.lexer->extend_dynamic();
                     }
                     {
                       $<bool_stack>$ = put_copy(p.lexer->cmdarg);
@@ -2244,7 +2245,7 @@ opt_block_args_tail:
                     {
                       $$ = put(std::make_unique<node_delimited_block>(nullptr, owned($3), owned($4), nullptr));
 
-                      // TODO @static_env.unextend
+                      p.lexer->unextend();
 
                       p.lexer->cmdarg = *take($<bool_stack>2);
                       p.lexer->cmdarg.pop();
@@ -2837,9 +2838,11 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
       f_norm_arg: f_bad_arg
                 | tIDENTIFIER
                     {
-                      // TODO @static_env.declare owned($1)[0]
+                      auto ident = take($1);
 
-                      $$ = $1;
+                      p.lexer->declare(ident->string());
+
+                      $$ = put(std::move(ident));
                     }
 
       f_arg_asgn: f_norm_arg
@@ -2879,7 +2882,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
                       // TODO check_kwarg_name(label);
 
-                      // TODO @static_env.declare label->string()
+                      p.lexer->declare(label->string());
 
                       $$ = put(std::move(label));
                     }
@@ -2954,9 +2957,11 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
         f_kwrest: kwrest_mark tIDENTIFIER
                     {
-                      // TODO @static_env.declare owned($2)[0]
+                      auto ident = take($2);
 
-                      $$ = make_node_list({ builder::kwrestarg(take($1), take($2)) }).release();
+                      p.lexer->declare(ident->string());
+
+                      $$ = make_node_list({ builder::kwrestarg(take($1), std::move(ident)) }).release();
                     }
                 | kwrest_mark
                     {
@@ -3014,7 +3019,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto argsig = owned($1);
                       auto ident = take($3);
 
-                      // TODO @static_env.declare(ident->string())
+                      p.lexer->declare(ident->string());
 
                       auto restarg = builder::restarg(take($2), std::move(ident));
 
@@ -3043,7 +3048,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto argsig = owned($1);
                       auto ident = take($3);
 
-                      // TODO @static_env.declare(ident->string())
+                      p.lexer->declare(ident->string());
 
                       auto blockarg = builder::blockarg(take($2), std::move(ident));
 
@@ -3271,10 +3276,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       $$ = make_node_list(builder::tr_gendeclarg(take($1))).release();
                     }
 
-   tr_blockproto: { /* TODO @static_env.extend_dynamic */ }
+   tr_blockproto: { p.lexer->extend_dynamic(); }
                   block_param_def
                     {
-                      // TODO @static_env.unextend
+                      p.lexer->unextend();
                       $$ = $2;
                     }
 
