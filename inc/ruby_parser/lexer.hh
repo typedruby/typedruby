@@ -31,9 +31,9 @@ namespace ruby_parser {
       NONE,
       RATIONAL,
       IMAGINARY,
-      IMAGINARY_RATIONAL,
+      RATIONAL_IMAGINARY,
       FLOAT,
-      IMAGINARY_FLOAT
+      FLOAT_IMAGINARY,
     };
 
   private:
@@ -97,6 +97,7 @@ namespace ruby_parser {
     void emit(token_type type, const std::string& str, const char* start, const char* end);
     void emit_do(bool do_block = false);
     void emit_table(const token_table& table);
+    void emit_num(const std::string& num);
     template<typename... Args> int push_literal(Args&&... args);
     literal& literal();
     int pop_literal();
