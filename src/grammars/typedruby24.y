@@ -11,6 +11,12 @@
   #include <cstdlib>
 
   using namespace ruby_parser;
+
+  #define yyparse ruby_parser_typedruby24_yyparse
+
+  extern "C" {
+    int yyparse(parser::typedruby24& p);
+  }
 %}
 
 %pure-parser
@@ -438,6 +444,9 @@
 
 %%
          program: top_compstmt
+                    {
+                      p.ast = take($1);
+                    }
 
     top_compstmt: top_stmts opt_terms
                     {
