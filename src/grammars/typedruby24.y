@@ -381,6 +381,10 @@
 %{
   template<typename T>
   static std::unique_ptr<T> take(std::unique_ptr<T>* raw_ptr) {
+    if (!raw_ptr) {
+      return nullptr;
+    }
+
     auto ptr = std::move(*raw_ptr);
     delete raw_ptr;
     return ptr;
@@ -491,8 +495,10 @@
 
                       $$ = put(builder::begin_body(take($1),
                             std::move(rescue_bodies),
-                            std::move(else_->token_), std::move(else_->node_),
-                            std::move(ensure->token_), std::move(ensure->node_)));
+                            else_ ? std::move(else_->token_) : nullptr,
+                            else_ ? std::move(else_->node_) : nullptr,
+                            ensure ? std::move(ensure->token_) : nullptr,
+                            ensure ? std::move(ensure->node_) : nullptr));
                     }
 
         compstmt: stmts opt_terms
