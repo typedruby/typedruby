@@ -1462,23 +1462,40 @@ void lexer::set_state_expr_endarg() {
   regexp_modifiers := |*
       [A-Za-z]+
       => {
-        /* TODO
-        unknown_options = tok.scan(/[^imxouesn]/)
-        if unknown_options.any?
+        auto options = tok();
+        std::string unknown_options;
+
+        for (auto i = options.cbegin(); i != options.cend(); ++i) {
+          switch (char opt = *i) {
+            case 'i':
+            case 'm':
+            case 'x':
+            case 'o':
+            case 'u':
+            case 'e':
+            case 's':
+            case 'n':
+              continue;
+            default:
+              unknown_options += opt;
+              break;
+          }
+        }
+
+        if (!unknown_options.empty()) {
+          /* TODO
           diagnostic :error, :regexp_options,
                      { :options => unknown_options.join }
-        end
+          */
+        }
 
-        emit(token_type::tREGEXP_OPT)
-        */
+        emit(token_type::tREGEXP_OPT, options);
         fnext expr_end; fbreak;
       };
 
       any
       => {
-        /* TODO
-        emit(token_type::tREGEXP_OPT, tok(@ts, @te - 1), @ts, @te - 1)
-        */
+        emit(token_type::tREGEXP_OPT, tok(ts, te - 1), ts, te - 1);
         fhold; fgoto expr_end;
       };
   *|;
