@@ -26,7 +26,7 @@
   node_list* list;
   size_t size;
   bool boolean;
-  std::stack<bool>* bool_stack;
+  std::unique_ptr<std::stack<bool>>* bool_stack;
 }
 
 // mirrored in inc/ruby_parser/token.hh
@@ -387,6 +387,11 @@
   template<typename T>
   static std::unique_ptr<T>* put(std::unique_ptr<T> ptr) {
     return new std::unique_ptr<T>(ptr.release());
+  }
+
+  template<typename T>
+  static std::unique_ptr<T>* put_copy(T obj) {
+    return put(std::make_unique<T>(obj));
   }
 
   template<typename To, typename From>
@@ -1301,14 +1306,12 @@
                     }
 
     command_args:   {
-                      $<bool_stack>$ = new std::stack<bool>(/* TODO lexer.cmdarg */);
-                      // TODO lexer.cmdarg.push(true);
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      p.lexer->cmdarg.push(true);
                     }
                   call_args
                     {
-                      std::stack<bool>* cmdarg = $<bool_stack>1;
-                      // TODO lexer.cmdarg = *cmdarg;
-                      delete cmdarg;
+                      p.lexer->cmdarg = *take($<bool_stack>1);
 
                       $$ = $2;
                     }
@@ -1385,21 +1388,19 @@
                     }
                 | kBEGIN
                     {
-                      $<bool_stack>$ = new std::stack<bool>(/* TODO lexer.cmdarg */);
-                      // TODO lexer.cmdarg.clear
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      p.lexer->cmdarg = std::stack<bool>();
                     }
                     bodystmt kEND
                     {
-                      auto cmdarg = $<bool_stack>2;
-                      // TODO lexer.cmdarg = *cmdarg;
-                      delete cmdarg;
+                      p.lexer->cmdarg = *take($<bool_stack>2);
 
                       $$ = builder::begin_keyword(take($1), owned($3), take($4)).release();
                     }
                 | tLPAREN_ARG
                     {
-                      $<bool_stack>$ = new std::stack<bool>(/* lexer.cmdarg */);
-                      // TODO lexer.cmdarg.clear
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      p.lexer->cmdarg = std::stack<bool>();
                     }
                     stmt
                     {
@@ -1407,9 +1408,7 @@
                     }
                     rparen
                     {
-                      auto cmdarg = $<bool_stack>2;
-                      // TODO lexer.cmdarg = *cmdarg;
-                      delete cmdarg;
+                      p.lexer->cmdarg = *take($<bool_stack>2);
 
                       $$ = builder::begin(take($1), owned($3), take($5)).release();
                     }
@@ -1535,11 +1534,11 @@
                     }
                 | kWHILE
                     {
-                      // TODO lexer.cond.push(true)
+                      p.lexer->cond.push(true);
                     }
                     expr_value do
                     {
-                      // TODO lexer.cond.pop
+                      p.lexer->cond.pop();
                     }
                     compstmt kEND
                     {
@@ -1548,11 +1547,11 @@
                     }
                 | kUNTIL
                     {
-                      // TODO lexer.cond.push(true)
+                      p.lexer->cond.push(true);
                     }
                     expr_value do
                     {
-                      // TODO lexer.cond.pop
+                      p.lexer->cond.pop();
                     }
                     compstmt kEND
                     {
@@ -1585,11 +1584,11 @@
                     }
                 | kFOR for_var kIN
                     {
-                      // TODO lexer.cond.push(true)
+                      p.lexer->cond.push(true);
                     }
                     expr_value do
                     {
-                      // TODO lexer.cond.pop
+                      p.lexer->cond.pop();
                     }
                     compstmt kEND
                     {
@@ -2026,15 +2025,13 @@ opt_block_args_tail:
                     }
                   f_larglist
                     {
-                      $<bool_stack>$ = new std::stack<bool>(/* TODO lexer.cmdarg */);
-                      // TODO @lexer.cmdarg.clear
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      p.lexer->cmdarg = std::stack<bool>();
                     }
                   lambda_body
                     {
-                      std::stack<bool>* cmdarg = $<bool_stack>3;
-                      // TODO @lexer.cmdarg = *cmdarg;
-                      delete cmdarg;
-                      // TODO @lexer.cmdarg.lexpop
+                      p.lexer->cmdarg = *take($<bool_stack>3);
+                      p.lexer->lexpop(p.lexer->cmdarg);
 
                       auto delimited_block = take($4);
 
@@ -2223,26 +2220,24 @@ opt_block_args_tail:
                       // TODO @static_env.extend_dynamic
                     }
                     {
-                      $<bool_stack>$ = new std::stack<bool>(/* TODO lexer.cmdarg */);
-                      // TODO @lexer.cmdarg.clear
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      p.lexer->cmdarg = std::stack<bool>();
                     }
                     opt_block_param compstmt
                     {
                       $$ = put(std::make_unique<node_delimited_block>(nullptr, owned($3), owned($4), nullptr));
 
                       // TODO @static_env.unextend
-                      auto cmdarg = $<bool_stack>2;
-                      // TODO @lexer.cmdarg = *cmdarg;
-                      delete cmdarg;
-                      // TODO @lexer.cmdarg.pop
+                      p.lexer->cmdarg = *take($<bool_stack>2);
+                      p.lexer->cmdarg.pop();
                     }
 
          do_body:   {
                       // TODO @static_env.extend_dynamic
                     }
                     {
-                      $<bool_stack>$ = new std::stack<bool>(/* TODO lexer.cmdarg */);
-                      // TODO @lexer.cmdarg.clear
+                      $<bool_stack>$ = put_copy(p.lexer->cmdarg);
+                      p.lexer->cmdarg = std::stack<bool>();
                     }
                     opt_block_param compstmt
                     {
@@ -2250,10 +2245,8 @@ opt_block_args_tail:
 
                       // TODO @static_env.unextend
 
-                      auto cmdarg = $<bool_stack>2;
-                      // TODO lexer.cmdarg = *cmdarg;
-                      delete cmdarg;
-                      // TODO @lexer.cmdarg.pop
+                      p.lexer->cmdarg = *take($<bool_stack>2);
+                      p.lexer->cmdarg.pop();
                     }
 
        case_body: kWHEN args then compstmt cases
@@ -2472,13 +2465,13 @@ regexp_contents: // nothing
                     }
                 | tSTRING_DBEG
                     {
-                      // TODO @lexer.cond.push(false)
-                      // TODO @lexer.cmdarg.push(false)
+                      p.lexer->cond.push(false);
+                      p.lexer->cmdarg.push(false);
                     }
                     compstmt tSTRING_DEND
                     {
-                      // TODO @lexer.cond.lexpop
-                      // TODO @lexer.cmdarg.lexpop
+                      p.lexer->lexpop(p.lexer->cond);
+                      p.lexer->lexpop(p.lexer->cmdarg);
 
                       $$ = builder::begin(take($1), owned($3), take($4)).release();
                     }

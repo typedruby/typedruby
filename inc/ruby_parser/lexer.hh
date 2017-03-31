@@ -40,8 +40,6 @@ namespace ruby_parser {
     ruby_version version;
     const std::string source_buffer;
 
-    std::stack<bool> cond;
-    std::stack<bool> cmdarg;
     std::stack<environment> static_env;
     std::stack<literal> literal_stack;
     std::queue<token_ptr> token_queue;
@@ -84,7 +82,6 @@ namespace ruby_parser {
 
     void check_stack_capacity();
     bool active(std::stack<bool>& state_stack) const;
-    void lexpop(std::stack<bool>& state_stack);
     int stack_pop();
     int arg_or_cmdarg();
     void emit_comment(const char* s, const char* e);
@@ -103,6 +100,9 @@ namespace ruby_parser {
     int pop_literal();
 
   public:
+    std::stack<bool> cond;
+    std::stack<bool> cmdarg;
+
     lexer(ruby_version version, const std::string& source_buffer_);
 
     token_ptr advance();
@@ -111,6 +111,8 @@ namespace ruby_parser {
     void set_state_expr_endarg();
     void set_state_expr_fname();
     void set_state_expr_value();
+
+    void lexpop(std::stack<bool>& state_stack);
 
     void extend_static();
     void extend_dynamic();
