@@ -740,12 +740,20 @@ int lexer::pop_literal() {
   }
 }
 
-void lexer::set_state_expr_fname() {
-  cs = lex_en_expr_fname;
+void lexer::set_state_expr_beg() {
+  cs = lex_en_expr_beg;
 }
 
 void lexer::set_state_expr_endarg() {
   cs = lex_en_expr_endarg;
+}
+
+void lexer::set_state_expr_fname() {
+  cs = lex_en_expr_fname;
+}
+
+void lexer::set_state_expr_value() {
+  cs = lex_en_expr_value;
 }
 
 /*
