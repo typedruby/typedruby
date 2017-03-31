@@ -515,7 +515,7 @@
 
             stmt: kALIAS fitem
                     {
-                      // TODO lexer.set_state_expr_fname();
+                      p.lexer->set_state_expr_fname();
                     }
                     fitem
                     {
@@ -683,8 +683,10 @@
 
  cmd_brace_block: tLBRACE_ARG brace_body tRCURLY
                     {
-                      /* TODO $$ = [ owned($1), *owned($2), owned($3) ] */
-                      $$ = nullptr;
+                      auto block = take($2);
+                      block->begin = take($1);
+                      block->end = take($3);
+                      $$ = put(std::move(block));
                     }
 
            fcall: operation
@@ -993,7 +995,7 @@
                     }
                 | undef_list tCOMMA
                     {
-                      // TODO lexer.set_state_expr_fname();
+                      p.lexer->set_state_expr_fname();
                     }
                     fitem
                     {
@@ -1401,7 +1403,7 @@
                     }
                     stmt
                     {
-                      // TODO lexer.set_state_expr_endarg();
+                      p.lexer->set_state_expr_endarg();
                     }
                     rparen
                     {
@@ -1413,7 +1415,7 @@
                     }
                 | tLPAREN_ARG
                     {
-                      // TODO lexer.set_state_expr_endarg();
+                      p.lexer->set_state_expr_endarg();
                     }
                     opt_nl tRPAREN
                     {
@@ -1669,7 +1671,7 @@
                     }
                 | kDEF singleton dot_or_colon
                     {
-                      // TODO lexer.set_state_expr_fname();
+                      p.lexer->set_state_expr_fname();
                     }
                     fname
                     {
@@ -1960,7 +1962,7 @@ opt_block_args_tail:
                     }
                 | block_param_def
                     {
-                      // TODO @lexer.state.set_state_expr_value();
+                      p.lexer->set_state_expr_value();
                     }
                   tr_returnsig
                     {
@@ -2498,13 +2500,13 @@ regexp_contents: // nothing
 
           symbol: tSYMBOL
                     {
-                      // TODO @lexer.state = :expr_endarg
+                      p.lexer->set_state_expr_endarg();
                       $$ = builder::symbol(take($1)).release();
                     }
 
             dsym: tSYMBEG xstring_contents tSTRING_END
                     {
-                      // TODO @lexer.state = :expr_endarg
+                      p.lexer->set_state_expr_endarg();
                       $$ = builder::symbol_compose(take($1), owned($2), take($3)).release();
                     }
 
@@ -2519,32 +2521,32 @@ regexp_contents: // nothing
 
   simple_numeric: tINTEGER
                     {
-                      // TODO @lexer.state = :expr_endarg
+                      p.lexer->set_state_expr_endarg();
                       $$ = builder::integer(take($1)).release();
                     }
                 | tFLOAT
                     {
-                      // TODO @lexer.state = :expr_endarg
+                      p.lexer->set_state_expr_endarg();
                       $$ = builder::float_(take($1)).release();
                     }
                 | tRATIONAL
                     {
-                      // TODO @lexer.state = :expr_endarg
+                      p.lexer->set_state_expr_endarg();
                       $$ = builder::rational(take($1)).release();
                     }
                 | tIMAGINARY
                     {
-                      // TODO @lexer.state = :expr_endarg
+                      p.lexer->set_state_expr_endarg();
                       $$ = builder::complex(take($1)).release();
                     }
                 | tRATIONAL_IMAGINARY
                     {
-                      // TODO @lexer.state = :expr_endarg
+                      p.lexer->set_state_expr_endarg();
                       $$ = builder::rational_complex(take($1)).release();
                     }
                 | tFLOAT_IMAGINARY
                     {
-                      // TODO @lexer.state = :expr_endarg
+                      p.lexer->set_state_expr_endarg();
                       $$ = builder::float_complex(take($1)).release();
                     }
 
@@ -2627,7 +2629,7 @@ keyword_variable: kNIL
 
       superclass: tLT
                     {
-                      // TODO @lexer.state = :expr_value
+                      p.lexer->set_state_expr_value();
                     }
                     expr_value term
                     {
@@ -2649,7 +2651,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
        f_arglist: tr_methodgenargs tLPAREN2 f_args rparen
                     {
-                      // TODO @lexer.state = :expr_value
+                      p.lexer->set_state_expr_value();
                     }
                   tr_returnsig
                     {
@@ -3248,7 +3250,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
        tr_argsig: tr_type
                     {
                       $$ = $1;
-                      // TODO @lexer.state = :expr_beg
+                      p.lexer->set_state_expr_beg();
                     }
                 |
                     {

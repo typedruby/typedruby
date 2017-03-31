@@ -102,13 +102,15 @@ namespace ruby_parser {
     literal& literal();
     int pop_literal();
 
-    void set_state_expr_fname();
-    void set_state_expr_endarg();
-
   public:
     lexer(ruby_version version, const std::string& source_buffer_);
 
     token_ptr advance();
+
+    void set_state_expr_beg();
+    void set_state_expr_endarg();
+    void set_state_expr_fname();
+    void set_state_expr_value();
 
     void extend_static();
     void extend_dynamic();
