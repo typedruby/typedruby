@@ -2531,7 +2531,7 @@ void lexer::set_state_expr_value() {
           type = literal_type::DQUOTE_STRING;
         }
 
-        fgoto *push_literal(type, std::string(pe - 1, 1), ts, nullptr, false, false, true);
+        fgoto *push_literal(type, std::string(te - 1, 1), ts, nullptr, false, false, true);
       };
 
       #
