@@ -2692,9 +2692,7 @@ void lexer::set_state_expr_value() {
 }%%
 
 token_ptr lexer::advance() {
-  auto token = advance_();
-  std::cout << *token << std::endl;
-  return token;
+  return advance_();
 }
 
 void lexer::extend_static() {
