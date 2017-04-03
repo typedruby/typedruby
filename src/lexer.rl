@@ -1336,9 +1336,9 @@ void lexer::set_state_expr_value() {
   interp_code = '#{';
 
   e_lbrace = '{' % {
-    /* TODO
-    @cond.push(false); @cmdarg.push(false)
+    cond.push(false); cmdarg.push(false);
 
+    /* TODO
     current_literal = literal
     if current_literal
       current_literal.start_interp_brace
