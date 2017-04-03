@@ -469,7 +469,7 @@
                     {
                       auto list = take($1);
                       list->nodes.push_back(take($3));
-                      $$ = $1;
+                      $$ = put(std::move(list));
                     }
                 | error top_stmt
                     {
@@ -819,7 +819,7 @@
                     {
                       auto list = take($1);
                       list->nodes.push_back(builder::splat(take($2), take($3)));
-                      $$ = $1;
+                      $$ = put(std::move(list));
                     }
                 | mlhs_head tSTAR mlhs_node tCOMMA mlhs_post
                     {
@@ -1370,7 +1370,7 @@
                     {
                       auto list = take($1);
                       list->nodes.push_back(builder::splat(take($3), take($4)));
-                      $$ = $1;
+                      $$ = put(std::move(list));
                     }
 
         mrhs_arg: mrhs
@@ -1389,7 +1389,7 @@
                     {
                       auto list = take($1);
                       list->nodes.push_back(builder::splat(take($3), take($4)));
-                      $$ = $1;
+                      $$ = put(std::move(list));
                     }
                 | tSTAR arg_value
                     {
@@ -1793,7 +1793,7 @@
                     {
                       auto list = take($1);
                       list->nodes.push_back(builder::restarg(take($3), take($4)));
-                      $$ = $1;
+                      $$ = put(std::move(list));
                     }
                 | f_marg_list tCOMMA tSTAR f_norm_arg tCOMMA f_marg_list
                     {
@@ -3319,7 +3319,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       auto list = take($1);
                       list->nodes.push_back(builder::tr_gendeclarg(take($3)));
-                      $$ = $1;
+                      $$ = put(std::move(list));
                     }
                 | tCONSTANT
                     {
