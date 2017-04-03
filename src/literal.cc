@@ -7,12 +7,13 @@ literal::literal(lexer& lexer, literal_type type, std::string delimiter, const c
   , _nesting(1)
   , _type(type)
   , str_s(str_s)
-  , heredoc_e(heredoc_e)
   , indent(indent)
   , dedent_body(dedent_body)
   , label_allowed(label_allowed)
   , _interp_braces(0)
   , space_emitted(true)
+  , saved_herebody_s(nullptr)
+  , heredoc_e(heredoc_e)
 {
   if (delimiter == "(") {
     start_delim = "(";
@@ -121,6 +122,42 @@ token_type literal::start_token_type() const {
 
 optional_size literal::dedent_level() const {
   return _dedent_level;
+}
+
+bool literal::munge_escape(char c) const {
+  if (words() && (c == ' ' || c == '\t' || c == '\v' || c == '\r' || c == '\f' || c == '\n')) {
+    return true;
+  } else if (c == '\\' || (start_delim.size() == 1 && start_delim.at(0) == c)
+                       || (end_delim.size() == 1   && end_delim.at(0) == c)) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+void literal::infer_indent_level(std::string& line) {
+  if (!dedent_body) {
+    return;
+  }
+
+  size_t indent_level = 0;
+
+  for (auto it = line.cbegin(); it != line.cend(); ++it) {
+    if (*it == ' ') {
+      indent_level++;
+      continue;
+    }
+
+    if (*it == '\t') {
+      indent_level += (8 - indent_level % 8);
+      continue;
+    }
+
+    if (!_dedent_level || *_dedent_level > indent_level) {
+      _dedent_level = indent_level;
+    }
+    break;
+  }
 }
 
 void literal::start_interp_brace() {

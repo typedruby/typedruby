@@ -343,6 +343,31 @@ static const lexer::token_table KEYWORDS_BEGIN = {
   { "__ENCODING__", token_type::k__ENCODING__ },
 };
 
+static std::string gsub(const std::string&& str, const std::string&& search, const std::string&& replace) {
+  std::string result;
+
+  std::string::size_type from = 0;
+
+  while (true) {
+    auto index = str.find(search, from);
+
+    if (index == std::string::npos) {
+      result += str.substr(from);
+      break;
+    } else {
+      result += str.substr(from, index - from);
+      result += replace;
+      from = index + search.size();
+    }
+  }
+
+  return result;
+}
+
+static bool eof_codepoint(char c) {
+  return c == 0 || c == 0x04 || c == 0x1a;
+}
+
   /*
   ESCAPES = {
     ?a.ord => "\a", ?b.ord  => "\b", ?e.ord => "\e", ?f.ord => "\f",
@@ -929,9 +954,7 @@ void lexer::set_state_expr_value() {
   }
 
   action invalid_complex_escape {
-    /* TODO
-    diagnostic :fatal, :invalid_escape
-    */
+    // TODO diagnostic :fatal, :invalid_escape
   }
 
   action slash_c_char {
@@ -1109,113 +1132,133 @@ void lexer::set_state_expr_value() {
   }
 
   action extend_string_escaped {
-    /* TODO
-    current_literal = literal
-    # Get the first character after the backslash.
-    escaped_char = @source_buffer.slice(@escape_s).chr
+    auto& current_literal = literal();
 
-    if current_literal.munge_escape? escaped_char
-      # If this particular literal uses this character as an opening
-      # or closing delimiter, it is an escape sequence for that
-      # particular character. Write it without the backslash.
+    // TODO multibyte
+    auto escaped_char = *escape_s;
 
-      if current_literal.regexp? && REGEXP_META_CHARACTERS.match(escaped_char)
-        # Regular expressions should include escaped delimiters in their
-        # escaped form, except when the escaped character is
-        # a closing delimiter but not a regexp metacharacter.
-        #
-        # The backslash itself cannot be used as a closing delimiter
-        # at the same time as an escape symbol, but it is always munged,
-        # so this branch also executes for the non-closing-delimiter case
-        # for the backslash.
-        current_literal.extend_string(tok, @ts, @te)
-      else
-        current_literal.extend_string(escaped_char, @ts, @te)
-      end
-    else
-      # It does not. So this is an actual escape sequence, yay!
-      if current_literal.regexp?
-        # Regular expressions should include escape sequences in their
-        # escaped form. On the other hand, escaped newlines are removed.
-        current_literal.extend_string(tok.gsub("\\\n".freeze, ""), @ts, @te)
-      else
-        current_literal.extend_string(@escape || tok, @ts, @te)
-      end
-    end
-    */
+    if (current_literal.munge_escape(escaped_char)) {
+      // If this particular literal uses this character as an opening
+      // or closing delimiter, it is an escape sequence for that
+      // particular character. Write it without the backslash.
+
+      if (current_literal.regexp()
+          && (escaped_char == '\\' ||
+              escaped_char == '$'  ||
+              escaped_char == '$'  ||
+              escaped_char == '('  ||
+              escaped_char == ')'  ||
+              escaped_char == '*'  ||
+              escaped_char == '+'  ||
+              escaped_char == '.'  ||
+              escaped_char == '<'  ||
+              escaped_char == '>'  ||
+              escaped_char == '?'  ||
+              escaped_char == '['  ||
+              escaped_char == ']'  ||
+              escaped_char == '^'  ||
+              escaped_char == '{'  ||
+              escaped_char == '|'  ||
+              escaped_char == '}')) {
+        // Regular expressions should include escaped delimiters in their
+        // escaped form, except when the escaped character is
+        // a closing delimiter but not a regexp metacharacter.
+        //
+        // The backslash itself cannot be used as a closing delimiter
+        // at the same time as an escape symbol, but it is always munged,
+        // so this branch also executes for the non-closing-delimiter case
+        // for the backslash.
+        auto str = tok();
+        current_literal.extend_string(str, ts, te);
+      } else {
+        auto str = std::string(&escaped_char, 1);
+        current_literal.extend_string(str, ts, te);
+      }
+    } else {
+      // It does not. So this is an actual escape sequence, yay!
+      if (current_literal.regexp()) {
+        // Regular expressions should include escape sequences in their
+        // escaped form. On the other hand, escaped newlines are removed.
+        std::string str = gsub(tok(), "\\\n", "");
+        current_literal.extend_string(str, ts, te);
+      } else {
+        auto str = escape ? *escape : tok();
+        current_literal.extend_string(str, ts, te);
+      }
+    }
   }
 
   # Extend a string with a newline or a EOF character.
   # As heredoc closing line can immediately precede EOF, this action
   # has to handle such case specially.
   action extend_string_eol {
-    /* TODO
-    current_literal = literal
-    if @te == pe
-      diagnostic :fatal, :string_eof, nil,
-                 range(current_literal.str_s, current_literal.str_s + 1)
-    end
+    auto& current_literal = literal();
 
-    if current_literal.heredoc?
-      line = tok(@herebody_s, @ts).gsub(/\r+$/, "")
+    if (te == pe) {
+      // diagnostic :fatal, :string_eof, nil,
+      //            range(current_literal.str_s, current_literal.str_s + 1)
+    }
 
-      if version?(18, 19, 20)
-        # See ruby:c48b4209c
-        line = line.gsub(/\r.*$/, "")
-      end
+    if (current_literal.heredoc()) {
+      auto line = tok(herebody_s, ts);
 
-      # Try ending the heredoc with the complete most recently
-      # scanned line. @herebody_s always refers to the start of such line.
-      if current_literal.nest_and_try_closing(line, @herebody_s, @ts)
-        # Adjust @herebody_s to point to the next line.
-        @herebody_s = @te
+      /* TODO line.gsub(/\r+$/, "") */
 
-        # Continue regular lexing after the heredoc reference (<<END).
-        p = current_literal.heredoc_e - 1
-        fnext *pop_literal; fbreak;
-      else
-        # Calculate indentation level for <<~HEREDOCs.
-        current_literal.infer_indent_level(line)
+      if (version <= ruby_version::RUBY_20) {
+        // See ruby:c48b4209c
+        /* TODO line = line.gsub(/\r.*$/, "") */
+      }
 
-        # Ditto.
-        @herebody_s = @te
-      end
-    else
-      # Try ending the literal with a newline.
-      if current_literal.nest_and_try_closing(tok, @ts, @te)
-        fnext *pop_literal; fbreak;
-      end
+      // Try ending the heredoc with the complete most recently
+      // scanned line. @herebody_s always refers to the start of such line.
+      if (current_literal.nest_and_try_closing(line, herebody_s, ts)) {
+        herebody_s = te;
 
-      if @herebody_s
-        # This is a regular literal intertwined with a heredoc. Like:
-        #
-        #     p <<-foo+"1
-        #     bar
-        #     foo
-        #     2"
-        #
-        # which, incidentally, evaluates to "bar\n1\n2".
-        p = @herebody_s - 1
-        @herebody_s = nil
-      end
-    end
+        // Continue regular lexing after the heredoc reference (<<END).
+        p = current_literal.heredoc_e - 1;
+        fnext *pop_literal(); fbreak;
+      } else {
+        // Calculate indentation level for <<~HEREDOCs.
+        current_literal.infer_indent_level(line);
 
-    if current_literal.words? && !eof_codepoint?(@source_pts[p])
-      current_literal.extend_space @ts, @te
-    else
-      # A literal newline is appended if the heredoc was _not_ closed
-      # this time (see f break above). See also Literal#nest_and_try_closing
-      # for rationale of calling #flush_string here.
-      current_literal.extend_string tok, @ts, @te
-      current_literal.flush_string
-    end
-    */
+        // Ditto.
+        herebody_s = te;
+      }
+    } else {
+      // Try ending the literal with a newline.
+      auto str = tok();
+      if (current_literal.nest_and_try_closing(str, ts, te)) {
+        fnext *pop_literal(); fbreak;
+      }
+
+      if (herebody_s) {
+        // This is a regular literal intertwined with a heredoc. Like:
+        //
+        //     p <<-foo+"1
+        //     bar
+        //     foo
+        //     2"
+        //
+        // which, incidentally, evaluates to "bar\n1\n2".
+        p = herebody_s - 1;
+        herebody_s = nullptr;
+      }
+    }
+
+    if (current_literal.words() && !eof_codepoint(*p)) {
+      current_literal.extend_space(ts, te);
+    } else {
+      // A literal newline is appended if the heredoc was _not_ closed
+      // this time (see f break above). See also Literal#nest_and_try_closing
+      // for rationale of calling #flush_string here.
+      std::string str = tok();
+      current_literal.extend_string(str, ts, te);
+      current_literal.flush_string();
+    }
   }
 
   action extend_string_space {
-    /* TODO
-    literal.extend_space @ts, @te
-    */
+    literal().extend_space(ts, te);
   }
 
   #
@@ -1228,16 +1271,14 @@ void lexer::set_state_expr_value() {
   interp_var = '#' ( global_var | class_var_v | instance_var_v );
 
   action extend_interp_var {
-    /* TODO
-    current_literal = literal
-    current_literal.flush_string
-    current_literal.extend_content
+    auto current_literal = literal();
+    current_literal.flush_string();
+    current_literal.extend_content();
 
-    emit(token_type::tSTRING_DVAR, nil, @ts, @ts + 1)
+    emit(token_type::tSTRING_DVAR, "", ts, ts + 1);
 
-    p = @ts
+    p = ts;
     fcall expr_variable;
-    */
   }
 
   # Interpolations with code blocks must match nested curly braces, as
@@ -1257,53 +1298,47 @@ void lexer::set_state_expr_value() {
   e_lbrace = '{' % {
     cond.push(false); cmdarg.push(false);
 
-    /* TODO
-    current_literal = literal
-    if current_literal
-      current_literal.start_interp_brace
-    end
-    */
+    if (!literal_stack.empty()) {
+      literal().start_interp_brace();
+    }
   };
 
   e_rbrace = '}' % {
-    /* TODO
-    current_literal = literal
-    if current_literal
-      if current_literal.end_interp_brace_and_try_closing
-        if version?(18, 19)
-          emit(token_type::tRCURLY, "}", p - 1, p)
-        else
-          emit(token_type::tSTRING_DEND, "}", p - 1, p)
-        end
+    if (!literal_stack.empty()) {
+      auto& current_literal = literal();
 
-        if current_literal.saved_herebody_s
-          @herebody_s = current_literal.saved_herebody_s
-        end
+      if (current_literal.end_interp_brace_and_try_closing()) {
+        if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19) {
+          emit(token_type::tRCURLY, "}", p - 1, p);
+        } else {
+          emit(token_type::tSTRING_DEND, "}", p - 1, p);
+        }
+
+        if (current_literal.saved_herebody_s) {
+          herebody_s = current_literal.saved_herebody_s;
+        }
 
         fhold;
-        fnext *stack_pop;
+        fnext *stack_pop();
         fbreak;
-      end
-    end
-    */
+      }
+    }
   };
 
   action extend_interp_code {
-    /* TODO
-    current_literal = literal
-    current_literal.flush_string
-    current_literal.extend_content
+    auto& current_literal = literal();
+    current_literal.flush_string();
+    current_literal.extend_content();
 
-    emit(token_type::tSTRING_DBEG, "#{")
+    emit(token_type::tSTRING_DBEG, "#{");
 
-    if current_literal.heredoc?
-      current_literal.saved_herebody_s = @herebody_s
-      @herebody_s = nil
-    end
+    if (current_literal.heredoc()) {
+      current_literal.saved_herebody_s = herebody_s;
+      herebody_s = nullptr;
+    }
 
-    current_literal.start_interp_brace
+    current_literal.start_interp_brace();
     fcall expr_value;
-    */
   }
 
   # Actual string parsers are simply combined from the primitives defined
@@ -1390,10 +1425,8 @@ void lexer::set_state_expr_value() {
         }
 
         if (!unknown_options.empty()) {
-          /* TODO
-          diagnostic :error, :regexp_options,
-                     { :options => unknown_options.join }
-          */
+          // diagnostic :error, :regexp_options,
+          //            { :options => unknown_options.join }
         }
 
         emit(token_type::tREGEXP_OPT, options);
@@ -1746,10 +1779,8 @@ void lexer::set_state_expr_value() {
       )
       => {
         if (*tm == '/') {
-          /* TODO
-          # Ambiguous regexp literal.
-          diagnostic :warning, :ambiguous_literal, nil, range(tm, tm + 1)
-          */
+          // Ambiguous regexp literal.
+          // TODO diagnostic :warning, :ambiguous_literal, nil, range(tm, tm + 1)
         }
 
         p = tm - 1;
@@ -1760,10 +1791,8 @@ void lexer::set_state_expr_value() {
       # Ambiguous splat, kwsplat or block-pass.
       w_space+ %{ tm = p; } ( '+' | '-' | '*' | '&' | '**' )
       => {
-        /* TODO
-        diagnostic :warning, :ambiguous_prefix, { :prefix => tok(tm, @te) },
-                   range(tm, @te)
-        */
+        // TODO diagnostic :warning, :ambiguous_prefix, { :prefix => tok(tm, @te) },
+        //            range(tm, @te)
 
         p = tm - 1;
         fgoto expr_beg;
@@ -1989,10 +2018,8 @@ void lexer::set_state_expr_value() {
           type = literal_type::LOWERX_XSTRING;
         } else {
           type = literal_type::PERCENT_STRING;
-          /* TODO
-          diagnostic :error, :unexpected_percent_str,
-                 { :type => str_type }, @lexer.send(:range, ts, te - 1)
-          */
+          // TODO diagnostic :error, :unexpected_percent_str,
+          //        { :type => str_type }, @lexer.send(:range, ts, te - 1)
         }
 
         fgoto *push_literal(type, std::string(te - 1, 1), ts);
@@ -2000,9 +2027,7 @@ void lexer::set_state_expr_value() {
 
       '%' c_eof
       => {
-        /* TODO
-        diagnostic :fatal, :string_eof, nil, range(@ts, @ts + 1)
-        */
+        // TODO diagnostic :fatal, :string_eof, nil, range(@ts, @ts + 1)
       };
 
       # Heredoc start.
@@ -2125,21 +2150,17 @@ void lexer::set_state_expr_value() {
 
       '?' c_space_nl
       => {
-        /* TODO
-        escape = { " "  => '\s', "\r" => '\r', "\n" => '\n', "\t" => '\t',
-                   "\v" => '\v', "\f" => '\f' }[@source_buffer.slice(@ts + 1)]
-        diagnostic :warning, :invalid_escape_use, { :escape => escape }, range
+        // TODO escape = { " "  => '\s', "\r" => '\r', "\n" => '\n', "\t" => '\t',
+        //           "\v" => '\v', "\f" => '\f' }[@source_buffer.slice(@ts + 1)]
+        // TODO diagnostic :warning, :invalid_escape_use, { :escape => escape }, range
 
-        */
         p = ts - 1;
         fgoto expr_end;
       };
 
       '?' c_eof
       => {
-        /* TODO
-        diagnostic :fatal, :incomplete_escape, nil, range(@ts, @ts + 1)
-        */
+        // TODO diagnostic :fatal, :incomplete_escape, nil, range(@ts, @ts + 1)
       };
 
       # f ?aa : b: Disambiguate with a character literal.
@@ -2424,23 +2445,17 @@ void lexer::set_state_expr_value() {
         auto digits = tok(num_digits_s, num_suffix_s);
 
         if (num_suffix_s[-1] == '_') {
-          /* TODO
-          diagnostic :error, :trailing_in_number, { :character => "_" },
-                     range(@te - 1, @te)
-          */
+          // TODO diagnostic :error, :trailing_in_number, { :character => "_" },
+          //           range(@te - 1, @te)
         } else if (num_digits_s == num_suffix_s && num_base == 8 && version == ruby_version::RUBY_18) {
           // 1.8 did not raise an error on 0o.
         } else if (num_digits_s == num_suffix_s) {
-          /* TODO
-          diagnostic :error, :empty_numeric
-          */
+          // TODO diagnostic :error, :empty_numeric
         } else if (num_base == 8) {
           for (const char* digit_p = num_digits_s; digit_p < num_suffix_s; digit_p++) {
             if (*digit_p == '8' || *digit_p == '9') {
-              /* TODO
-              diagnostic :error, :invalid_octal, nil,
-                         range(digit_p, digit_p + 1)
-              */
+              // TODO diagnostic :error, :invalid_octal, nil,
+              //           range(digit_p, digit_p + 1)
             }
           }
         }
@@ -2456,19 +2471,15 @@ void lexer::set_state_expr_value() {
 
       flo_frac flo_pow?
       => {
-        /* TODO
-        diagnostic :error, :no_dot_digit_literal
-        */
+        // TODO diagnostic :error, :no_dot_digit_literal
       };
 
       flo_int [eE]
       => {
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          /* TODO
-          diagnostic :error,
-                     :trailing_in_number, { :character => tok(@te - 1, @te) },
-                     range(@te - 1, @te)
-          */
+          // TODO diagnostic :error,
+          //            :trailing_in_number, { :character => tok(@te - 1, @te) },
+          //            range(@te - 1, @te)
         } else {
           emit(token_type::tINTEGER, tok(ts, te - 1), ts, te - 1);
           fhold; fbreak;
@@ -2478,11 +2489,9 @@ void lexer::set_state_expr_value() {
       flo_int flo_frac [eE]
       => {
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          /* TODO
-          diagnostic :error,
-                     :trailing_in_number, { :character => tok(@te - 1, @te) },
-                     range(@te - 1, @te)
-          */
+          // TODO diagnostic :error,
+          //            :trailing_in_number, { :character => tok(@te - 1, @te) },
+          //            range(@te - 1, @te)
         } else {
           emit(token_type::tFLOAT, tok(ts, te - 1), ts, te - 1);
           fhold; fbreak;
@@ -2620,17 +2629,13 @@ void lexer::set_state_expr_value() {
            fnext expr_value; fbreak; };
 
       '\\' c_line {
-        /* TODO
-        diagnostic :error, :bare_backslash, nil, range(@ts, @ts + 1)
-        */
+        // TODO diagnostic :error, :bare_backslash, nil, range(@ts, @ts + 1)
         fhold;
       };
 
       c_any
       => {
-        /* TODO
-        diagnostic :fatal, :unexpected, { :character => tok.inspect[1..-2] }
-        */
+        // TODO diagnostic :fatal, :unexpected, { :character => tok.inspect[1..-2] }
       };
 
       c_eof => do_eof;
@@ -2663,10 +2668,8 @@ void lexer::set_state_expr_value() {
 
       c_line* zlen
       => {
-        /* TODO
-        diagnostic :fatal, :embedded_document, nil,
-                   range(@eq_begin_s, @eq_begin_s + '=begin'.length)
-        */
+        // TODO diagnostic :fatal, :embedded_document, nil,
+        //            range(@eq_begin_s, @eq_begin_s + '=begin'.length)
       };
   *|;
 
