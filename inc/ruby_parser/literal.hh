@@ -39,7 +39,6 @@ namespace ruby_parser {
     const char* str_s;
     std::string start_delim;
     std::string end_delim;
-    const char* heredoc_e;
     bool indent;
     bool dedent_body;
     bool label_allowed;
@@ -52,6 +51,10 @@ namespace ruby_parser {
     const char* buffer_e;
 
   public:
+    // lexer needs access to these:
+    const char* saved_herebody_s;
+    const char* heredoc_e;
+
     literal(lexer& lexer, literal_type type, std::string delimiter, const char* str_s, const char* heredoc_e = nullptr, bool indent = false, bool dedent_body = false, bool label_allowed = false);
 
     bool words() const;
@@ -63,6 +66,10 @@ namespace ruby_parser {
     token_type start_token_type() const;
 
     optional_size dedent_level() const;
+
+    bool munge_escape(char c) const;
+
+    void infer_indent_level(std::string& line);
 
     void start_interp_brace();
     bool end_interp_brace_and_try_closing();
