@@ -2,6 +2,10 @@
 #define RUBY_PARSER_LITERAL_HH
 
 #include <string>
+#include <utility>
+
+#include "optional_size.hh"
+#include "token.hh"
 
 namespace ruby_parser {
   enum class literal_type {
@@ -26,7 +30,11 @@ namespace ruby_parser {
     BACKTICK_HEREDOC,
   };
 
+  class lexer;
+
   class literal {
+    lexer& _lexer;
+    size_t _nesting;
     literal_type _type;
     const char* str_s;
     std::string start_delim;
@@ -35,19 +43,49 @@ namespace ruby_parser {
     bool indent;
     bool dedent_body;
     bool label_allowed;
+    optional_size _dedent_level;
+    size_t _interp_braces;
+    bool space_emitted;
+    bool monolithic;
+    std::string buffer;
+    const char* buffer_s;
+    const char* buffer_e;
 
   public:
-    literal(literal_type type, std::string delimiter, const char* str_s, const char* heredoc_e = nullptr, bool indent = false, bool dedent_body = false, bool label_allowed = false);
+    literal(lexer& lexer, literal_type type, std::string delimiter, const char* str_s, const char* heredoc_e = nullptr, bool indent = false, bool dedent_body = false, bool label_allowed = false);
 
     bool words() const;
-
     bool backslash_delimited() const;
-
     bool interpolate() const;
-
     bool regexp() const;
+    bool heredoc() const;
+
+    token_type start_token_type() const;
+
+    optional_size dedent_level() const;
+
+    void start_interp_brace();
+    bool end_interp_brace_and_try_closing();
+
+    bool nest_and_try_closing(std::string& delimiter, const char* ts, const char* te, std::string lookahead = "");
+
+    void extend_space(const char* ts, const char* te);
+    void extend_string(std::string& str, const char* ts, const char* te);
+    void extend_content();
+
+    void flush_string();
+
+  private:
+    bool is_delimiter(std::string& delimiter) const;
+    void clear_buffer();
+    void emit_start_token();
+    void emit(token_type tok, std::string& value, const char* s, const char* e);
   };
 }
 
+// there is a circular dependency between lexer and literal.
+// lexer was forward-declared above, but now we need to include it
+// properly.
+#include "lexer.hh"
 
 #endif

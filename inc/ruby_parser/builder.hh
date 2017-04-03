@@ -6,6 +6,7 @@
 
 #include "node.hh"
 #include "token.hh"
+#include "optional_size.hh"
 
 namespace ruby_parser {
   namespace builder {
@@ -40,7 +41,7 @@ namespace ruby_parser {
     node_ptr const_global(token_ptr colon, token_ptr name);
     node_ptr const_op_assignable(node_ptr node);
     node_ptr cvar(token_ptr tok);
-    node_ptr dedent_string(node_ptr node, size_t dedent_level);
+    node_ptr dedent_string(node_ptr node, optional_size dedent_level);
     node_ptr def_class(token_ptr class_, node_ptr name, token_ptr lt_, node_ptr superclass, node_ptr body, token_ptr end_);
     node_ptr def_method(token_ptr def, token_ptr name, node_ptr args, node_ptr body, token_ptr end);
     node_ptr def_module(token_ptr module, node_ptr name, node_ptr body, token_ptr end_);

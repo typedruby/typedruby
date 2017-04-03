@@ -422,14 +422,6 @@ static const lexer::token_table KEYWORDS_BEGIN = {
     @paren_nest    = 0
     @lambda_stack  = []
 
-    # After encountering the closing line of <<~SQUIGGLY_HEREDOC,
-    # we store the indentation level and give it out to the parser
-    # on request. It is not possible to infer indentation level just
-    # from the AST because escape sequences such as `\ ` or `\t` are
-    # expanded inside the lexer, but count as non-whitespace for
-    # indentation purposes.
-    @dedent_level  = nil
-
     # If the lexer is in `command state' (aka expr_value)
     # at the entry to #advance, it will transition to expr_cmdarg
     # instead of expr_arg at certain points.
@@ -483,13 +475,6 @@ static const lexer::token_table KEYWORDS_BEGIN = {
     :plain_string  => lex_en_plain_string,
     :plain_words   => lex_en_plain_string,
   }
-
-  def dedent_level
-    # We erase @dedent_level as a precaution to avoid accidentally
-    # using a stale value.
-    dedent_level, @dedent_level = @dedent_level, nil
-    dedent_level
-  end
 */
 
 token_ptr lexer::advance_() {
@@ -671,7 +656,7 @@ void lexer::emit_num(const std::string& num) {
 
 template<typename... Args>
 int lexer::push_literal(Args&&... args) {
-  literal_stack.emplace(std::forward<Args>(args)...);
+  literal_stack.emplace(*this, std::forward<Args>(args)...);
 
   auto& literal = literal_stack.top();
 
@@ -707,9 +692,14 @@ literal& lexer::literal() {
 }
 
 int lexer::pop_literal() {
-  auto was_regexp = literal_stack.top().regexp();
+  bool was_regexp;
 
-  /* TODO @dedent_level = old_literal.dedent_level */
+  {
+    auto& old_literal = literal_stack.top();
+
+    was_regexp = old_literal.regexp();
+    dedent_level_ = old_literal.dedent_level();
+  }
 
   literal_stack.pop();
 
@@ -735,83 +725,6 @@ void lexer::set_state_expr_fname() {
 void lexer::set_state_expr_value() {
   cs = lex_en_expr_value;
 }
-
-/*
-  def push_literal(*args)
-    new_literal = Literal.new(self, *args)
-    @literal_stack.push(new_literal)
-
-    if new_literal.words? && new_literal.backslash_delimited?
-      if new_literal.interpolate?
-        self.class.lex_en_interp_backslash_delimited_words
-      else
-        self.class.lex_en_plain_backslash_delimited_words
-      end
-    elsif new_literal.words? && !new_literal.backslash_delimited?
-      if new_literal.interpolate?
-        self.class.lex_en_interp_words
-      else
-        self.class.lex_en_plain_words
-      end
-    elsif !new_literal.words? && new_literal.backslash_delimited?
-      if new_literal.interpolate?
-        self.class.lex_en_interp_backslash_delimited
-      else
-        self.class.lex_en_plain_backslash_delimited
-      end
-    else
-      if new_literal.interpolate?
-        self.class.lex_en_interp_string
-      else
-        self.class.lex_en_plain_string
-      end
-    end
-  end
-
-  def literal
-    @literal_stack.last
-  end
-
-  def pop_literal
-    old_literal = @literal_stack.pop
-
-    @dedent_level = old_literal.dedent_level
-
-    if old_literal.type == :tREGEXP_BEG
-      # Fetch modifiers.
-      self.class.lex_en_regexp_modifiers
-    else
-      self.class.lex_en_expr_end
-    end
-  end
-
-  # Mapping of strings to parser tokens.
-
-  PUNCTUATION_BEGIN = {
-    '&'   => :tAMPER,   '*'   => :tSTAR,    '**'  => :tDSTAR,
-    '+'   => :tUPLUS,   '-'   => :tUMINUS,  '::'  => :tCOLON3,
-    '('   => :tLPAREN,  '{'   => :tLBRACE,  '['   => :tLBRACK,
-  }
-
-  KEYWORDS = {
-    'if'     => :kIF_MOD,      'unless'   => :kUNLESS_MOD,
-    'while'  => :kWHILE_MOD,   'until'    => :kUNTIL_MOD,
-    'rescue' => :kRESCUE_MOD,  'defined?' => :kDEFINED,
-    'BEGIN'  => :klBEGIN,      'END'      => :klEND,
-  }
-
-  KEYWORDS_BEGIN = {
-    'if'     => :kIF,          'unless'   => :kUNLESS,
-    'while'  => :kWHILE,       'until'    => :kUNTIL,
-    'rescue' => :kRESCUE,      'defined?' => :kDEFINED,
-  }
-
-  %w(class module def undef begin end then elsif else ensure case when
-     for break next redo retry in do return yield super self nil true
-     false and or not alias __FILE__ __LINE__ __ENCODING__).each do |keyword|
-    KEYWORDS_BEGIN[keyword] = KEYWORDS[keyword] = :"k#{keyword.upcase}"
-  end
-*/
 
 %%{
   # access @;
@@ -1164,29 +1077,35 @@ void lexer::set_state_expr_value() {
   };
 
   action extend_string {
-    /* TODO
-    string = tok
+    auto str = tok();
+    std::string lookahead;
 
-    # tLABEL_END is only possible in non-cond context on >= 2.2
-    if @version >= 22 && !@cond.active?
-      lookahead = @source_buffer.slice(@te...@te+2)
-    end
+    // tLABEL_END is only possible in non-cond context on >= 2.2
+    if (version >= ruby_version::RUBY_22 && !cond.active()) {
+      const char* lookahead_s = te;
+      const char* lookahead_e = te + 2;
 
-    current_literal = literal
-    if !current_literal.heredoc? &&
-          (token = current_literal.nest_and_try_closing(string, @ts, @te, lookahead))
-      if token[0] == :tLABEL_END
-        p += 1
-        pop_literal
+      if (lookahead_e > eof) {
+        lookahead_e = eof;
+      }
+
+      lookahead = std::string(lookahead_s, (size_t)(lookahead_e - lookahead_s));
+    }
+
+    auto& current_literal = literal();
+
+    if (!current_literal.heredoc() && current_literal.nest_and_try_closing(str, ts, te, lookahead)) {
+      if (token_queue.back()->type() == token_type::tLABEL_END) {
+        p += 1;
+        pop_literal();
         fnext expr_labelarg;
-      else
-        fnext *pop_literal;
-      end
+      } else {
+        fnext *pop_literal();
+      }
       fbreak;
-    else
-      current_literal.extend_string(string, @ts, @te)
-    end
-    */
+    } else {
+      current_literal.extend_string(str, ts, te);
+    }
   }
 
   action extend_string_escaped {
@@ -2770,7 +2689,9 @@ void lexer::set_state_expr_value() {
 }%%
 
 token_ptr lexer::advance() {
-  return advance_();
+  auto token = advance_();
+  std::cout << *token << std::endl;
+  return token;
 }
 
 void lexer::extend_static() {
@@ -2792,4 +2713,12 @@ void lexer::unextend() {
 
 void lexer::declare(const std::string& name) {
   static_env.top().insert(name);
+}
+
+optional_size lexer::dedent_level() {
+  // We erase @dedent_level as a precaution to avoid accidentally
+  // using a stale value.
+  auto ret = dedent_level_;
+  dedent_level_ = optional_size::none();
+  return ret;
 }

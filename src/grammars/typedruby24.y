@@ -2367,12 +2367,12 @@ opt_block_args_tail:
          string1: tSTRING_BEG string_contents tSTRING_END
                     {
                       auto str = builder::string_compose(take($1), take($2), take($3));
-                      $$ = put(builder::dedent_string(std::move(str), 0 /* TODO @lexer.dedent_level */));
+                      $$ = put(builder::dedent_string(std::move(str), p.lexer->dedent_level()));
                     }
                 | tSTRING
                     {
                       auto str = builder::string(take($1));
-                      $$ = put(builder::dedent_string(std::move(str), 0 /* TODO @lexer.dedent_level */));
+                      $$ = put(builder::dedent_string(std::move(str), p.lexer->dedent_level()));
                     }
                 | tCHARACTER
                     {
@@ -2382,7 +2382,7 @@ opt_block_args_tail:
          xstring: tXSTRING_BEG xstring_contents tSTRING_END
                     {
                       auto xstr = builder::xstring_compose(take($1), take($2), take($3));
-                      $$ = put(builder::dedent_string(std::move(xstr), 0 /* TODO @lexer.dedent_level */));
+                      $$ = put(builder::dedent_string(std::move(xstr), p.lexer->dedent_level()));
                     }
 
           regexp: tREGEXP_BEG regexp_contents tSTRING_END tREGEXP_OPT

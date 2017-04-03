@@ -159,7 +159,7 @@ node_ptr cvar(token_ptr tok) {
   return nullptr;
 }
 
-node_ptr dedent_string(node_ptr node, size_t dedent_level) {
+node_ptr dedent_string(node_ptr node, optional_size dedent_level) {
   std::cerr << __func__ << std::endl;
   return nullptr;
 }
