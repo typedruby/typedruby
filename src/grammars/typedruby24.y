@@ -2316,7 +2316,9 @@ opt_block_args_tail:
 
                       rescues->nodes.insert(rescues->nodes.begin(),
                         builder::rescue_body(take($1),
-                          std::move(exc_list), std::move(exc_var->token_), std::move(exc_var->node_),
+                          std::move(exc_list),
+                          exc_var ? std::move(exc_var->token_) : nullptr,
+                          exc_var ? std::move(exc_var->node_) : nullptr,
                           take($4), take($5)));
 
                       $$ = put(std::move(rescues));
