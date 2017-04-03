@@ -1544,7 +1544,8 @@
                       $$ = put(builder::condition(
                         take($1), take($2),
                         take($3), take($4),
-                        std::move(else_->token_), std::move(else_->node_),
+                        else_ ? std::move(else_->token_) : nullptr,
+                        else_ ? std::move(else_->node_) : nullptr,
                         take($6)));
                     }
                 | kUNLESS expr_value then compstmt opt_else kEND
@@ -1553,8 +1554,10 @@
 
                       $$ = put(builder::condition(
                         take($1), take($2),
-                        take($3), std::move(else_->node_),
-                        std::move(else_->token_), take($4),
+                        take($3),
+                        else_ ? std::move(else_->node_) : nullptr,
+                        else_ ? std::move(else_->token_) : nullptr,
+                        take($4),
                         take($6)));
                     }
                 | kWHILE
@@ -1592,7 +1595,8 @@
 
                       $$ = put(builder::case_(take($1), take($2),
                         std::move(case_body),
-                        std::move(else_->token_), std::move(else_->node_),
+                        else_ ? std::move(else_->token_) : nullptr,
+                        else_ ? std::move(else_->node_) : nullptr,
                         take($5)));
                     }
                 | kCASE            opt_terms case_body kEND
@@ -1604,7 +1608,8 @@
 
                       $$ = put(builder::case_(take($1), nullptr,
                         std::move(case_body),
-                        std::move(else_->token_), std::move(else_->node_),
+                        else_ ? std::move(else_->token_) : nullptr,
+                        else_ ? std::move(else_->node_) : nullptr,
                         take($4)));
                     }
                 | kFOR for_var kIN
@@ -1752,7 +1757,9 @@
                         std::make_unique<token>(*elsif_t),
                         builder::condition(
                           std::make_unique<token>(*elsif_t), take($2), take($3),
-                          take($4), std::move(else_->token_), std::move(else_->node_),
+                          take($4),
+                          else_ ? std::move(else_->token_) : nullptr,
+                          else_ ? std::move(else_->node_) : nullptr,
                           nullptr)));
                     }
 
