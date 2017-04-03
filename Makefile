@@ -1,7 +1,6 @@
 CXXFLAGS += -Wall -Wextra -pedantic -std=c++1y -I inc -g
 
 OBJECTS = \
-	src/builder.o \
 	src/lexer.o \
 	src/literal.o \
 	src/parser.o \

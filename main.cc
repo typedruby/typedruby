@@ -17,16 +17,16 @@ std::string read_entire(std::istream& is)
 
 int main(int argc, const char** argv)
 {
-  if (argc < 2) {
-    std::cerr << "usage: " << argv[0] << " <source file>" << std::endl;
-    return 1;
-  }
+  // if (argc < 2) {
+  //   std::cerr << "usage: " << argv[0] << " <source file>" << std::endl;
+  //   return 1;
+  // }
 
-  std::ifstream file { argv[1], std::ios_base::in };
+  // std::ifstream file { argv[1], std::ios_base::in };
 
-  std::string source = read_entire(file);
+  // std::string source = read_entire(file);
 
-  ruby_parser::parser::typedruby24 p { source };
+  // ruby_parser::parser::typedruby24 p { source };
 
-  p.parse();
+  // p.parse();
 }

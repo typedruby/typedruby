@@ -454,7 +454,7 @@
 
     top_compstmt: top_stmts opt_terms
                     {
-                      $$ = put(builder::compstmt(take($1)));
+                      $$ = put(p.builder.compstmt(take($1)));
                     }
 
        top_stmts: // nothing
@@ -479,7 +479,7 @@
         top_stmt: stmt
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
-                      $$ = put(builder::preexe(take($3)));
+                      $$ = put(p.builder.preexe(take($3)));
                     }
 
         bodystmt: compstmt opt_rescue opt_else opt_ensure
@@ -493,7 +493,7 @@
                         // TODO diagnostic :warning, :useless_else, nullptr, else_t
                       }
 
-                      $$ = put(builder::begin_body(take($1),
+                      $$ = put(p.builder.begin_body(take($1),
                             std::move(rescue_bodies),
                             else_ ? std::move(else_->token_) : nullptr,
                             else_ ? std::move(else_->node_) : nullptr,
@@ -503,7 +503,7 @@
 
         compstmt: stmts opt_terms
                     {
-                      $$ = put(builder::compstmt(take($1)));
+                      $$ = put(p.builder.compstmt(take($1)));
                     }
 
            stmts: // nothing
@@ -537,19 +537,19 @@
                     }
                     fitem
                     {
-                      $$ = put(builder::alias(take($1), take($2), take($4)));
+                      $$ = put(p.builder.alias(take($1), take($2), take($4)));
                     }
                 | kALIAS tGVAR tGVAR
                     {
-                      $$ = put(builder::alias(take($1),
-                        builder::gvar(take($2)),
-                        builder::gvar(take($3))));
+                      $$ = put(p.builder.alias(take($1),
+                        p.builder.gvar(take($2)),
+                        p.builder.gvar(take($3))));
                     }
                 | kALIAS tGVAR tBACK_REF
                     {
-                      $$ = put(builder::alias(take($1),
-                        builder::gvar(take($2)),
-                        builder::back_ref(take($3))));
+                      $$ = put(p.builder.alias(take($1),
+                        p.builder.gvar(take($2)),
+                        p.builder.back_ref(take($3))));
                     }
                 | kALIAS tGVAR tNTH_REF
                     {
@@ -557,133 +557,133 @@
                     }
                 | kUNDEF undef_list
                     {
-                      $$ = put(builder::undef_method(take($2)));
+                      $$ = put(p.builder.undef_method(take($2)));
                     }
                 | stmt kIF_MOD expr_value
                     {
-                      $$ = put(builder::condition_mod(take($1), nullptr, take($3)));
+                      $$ = put(p.builder.condition_mod(take($1), nullptr, take($3)));
                     }
                 | stmt kUNLESS_MOD expr_value
                     {
-                      $$ = put(builder::condition_mod(nullptr, take($1), take($3)));
+                      $$ = put(p.builder.condition_mod(nullptr, take($1), take($3)));
                     }
                 | stmt kWHILE_MOD expr_value
                     {
-                      $$ = put(builder::loop_mod(node_type::WHILE, take($1), take($3)));
+                      $$ = put(p.builder.loop_mod(node_type::WHILE, take($1), take($3)));
                     }
                 | stmt kUNTIL_MOD expr_value
                     {
-                      $$ = put(builder::loop_mod(node_type::UNTIL, take($1), take($3)));
+                      $$ = put(p.builder.loop_mod(node_type::UNTIL, take($1), take($3)));
                     }
                 | stmt kRESCUE_MOD stmt
                     {
-                      auto rescue_body = builder::rescue_body(take($2), nullptr, nullptr, nullptr, nullptr, take($3));
+                      auto rescue_body = p.builder.rescue_body(take($2), nullptr, nullptr, nullptr, nullptr, take($3));
 
-                      $$ = put(builder::begin_body(
+                      $$ = put(p.builder.begin_body(
                         take($1),
                         make_node_list(std::move(rescue_body)),
                         nullptr, nullptr, nullptr, nullptr));
                     }
                 | klEND tLCURLY compstmt tRCURLY
                     {
-                      $$ = put(builder::postexe(take($3)));
+                      $$ = put(p.builder.postexe(take($3)));
                     }
                 | command_asgn
                 | mlhs tEQL command_call
                     {
-                      $$ = put(builder::multi_assign(take($1), take($3)));
+                      $$ = put(p.builder.multi_assign(take($1), take($3)));
                     }
                 | lhs tEQL mrhs
                     {
-                      $$ = put(builder::assign(take($1), take($2), builder::array(nullptr, take($3), nullptr)));
+                      $$ = put(p.builder.assign(take($1), take($2), p.builder.array(nullptr, take($3), nullptr)));
                     }
                 | mlhs tEQL mrhs_arg
                     {
-                      $$ = put(builder::multi_assign(take($1), take($3)));
+                      $$ = put(p.builder.multi_assign(take($1), take($3)));
                     }
                 | kDEF tIVAR tCOLON tr_type
                     {
-                      $$ = put(builder::tr_ivardecl(take($2), take($4)));
+                      $$ = put(p.builder.tr_ivardecl(take($2), take($4)));
                     }
                 | expr
 
     command_asgn: lhs tEQL command_rhs
                     {
-                      $$ = put(builder::assign(take($1), take($2), take($3)));
+                      $$ = put(p.builder.assign(take($1), take($2), take($3)));
                     }
                 | var_lhs tOP_ASGN command_rhs
                     {
-                      $$ = put(builder::op_assign(take($1), take($2), take($3)));
+                      $$ = put(p.builder.op_assign(take($1), take($2), take($3)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN command_rhs
                     {
-                      $$ = put(builder::op_assign(
-                                  builder::index(
+                      $$ = put(p.builder.op_assign(
+                                  p.builder.index(
                                     take($1), take($2), take($3), take($4)),
                                   take($5), take($6)));
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN command_rhs
                     {
-                      $$ = put(builder::op_assign(
-                                  builder::call_method(
+                      $$ = put(p.builder.op_assign(
+                                  p.builder.call_method(
                                     take($1), take($2), take($3), nullptr, nullptr, nullptr),
                                   take($4), take($5)));
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN command_rhs
                     {
-                      $$ = put(builder::op_assign(
-                                  builder::call_method(
+                      $$ = put(p.builder.op_assign(
+                                  p.builder.call_method(
                                     take($1), take($2), take($3), nullptr, nullptr, nullptr),
                                   take($4), take($5)));
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN command_rhs
                     {
-                      auto const_node = builder::const_op_assignable(
-                                  builder::const_fetch(take($1), take($2), take($3)));
-                      $$ = put(builder::op_assign(std::move(const_node), take($4), take($5)));
+                      auto const_node = p.builder.const_op_assignable(
+                                  p.builder.const_fetch(take($1), take($2), take($3)));
+                      $$ = put(p.builder.op_assign(std::move(const_node), take($4), take($5)));
                     }
                 | primary_value tCOLON2 tIDENTIFIER tOP_ASGN command_rhs
                     {
-                      $$ = put(builder::op_assign(
-                                  builder::call_method(
+                      $$ = put(p.builder.op_assign(
+                                  p.builder.call_method(
                                     take($1), take($2), take($3), nullptr, nullptr, nullptr),
                                   take($4), take($5)));
                     }
                 | backref tOP_ASGN command_rhs
                     {
-                      builder::op_assign(take($1), take($2), take($3));
+                      p.builder.op_assign(take($1), take($2), take($3));
                     }
 
      command_rhs: command_call %prec tOP_ASGN
                 | command_call kRESCUE_MOD stmt
                     {
                       auto rescue_body =
-                        builder::rescue_body(take($2),
+                        p.builder.rescue_body(take($2),
                                         nullptr, nullptr, nullptr,
                                         nullptr, take($3));
 
                       auto rescue_bodies = make_node_list(std::move(rescue_body));
 
-                      $$ = put(builder::begin_body(take($1), std::move(rescue_bodies), nullptr, nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.begin_body(take($1), std::move(rescue_bodies), nullptr, nullptr, nullptr, nullptr));
                     }
                 | command_asgn
 
             expr: command_call
                 | expr kAND expr
                     {
-                      $$ = put(builder::logical_op(node_type::AND, take($1), take($2), take($3)));
+                      $$ = put(p.builder.logical_op(node_type::AND, take($1), take($2), take($3)));
                     }
                 | expr kOR expr
                     {
-                      $$ = put(builder::logical_op(node_type::OR, take($1), take($2), take($3)));
+                      $$ = put(p.builder.logical_op(node_type::OR, take($1), take($2), take($3)));
                     }
                 | kNOT opt_nl expr
                     {
-                      $$ = put(builder::not_op(take($1), nullptr, take($3), nullptr));
+                      $$ = put(p.builder.not_op(take($1), nullptr, take($3), nullptr));
                     }
                 | tBANG command_call
                     {
-                      $$ = put(builder::not_op(take($1), nullptr, take($2), nullptr));
+                      $$ = put(p.builder.not_op(take($1), nullptr, take($2), nullptr));
                     }
                 | arg
 
@@ -695,7 +695,7 @@
    block_command: block_call
                 | block_call dot_or_colon operation2 command_args
                     {
-                      $$ = put(builder::call_method(take($1), take($2), take($3),
+                      $$ = put(p.builder.call_method(take($1), take($2), take($3),
                                   nullptr, take($4), nullptr));
                     }
 
@@ -711,17 +711,17 @@
 
          command: fcall command_args %prec tLOWEST
                     {
-                      $$ = put(builder::call_method(nullptr, nullptr, take($1),
+                      $$ = put(p.builder.call_method(nullptr, nullptr, take($1),
                                   nullptr, take($2), nullptr));
                     }
                 | fcall command_args cmd_brace_block
                     {
-                      auto method_call = builder::call_method(nullptr, nullptr, take($1),
+                      auto method_call = p.builder.call_method(nullptr, nullptr, take($1),
                                                               nullptr, take($2), nullptr);
 
                       auto delimited_block = take($3);
 
-                      $$ = put(builder::block(std::move(method_call),
+                      $$ = put(p.builder.block(std::move(method_call),
                                       std::move(delimited_block->begin),
                                       std::move(delimited_block->args),
                                       std::move(delimited_block->body),
@@ -729,17 +729,17 @@
                     }
                 | primary_value call_op operation2 command_args %prec tLOWEST
                     {
-                      $$ = put(builder::call_method(take($1), take($2), take($3),
+                      $$ = put(p.builder.call_method(take($1), take($2), take($3),
                                   nullptr, take($4), nullptr));
                     }
                 | primary_value call_op operation2 command_args cmd_brace_block
                     {
-                      auto method_call = builder::call_method(take($1), take($2), take($3),
+                      auto method_call = p.builder.call_method(take($1), take($2), take($3),
                                         nullptr, take($4), nullptr);
 
                       auto delimited_block = take($5);
 
-                      $$ = put(builder::block(std::move(method_call),
+                      $$ = put(p.builder.block(std::move(method_call),
                                       std::move(delimited_block->begin),
                                       std::move(delimited_block->args),
                                       std::move(delimited_block->body),
@@ -747,17 +747,17 @@
                     }
                 | primary_value tCOLON2 operation2 command_args %prec tLOWEST
                     {
-                      $$ = put(builder::call_method(take($1), take($2), take($3),
+                      $$ = put(p.builder.call_method(take($1), take($2), take($3),
                                   nullptr, take($4), nullptr));
                     }
                 | primary_value tCOLON2 operation2 command_args cmd_brace_block
                     {
-                      auto method_call = builder::call_method(take($1), take($2), take($3),
+                      auto method_call = p.builder.call_method(take($1), take($2), take($3),
                                         nullptr, take($4), nullptr);
 
                       auto delimited_block = take($5);
 
-                      $$ = put(builder::block(std::move(method_call),
+                      $$ = put(p.builder.block(std::move(method_call),
                                       std::move(delimited_block->begin),
                                       std::move(delimited_block->args),
                                       std::move(delimited_block->body),
@@ -765,47 +765,47 @@
                     }
                 | kSUPER command_args
                     {
-                      $$ = put(builder::keyword_cmd(node_type::SUPER, take($1),
+                      $$ = put(p.builder.keyword_cmd(node_type::SUPER, take($1),
                                   nullptr, take($2), nullptr));
                     }
                 | kYIELD command_args
                     {
-                      $$ = put(builder::keyword_cmd(node_type::YIELD, take($1),
+                      $$ = put(p.builder.keyword_cmd(node_type::YIELD, take($1),
                                   nullptr, take($2), nullptr));
                     }
                 | kRETURN call_args
                     {
-                      $$ = put(builder::keyword_cmd(node_type::RETURN, take($1),
+                      $$ = put(p.builder.keyword_cmd(node_type::RETURN, take($1),
                                   nullptr, take($2), nullptr));
                     }
                 | kBREAK call_args
                     {
-                      $$ = put(builder::keyword_cmd(node_type::BREAK, take($1),
+                      $$ = put(p.builder.keyword_cmd(node_type::BREAK, take($1),
                                   nullptr, take($2), nullptr));
                     }
                 | kNEXT call_args
                     {
-                      $$ = put(builder::keyword_cmd(node_type::NEXT, take($1),
+                      $$ = put(p.builder.keyword_cmd(node_type::NEXT, take($1),
                                   nullptr, take($2), nullptr));
                     }
 
             mlhs: mlhs_basic
                     {
-                      $$ = put(builder::multi_lhs(nullptr, take($1), nullptr));
+                      $$ = put(p.builder.multi_lhs(nullptr, take($1), nullptr));
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      $$ = put(builder::begin(take($1), take($2), take($3)));
+                      $$ = put(p.builder.begin(take($1), take($2), take($3)));
                     }
 
       mlhs_inner: mlhs_basic
                     {
-                      $$ = put(builder::multi_lhs(nullptr, take($1), nullptr));
+                      $$ = put(p.builder.multi_lhs(nullptr, take($1), nullptr));
                     }
                 | tLPAREN mlhs_inner rparen
                     {
                       auto inner = make_node_list(take($2));
-                      $$ = put(builder::multi_lhs(take($1), std::move(inner), take($3)));
+                      $$ = put(p.builder.multi_lhs(take($1), std::move(inner), take($3)));
                     }
 
       mlhs_basic: mlhs_head
@@ -818,14 +818,14 @@
                 | mlhs_head tSTAR mlhs_node
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::splat(take($2), take($3)));
+                      list->nodes.push_back(p.builder.splat(take($2), take($3)));
                       $$ = put(std::move(list));
                     }
                 | mlhs_head tSTAR mlhs_node tCOMMA mlhs_post
                     {
                       auto head = take($1);
 
-                      head->nodes.push_back(builder::splat(take($2), take($3)));
+                      head->nodes.push_back(p.builder.splat(take($2), take($3)));
                       concat_node_list(head, take($5));
 
                       $$ = put(std::move(head));
@@ -833,25 +833,25 @@
                 | mlhs_head tSTAR
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::splat(take($2), nullptr));
+                      list->nodes.push_back(p.builder.splat(take($2), nullptr));
                       $$ = put(std::move(list));
                     }
                 | mlhs_head tSTAR tCOMMA mlhs_post
                     {
                       auto head = take($1);
 
-                      head->nodes.push_back(builder::splat(take($2), nullptr));
+                      head->nodes.push_back(p.builder.splat(take($2), nullptr));
                       concat_node_list(head, take($4));
 
                       $$ = put(std::move(head));
                     }
                 | tSTAR mlhs_node
                     {
-                      $$ = put(make_node_list({ builder::splat(take($1), take($2)) }));
+                      $$ = put(make_node_list({ p.builder.splat(take($1), take($2)) }));
                     }
                 | tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      auto items = make_node_list({ builder::splat(take($1), take($2)) });
+                      auto items = make_node_list({ p.builder.splat(take($1), take($2)) });
 
                       concat_node_list(items, take($4));
 
@@ -859,11 +859,11 @@
                     }
                 | tSTAR
                     {
-                      $$ = put(make_node_list(builder::splat(take($1), nullptr)));
+                      $$ = put(make_node_list(p.builder.splat(take($1), nullptr)));
                     }
                 | tSTAR tCOMMA mlhs_post
                     {
-                      auto items = make_node_list(builder::splat(take($1), nullptr));
+                      auto items = make_node_list(p.builder.splat(take($1), nullptr));
 
                       concat_node_list(items, take($3));
 
@@ -873,7 +873,7 @@
        mlhs_item: mlhs_node
                 | tLPAREN mlhs_inner rparen
                     {
-                      $$ = put(builder::begin(take($1), take($2), take($3)));
+                      $$ = put(p.builder.begin(take($1), take($2), take($3)));
                     }
 
        mlhs_head: mlhs_item tCOMMA
@@ -900,80 +900,80 @@
 
        mlhs_node: user_variable
                     {
-                      $$ = put(builder::assignable(take($1)));
+                      $$ = put(p.builder.assignable(take($1)));
                     }
                 | keyword_variable
                     {
-                      $$ = put(builder::assignable(take($1)));
+                      $$ = put(p.builder.assignable(take($1)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = put(builder::index_asgn(take($1), take($2), take($3), take($4)));
+                      $$ = put(p.builder.index_asgn(take($1), take($2), take($3), take($4)));
                     }
                 | primary_value call_op tIDENTIFIER
                     {
-                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
+                      $$ = put(p.builder.attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value tCOLON2 tIDENTIFIER
                     {
-                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
+                      $$ = put(p.builder.attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value call_op tCONSTANT
                     {
-                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
+                      $$ = put(p.builder.attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value tCOLON2 tCONSTANT
                     {
-                      $$ = put(builder::assignable(
-                                  builder::const_fetch(take($1), take($2), take($3))));
+                      $$ = put(p.builder.assignable(
+                                  p.builder.const_fetch(take($1), take($2), take($3))));
                     }
                 | tCOLON3 tCONSTANT
                     {
-                      $$ = put(builder::assignable(
-                                  builder::const_global(take($1), take($2))));
+                      $$ = put(p.builder.assignable(
+                                  p.builder.const_global(take($1), take($2))));
                     }
                 | backref
                     {
-                      $$ = put(builder::assignable(take($1)));
+                      $$ = put(p.builder.assignable(take($1)));
                     }
 
              lhs: user_variable
                     {
-                      $$ = put(builder::assignable(take($1)));
+                      $$ = put(p.builder.assignable(take($1)));
                     }
                 | keyword_variable
                     {
-                      $$ = put(builder::assignable(take($1)));
+                      $$ = put(p.builder.assignable(take($1)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = put(builder::index_asgn(take($1), take($2), take($3), take($4)));
+                      $$ = put(p.builder.index_asgn(take($1), take($2), take($3), take($4)));
                     }
                 | primary_value call_op tIDENTIFIER
                     {
-                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
+                      $$ = put(p.builder.attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value tCOLON2 tIDENTIFIER
                     {
-                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
+                      $$ = put(p.builder.attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value call_op tCONSTANT
                     {
-                      $$ = put(builder::attr_asgn(take($1), take($2), take($3)));
+                      $$ = put(p.builder.attr_asgn(take($1), take($2), take($3)));
                     }
                 | primary_value tCOLON2 tCONSTANT
                     {
-                      $$ = put(builder::assignable(
-                                  builder::const_fetch(take($1), take($2), take($3))));
+                      $$ = put(p.builder.assignable(
+                                  p.builder.const_fetch(take($1), take($2), take($3))));
                     }
                 | tCOLON3 tCONSTANT
                     {
-                      $$ = put(builder::assignable(
-                                  builder::const_global(take($1), take($2))));
+                      $$ = put(p.builder.assignable(
+                                  p.builder.const_global(take($1), take($2))));
                     }
                 | backref
                     {
-                      $$ = put(builder::assignable(take($1)));
+                      $$ = put(p.builder.assignable(take($1)));
                     }
 
            cname: tIDENTIFIER
@@ -984,19 +984,19 @@
 
            cpath: tCOLON3 cname
                     {
-                      $$ = put(builder::const_global(take($1), take($2)));
+                      $$ = put(p.builder.const_global(take($1), take($2)));
                     }
                 | cname
                     {
-                      $$ = put(builder::const_(take($1)));
+                      $$ = put(p.builder.const_(take($1)));
                     }
                 | primary_value tCOLON2 tLBRACK2 tr_gendeclargs rbracket
                     {
-                      $$ = put(builder::tr_gendecl(take($1), take($3), take($4), take($5)));
+                      $$ = put(p.builder.tr_gendecl(take($1), take($3), take($4), take($5)));
                     }
                 | primary_value tCOLON2 cname
                     {
-                      $$ = put(builder::const_fetch(take($1), take($2), take($3)));
+                      $$ = put(p.builder.const_fetch(take($1), take($2), take($3)));
                     }
 
            fname: tIDENTIFIER | tCONSTANT | tFID
@@ -1005,7 +1005,7 @@
 
             fsym: fname
                     {
-                      $$ = put(builder::symbol(take($1)));
+                      $$ = put(p.builder.symbol(take($1)));
                     }
                 | symbol
 
@@ -1045,189 +1045,189 @@
 
              arg: lhs tEQL arg_rhs
                     {
-                      $$ = put(builder::assign(take($1), take($2), take($3)));
+                      $$ = put(p.builder.assign(take($1), take($2), take($3)));
                     }
                 | var_lhs tOP_ASGN arg_rhs
                     {
-                      $$ = put(builder::op_assign(take($1), take($2), take($3)));
+                      $$ = put(p.builder.op_assign(take($1), take($2), take($3)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN arg_rhs
                     {
-                      $$ = put(builder::op_assign(
-                                  builder::index(
+                      $$ = put(p.builder.op_assign(
+                                  p.builder.index(
                                     take($1), take($2), take($3), take($4)),
                                   take($5), take($6)));
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN arg_rhs
                     {
-                      $$ = put(builder::op_assign(
-                                  builder::call_method(
+                      $$ = put(p.builder.op_assign(
+                                  p.builder.call_method(
                                     take($1), take($2), take($3), nullptr, nullptr, nullptr),
                                   take($4), take($5)));
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN arg_rhs
                     {
-                      $$ = put(builder::op_assign(
-                                  builder::call_method(
+                      $$ = put(p.builder.op_assign(
+                                  p.builder.call_method(
                                     take($1), take($2), take($3), nullptr, nullptr, nullptr),
                                   take($4), take($5)));
                     }
                 | primary_value tCOLON2 tIDENTIFIER tOP_ASGN arg_rhs
                     {
-                      $$ = put(builder::op_assign(
-                                  builder::call_method(
+                      $$ = put(p.builder.op_assign(
+                                  p.builder.call_method(
                                     take($1), take($2), take($3), nullptr, nullptr, nullptr),
                                   take($4), take($5)));
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN arg_rhs
                     {
-                      auto const_ = builder::const_op_assignable(
-                                      builder::const_fetch(take($1), take($2), take($3)));
+                      auto const_ = p.builder.const_op_assignable(
+                                      p.builder.const_fetch(take($1), take($2), take($3)));
 
-                      $$ = put(builder::op_assign(std::move(const_), take($4), take($5)));
+                      $$ = put(p.builder.op_assign(std::move(const_), take($4), take($5)));
                     }
                 | tCOLON3 tCONSTANT tOP_ASGN arg_rhs
                     {
-                      auto const_ = builder::const_op_assignable(
-                                  builder::const_global(take($1), take($2)));
+                      auto const_ = p.builder.const_op_assignable(
+                                  p.builder.const_global(take($1), take($2)));
 
-                      $$ = put(builder::op_assign(std::move(const_), take($3), take($4)));
+                      $$ = put(p.builder.op_assign(std::move(const_), take($3), take($4)));
                     }
                 | backref tOP_ASGN arg_rhs
                     {
-                      $$ = put(builder::op_assign(take($1), take($2), take($3)));
+                      $$ = put(p.builder.op_assign(take($1), take($2), take($3)));
                     }
                 | arg tDOT2 arg
                     {
-                      $$ = put(builder::range_inclusive(take($1), take($2), take($3)));
+                      $$ = put(p.builder.range_inclusive(take($1), take($2), take($3)));
                     }
                 | arg tDOT3 arg
                     {
-                      $$ = put(builder::range_exclusive(take($1), take($2), take($3)));
+                      $$ = put(p.builder.range_exclusive(take($1), take($2), take($3)));
                     }
                 | arg tPLUS arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tMINUS arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tSTAR2 arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tDIVIDE arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tPERCENT arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tPOW arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | tUMINUS_NUM simple_numeric tPOW arg
                     {
-                      $$ = put(builder::unary_op(take($1),
-                                  builder::binary_op(
+                      $$ = put(p.builder.unary_op(take($1),
+                                  p.builder.binary_op(
                                     take($2), take($3), take($4))));
                     }
                 | tUPLUS arg
                     {
-                      $$ = put(builder::unary_op(take($1), take($2)));
+                      $$ = put(p.builder.unary_op(take($1), take($2)));
                     }
                 | tUMINUS arg
                     {
-                      $$ = put(builder::unary_op(take($1), take($2)));
+                      $$ = put(p.builder.unary_op(take($1), take($2)));
                     }
                 | arg tPIPE arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tCARET arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tAMPER2 arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tCMP arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tGT arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tGEQ arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tLT arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tLEQ arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tEQ arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tEQQ arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tNEQ arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tMATCH arg
                     {
-                      $$ = put(builder::match_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.match_op(take($1), take($2), take($3)));
                     }
                 | arg tNMATCH arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | tBANG arg
                     {
-                      $$ = put(builder::not_op(take($1), nullptr, take($2), nullptr));
+                      $$ = put(p.builder.not_op(take($1), nullptr, take($2), nullptr));
                     }
                 | tTILDE arg
                     {
-                      $$ = put(builder::unary_op(take($1), take($2)));
+                      $$ = put(p.builder.unary_op(take($1), take($2)));
                     }
                 | arg tLSHFT arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tRSHFT arg
                     {
-                      $$ = put(builder::binary_op(take($1), take($2), take($3)));
+                      $$ = put(p.builder.binary_op(take($1), take($2), take($3)));
                     }
                 | arg tANDOP arg
                     {
-                      $$ = put(builder::logical_op(node_type::AND, take($1), take($2), take($3)));
+                      $$ = put(p.builder.logical_op(node_type::AND, take($1), take($2), take($3)));
                     }
                 | arg tOROP arg
                     {
-                      $$ = put(builder::logical_op(node_type::OR, take($1), take($2), take($3)));
+                      $$ = put(p.builder.logical_op(node_type::OR, take($1), take($2), take($3)));
                     }
                 | kDEFINED opt_nl arg
                     {
                       auto args = make_node_list(take($3));
 
-                      $$ = put(builder::keyword_cmd(node_type::DEFINED, take($1), nullptr, std::move(args), nullptr));
+                      $$ = put(p.builder.keyword_cmd(node_type::DEFINED, take($1), nullptr, std::move(args), nullptr));
                     }
                 | arg tEH arg opt_nl tCOLON arg
                     {
-                      $$ = put(builder::ternary(take($1), take($2),
+                      $$ = put(p.builder.ternary(take($1), take($2),
                                                 take($3), take($5), take($6)));
                     }
                 | primary
@@ -1239,24 +1239,24 @@
                 | args tCOMMA assocs trailer
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::associate(nullptr, take($3), nullptr));
+                      list->nodes.push_back(p.builder.associate(nullptr, take($3), nullptr));
                       $$ = put(std::move(list));
                     }
                 | assocs trailer
                     {
-                      $$ = put(make_node_list({ builder::associate(nullptr, take($1), nullptr) }));
+                      $$ = put(make_node_list({ p.builder.associate(nullptr, take($1), nullptr) }));
                     }
 
          arg_rhs: arg %prec tOP_ASGN
                 | arg kRESCUE_MOD arg
                     {
-                      auto rescue_body = builder::rescue_body(take($2),
+                      auto rescue_body = p.builder.rescue_body(take($2),
                                           nullptr, nullptr, nullptr,
                                           nullptr, take($3));
 
                       auto rescue_bodies = make_node_list(std::move(rescue_body));
 
-                      $$ = put(builder::begin_body(take($1), std::move(rescue_bodies), nullptr, nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.begin_body(take($1), std::move(rescue_bodies), nullptr, nullptr, nullptr, nullptr));
                     }
 
       paren_args: tLPAREN2 opt_call_args rparen
@@ -1279,13 +1279,13 @@
                 | args tCOMMA assocs tCOMMA
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::associate(nullptr, take($3), nullptr));
+                      list->nodes.push_back(p.builder.associate(nullptr, take($3), nullptr));
                       $$ = put(std::move(list));
                     }
                 | assocs tCOMMA
                     {
                       $$ = put(make_node_list({
-                          builder::associate(nullptr, take($1), nullptr) }));
+                          p.builder.associate(nullptr, take($1), nullptr) }));
                     }
 
        call_args: command
@@ -1303,7 +1303,7 @@
                 | assocs opt_block_arg
                     {
                       auto args = make_node_list({
-                          builder::associate(nullptr, take($1), nullptr) });
+                          p.builder.associate(nullptr, take($1), nullptr) });
 
                       concat_node_list(args, take($2));
 
@@ -1313,7 +1313,7 @@
                     {
                       auto args = take($1);
 
-                      auto assocs = builder::associate(nullptr, take($3), nullptr);
+                      auto assocs = p.builder.associate(nullptr, take($3), nullptr);
 
                       args->nodes.push_back(std::move(assocs));
 
@@ -1339,7 +1339,7 @@
 
        block_arg: tAMPER arg_value
                     {
-                      $$ = put(builder::block_pass(take($1), take($2)));
+                      $$ = put(p.builder.block_pass(take($1), take($2)));
                     }
 
    opt_block_arg: tCOMMA block_arg
@@ -1358,7 +1358,7 @@
                 | tSTAR arg_value
                     {
                       $$ = put(make_node_list({
-                          builder::splat(take($1), take($2)) }));
+                          p.builder.splat(take($1), take($2)) }));
                     }
                 | args tCOMMA arg_value
                     {
@@ -1369,13 +1369,13 @@
                 | args tCOMMA tSTAR arg_value
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::splat(take($3), take($4)));
+                      list->nodes.push_back(p.builder.splat(take($3), take($4)));
                       $$ = put(std::move(list));
                     }
 
         mrhs_arg: mrhs
                     {
-                      $$ = put(builder::array(nullptr, take($1), nullptr));
+                      $$ = put(p.builder.array(nullptr, take($1), nullptr));
                     }
                 | arg_value
 
@@ -1388,13 +1388,13 @@
                 | args tCOMMA tSTAR arg_value
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::splat(take($3), take($4)));
+                      list->nodes.push_back(p.builder.splat(take($3), take($4)));
                       $$ = put(std::move(list));
                     }
                 | tSTAR arg_value
                     {
                       $$ = put(make_node_list({
-                          builder::splat(take($1), take($2)) }));
+                          p.builder.splat(take($1), take($2)) }));
                     }
 
          primary: literal
@@ -1409,7 +1409,7 @@
                 | backref
                 | tFID
                     {
-                      $$ = put(builder::call_method(nullptr, nullptr, take($1), nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.call_method(nullptr, nullptr, take($1), nullptr, nullptr, nullptr));
                     }
                 | kBEGIN
                     {
@@ -1420,7 +1420,7 @@
                     {
                       p.lexer->cmdarg = *take($<state_stack>2);
 
-                      $$ = put(builder::begin_keyword(take($1), take($3), take($4)));
+                      $$ = put(p.builder.begin_keyword(take($1), take($3), take($4)));
                     }
                 | tLPAREN_ARG
                     {
@@ -1435,7 +1435,7 @@
                     {
                       p.lexer->cmdarg = *take($<state_stack>2);
 
-                      $$ = put(builder::begin(take($1), take($3), take($5)));
+                      $$ = put(p.builder.begin(take($1), take($3), take($5)));
                     }
                 | tLPAREN_ARG
                     {
@@ -1443,72 +1443,72 @@
                     }
                     opt_nl tRPAREN
                     {
-                      $$ = put(builder::begin(take($1), nullptr, take($4)));
+                      $$ = put(p.builder.begin(take($1), nullptr, take($4)));
                     }
                 | tLPAREN compstmt tRPAREN
                     {
-                      $$ = put(builder::begin(take($1), take($2), take($3)));
+                      $$ = put(p.builder.begin(take($1), take($2), take($3)));
                     }
                 | tLPAREN expr tCOLON tr_type tRPAREN
                     {
-                      $$ = put(builder::tr_cast(take($1), take($2), take($3), take($4), take($5)));
+                      $$ = put(p.builder.tr_cast(take($1), take($2), take($3), take($4), take($5)));
                     }
                 | primary_value tCOLON2 tCONSTANT
                     {
-                      $$ = put(builder::const_fetch(take($1), take($2), take($3)));
+                      $$ = put(p.builder.const_fetch(take($1), take($2), take($3)));
                     }
                 | tCOLON3 tCONSTANT
                     {
-                      $$ = put(builder::const_global(take($1), take($2)));
+                      $$ = put(p.builder.const_global(take($1), take($2)));
                     }
                 | tLBRACK aref_args tRBRACK
                     {
-                      $$ = put(builder::array(take($1), take($2), take($3)));
+                      $$ = put(p.builder.array(take($1), take($2), take($3)));
                     }
                 | tLBRACE assoc_list tRCURLY
                     {
-                      $$ = put(builder::associate(take($1), take($2), take($3)));
+                      $$ = put(p.builder.associate(take($1), take($2), take($3)));
                     }
                 | kRETURN
                     {
-                      $$ = put(builder::keyword_cmd(node_type::RETURN, take($1), nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.keyword_cmd(node_type::RETURN, take($1), nullptr, nullptr, nullptr));
                     }
                 | kYIELD tLPAREN2 call_args rparen
                     {
-                      $$ = put(builder::keyword_cmd(node_type::YIELD, take($1), take($2), take($3), take($4)));
+                      $$ = put(p.builder.keyword_cmd(node_type::YIELD, take($1), take($2), take($3), take($4)));
                     }
                 | kYIELD tLPAREN2 rparen
                     {
                       auto args = make_node_list();
 
-                      $$ = put(builder::keyword_cmd(node_type::YIELD, take($1), take($2), std::move(args), take($3)));
+                      $$ = put(p.builder.keyword_cmd(node_type::YIELD, take($1), take($2), std::move(args), take($3)));
                     }
                 | kYIELD
                     {
-                      $$ = put(builder::keyword_cmd(node_type::YIELD, take($1), nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.keyword_cmd(node_type::YIELD, take($1), nullptr, nullptr, nullptr));
                     }
                 | kDEFINED opt_nl tLPAREN2 expr rparen
                     {
                       auto args = make_node_list(take($4));
 
-                      $$ = put(builder::keyword_cmd(node_type::DEFINED, take($1),
+                      $$ = put(p.builder.keyword_cmd(node_type::DEFINED, take($1),
                                                     take($3), std::move(args), take($5)));
                     }
                 | kNOT tLPAREN2 expr rparen
                     {
-                      $$ = put(builder::not_op(take($1), take($2), take($3), take($4)));
+                      $$ = put(p.builder.not_op(take($1), take($2), take($3), take($4)));
                     }
                 | kNOT tLPAREN2 rparen
                     {
-                      $$ = put(builder::not_op(take($1), take($2), nullptr, take($3)));
+                      $$ = put(p.builder.not_op(take($1), take($2), nullptr, take($3)));
                     }
                 | fcall brace_block
                     {
-                      auto method_call = builder::call_method(nullptr, nullptr, take($1), nullptr, nullptr, nullptr);
+                      auto method_call = p.builder.call_method(nullptr, nullptr, take($1), nullptr, nullptr, nullptr);
 
                       auto delimited_block = take($2);
 
-                      $$ = put(builder::block(std::move(method_call),
+                      $$ = put(p.builder.block(std::move(method_call),
                         std::move(delimited_block->begin),
                         std::move(delimited_block->args),
                         std::move(delimited_block->body),
@@ -1519,7 +1519,7 @@
                     {
                       auto delimited_block = take($2);
 
-                      $$ = put(builder::block(take($1),
+                      $$ = put(p.builder.block(take($1),
                         std::move(delimited_block->begin),
                         std::move(delimited_block->args),
                         std::move(delimited_block->body),
@@ -1527,11 +1527,11 @@
                     }
                 | tLAMBDA lambda
                     {
-                      auto lambda_call = builder::call_lambda(take($1));
+                      auto lambda_call = p.builder.call_lambda(take($1));
 
                       auto lambda = take($2);
 
-                      $$ = put(builder::block(std::move(lambda_call),
+                      $$ = put(p.builder.block(std::move(lambda_call),
                         std::move(lambda->begin),
                         std::move(lambda->args),
                         std::move(lambda->body),
@@ -1541,7 +1541,7 @@
                     {
                       auto else_ = take($5);
 
-                      $$ = put(builder::condition(
+                      $$ = put(p.builder.condition(
                         take($1), take($2),
                         take($3), take($4),
                         else_ ? std::move(else_->token_) : nullptr,
@@ -1552,7 +1552,7 @@
                     {
                       auto else_ = take($5);
 
-                      $$ = put(builder::condition(
+                      $$ = put(p.builder.condition(
                         take($1), take($2),
                         take($3),
                         else_ ? std::move(else_->node_) : nullptr,
@@ -1570,7 +1570,7 @@
                     }
                     compstmt kEND
                     {
-                      $$ = put(builder::loop(node_type::WHILE, take($1), take($3), take($4),
+                      $$ = put(p.builder.loop(node_type::WHILE, take($1), take($3), take($4),
                                              take($6), take($7)));
                     }
                 | kUNTIL
@@ -1583,7 +1583,7 @@
                     }
                     compstmt kEND
                     {
-                      $$ = put(builder::loop(node_type::UNTIL, take($1), take($3), take($4),
+                      $$ = put(p.builder.loop(node_type::UNTIL, take($1), take($3), take($4),
                                              take($6), take($7)));
                     }
                 | kCASE expr_value opt_terms case_body kEND
@@ -1593,7 +1593,7 @@
                       auto else_ = static_unique_cast<node_with_token>(std::move(case_body->nodes.back()));
                       case_body->nodes.pop_back();
 
-                      $$ = put(builder::case_(take($1), take($2),
+                      $$ = put(p.builder.case_(take($1), take($2),
                         std::move(case_body),
                         else_ ? std::move(else_->token_) : nullptr,
                         else_ ? std::move(else_->node_) : nullptr,
@@ -1606,7 +1606,7 @@
                       auto else_ = static_unique_cast<node_with_token>(std::move(case_body->nodes.back()));
                       case_body->nodes.pop_back();
 
-                      $$ = put(builder::case_(take($1), nullptr,
+                      $$ = put(p.builder.case_(take($1), nullptr,
                         std::move(case_body),
                         else_ ? std::move(else_->token_) : nullptr,
                         else_ ? std::move(else_->node_) : nullptr,
@@ -1622,7 +1622,7 @@
                     }
                     compstmt kEND
                     {
-                      $$ = put(builder::for_(take($1), take($2),
+                      $$ = put(p.builder.for_(take($1), take($2),
                                             take($3), take($5),
                                             take($6), take($8), take($9)));
                     }
@@ -1642,7 +1642,7 @@
                       auto lt_t       = superclass_ ? std::move(superclass_->token_) : nullptr;
                       auto superclass = superclass_ ? std::move(superclass_->node_)  : nullptr;
 
-                      $$ = put(builder::def_class(take($1), take($2),
+                      $$ = put(p.builder.def_class(take($1), take($2),
                                                   std::move(lt_t), std::move(superclass),
                                                   take($5), take($6)));
 
@@ -1659,7 +1659,7 @@
                     }
                     bodystmt kEND
                     {
-                      $$ = put(builder::def_sclass(take($1), take($2), take($3),
+                      $$ = put(p.builder.def_sclass(take($1), take($2), take($3),
                                                    take($6), take($7)));
 
                       p.lexer->cmdarg = *take($<state_stack>5);
@@ -1678,7 +1678,7 @@
                         // TODO   diagnostic :error, :module_in_def, nullptr, take($1)
                       }
 
-                      $$ = put(builder::def_module(take($1), take($2), take($4), take($5)));
+                      $$ = put(p.builder.def_module(take($1), take($2), take($4), take($5)));
 
                       p.lexer->cmdarg = *take($<state_stack>3);
                       p.lexer->unextend();
@@ -1691,7 +1691,7 @@
                     }
                     f_arglist bodystmt kEND
                     {
-                      $$ = put(builder::def_method(take($1), take($2),
+                      $$ = put(p.builder.def_method(take($1), take($2),
                                   take($4), take($5), take($6)));
 
                       p.lexer->cmdarg = *take($<state_stack>3);
@@ -1710,7 +1710,7 @@
                     }
                     f_arglist bodystmt kEND
                     {
-                      $$ = put(builder::def_singleton(take($1), take($2), take($3),
+                      $$ = put(p.builder.def_singleton(take($1), take($2), take($3),
                                   take($5), take($7), take($8), take($9)));
 
                       p.lexer->cmdarg = *take($<state_stack>6);
@@ -1719,19 +1719,19 @@
                     }
                 | kBREAK
                     {
-                      $$ = put(builder::keyword_cmd(node_type::BREAK, take($1), nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.keyword_cmd(node_type::BREAK, take($1), nullptr, nullptr, nullptr));
                     }
                 | kNEXT
                     {
-                      $$ = put(builder::keyword_cmd(node_type::NEXT, take($1), nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.keyword_cmd(node_type::NEXT, take($1), nullptr, nullptr, nullptr));
                     }
                 | kREDO
                     {
-                      $$ = put(builder::keyword_cmd(node_type::REDO, take($1), nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.keyword_cmd(node_type::REDO, take($1), nullptr, nullptr, nullptr));
                     }
                 | kRETRY
                     {
-                      $$ = put(builder::keyword_cmd(node_type::RETRY, take($1), nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.keyword_cmd(node_type::RETRY, take($1), nullptr, nullptr, nullptr));
                     }
 
    primary_value: primary
@@ -1755,7 +1755,7 @@
 
                       $$ = put(std::make_unique<node_with_token>(
                         std::make_unique<token>(*elsif_t),
-                        builder::condition(
+                        p.builder.condition(
                           std::make_unique<token>(*elsif_t), take($2), take($3),
                           take($4),
                           else_ ? std::move(else_->token_) : nullptr,
@@ -1777,11 +1777,11 @@
 
           f_marg: f_norm_arg
                     {
-                      $$ = put(builder::arg(take($1)));
+                      $$ = put(p.builder.arg(take($1)));
                     }
                 | tLPAREN f_margs rparen
                     {
-                      $$ = put(builder::multi_lhs(take($1), take($2), take($3)));
+                      $$ = put(p.builder.multi_lhs(take($1), take($2), take($3)));
                     }
 
      f_marg_list: f_marg
@@ -1799,14 +1799,14 @@
                 | f_marg_list tCOMMA tSTAR f_norm_arg
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::restarg(take($3), take($4)));
+                      list->nodes.push_back(p.builder.restarg(take($3), take($4)));
                       $$ = put(std::move(list));
                     }
                 | f_marg_list tCOMMA tSTAR f_norm_arg tCOMMA f_marg_list
                     {
                       auto args = take($1);
 
-                      args->nodes.push_back(builder::restarg(take($3), take($4)));
+                      args->nodes.push_back(p.builder.restarg(take($3), take($4)));
                       concat_node_list(args, take($6));
 
                       $$ = put(std::move(args));
@@ -1814,14 +1814,14 @@
                 | f_marg_list tCOMMA tSTAR
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::restarg(take($3), nullptr));
+                      list->nodes.push_back(p.builder.restarg(take($3), nullptr));
                       $$ = put(std::move(list));
                     }
                 | f_marg_list tCOMMA tSTAR            tCOMMA f_marg_list
                     {
                       auto args = take($1);
 
-                      args->nodes.push_back(builder::restarg(take($3), nullptr));
+                      args->nodes.push_back(p.builder.restarg(take($3), nullptr));
                       concat_node_list(args, take($5));
 
                       $$ = put(std::move(args));
@@ -1829,23 +1829,23 @@
                 |                    tSTAR f_norm_arg
                     {
                       $$ = put(make_node_list({
-                          builder::restarg(take($1), take($2)) }));
+                          p.builder.restarg(take($1), take($2)) }));
                     }
                 |                    tSTAR f_norm_arg tCOMMA f_marg_list
                     {
                       auto args = take($4);
-                      args->nodes.insert(args->nodes.begin(), builder::restarg(take($1), take($2)));
+                      args->nodes.insert(args->nodes.begin(), p.builder.restarg(take($1), take($2)));
                       $$ = put(std::move(args));
                     }
                 |                    tSTAR
                     {
                       $$ = put(make_node_list({
-                          builder::restarg(take($1), nullptr) }));
+                          p.builder.restarg(take($1), nullptr) }));
                     }
                 |                    tSTAR tCOMMA f_marg_list
                     {
                       auto args = take($3);
-                      args->nodes.insert(args->nodes.begin(), builder::restarg(take($1), nullptr));
+                      args->nodes.insert(args->nodes.begin(), p.builder.restarg(take($1), nullptr));
                       $$ = put(std::move(args));
                     }
 
@@ -1943,7 +1943,7 @@ opt_block_args_tail:
                       auto block_args_tail = take($2);
 
                       if (block_args_tail->nodes.size() == 0 && args->nodes.size() == 1) {
-                        $$ = put(make_node_list(builder::procarg0(std::move(args->nodes[0]))));
+                        $$ = put(make_node_list(p.builder.procarg0(std::move(args->nodes[0]))));
                       } else {
                         concat_node_list(args, std::move(block_args_tail));
                         $$ = put(std::move(args));
@@ -1994,7 +1994,7 @@ opt_block_args_tail:
 
  opt_block_param: // nothing
                     {
-                      $$ = put(builder::args(nullptr, make_node_list(), nullptr, true));
+                      $$ = put(p.builder.args(nullptr, make_node_list(), nullptr, true));
                     }
                 | block_param_def
                     {
@@ -2006,7 +2006,7 @@ opt_block_args_tail:
                       auto return_sig = take($3);
 
                       if (return_sig) {
-                        $$ = put(builder::prototype(nullptr, std::move(args), std::move(return_sig)));
+                        $$ = put(p.builder.prototype(nullptr, std::move(args), std::move(return_sig)));
                       } else {
                         $$ = put(std::move(args));
                       }
@@ -2014,18 +2014,18 @@ opt_block_args_tail:
 
  block_param_def: tPIPE opt_bv_decl tPIPE
                     {
-                      $$ = put(builder::args(take($1), take($2), take($3), true));
+                      $$ = put(p.builder.args(take($1), take($2), take($3), true));
                     }
                 | tOROP
                     {
                       auto tok = take($1);
-                      $$ = put(builder::args(std::make_unique<token>(*tok), make_node_list(), std::make_unique<token>(*tok), true));
+                      $$ = put(p.builder.args(std::make_unique<token>(*tok), make_node_list(), std::make_unique<token>(*tok), true));
                     }
                 | tPIPE block_param opt_bv_decl tPIPE
                     {
                       auto params = take($2);
                       concat_node_list(params, take($3));
-                      $$ = put(builder::args(take($1), std::move(params), take($4), true));
+                      $$ = put(p.builder.args(take($1), std::move(params), take($4), true));
                     }
 
      opt_bv_decl: opt_nl
@@ -2052,7 +2052,7 @@ opt_block_args_tail:
                     {
                       auto ident = take($1);
                       p.lexer->declare(ident->string());
-                      $$ = put(builder::shadowarg(std::move(ident)));
+                      $$ = put(p.builder.shadowarg(std::move(ident)));
                     }
                 | f_bad_arg
                     {
@@ -2085,11 +2085,11 @@ opt_block_args_tail:
                     {
                       auto args = take($2);
                       concat_node_list(args, take($3));
-                      $$ = put(builder::args(take($1), std::move(args), take($4), true));
+                      $$ = put(p.builder.args(take($1), std::move(args), take($4), true));
                     }
                 | f_args
                     {
-                      $$ = put(builder::args(nullptr, take($1), nullptr, true));
+                      $$ = put(p.builder.args(nullptr, take($1), nullptr, true));
                     }
 
      lambda_body: tLAMBEG compstmt tRCURLY
@@ -2113,7 +2113,7 @@ opt_block_args_tail:
                     {
                       auto delimited_block = take($2);
 
-                      $$ = put(builder::block(take($1),
+                      $$ = put(p.builder.block(take($1),
                           std::move(delimited_block->begin),
                           std::move(delimited_block->args),
                           std::move(delimited_block->body),
@@ -2124,7 +2124,7 @@ opt_block_args_tail:
                     {
                       auto delimited = take($4);
 
-                      $$ = put(builder::call_method(take($1), take($2), take($3),
+                      $$ = put(p.builder.call_method(take($1), take($2), take($3),
                                   std::move(delimited->begin),
                                   std::move(delimited->inner),
                                   std::move(delimited->end)));
@@ -2134,7 +2134,7 @@ opt_block_args_tail:
                       auto delimited = take($4);
 
                       auto method_call =
-                        builder::call_method(take($1), take($2), take($3),
+                        p.builder.call_method(take($1), take($2), take($3),
                           std::move(delimited->begin),
                           std::move(delimited->inner),
                           std::move(delimited->end));
@@ -2142,7 +2142,7 @@ opt_block_args_tail:
                       auto block = take($5);
 
                       $$ = put(
-                        builder::block(std::move(method_call),
+                        p.builder.block(std::move(method_call),
                           std::move(block->begin),
                           std::move(block->args),
                           std::move(block->body),
@@ -2151,13 +2151,13 @@ opt_block_args_tail:
                 | block_call dot_or_colon operation2 command_args do_block
                     {
                       auto method_call =
-                        builder::call_method(take($1), take($2), take($3),
+                        p.builder.call_method(take($1), take($2), take($3),
                           nullptr, take($4), nullptr);
 
                       auto block = take($5);
 
                       $$ = put(
-                        builder::block(std::move(method_call),
+                        p.builder.block(std::move(method_call),
                           std::move(block->begin),
                           std::move(block->args),
                           std::move(block->body),
@@ -2168,7 +2168,7 @@ opt_block_args_tail:
                     {
                       auto delimited = take($2);
 
-                      $$ = put(builder::call_method(nullptr, nullptr, take($1),
+                      $$ = put(p.builder.call_method(nullptr, nullptr, take($1),
                         std::move(delimited->begin),
                         std::move(delimited->inner),
                         std::move(delimited->end)));
@@ -2178,7 +2178,7 @@ opt_block_args_tail:
                       auto delimited = take($4);
 
                       $$ = put(
-                        builder::call_method(take($1), take($2), take($3),
+                        p.builder.call_method(take($1), take($2), take($3),
                           std::move(delimited->begin),
                           std::move(delimited->inner),
                           std::move(delimited->end)));
@@ -2188,21 +2188,21 @@ opt_block_args_tail:
                       auto delimited = take($4);
 
                       $$ = put(
-                        builder::call_method(take($1), take($2), take($3),
+                        p.builder.call_method(take($1), take($2), take($3),
                           std::move(delimited->begin),
                           std::move(delimited->inner),
                           std::move(delimited->end)));
                     }
                 | primary_value tCOLON2 operation3
                     {
-                      $$ = put(builder::call_method(take($1), take($2), take($3), nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.call_method(take($1), take($2), take($3), nullptr, nullptr, nullptr));
                     }
                 | primary_value call_op paren_args
                     {
                       auto delimited = take($3);
 
                       $$ = put(
-                        builder::call_method(take($1), take($2), nullptr,
+                        p.builder.call_method(take($1), take($2), nullptr,
                           std::move(delimited->begin),
                           std::move(delimited->inner),
                           std::move(delimited->end)));
@@ -2212,7 +2212,7 @@ opt_block_args_tail:
                       auto delimited = take($3);
 
                       $$ = put(
-                        builder::call_method(take($1), take($2), nullptr,
+                        p.builder.call_method(take($1), take($2), nullptr,
                           std::move(delimited->begin),
                           std::move(delimited->inner),
                           std::move(delimited->end)));
@@ -2222,18 +2222,18 @@ opt_block_args_tail:
                       auto delimited = take($2);
 
                       $$ = put(
-                        builder::keyword_cmd(node_type::SUPER, take($1),
+                        p.builder.keyword_cmd(node_type::SUPER, take($1),
                           std::move(delimited->begin),
                           std::move(delimited->inner),
                           std::move(delimited->end)));
                     }
                 | kSUPER
                     {
-                      $$ = put(builder::keyword_cmd(node_type::ZSUPER, take($1), nullptr, nullptr, nullptr));
+                      $$ = put(p.builder.keyword_cmd(node_type::ZSUPER, take($1), nullptr, nullptr, nullptr));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = put(builder::index(take($1), take($2), take($3), take($4)));
+                      $$ = put(p.builder.index(take($1), take($2), take($3), take($4)));
                     }
 
      brace_block: tLCURLY brace_body tRCURLY
@@ -2292,7 +2292,7 @@ opt_block_args_tail:
                     {
                       auto cases = take($5);
                       cases->nodes.insert(cases->nodes.begin(),
-                        builder::when(take($1), take($2), take($3), take($4)));
+                        p.builder.when(take($1), take($2), take($3), take($4)));
                       $$ = put(std::move(cases));
                     }
 
@@ -2309,13 +2309,13 @@ opt_block_args_tail:
                       auto exc_list_ = take($2);
 
                       auto exc_list = exc_list_
-                        ? builder::array(nullptr, std::move(exc_list_), nullptr)
+                        ? p.builder.array(nullptr, std::move(exc_list_), nullptr)
                         : nullptr;
 
                       auto rescues = take($6);
 
                       rescues->nodes.insert(rescues->nodes.begin(),
-                        builder::rescue_body(take($1),
+                        p.builder.rescue_body(take($1),
                           std::move(exc_list),
                           exc_var ? std::move(exc_var->token_) : nullptr,
                           exc_var ? std::move(exc_var->node_) : nullptr,
@@ -2359,7 +2359,7 @@ opt_block_args_tail:
 
          strings: string
                     {
-                      $$ = put(builder::string_compose(nullptr, take($1), nullptr));
+                      $$ = put(p.builder.string_compose(nullptr, take($1), nullptr));
                     }
 
           string: string1
@@ -2375,34 +2375,34 @@ opt_block_args_tail:
 
          string1: tSTRING_BEG string_contents tSTRING_END
                     {
-                      auto str = builder::string_compose(take($1), take($2), take($3));
-                      $$ = put(builder::dedent_string(std::move(str), p.lexer->dedent_level()));
+                      auto str = p.builder.string_compose(take($1), take($2), take($3));
+                      $$ = put(p.builder.dedent_string(std::move(str), p.lexer->dedent_level()));
                     }
                 | tSTRING
                     {
-                      auto str = builder::string(take($1));
-                      $$ = put(builder::dedent_string(std::move(str), p.lexer->dedent_level()));
+                      auto str = p.builder.string(take($1));
+                      $$ = put(p.builder.dedent_string(std::move(str), p.lexer->dedent_level()));
                     }
                 | tCHARACTER
                     {
-                      $$ = put(builder::character(take($1)));
+                      $$ = put(p.builder.character(take($1)));
                     }
 
          xstring: tXSTRING_BEG xstring_contents tSTRING_END
                     {
-                      auto xstr = builder::xstring_compose(take($1), take($2), take($3));
-                      $$ = put(builder::dedent_string(std::move(xstr), p.lexer->dedent_level()));
+                      auto xstr = p.builder.xstring_compose(take($1), take($2), take($3));
+                      $$ = put(p.builder.dedent_string(std::move(xstr), p.lexer->dedent_level()));
                     }
 
           regexp: tREGEXP_BEG regexp_contents tSTRING_END tREGEXP_OPT
                     {
-                      auto opts = builder::regexp_options(take($4));
-                      $$ = put(builder::regexp_compose(take($1), take($2), take($3), std::move(opts)));
+                      auto opts = p.builder.regexp_options(take($4));
+                      $$ = put(p.builder.regexp_compose(take($1), take($2), take($3), std::move(opts)));
                     }
 
            words: tWORDS_BEG word_list tSTRING_END
                     {
-                      $$ = put(builder::words_compose(take($1), take($2), take($3)));
+                      $$ = put(p.builder.words_compose(take($1), take($2), take($3)));
                     }
 
        word_list: // nothing
@@ -2412,7 +2412,7 @@ opt_block_args_tail:
                 | word_list word tSPACE
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::word(take($2)));
+                      list->nodes.push_back(p.builder.word(take($2)));
                       $$ = put(std::move(list));
                     }
 
@@ -2429,7 +2429,7 @@ opt_block_args_tail:
 
          symbols: tSYMBOLS_BEG symbol_list tSTRING_END
                     {
-                      $$ = put(builder::symbols_compose(take($1), take($2), take($3)));
+                      $$ = put(p.builder.symbols_compose(take($1), take($2), take($3)));
                     }
 
      symbol_list: // nothing
@@ -2439,18 +2439,18 @@ opt_block_args_tail:
                 | symbol_list word tSPACE
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::word(take($2)));
+                      list->nodes.push_back(p.builder.word(take($2)));
                       $$ = put(std::move(list));
                     }
 
           qwords: tQWORDS_BEG qword_list tSTRING_END
                     {
-                      $$ = put(builder::words_compose(take($1), take($2), take($3)));
+                      $$ = put(p.builder.words_compose(take($1), take($2), take($3)));
                     }
 
         qsymbols: tQSYMBOLS_BEG qsym_list tSTRING_END
                     {
-                      $$ = put(builder::symbols_compose(take($1), take($2), take($3)));
+                      $$ = put(p.builder.symbols_compose(take($1), take($2), take($3)));
                     }
 
       qword_list: // nothing
@@ -2460,7 +2460,7 @@ opt_block_args_tail:
                 | qword_list tSTRING_CONTENT tSPACE
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::string_internal(take($2)));
+                      list->nodes.push_back(p.builder.string_internal(take($2)));
                       $$ = put(std::move(list));
                     }
 
@@ -2471,7 +2471,7 @@ opt_block_args_tail:
                 | qsym_list tSTRING_CONTENT tSPACE
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::symbol_internal(take($2)));
+                      list->nodes.push_back(p.builder.symbol_internal(take($2)));
                       $$ = put(std::move(list));
                     }
 
@@ -2510,7 +2510,7 @@ regexp_contents: // nothing
 
   string_content: tSTRING_CONTENT
                     {
-                      $$ = put(builder::string_internal(take($1)));
+                      $$ = put(p.builder.string_internal(take($1)));
                     }
                 | tSTRING_DVAR string_dvar
                     {
@@ -2526,20 +2526,20 @@ regexp_contents: // nothing
                       p.lexer->cond.lexpop();
                       p.lexer->cmdarg.lexpop();
 
-                      $$ = put(builder::begin(take($1), take($3), take($4)));
+                      $$ = put(p.builder.begin(take($1), take($3), take($4)));
                     }
 
      string_dvar: tGVAR
                     {
-                      $$ = put(builder::gvar(take($1)));
+                      $$ = put(p.builder.gvar(take($1)));
                     }
                 | tIVAR
                     {
-                      $$ = put(builder::ivar(take($1)));
+                      $$ = put(p.builder.ivar(take($1)));
                     }
                 | tCVAR
                     {
-                      $$ = put(builder::cvar(take($1)));
+                      $$ = put(p.builder.cvar(take($1)));
                     }
                 | backref
 
@@ -2547,13 +2547,13 @@ regexp_contents: // nothing
           symbol: tSYMBOL
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = put(builder::symbol(take($1)));
+                      $$ = put(p.builder.symbol(take($1)));
                     }
 
             dsym: tSYMBEG xstring_contents tSTRING_END
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = put(builder::symbol_compose(take($1), take($2), take($3)));
+                      $$ = put(p.builder.symbol_compose(take($1), take($2), take($3)));
                     }
 
          numeric: simple_numeric
@@ -2562,115 +2562,115 @@ regexp_contents: // nothing
                     }
                 | tUMINUS_NUM simple_numeric %prec tLOWEST
                     {
-                      $$ = put(builder::negate(take($1), take($2)));
+                      $$ = put(p.builder.negate(take($1), take($2)));
                     }
 
   simple_numeric: tINTEGER
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = put(builder::integer(take($1)));
+                      $$ = put(p.builder.integer(take($1)));
                     }
                 | tFLOAT
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = put(builder::float_(take($1)));
+                      $$ = put(p.builder.float_(take($1)));
                     }
                 | tRATIONAL
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = put(builder::rational(take($1)));
+                      $$ = put(p.builder.rational(take($1)));
                     }
                 | tIMAGINARY
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = put(builder::complex(take($1)));
+                      $$ = put(p.builder.complex(take($1)));
                     }
                 | tRATIONAL_IMAGINARY
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = put(builder::rational_complex(take($1)));
+                      $$ = put(p.builder.rational_complex(take($1)));
                     }
                 | tFLOAT_IMAGINARY
                     {
                       p.lexer->set_state_expr_endarg();
-                      $$ = put(builder::float_complex(take($1)));
+                      $$ = put(p.builder.float_complex(take($1)));
                     }
 
    user_variable: tIDENTIFIER
                     {
-                      $$ = put(builder::ident(take($1)));
+                      $$ = put(p.builder.ident(take($1)));
                     }
                 | tIVAR
                     {
-                      $$ = put(builder::ivar(take($1)));
+                      $$ = put(p.builder.ivar(take($1)));
                     }
                 | tGVAR
                     {
-                      $$ = put(builder::gvar(take($1)));
+                      $$ = put(p.builder.gvar(take($1)));
                     }
                 | tCONSTANT
                     {
-                      $$ = put(builder::const_(take($1)));
+                      $$ = put(p.builder.const_(take($1)));
                     }
                 | tCVAR
                     {
-                      $$ = put(builder::cvar(take($1)));
+                      $$ = put(p.builder.cvar(take($1)));
                     }
 
 keyword_variable: kNIL
                     {
-                      $$ = put(builder::nil(take($1)));
+                      $$ = put(p.builder.nil(take($1)));
                     }
                 | kSELF
                     {
-                      $$ = put(builder::self(take($1)));
+                      $$ = put(p.builder.self(take($1)));
                     }
                 | kTRUE
                     {
-                      $$ = put(builder::true_(take($1)));
+                      $$ = put(p.builder.true_(take($1)));
                     }
                 | kFALSE
                     {
-                      $$ = put(builder::false_(take($1)));
+                      $$ = put(p.builder.false_(take($1)));
                     }
                 | k__FILE__
                     {
-                      $$ = put(builder::file_literal(take($1)));
+                      $$ = put(p.builder.file_literal(take($1)));
                     }
                 | k__LINE__
                     {
-                      $$ = put(builder::line_literal(take($1)));
+                      $$ = put(p.builder.line_literal(take($1)));
                     }
                 | k__ENCODING__
                     {
-                      $$ = put(builder::encoding_literal(take($1)));
+                      $$ = put(p.builder.encoding_literal(take($1)));
                     }
 
          var_ref: user_variable
                     {
-                      $$ = put(builder::accessible(take($1)));
+                      $$ = put(p.builder.accessible(take($1)));
                     }
                 | keyword_variable
                     {
-                      $$ = put(builder::accessible(take($1)));
+                      $$ = put(p.builder.accessible(take($1)));
                     }
 
          var_lhs: user_variable
                     {
-                      $$ = put(builder::assignable(take($1)));
+                      $$ = put(p.builder.assignable(take($1)));
                     }
                 | keyword_variable
                     {
-                      $$ = put(builder::assignable(take($1)));
+                      $$ = put(p.builder.assignable(take($1)));
                     }
 
          backref: tNTH_REF
                     {
-                      $$ = put(builder::nth_ref(take($1)));
+                      $$ = put(p.builder.nth_ref(take($1)));
                     }
                 | tBACK_REF
                     {
-                      $$ = put(builder::back_ref(take($1)));
+                      $$ = put(p.builder.back_ref(take($1)));
                     }
 
       superclass: tLT
@@ -2688,7 +2688,7 @@ keyword_variable: kNIL
 
 tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
-                      $$ = put(builder::tr_genargs(take($1), take($2), take($3)));
+                      $$ = put(p.builder.tr_genargs(take($1), take($2), take($3)));
                     }
                 | // nothing
                     {
@@ -2702,11 +2702,11 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                   tr_returnsig
                     {
                       auto genargs = take($1);
-                      auto args = builder::args(take($2), take($3), take($4), true);
+                      auto args = p.builder.args(take($2), take($3), take($4), true);
                       auto returnsig = take($6);
 
                       if (genargs || returnsig) {
-                        $$ = put(builder::prototype(
+                        $$ = put(p.builder.prototype(
                           std::move(genargs),
                           std::move(args),
                           std::move(returnsig)));
@@ -2724,11 +2724,11 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       p.lexer->in_kwarg = $<boolean>2;
 
                       auto genargs = take($1);
-                      auto args = builder::args(nullptr, take($3), nullptr, true);
+                      auto args = p.builder.args(nullptr, take($3), nullptr, true);
                       auto returnsig = take($4);
 
                       if (genargs || returnsig) {
-                        $$ = put(builder::prototype(
+                        $$ = put(p.builder.prototype(
                           std::move(genargs),
                           std::move(args),
                           std::move(returnsig)));
@@ -2904,17 +2904,17 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
       f_arg_item: tr_argsig f_arg_asgn
                     {
                       auto argsig = take($1);
-                      auto arg = builder::arg(take($2));
+                      auto arg = p.builder.arg(take($2));
 
                       if (argsig) {
-                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
+                        $$ = put(p.builder.typed_arg(std::move(argsig), std::move(arg)));
                       } else {
                         $$ = put(std::move(arg));
                       }
                     }
                 | tLPAREN f_margs rparen
                     {
-                      $$ = put(builder::multi_lhs(take($1), take($2), take($3)));
+                      $$ = put(p.builder.multi_lhs(take($1), take($2), take($3)));
                     }
 
            f_arg: f_arg_item
@@ -2942,10 +2942,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
             f_kw: tr_argsig f_label arg_value
                     {
                       auto argsig = take($1);
-                      auto arg = builder::kwoptarg(take($2), take($3));
+                      auto arg = p.builder.kwoptarg(take($2), take($3));
 
                       if (argsig) {
-                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
+                        $$ = put(p.builder.typed_arg(std::move(argsig), std::move(arg)));
                       } else {
                         $$ = put(std::move(arg));
                       }
@@ -2953,10 +2953,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                 | tr_argsig f_label
                     {
                       auto argsig = take($1);
-                      auto arg = builder::kwarg(take($2));
+                      auto arg = p.builder.kwarg(take($2));
 
                       if (argsig) {
-                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
+                        $$ = put(p.builder.typed_arg(std::move(argsig), std::move(arg)));
                       } else {
                         $$ = put(std::move(arg));
                       }
@@ -2965,10 +2965,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
       f_block_kw: tr_argsig f_label primary_value
                     {
                       auto argsig = take($1);
-                      auto arg = builder::kwoptarg(take($2), take($3));
+                      auto arg = p.builder.kwoptarg(take($2), take($3));
 
                       if (argsig) {
-                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
+                        $$ = put(p.builder.typed_arg(std::move(argsig), std::move(arg)));
                       } else {
                         $$ = put(std::move(arg));
                       }
@@ -2976,10 +2976,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                 | tr_argsig f_label
                     {
                       auto argsig = take($1);
-                      auto arg = builder::kwarg(take($2));
+                      auto arg = p.builder.kwarg(take($2));
 
                       if (argsig) {
-                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
+                        $$ = put(p.builder.typed_arg(std::move(argsig), std::move(arg)));
                       } else {
                         $$ = put(std::move(arg));
                       }
@@ -3015,20 +3015,20 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
                       p.lexer->declare(ident->string());
 
-                      $$ = put(make_node_list({ builder::kwrestarg(take($1), std::move(ident)) }));
+                      $$ = put(make_node_list({ p.builder.kwrestarg(take($1), std::move(ident)) }));
                     }
                 | kwrest_mark
                     {
-                      $$ = put(make_node_list(builder::kwrestarg(take($1), nullptr)));
+                      $$ = put(make_node_list(p.builder.kwrestarg(take($1), nullptr)));
                     }
 
            f_opt: tr_argsig f_arg_asgn tEQL arg_value
                     {
                       auto argsig = take($1);
-                      auto arg = builder::optarg(take($2), take($3), take($4));
+                      auto arg = p.builder.optarg(take($2), take($3), take($4));
 
                       if (argsig) {
-                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
+                        $$ = put(p.builder.typed_arg(std::move(argsig), std::move(arg)));
                       } else {
                         $$ = put(std::move(arg));
                       }
@@ -3037,10 +3037,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
      f_block_opt: tr_argsig f_arg_asgn tEQL primary_value
                     {
                       auto argsig = take($1);
-                      auto arg = builder::optarg(take($2), take($3), take($4));
+                      auto arg = p.builder.optarg(take($2), take($3), take($4));
 
                       if (argsig) {
-                        $$ = put(builder::typed_arg(std::move(argsig), std::move(arg)));
+                        $$ = put(p.builder.typed_arg(std::move(argsig), std::move(arg)));
                       } else {
                         $$ = put(std::move(arg));
                       }
@@ -3077,10 +3077,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
                       p.lexer->declare(ident->string());
 
-                      auto restarg = builder::restarg(take($2), std::move(ident));
+                      auto restarg = p.builder.restarg(take($2), std::move(ident));
 
                       if (argsig) {
-                        restarg = builder::typed_arg(std::move(argsig), std::move(restarg));
+                        restarg = p.builder.typed_arg(std::move(argsig), std::move(restarg));
                       }
 
                       $$ = put(make_node_list(std::move(restarg)));
@@ -3088,10 +3088,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                 | tr_argsig restarg_mark
                     {
                       auto argsig = take($1);
-                      auto restarg = builder::restarg(take($2), nullptr);
+                      auto restarg = p.builder.restarg(take($2), nullptr);
 
                       if (restarg) {
-                        restarg = builder::typed_arg(std::move(argsig), std::move(restarg));
+                        restarg = p.builder.typed_arg(std::move(argsig), std::move(restarg));
                       }
 
                       $$ = put(make_node_list(std::move(restarg)));
@@ -3106,10 +3106,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
                       p.lexer->declare(ident->string());
 
-                      auto blockarg = builder::blockarg(take($2), std::move(ident));
+                      auto blockarg = p.builder.blockarg(take($2), std::move(ident));
 
                       if (blockarg) {
-                        blockarg = builder::typed_arg(std::move(argsig), std::move(blockarg));
+                        blockarg = p.builder.typed_arg(std::move(argsig), std::move(blockarg));
                       }
 
                       $$ = put(make_node_list(std::move(blockarg)));
@@ -3117,10 +3117,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                 | tr_argsig blkarg_mark
                     {
                       auto argsig = take($1);
-                      auto blockarg = builder::blockarg(take($2), nullptr);
+                      auto blockarg = p.builder.blockarg(take($2), nullptr);
 
                       if (blockarg) {
-                        blockarg = builder::typed_arg(std::move(argsig), std::move(blockarg));
+                        blockarg = p.builder.typed_arg(std::move(argsig), std::move(blockarg));
                       }
 
                       $$ = put(make_node_list(std::move(blockarg)));
@@ -3160,19 +3160,19 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
            assoc: arg_value tASSOC arg_value
                     {
-                      $$ = put(builder::pair(take($1), take($2), take($3)));
+                      $$ = put(p.builder.pair(take($1), take($2), take($3)));
                     }
                 | tLABEL arg_value
                     {
-                      $$ = put(builder::pair_keyword(take($1), take($2)));
+                      $$ = put(p.builder.pair_keyword(take($1), take($2)));
                     }
                 | tSTRING_BEG string_contents tLABEL_END arg_value
                     {
-                      $$ = put(builder::pair_quoted(take($1), take($2), take($3), take($4)));
+                      $$ = put(p.builder.pair_quoted(take($1), take($2), take($3), take($4)));
                     }
                 | tDSTAR arg_value
                     {
-                      $$ = put(builder::kwsplat(take($1), take($2)));
+                      $$ = put(p.builder.kwsplat(take($1), take($2)));
                     }
 
        operation: tIDENTIFIER | tCONSTANT | tFID
@@ -3224,15 +3224,15 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
         tr_cpath: tCOLON3 tCONSTANT
                     {
-                      $$ = put(builder::const_global(take($1), take($2)));
+                      $$ = put(p.builder.const_global(take($1), take($2)));
                     }
                 | tCONSTANT
                     {
-                      $$ = put(builder::const_(take($1)));
+                      $$ = put(p.builder.const_(take($1)));
                     }
                 | tr_cpath tCOLON2 tCONSTANT
                     {
-                      $$ = put(builder::const_fetch(take($1), take($2), take($3)));
+                      $$ = put(p.builder.const_fetch(take($1), take($2), take($3)));
                     }
 
        tr_types: tr_types tCOMMA tr_type
@@ -3248,15 +3248,15 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
          tr_type: tr_cpath
                     {
-                      $$ = put(builder::tr_cpath(take($1)));
+                      $$ = put(p.builder.tr_cpath(take($1)));
                     }
                 | tr_cpath tCOLON2 tLBRACK2 tr_types rbracket
                     {
-                      $$ = put(builder::tr_geninst(take($1), take($3), take($4), take($5)));
+                      $$ = put(p.builder.tr_geninst(take($1), take($3), take($4), take($5)));
                     }
                 | tLBRACK tr_type rbracket
                     {
-                      $$ = put(builder::tr_array(take($1), take($2), take($3)));
+                      $$ = put(p.builder.tr_array(take($1), take($2), take($3)));
                     }
                 | tLBRACK tr_type tCOMMA tr_types rbracket
                     {
@@ -3264,11 +3264,11 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
                       types->nodes.insert(types->nodes.begin(), take($2));
 
-                      $$ = put(builder::tr_tuple(take($1), std::move(types), take($5)));
+                      $$ = put(p.builder.tr_tuple(take($1), std::move(types), take($5)));
                     }
                 | tLBRACE tr_type tASSOC tr_type tRCURLY
                     {
-                      $$ = put(builder::tr_hash(take($1), take($2), take($3), take($4), take($5)));
+                      $$ = put(p.builder.tr_hash(take($1), take($2), take($3), take($4), take($5)));
                     }
                 | tLBRACE tr_blockproto tr_returnsig tRCURLY
                     {
@@ -3276,22 +3276,22 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto returnsig = take($3);
 
                       auto prototype = returnsig
-                        ? builder::prototype(nullptr, std::move(blockproto), std::move(returnsig))
+                        ? p.builder.prototype(nullptr, std::move(blockproto), std::move(returnsig))
                         : std::move(blockproto);
 
-                      $$ = put(builder::tr_proc(take($1), std::move(prototype), take($4)));
+                      $$ = put(p.builder.tr_proc(take($1), std::move(prototype), take($4)));
                     }
                 | tTILDE tr_type
                     {
-                      $$ = put(builder::tr_nillable(take($1), take($2)));
+                      $$ = put(p.builder.tr_nillable(take($1), take($2)));
                     }
                 | kNIL
                     {
-                      $$ = put(builder::tr_nil(take($1)));
+                      $$ = put(p.builder.tr_nil(take($1)));
                     }
                 | tSYMBOL
                     {
-                      $$ = put(builder::tr_special(take($1)));
+                      $$ = put(p.builder.tr_special(take($1)));
                       // diagnostic :error, :bad_special_type, { value: take($1)[0] }, take($1)
                     }
                 | tLPAREN tr_union_type rparen
@@ -3301,7 +3301,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
    tr_union_type: tr_union_type tPIPE tr_type
                     {
-                      $$ = put(builder::tr_or(take($1), take($3)));
+                      $$ = put(p.builder.tr_or(take($1), take($3)));
                     }
                 | tr_type
 
@@ -3327,12 +3327,12 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
   tr_gendeclargs: tr_gendeclargs tCOMMA tCONSTANT
                     {
                       auto list = take($1);
-                      list->nodes.push_back(builder::tr_gendeclarg(take($3)));
+                      list->nodes.push_back(p.builder.tr_gendeclarg(take($3)));
                       $$ = put(std::move(list));
                     }
                 | tCONSTANT
                     {
-                      $$ = put(make_node_list(builder::tr_gendeclarg(take($1))));
+                      $$ = put(make_node_list(p.builder.tr_gendeclarg(take($1))));
                     }
 
    tr_blockproto: { p.lexer->extend_dynamic(); }
