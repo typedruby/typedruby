@@ -7,21 +7,17 @@ void state_stack::push(bool state) {
 }
 
 bool state_stack::pop() {
-  bool state = stack.top();
-  stack.pop();
-  return state;
+  if (stack.empty()) {
+    return false;
+  } else {
+    bool state = stack.top();
+    stack.pop();
+    return state;
+  }
 }
 
 void state_stack::lexpop() {
-  bool top = stack.top();
-  stack.pop();
-
-  if (!top) {
-    top = stack.top();
-    stack.pop();
-  }
-
-  stack.push(top);
+  push(pop() || pop());
 }
 
 void state_stack::clear() {
