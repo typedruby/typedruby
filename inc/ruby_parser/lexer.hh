@@ -11,6 +11,7 @@
 #include "literal.hh"
 #include "token.hh"
 #include "state_stack.hh"
+#include "optional_size.hh"
 
 namespace ruby_parser {
   enum class ruby_version {
@@ -79,6 +80,14 @@ namespace ruby_parser {
 
     const char* herebody_s;   // starting position of current heredoc line
 
+    // After encountering the closing line of <<~SQUIGGLY_HEREDOC,
+    // we store the indentation level and give it out to the parser
+    // on request. It is not possible to infer indentation level just
+    // from the AST because escape sequences such as `\ ` or `\t` are
+    // expanded inside the lexer, but count as non-whitespace for
+    // indentation purposes.
+    optional_size dedent_level_;
+
     void check_stack_capacity();
     int stack_pop();
     int arg_or_cmdarg();
@@ -99,6 +108,9 @@ namespace ruby_parser {
 
     token_ptr advance_();
 
+    // literal needs to call emit:
+    friend class literal;
+
   public:
     state_stack cond;
     state_stack cmdarg;
@@ -118,6 +130,8 @@ namespace ruby_parser {
     void extend_dynamic();
     void unextend();
     void declare(const std::string& name);
+
+    optional_size dedent_level();
   };
 }
 
