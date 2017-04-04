@@ -430,7 +430,7 @@ unsafe extern "C" fn restarg(star: *const Token, name: *const Token) -> *mut Nod
 }
 
 unsafe extern "C" fn self_(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Self_(token_loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn shadowarg(name: *const Token) -> *mut Node {

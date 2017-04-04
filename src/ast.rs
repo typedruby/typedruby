@@ -65,6 +65,7 @@ pub enum Node {
     Ident           (ExprLoc,   String),
     Integer         (ExprLoc,   String),
     LineLiteral     (ExprLoc),
+    Self_           (ExprLoc),
     Send            (SendLoc,   Box<Node>, String, Vec<Box<Node>>),
     String          (ExprLoc,   String),
 }
@@ -79,6 +80,7 @@ impl Node {
             &Node::Ident(ref loc, _) => loc,
             &Node::Integer(ref loc, _) => loc,
             &Node::LineLiteral(ref loc) => loc,
+            &Node::Self_(ref loc) => loc,
             &Node::Send(ref loc, _, _, _) => loc,
             &Node::String(ref loc, _) => loc,
         }
