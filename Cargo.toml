@@ -1,0 +1,8 @@
+[package]
+name = "ruby_parser"
+version = "0.1.0"
+authors = ["Hailey Somerville <hailey@hailey.lol>"]
+build = "build.rs"
+
+[dependencies]
+libc = "0.2.0"

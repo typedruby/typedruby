@@ -1,4 +1,6 @@
 /librubyparser.a
 /main
 /src/Lexer.cc
+/target
 *.o
+Cargo.lock
