@@ -1,6 +1,7 @@
 CXXFLAGS += -Wall -Wextra -pedantic -std=c++1y -I inc -g
 
 OBJECTS = \
+	src/capi.o \
 	src/lexer.o \
 	src/literal.o \
 	src/parser.o \
@@ -18,7 +19,7 @@ src/lexer.o: CXXFLAGS += -Wno-unused-const-variable
 
 .PHONY: all clean
 
-all: main librubyparser.a
+all: librubyparser.a
 
 main: main.o librubyparser.a
 	$(CXX) -o $@ $(CXXFLAGS) $(LDFLAGS) $^
