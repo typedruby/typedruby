@@ -3963,16 +3963,14 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
     dot_or_colon: call_op | tCOLON2
          call_op: tDOT
                     {
-                      auto _1 = take(p, $1);
                       // what is this???
-                      // $$ = put(p, [:dot, std::move(_1)[1]]
+                      // $$ = put(p, [:dot, $1[1]]
                       $$ = $1;
                     }
                 | tANDDOT
                     {
-                      auto _1 = take(p, $1);
                       // what is this???
-                      // $$ = [:anddot, std::move(_1)[1]]
+                      // $$ = [:anddot, $1[1]]
                       $$ = $1;
                     }
        opt_terms:  | terms
