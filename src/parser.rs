@@ -94,7 +94,22 @@ unsafe extern "C" fn associate(begin: *const Token, pairs: *mut NodeList, end: *
 }
 
 unsafe extern "C" fn attr_asgn(receiver: *mut Node, dot: *const Token, selector: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let recv = from_raw(receiver);
+
+    let method_name = Token::string(selector) + "=";
+
+    let selector_range = Token::range(selector);
+
+    let loc = SendLoc {
+        expr_: recv.loc().expr().join(&selector_range),
+        selector: selector_range,
+    };
+
+    // this builds an incomplete AST node:
+    match Token::string(dot).as_str() {
+        "&." => Node::CSend(loc, recv, method_name, vec![]),
+        _    => Node::Send(loc, recv, method_name, vec![]),
+    }.to_raw()
 }
 
 unsafe extern "C" fn back_ref(tok: *const Token) -> *mut Node {
@@ -254,7 +269,7 @@ unsafe extern "C" fn encoding_literal(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn false_(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::False(token_loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn file_literal(tok: *const Token) -> *mut Node {
@@ -350,7 +365,7 @@ unsafe extern "C" fn negate(uminus: *const Token, numeric: *mut Node) -> *mut No
 }
 
 unsafe extern "C" fn nil(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Nil(token_loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn not_op(not_: *const Token, begin: *const Token, receiver: *mut Node, end: *const Token) -> *mut Node {
@@ -534,7 +549,7 @@ unsafe extern "C" fn tr_tuple(begin: *const Token, types: *mut NodeList, end: *c
 }
 
 unsafe extern "C" fn true_(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::True(token_loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn typed_arg(type_: *mut Node, arg: *mut Node) -> *mut Node {
