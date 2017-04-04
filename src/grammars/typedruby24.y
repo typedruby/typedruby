@@ -26,10 +26,11 @@
 
 %union {
   token_ptr* token;
-  node_delimited_list_ptr* delimited_list;
-  node_delimited_block_ptr* delimited_block;
+  delimited_node_list_ptr* delimited_list;
+  delimited_block_ptr* delimited_block;
   node_with_token_ptr* with_token;
-  node_ptr* node;
+  case_body_ptr* case_body;
+  foreign_ptr* node;
   node_list_ptr* list;
   state_stack_ptr* state_stack;
   size_t size;
@@ -269,8 +270,6 @@
   block_param
   bv_decls
   call_args
-  case_body
-  cases
   command_args
   exc_list
   f_arg
@@ -355,6 +354,10 @@
   opt_ensure
   superclass
 
+%type <case_body>
+  case_body
+  cases
+
 %nonassoc tLOWEST
 %nonassoc tLBRACE_ARG
 %nonassoc kIF_MOD kUNLESS_MOD kWHILE_MOD kUNTIL_MOD
@@ -380,7 +383,7 @@
 
 %{
   template<typename T>
-  static std::unique_ptr<T> take(std::unique_ptr<T>* raw_ptr) {
+  static T take(T* raw_ptr) {
     if (!raw_ptr) {
       return nullptr;
     }
@@ -391,8 +394,8 @@
   }
 
   template<typename T>
-  static std::unique_ptr<T>* put(std::unique_ptr<T> ptr) {
-    return new std::unique_ptr<T>(ptr.release());
+  static T* put(T ptr) {
+    return new T(ptr.release());
   }
 
   template<typename T>
@@ -406,11 +409,11 @@
   }
 
   static node_list_ptr make_node_list() {
-    return std::make_unique<node_list>(std::vector<node_ptr>());
+    return std::make_unique<node_list>(std::vector<foreign_ptr>());
   }
 
-  static node_list_ptr make_node_list(node_ptr&& node) {
-    std::vector<node_ptr> vec;
+  static node_list_ptr make_node_list(foreign_ptr&& node) {
+    std::vector<foreign_ptr> vec;
     vec.push_back(std::move(node));
     return std::make_unique<node_list>(std::move(vec));
   }
@@ -1261,12 +1264,12 @@
 
       paren_args: tLPAREN2 opt_call_args rparen
                     {
-                      $$ = put(std::make_unique<node_delimited_list>(take($1), take($2), take($3)));
+                      $$ = put(std::make_unique<delimited_node_list>(take($1), take($2), take($3)));
                     }
 
   opt_paren_args: // nothing
                     {
-                      $$ = put(std::make_unique<node_delimited_list>(nullptr, make_node_list(), nullptr));
+                      $$ = put(std::make_unique<delimited_node_list>(nullptr, make_node_list(), nullptr));
                     }
                 | paren_args
 
@@ -1590,11 +1593,10 @@
                     {
                       auto case_body = take($4);
 
-                      auto else_ = static_unique_cast<node_with_token>(std::move(case_body->nodes.back()));
-                      case_body->nodes.pop_back();
+                      auto else_ = std::move(case_body->else_);
 
                       $$ = put(p.builder.case_(take($1), take($2),
-                        std::move(case_body),
+                        std::move(case_body->whens),
                         else_ ? std::move(else_->token_) : nullptr,
                         else_ ? std::move(else_->node_) : nullptr,
                         take($5)));
@@ -1603,11 +1605,10 @@
                     {
                       auto case_body = take($3);
 
-                      auto else_ = static_unique_cast<node_with_token>(std::move(case_body->nodes.back()));
-                      case_body->nodes.pop_back();
+                      auto else_ = std::move(case_body->else_);
 
                       $$ = put(p.builder.case_(take($1), nullptr,
-                        std::move(case_body),
+                        std::move(case_body->whens),
                         else_ ? std::move(else_->token_) : nullptr,
                         else_ ? std::move(else_->node_) : nullptr,
                         take($4)));
@@ -1876,7 +1877,7 @@
                     }
                 | f_block_arg
                     {
-                      $$ = put(make_node_list(take($1)));
+                      $$ = put(take($1));
                     }
 
 opt_block_args_tail:
@@ -2094,11 +2095,11 @@ opt_block_args_tail:
 
      lambda_body: tLAMBEG compstmt tRCURLY
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(take($1), nullptr, take($2), take($3)));
+                      $$ = put(std::make_unique<delimited_block>(take($1), nullptr, take($2), take($3)));
                     }
                 | kDO_LAMBDA compstmt kEND
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(take($1), nullptr, take($2), take($3)));
+                      $$ = put(std::make_unique<delimited_block>(take($1), nullptr, take($2), take($3)));
                     }
 
         do_block: kDO_BLOCK do_body kEND
@@ -2264,7 +2265,7 @@ opt_block_args_tail:
                     }
                     opt_block_param compstmt
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(nullptr, take($3), take($4), nullptr));
+                      $$ = put(std::make_unique<delimited_block>(nullptr, take($3), take($4), nullptr));
 
                       p.lexer->unextend();
                       p.lexer->cmdarg = *take($<state_stack>2);
@@ -2280,7 +2281,7 @@ opt_block_args_tail:
                     }
                     opt_block_param compstmt
                     {
-                      $$ = put(std::make_unique<node_delimited_block>(nullptr, take($3), take($4), nullptr));
+                      $$ = put(std::make_unique<delimited_block>(nullptr, take($3), take($4), nullptr));
 
                       p.lexer->unextend();
 
@@ -2291,14 +2292,14 @@ opt_block_args_tail:
        case_body: kWHEN args then compstmt cases
                     {
                       auto cases = take($5);
-                      cases->nodes.insert(cases->nodes.begin(),
+                      cases->whens->nodes.insert(cases->whens->nodes.begin(),
                         p.builder.when(take($1), take($2), take($3), take($4)));
                       $$ = put(std::move(cases));
                     }
 
            cases: opt_else
                     {
-                      $$ = put(make_node_list(static_unique_cast<node>(take($1))));
+                      $$ = put(std::make_unique<case_body>(take($1)));
                     }
                 | case_body
 
@@ -2758,7 +2759,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | f_block_arg
                     {
-                      $$ = put(make_node_list(take($1)));
+                      $$ = put(take($1));
                     }
 
    opt_args_tail: tCOMMA args_tail
@@ -3128,7 +3129,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
  opt_f_block_arg: tCOMMA f_block_arg
                     {
-                      $$ = put(make_node_list(take($2)));
+                      $$ = $2;
                     }
                 |
                     {

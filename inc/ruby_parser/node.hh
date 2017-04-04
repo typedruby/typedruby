@@ -120,56 +120,6 @@ namespace ruby_parser {
     NODE_DELIMITED_BLOCK  = -3,
     NODE_WITH_TOKEN       = -4,
   };
-
-  struct node {
-    node_type type;
-
-    node(node_type type) : type(type) {}
-  };
-  using node_ptr = std::unique_ptr<node>;
-
-  struct node_list : public node {
-    std::vector<std::unique_ptr<node>> nodes;
-
-    node_list(decltype(nodes)&& nodes) : node(node_type::NODE_LIST), nodes(std::move(nodes)) {}
-  };
-  using node_list_ptr = std::unique_ptr<node_list>;
-
-  struct node_delimited_list : public node {
-    token_ptr begin;
-    node_list_ptr inner;
-    token_ptr end;
-
-    node_delimited_list(token_ptr&& begin, node_list_ptr&& inner, token_ptr&& end)
-      : node(node_type::NODE_DELIMITED_LIST), begin(std::move(begin)), inner(std::move(inner)), end(std::move(end)) {}
-  };
-  using node_delimited_list_ptr = std::unique_ptr<node_delimited_list>;
-
-  struct node_delimited_block : public node {
-    token_ptr begin;
-    node_ptr args;
-    node_ptr body;
-    token_ptr end;
-
-    node_delimited_block(token_ptr&& begin, node_ptr&& args, node_ptr&& body, token_ptr&& end)
-      : node(node_type::NODE_DELIMITED_BLOCK), begin(std::move(begin)), args(std::move(args)), body(std::move(body)), end(std::move(end)) {}
-  };
-  using node_delimited_block_ptr = std::unique_ptr<node_delimited_block>;
-
-  struct node_with_token : public node {
-    token_ptr token_;
-    node_ptr node_;
-
-    node_with_token(token_ptr&& token_, node_ptr&& node_)
-      : node(node_type::NODE_WITH_TOKEN), token_(std::move(token_)), node_(std::move(node_)) {}
-  };
-  using node_with_token_ptr = std::unique_ptr<node_with_token>;
-
-  struct begin_node : public node {
-    std::vector<std::unique_ptr<node>> nodes;
-
-    begin_node(decltype(nodes)&& nodes) : node(node_type::BEGIN), nodes(std::move(nodes)) {}
-  };
 }
 
 #endif

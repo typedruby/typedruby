@@ -21,11 +21,12 @@ void parser::base::check_kwarg_name(const token_ptr& name) {
     // diagnostic :error, :argument_const, nil, name_t
   }
 }
+
 extern "C" {
   int ruby_parser_typedruby24_yyparse(parser::typedruby24&);
 }
 
-node_ptr parser::typedruby24::parse() {
+foreign_ptr parser::typedruby24::parse() {
   ruby_parser_typedruby24_yyparse(*this);
   return std::move(ast);
 }
