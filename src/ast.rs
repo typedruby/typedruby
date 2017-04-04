@@ -60,7 +60,7 @@ impl Loc for ConstLoc {
 pub enum Node {
     Begin           (ExprLoc,   Vec<Box<Node>>),
     Const           (ConstLoc,  Option<Box<Node>>, String),
-    CSend           (SendLoc,   Box<Node>, String, Vec<Box<Node>>),
+    CSend           (SendLoc,   Option<Box<Node>>, String, Vec<Box<Node>>),
     EncodingLiteral (ExprLoc),
     False           (ExprLoc),
     FileLiteral     (ExprLoc),
@@ -69,7 +69,7 @@ pub enum Node {
     LineLiteral     (ExprLoc),
     Nil             (ExprLoc),
     Self_           (ExprLoc),
-    Send            (SendLoc,   Box<Node>, String, Vec<Box<Node>>),
+    Send            (SendLoc,   Option<Box<Node>>, String, Vec<Box<Node>>),
     String          (ExprLoc,   String),
     True            (ExprLoc),
 }
