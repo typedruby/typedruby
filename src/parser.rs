@@ -2,7 +2,7 @@ extern crate libc;
 
 use std::ptr;
 
-use ast::Node;
+use ast::*;
 use ffi;
 use ffi::{Builder, NodeList, Token};
 use self::libc::{size_t, c_int};
@@ -38,6 +38,23 @@ unsafe fn from_maybe_raw(p: *mut Node) -> Option<Box<Node>> {
     } else {
         Some(Box::from_raw(p))
     }
+}
+
+fn join_exprs(exprs: &[Box<Node>]) -> Range {
+    assert!(!exprs.is_empty());
+
+    let a = exprs.first().unwrap();
+    let b = exprs.last().unwrap();
+
+    a.loc().expr().join(b.loc().expr())
+}
+
+fn expr_loc(loc: Range) -> ExprLoc {
+    ExprLoc { expr_: loc }
+}
+
+unsafe fn token_loc(tok: *const Token) -> ExprLoc {
+    expr_loc(Token::range(tok))
 }
 
 unsafe fn from_raw(p: *mut Node) -> Box<Node> {
@@ -96,8 +113,17 @@ unsafe extern "C" fn begin_keyword(begin: *const Token, body: *mut Node, end: *c
     ptr::null_mut()
 }
 
-unsafe extern "C" fn binary_op(receiver: *mut Node, oper: *const Token, arg: *mut Node) -> *mut Node {
-    Node::Send(from_raw(receiver), Token::string(oper), vec![from_raw(arg)]).to_raw()
+unsafe extern "C" fn binary_op(recv: *mut Node, oper: *const Token, arg: *mut Node) -> *mut Node {
+    let recv = from_raw(recv);
+    let arg = from_raw(arg);
+
+    Node::Send(
+        SendLoc {
+            expr_: recv.loc().expr().join(arg.loc().expr()),
+            selector: Token::range(oper),
+        },
+        recv, Token::string(oper), vec![arg]
+    ).to_raw()
 }
 
 unsafe extern "C" fn block(method_call: *mut Node, begin: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
@@ -138,7 +164,10 @@ unsafe extern "C" fn compstmt(nodes: *mut NodeList) -> *mut Node {
     match nodes.len() {
         0 => None,
         1 => Some(nodes.remove(0)),
-        _ => Some(Box::new(Node::Begin(nodes))),
+        _ => {
+            let loc = ExprLoc { expr_: join_exprs(nodes.as_slice()) };
+            Some(Box::new(Node::Begin(loc, nodes)))
+        }
     }.to_raw()
 }
 
@@ -235,7 +264,7 @@ unsafe extern "C" fn index_asgn(receiver: *mut Node, lbrack: *const Token, index
 }
 
 unsafe extern "C" fn integer(tok: *const Token) -> *mut Node {
-    Box::into_raw(Box::new(Node::Integer(Token::string(tok))))
+    Box::into_raw(Box::new(Node::Integer(token_loc(tok), Token::string(tok))))
 }
 
 unsafe extern "C" fn ivar(tok: *const Token) -> *mut Node {
@@ -628,8 +657,11 @@ const builder: Builder = Builder {
     xstring_compose: xstring_compose,
 };
 
-pub fn parse(source: &str) -> Option<Box<Node>> {
-    unsafe {
-        from_maybe_raw(ffi::ruby_parser_typedruby24_parse(source.as_ptr(), source.len(), &builder))
+pub fn parse(filename: &str, source: &str) -> Ast {
+    Ast {
+        filename: filename.to_owned(),
+        node: unsafe {
+            from_maybe_raw(ffi::ruby_parser_typedruby24_parse(source.as_ptr(), source.len(), &builder))
+        },
     }
 }
