@@ -3,5 +3,5 @@ mod ast;
 mod parser;
 
 fn main() {
-    println!("{:?}", parser::parse("123 + 456"));
+    println!("{:#?}", parser::parse("foo.rb", "123 + 456"));
 }

@@ -1,6 +1,6 @@
 extern crate libc;
 
-use ::ast::Node;
+use ::ast::{Node, Range};
 use self::libc::{size_t, c_int};
 use std::vec::Vec;
 use std::ptr;
@@ -147,6 +147,13 @@ impl Token {
 
     pub unsafe fn end(ptr: *const Token) -> usize {
         ruby_parser_token_get_end(ptr)
+    }
+
+    pub unsafe fn range(ptr: *const Token) -> Range {
+        Range {
+            begin_pos: Token::start(ptr),
+            end_pos: Token::end(ptr),
+        }
     }
 
     pub unsafe fn string(ptr: *const Token) -> String {
