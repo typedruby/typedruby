@@ -34,9 +34,9 @@ namespace ruby_parser {
   };
 
   struct object {
-    object();
+    object() {};
   public:
-    virtual ~object() = 0;
+    virtual ~object() {};
   };
 
   struct node_list : public object {
