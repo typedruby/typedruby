@@ -92,6 +92,7 @@ namespace ruby_parser {
       std::unique_ptr<lexer> lexer;
       size_t def_level;
       const struct builder& builder;
+      std::set<void*> saved_pointers;
 
       base(ruby_version version, const std::string& source, const struct builder& builder);
 
