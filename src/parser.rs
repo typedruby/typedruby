@@ -82,7 +82,24 @@ unsafe extern "C" fn array(begin: *const Token, elements: *mut NodeList, end: *c
 }
 
 unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let mut lhs = *from_raw(lhs);
+    let rhs = from_raw(rhs);
+
+    match lhs {
+        Node::Send(mut loc, recv, mid, mut args) => {
+            loc.expr_ = loc.expr_.join(rhs.loc().expr());
+            args.push(rhs);
+            Node::Send(loc, recv, mid, args)
+        },
+        Node::CSend(mut loc, recv, mid, mut args) => {
+            loc.expr_ = loc.expr_.join(rhs.loc().expr());
+            args.push(rhs);
+            Node::CSend(loc, recv, mid, args)
+        },
+        _ => {
+            panic!("unimplemented lhs: {:?}", lhs);
+        }
+    }.to_raw()
 }
 
 unsafe extern "C" fn assignable(node: *mut Node) -> *mut Node {
@@ -107,8 +124,8 @@ unsafe extern "C" fn attr_asgn(receiver: *mut Node, dot: *const Token, selector:
 
     // this builds an incomplete AST node:
     match Token::string(dot).as_str() {
-        "&." => Node::CSend(loc, recv, method_name, vec![]),
-        _    => Node::Send(loc, recv, method_name, vec![]),
+        "&." => Node::CSend(loc, Some(recv), method_name, vec![]),
+        _    => Node::Send(loc, Some(recv), method_name, vec![]),
     }.to_raw()
 }
 
@@ -132,13 +149,12 @@ unsafe extern "C" fn binary_op(recv: *mut Node, oper: *const Token, arg: *mut No
     let recv = from_raw(recv);
     let arg = from_raw(arg);
 
-    Node::Send(
-        SendLoc {
-            expr_: recv.loc().expr().join(arg.loc().expr()),
-            selector: Token::range(oper),
-        },
-        recv, Token::string(oper), vec![arg]
-    ).to_raw()
+    let loc = SendLoc {
+        expr_: recv.loc().expr().join(arg.loc().expr()),
+        selector: Token::range(oper),
+    };
+
+    Node::Send(loc, Some(recv), Token::string(oper), vec![arg]).to_raw()
 }
 
 unsafe extern "C" fn block(method_call: *mut Node, begin: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
@@ -158,7 +174,37 @@ unsafe extern "C" fn call_lambda(lambda: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn call_method(receiver: *mut Node, dot: *const Token, selector: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let recv = from_maybe_raw(receiver);
+    let args = ffi::node_list_from_raw(args);
+
+    let selector_range = Token::range(selector);
+
+    let loc = {
+        let range_start =
+            match recv {
+                Some(ref node) => node.loc().expr(),
+                _ => &selector_range,
+            };
+
+        let range =
+            if rparen != ptr::null_mut() {
+                range_start.join(&Token::range(rparen))
+            } else if args.len() > 0 {
+                range_start.join(args.last().unwrap().loc().expr())
+            } else {
+                range_start.join(&Token::range(selector))
+            };
+
+        SendLoc {
+            expr_: range,
+            selector: Token::range(selector),
+        }
+    };
+
+    match Token::string(dot).as_str() {
+        "&." => Node::CSend(loc, recv, Token::string(selector), args),
+        _ => Node::Send(loc, recv, Token::string(selector), args),
+    }.to_raw()
 }
 
 unsafe extern "C" fn case_(case_: *const Token, expr: *mut Node, when_bodies: *mut NodeList, else_tok: *const Token, else_body: *mut Node, end: *const Token) -> *mut Node {
