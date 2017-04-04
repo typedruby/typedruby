@@ -166,6 +166,10 @@ impl Token {
 pub unsafe fn node_list_from_raw(list: *mut NodeList) -> Vec<Box<Node>> {
     let mut vec = Vec::new();
 
+    if list == ptr::null_mut() {
+        return vec;
+    }
+
     for index in 0..ruby_parser_node_list_get_length(list) {
         let node_ptr = ruby_parser_node_list_index(list, index);
 
