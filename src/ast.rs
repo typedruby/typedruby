@@ -44,20 +44,43 @@ impl Loc for SendLoc {
 }
 
 #[derive(Debug)]
+pub struct ConstLoc {
+    pub expr_: Range,
+    pub colon: Option<Range>,
+    pub name: Range,
+}
+
+impl Loc for ConstLoc {
+    fn expr(&self) -> &Range {
+        &self.expr_
+    }
+}
+
+#[derive(Debug)]
 pub enum Node {
-    Begin   (ExprLoc,   Vec<Box<Node>>),
-    Integer (ExprLoc,   String),
-    String  (ExprLoc,   String),
-    Send    (SendLoc,   Box<Node>, String, Vec<Box<Node>>),
+    Begin           (ExprLoc,   Vec<Box<Node>>),
+    Const           (ConstLoc,  Option<Box<Node>>, String),
+    EncodingLiteral (ExprLoc),
+    FileLiteral     (ExprLoc),
+    Ident           (ExprLoc,   String),
+    Integer         (ExprLoc,   String),
+    LineLiteral     (ExprLoc),
+    Send            (SendLoc,   Box<Node>, String, Vec<Box<Node>>),
+    String          (ExprLoc,   String),
 }
 
 impl Node {
     pub fn loc(&self) -> &Loc {
         match self {
             &Node::Begin(ref loc, _) => loc,
+            &Node::Const(ref loc, _, _) => loc,
+            &Node::EncodingLiteral(ref loc) => loc,
+            &Node::FileLiteral(ref loc) => loc,
+            &Node::Ident(ref loc, _) => loc,
             &Node::Integer(ref loc, _) => loc,
-            &Node::String(ref loc, _) => loc,
+            &Node::LineLiteral(ref loc) => loc,
             &Node::Send(ref loc, _, _, _) => loc,
+            &Node::String(ref loc, _) => loc,
         }
     }
 }
