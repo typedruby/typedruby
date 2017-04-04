@@ -580,7 +580,7 @@ unsafe extern "C" fn xstring_compose(begin: *const Token, parts: *mut NodeList, 
     panic!("unimplemented");
 }
 
-const builder: Builder = Builder {
+const BUILDER: Builder = Builder {
     accessible: accessible,
     alias: alias,
     arg: arg,
@@ -702,7 +702,7 @@ pub fn parse(filename: &str, source: &str) -> Ast {
     Ast {
         filename: filename.to_owned(),
         node: unsafe {
-            from_maybe_raw(ffi::ruby_parser_typedruby24_parse(source.as_ptr(), source.len(), &builder))
+            from_maybe_raw(ffi::ruby_parser_typedruby24_parse(source.as_ptr(), source.len(), &BUILDER))
         },
     }
 }
