@@ -60,14 +60,18 @@ impl Loc for ConstLoc {
 pub enum Node {
     Begin           (ExprLoc,   Vec<Box<Node>>),
     Const           (ConstLoc,  Option<Box<Node>>, String),
+    CSend           (SendLoc,   Box<Node>, String, Vec<Box<Node>>),
     EncodingLiteral (ExprLoc),
+    False           (ExprLoc),
     FileLiteral     (ExprLoc),
     Ident           (ExprLoc,   String),
     Integer         (ExprLoc,   String),
     LineLiteral     (ExprLoc),
+    Nil             (ExprLoc),
     Self_           (ExprLoc),
     Send            (SendLoc,   Box<Node>, String, Vec<Box<Node>>),
     String          (ExprLoc,   String),
+    True            (ExprLoc),
 }
 
 impl Node {
@@ -75,14 +79,18 @@ impl Node {
         match self {
             &Node::Begin(ref loc, _) => loc,
             &Node::Const(ref loc, _, _) => loc,
+            &Node::CSend(ref loc, _, _, _) => loc,
             &Node::EncodingLiteral(ref loc) => loc,
+            &Node::False(ref loc) => loc,
             &Node::FileLiteral(ref loc) => loc,
             &Node::Ident(ref loc, _) => loc,
             &Node::Integer(ref loc, _) => loc,
             &Node::LineLiteral(ref loc) => loc,
+            &Node::Nil(ref loc) => loc,
             &Node::Self_(ref loc) => loc,
             &Node::Send(ref loc, _, _, _) => loc,
             &Node::String(ref loc, _) => loc,
+            &Node::True(ref loc) => loc,
         }
     }
 }
