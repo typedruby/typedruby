@@ -628,7 +628,23 @@ unsafe extern "C" fn string(string_: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let mut parts = ffi::node_list_from_raw(parts);
+
+    if parts.len() == 1 {
+        let part = *parts.remove(0);
+
+        match part {
+            Node::String(loc, val) =>
+                if begin == ptr::null() {
+                    Node::String(loc, val)
+                } else {
+                    Node::String(join_tokens(begin, end), val)
+                },
+            node => Node::DString(join_tokens(begin, end), vec![Box::new(node)]),
+        }
+    } else {
+        Node::DString(join_tokens(begin, end), parts)
+    }.to_raw()
 }
 
 unsafe extern "C" fn string_internal(string_: *const Token) -> *mut Node {
