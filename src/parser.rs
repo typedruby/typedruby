@@ -345,7 +345,7 @@ unsafe extern "C" fn def_singleton(def: *const Token, definee: *mut Node, dot: *
 }
 
 unsafe extern "C" fn encoding_literal(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::EncodingLiteral(token_loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn false_(tok: *const Token) -> *mut Node {
@@ -353,7 +353,7 @@ unsafe extern "C" fn false_(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn file_literal(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::FileLiteral(token_loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn float_(tok: *const Token) -> *mut Node {
@@ -413,7 +413,7 @@ unsafe extern "C" fn kwsplat(dstar: *const Token, arg: *mut Node) -> *mut Node {
 }
 
 unsafe extern "C" fn line_literal(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::LineLiteral(token_loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn logical_op(type_: c_int, lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
@@ -537,7 +537,7 @@ unsafe extern "C" fn splat(star: *const Token, arg: *mut Node) -> *mut Node {
 }
 
 unsafe extern "C" fn string(string_: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::String(token_loc(string_), Token::string(string_)).to_raw()
 }
 
 unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
