@@ -402,7 +402,11 @@ unsafe extern "C" fn cvar(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn dedent_string(node: *mut Node, dedent_level: size_t) -> *mut Node {
-    panic!("unimplemented");
+    if dedent_level != 0 {
+        panic!("unimplemented dedent_string (dedent_level = {})", dedent_level); // TODO
+    }
+
+    return node;
 }
 
 unsafe extern "C" fn def_class(class_: *const Token, name: *mut Node, lt_: *const Token, superclass: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
