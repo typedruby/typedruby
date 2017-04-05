@@ -12,7 +12,7 @@ fn main() {
     let args: Vec<String> = env::args().collect();
 
     if args.len() < 2 {
-        writeln!(&mut std::io::stderr(), "usage: {} <source file>", args[0]);
+        writeln!(&mut std::io::stderr(), "usage: {} <source file>", args[0]).unwrap();
         process::exit(1);
     }
 
