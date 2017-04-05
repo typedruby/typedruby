@@ -58,15 +58,21 @@ impl Loc for ConstLoc {
 
 #[derive(Debug)]
 pub enum Node {
+    Arg             (ExprLoc,   String),
+    Args            (ExprLoc,   Vec<Box<Node>>),
     Begin           (ExprLoc,   Vec<Box<Node>>),
     Const           (ConstLoc,  Option<Box<Node>>, String),
     CSend           (SendLoc,   Option<Box<Node>>, String, Vec<Box<Node>>),
+    Def             (ExprLoc,   String, Option<Box<Node>>, Option<Box<Node>>),
     EncodingLiteral (ExprLoc),
+    Ensure          (ExprLoc,   Option<Box<Node>>, Box<Node>),
     False           (ExprLoc),
     FileLiteral     (ExprLoc),
     Integer         (ExprLoc,   String),
     LineLiteral     (ExprLoc),
+    Lvar            (ExprLoc,   String),
     Nil             (ExprLoc),
+    Rescue          (ExprLoc,   Option<Box<Node>>, Vec<Box<Node>>, Option<Box<Node>>),
     Self_           (ExprLoc),
     Send            (SendLoc,   Option<Box<Node>>, String, Vec<Box<Node>>),
     String          (ExprLoc,   String),
@@ -76,15 +82,21 @@ pub enum Node {
 impl Node {
     pub fn loc(&self) -> &Loc {
         match self {
+            &Node::Arg(ref loc, _) => loc,
+            &Node::Args(ref loc, _) => loc,
             &Node::Begin(ref loc, _) => loc,
             &Node::Const(ref loc, _, _) => loc,
             &Node::CSend(ref loc, _, _, _) => loc,
+            &Node::Def(ref loc, _, _, _) => loc,
             &Node::EncodingLiteral(ref loc) => loc,
+            &Node::Ensure(ref loc, _, _) => loc,
             &Node::False(ref loc) => loc,
             &Node::FileLiteral(ref loc) => loc,
             &Node::Integer(ref loc, _) => loc,
             &Node::LineLiteral(ref loc) => loc,
+            &Node::Lvar(ref loc, _) => loc,
             &Node::Nil(ref loc) => loc,
+            &Node::Rescue(ref loc, _, _, _) => loc,
             &Node::Self_(ref loc) => loc,
             &Node::Send(ref loc, _, _, _) => loc,
             &Node::String(ref loc, _) => loc,
