@@ -37,6 +37,14 @@ namespace ruby_parser {
       assert(value != none_value);
       return value;
     }
+
+    size_t operator||(size_t default_) const {
+      if (*this) {
+        return value;
+      } else {
+        return default_;
+      }
+    }
   };
 }
 
