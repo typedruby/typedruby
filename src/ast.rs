@@ -1,7 +1,7 @@
 use std::vec::Vec;
 use std::cmp::{min, max};
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct Range {
     pub begin_pos: usize,
     pub end_pos: usize,
