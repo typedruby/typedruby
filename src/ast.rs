@@ -23,6 +23,7 @@ pub struct Id(pub Loc, pub String);
 pub enum Node {
     Arg             (Loc,   String),
     Args            (Loc,   Vec<Box<Node>>),
+    Array           (Loc,   Vec<Box<Node>>),
     Begin           (Loc,   Vec<Box<Node>>),
     Cbase           (Loc),
     Const           (Loc,   Option<Box<Node>>, Id),
@@ -49,6 +50,7 @@ impl Node {
         match self {
             &Node::Arg(ref loc, _) => loc,
             &Node::Args(ref loc, _) => loc,
+            &Node::Array(ref loc, _) => loc,
             &Node::Begin(ref loc, _) => loc,
             &Node::Cbase(ref loc) => loc,
             &Node::Const(ref loc, _, _) => loc,

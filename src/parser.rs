@@ -160,7 +160,7 @@ unsafe extern "C" fn args(begin: *const Token, args: *mut NodeList, end: *const 
 }
 
 unsafe extern "C" fn array(begin: *const Token, elements: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Array(join_tokens(begin, end), ffi::node_list_from_raw(elements)).to_raw()
 }
 
 unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -> *mut Node {
