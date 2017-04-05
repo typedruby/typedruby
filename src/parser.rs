@@ -60,6 +60,10 @@ fn join_exprs(exprs: &[Box<Node>]) -> Loc {
     a.loc().join(b.loc())
 }
 
+unsafe fn join_tokens(left: *const Token, right: *const Token) -> Loc {
+    Token::loc(left).join(&Token::loc(right))
+}
+
 enum CallType {
     Send,
     CSend,
@@ -129,7 +133,7 @@ unsafe fn collection_map(begin: *const Token, elements: &[Box<Node>], end: *cons
     if begin != ptr::null() {
         assert!(end != ptr::null());
 
-        Some(Token::loc(begin).join(&Token::loc(end)))
+        Some(join_tokens(begin, end))
     } else {
         assert!(end == ptr::null());
 
@@ -378,13 +382,13 @@ unsafe extern "C" fn const_(name: *const Token) -> *mut Node {
 unsafe extern "C" fn const_fetch(scope: *mut Node, colon: *const Token, name: *const Token) -> *mut Node {
     let scope = from_raw(scope);
 
-    let loc = Token::loc(colon).join(&Token::loc(name));
+    let loc = scope.loc().join(&Token::loc(name));
 
     Node::Const(loc, Some(scope), token_id(name)).to_raw()
 }
 
 unsafe extern "C" fn const_global(colon: *const Token, name: *const Token) -> *mut Node {
-    let loc = Token::loc(colon).join(&Token::loc(name));
+    let loc = join_tokens(colon, name);
 
     Node::Const(loc, Some(Box::new(Node::Cbase(Token::loc(colon)))), token_id(name)).to_raw()
 }
@@ -406,7 +410,7 @@ unsafe extern "C" fn def_class(class_: *const Token, name: *mut Node, lt_: *cons
 }
 
 unsafe extern "C" fn def_method(def: *const Token, name: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
-    let loc = Token::loc(def).join(&Token::loc(end));
+    let loc = join_tokens(def, end);
 
     Node::Def(loc, token_id(name), from_maybe_raw(args), from_maybe_raw(body)).to_raw()
 }
