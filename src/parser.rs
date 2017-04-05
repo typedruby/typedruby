@@ -100,7 +100,7 @@ unsafe extern "C" fn array(begin: *const Token, elements: *mut NodeList, end: *c
 }
 
 unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -> *mut Node {
-    let mut lhs = *from_raw(lhs);
+    let lhs = *from_raw(lhs);
     let rhs = from_raw(rhs);
 
     match lhs {
