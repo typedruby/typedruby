@@ -53,6 +53,22 @@ fn expr_loc(loc: Range) -> ExprLoc {
     ExprLoc { expr_: loc }
 }
 
+enum CallType {
+    Send,
+    CSend,
+}
+
+unsafe fn call_type_for_dot(dot: *const Token) -> CallType {
+    if dot == ptr::null() {
+        return CallType::Send;
+    }
+
+    match Token::string(dot).as_str() {
+        "&." => CallType::CSend,
+        _    => CallType::Send,
+    }
+}
+
 unsafe fn token_loc(tok: *const Token) -> ExprLoc {
     expr_loc(Token::range(tok))
 }
@@ -123,9 +139,9 @@ unsafe extern "C" fn attr_asgn(receiver: *mut Node, dot: *const Token, selector:
     };
 
     // this builds an incomplete AST node:
-    match Token::string(dot).as_str() {
-        "&." => Node::CSend(loc, Some(recv), method_name, vec![]),
-        _    => Node::Send(loc, Some(recv), method_name, vec![]),
+    match call_type_for_dot(dot) {
+        CallType::CSend => Node::CSend(loc, Some(recv), method_name, vec![]),
+        CallType::Send => Node::Send(loc, Some(recv), method_name, vec![]),
     }.to_raw()
 }
 
@@ -177,9 +193,16 @@ unsafe extern "C" fn call_method(receiver: *mut Node, dot: *const Token, selecto
     let recv = from_maybe_raw(receiver);
     let args = ffi::node_list_from_raw(args);
 
-    let selector_range = Token::range(selector);
-
     let loc = {
+        let selector_range =
+            if selector != ptr::null_mut() {
+                Token::range(selector)
+            } else {
+                // if there is no selector (in the case of the foo.() #call syntax)
+                // syntactically there *must* be a dot:
+                Token::range(dot)
+            };
+
         let range_start =
             match recv {
                 Some(ref node) => node.loc().expr(),
@@ -192,18 +215,27 @@ unsafe extern "C" fn call_method(receiver: *mut Node, dot: *const Token, selecto
             } else if args.len() > 0 {
                 range_start.join(args.last().unwrap().loc().expr())
             } else {
-                range_start.join(&Token::range(selector))
+                range_start.join(&selector_range)
             };
 
         SendLoc {
             expr_: range,
-            selector: Token::range(selector),
+            // clone is necessary because the borrow checker won't let us move
+            // selector_range after borrowing it above while computing `range`:
+            selector: selector_range.clone(),
         }
     };
 
-    match Token::string(dot).as_str() {
-        "&." => Node::CSend(loc, recv, Token::string(selector), args),
-        _ => Node::Send(loc, recv, Token::string(selector), args),
+    let selector =
+        if selector != ptr::null_mut() {
+            Token::string(selector)
+        } else {
+            "call".to_owned()
+        };
+
+    match call_type_for_dot(dot) {
+        CallType::CSend => Node::CSend(loc, recv, selector, args),
+        CallType::Send => Node::Send(loc, recv, selector, args),
     }.to_raw()
 }
 
