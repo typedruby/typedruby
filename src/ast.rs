@@ -2,81 +2,45 @@ use std::vec::Vec;
 use std::cmp::{min, max};
 
 #[derive(Debug,Clone)]
-pub struct Range {
+pub struct Loc {
     pub begin_pos: usize,
     pub end_pos: usize,
 }
 
-impl Range {
-    pub fn join(&self, other: &Range) -> Range {
-        Range {
+impl Loc {
+    pub fn join(&self, other: &Loc) -> Loc {
+        Loc {
             begin_pos: min(self.begin_pos, other.begin_pos),
             end_pos: max(self.end_pos, other.end_pos),
         }
     }
 }
 
-pub trait Loc {
-    fn expr(&self) -> &Range;
-}
-
 #[derive(Debug)]
-pub struct ExprLoc {
-    pub expr_: Range,
-}
-
-impl Loc for ExprLoc {
-    fn expr(&self) -> &Range {
-        &self.expr_
-    }
-}
-
-#[derive(Debug)]
-pub struct SendLoc {
-    pub expr_: Range,
-    pub selector: Range,
-}
-
-impl Loc for SendLoc {
-    fn expr(&self) -> &Range {
-        &self.expr_
-    }
-}
-
-#[derive(Debug)]
-pub struct ConstLoc {
-    pub expr_: Range,
-    pub colon: Option<Range>,
-    pub name: Range,
-}
-
-impl Loc for ConstLoc {
-    fn expr(&self) -> &Range {
-        &self.expr_
-    }
-}
+pub struct Id(pub Loc, pub String);
 
 #[derive(Debug)]
 pub enum Node {
-    Arg             (ExprLoc,   String),
-    Args            (ExprLoc,   Vec<Box<Node>>),
-    Begin           (ExprLoc,   Vec<Box<Node>>),
-    Const           (ConstLoc,  Option<Box<Node>>, String),
-    CSend           (SendLoc,   Option<Box<Node>>, String, Vec<Box<Node>>),
-    Def             (ExprLoc,   String, Option<Box<Node>>, Option<Box<Node>>),
-    EncodingLiteral (ExprLoc),
-    Ensure          (ExprLoc,   Option<Box<Node>>, Box<Node>),
-    False           (ExprLoc),
-    FileLiteral     (ExprLoc),
-    Integer         (ExprLoc,   String),
-    LineLiteral     (ExprLoc),
-    Lvar            (ExprLoc,   String),
-    Nil             (ExprLoc),
-    Rescue          (ExprLoc,   Option<Box<Node>>, Vec<Box<Node>>, Option<Box<Node>>),
-    Self_           (ExprLoc),
-    Send            (SendLoc,   Option<Box<Node>>, String, Vec<Box<Node>>),
-    String          (ExprLoc,   String),
-    True            (ExprLoc),
+    Arg             (Loc,   String),
+    Args            (Loc,   Vec<Box<Node>>),
+    Begin           (Loc,   Vec<Box<Node>>),
+    Cbase           (Loc),
+    Const           (Loc,   Option<Box<Node>>, Id),
+    CSend           (Loc,   Option<Box<Node>>, Id, Vec<Box<Node>>),
+    Def             (Loc,   Id, Option<Box<Node>>, Option<Box<Node>>),
+    EncodingLiteral (Loc),
+    Ensure          (Loc,   Option<Box<Node>>, Box<Node>),
+    False           (Loc),
+    FileLiteral     (Loc),
+    Integer         (Loc,   String),
+    LineLiteral     (Loc),
+    Lvar            (Loc,   String),
+    Nil             (Loc),
+    Rescue          (Loc,   Option<Box<Node>>, Vec<Box<Node>>, Option<Box<Node>>),
+    Self_           (Loc),
+    Send            (Loc,   Option<Box<Node>>, Id, Vec<Box<Node>>),
+    String          (Loc,   String),
+    True            (Loc),
 }
 
 impl Node {
@@ -85,6 +49,7 @@ impl Node {
             &Node::Arg(ref loc, _) => loc,
             &Node::Args(ref loc, _) => loc,
             &Node::Begin(ref loc, _) => loc,
+            &Node::Cbase(ref loc) => loc,
             &Node::Const(ref loc, _, _) => loc,
             &Node::CSend(ref loc, _, _, _) => loc,
             &Node::Def(ref loc, _, _, _) => loc,

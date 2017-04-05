@@ -51,17 +51,13 @@ unsafe fn from_maybe_raw(p: *mut Node) -> Option<Box<Node>> {
     }
 }
 
-fn join_exprs(exprs: &[Box<Node>]) -> Range {
+fn join_exprs(exprs: &[Box<Node>]) -> Loc {
     assert!(!exprs.is_empty());
 
     let a = exprs.first().unwrap();
     let b = exprs.last().unwrap();
 
-    a.loc().expr().join(b.loc().expr())
-}
-
-fn expr_loc(loc: Range) -> ExprLoc {
-    ExprLoc { expr_: loc }
+    a.loc().join(b.loc())
 }
 
 enum CallType {
@@ -80,8 +76,12 @@ unsafe fn call_type_for_dot(dot: *const Token) -> CallType {
     }
 }
 
-unsafe fn token_loc(tok: *const Token) -> ExprLoc {
-    expr_loc(Token::range(tok))
+unsafe fn token_loc(tok: *const Token) -> Loc {
+    Token::loc(tok)
+}
+
+unsafe fn token_id(tok: *const Token) -> Id {
+    Id(Token::loc(tok), Token::string(tok))
 }
 
 unsafe fn from_raw(p: *mut Node) -> Box<Node> {
@@ -103,9 +103,9 @@ unsafe extern "C" fn arg(name: *const Token) -> *mut Node {
 fn check_duplicate_args<'a>(args: &'a [Box<Node>]) {
     let mut names = ::std::collections::HashSet::new();
 
-    fn arg_loc_and_name<'a>(node: &'a Node) -> (&'a Range, &'a str) {
+    fn arg_loc_and_name<'a>(node: &'a Node) -> (&'a Loc, &'a str) {
         match node {
-            &Node::Arg(ref loc, ref name) => (&loc.expr(), &name),
+            &Node::Arg(ref loc, ref name) => (&loc, &name),
             _ => panic!("not an arg node"),
         }
     }
@@ -129,25 +129,22 @@ fn check_duplicate_args<'a>(args: &'a [Box<Node>]) {
     check_inner(args)
 }
 
-unsafe fn collection_map(begin: *const Token, elements: &[Box<Node>], end: *const Token) -> Option<ExprLoc> {
-    let range =
-        if begin != ptr::null() {
-            assert!(end != ptr::null());
+unsafe fn collection_map(begin: *const Token, elements: &[Box<Node>], end: *const Token) -> Option<Loc> {
+    if begin != ptr::null() {
+        assert!(end != ptr::null());
 
-            Some(Token::range(begin).join(&Token::range(end)))
+        Some(Token::loc(begin).join(&Token::loc(end)))
+    } else {
+        assert!(end == ptr::null());
+
+        if elements.is_empty() {
+            None
         } else {
-            assert!(end == ptr::null());
-
-            if elements.is_empty() {
-                None
-            } else {
-                let first = elements.first().unwrap();
-                let last = elements.last().unwrap();
-                Some(first.loc().expr().join(last.loc().expr()))
-            }
-        };
-
-    range.map(|r| ExprLoc { expr_: r })
+            let first = elements.first().unwrap();
+            let last = elements.last().unwrap();
+            Some(first.loc().join(last.loc()))
+        }
+    }
 }
 
 unsafe extern "C" fn args(begin: *const Token, args: *mut NodeList, end: *const Token, check_args: bool) -> *mut Node {
@@ -171,13 +168,13 @@ unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -
     let rhs = from_raw(rhs);
 
     match lhs {
-        Node::Send(mut loc, recv, mid, mut args) => {
-            loc.expr_ = loc.expr_.join(rhs.loc().expr());
+        Node::Send(loc, recv, mid, mut args) => {
+            let loc = loc.join((&rhs).loc());
             args.push(rhs);
             Node::Send(loc, recv, mid, args)
         },
-        Node::CSend(mut loc, recv, mid, mut args) => {
-            loc.expr_ = loc.expr_.join(rhs.loc().expr());
+        Node::CSend(loc, recv, mid, mut args) => {
+            let loc = loc.join((&rhs).loc());
             args.push(rhs);
             Node::CSend(loc, recv, mid, args)
         },
@@ -198,19 +195,14 @@ unsafe extern "C" fn associate(begin: *const Token, pairs: *mut NodeList, end: *
 unsafe extern "C" fn attr_asgn(receiver: *mut Node, dot: *const Token, selector: *const Token) -> *mut Node {
     let recv = from_raw(receiver);
 
-    let method_name = Token::string(selector) + "=";
+    let selector = Id(Token::loc(selector), Token::string(selector) + "=");
 
-    let selector_range = Token::range(selector);
-
-    let loc = SendLoc {
-        expr_: recv.loc().expr().join(&selector_range),
-        selector: selector_range,
-    };
+    let loc = recv.loc().join(&selector.0);
 
     // this builds an incomplete AST node:
     match call_type_for_dot(dot) {
-        CallType::CSend => Node::CSend(loc, Some(recv), method_name, vec![]),
-        CallType::Send => Node::Send(loc, Some(recv), method_name, vec![]),
+        CallType::CSend => Node::CSend(loc, Some(recv), selector, vec![]),
+        CallType::Send => Node::Send(loc, Some(recv), selector, vec![]),
     }.to_raw()
 }
 
@@ -232,23 +224,23 @@ unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, e
         match else_ {
             Some(else_body) => {
                 let loc = {
-                    let loc = else_body.loc().expr();
+                    let loc = else_body.loc();
                     match compound_stmt {
-                        Some(ref body) => body.loc().expr().join(loc),
+                        Some(ref body) => body.loc().join(loc),
                         None => loc.clone(),
                     }
                 };
-                compound_stmt = Some(Box::new(Node::Rescue(ExprLoc { expr_: loc }, compound_stmt, rescue_bodies, Some(else_body))));
+                compound_stmt = Some(Box::new(Node::Rescue(loc, compound_stmt, rescue_bodies, Some(else_body))));
             },
             None => {
                 let loc = {
-                    let loc = rescue_bodies.last().unwrap().loc().expr();
+                    let loc = rescue_bodies.last().unwrap().loc();
                     match compound_stmt {
-                        Some(ref body) => body.loc().expr().join(loc),
+                        Some(ref body) => body.loc().join(loc),
                         None => loc.clone(),
                     }
                 };
-                compound_stmt = Some(Box::new(Node::Rescue(ExprLoc { expr_: loc }, compound_stmt, rescue_bodies, None)));
+                compound_stmt = Some(Box::new(Node::Rescue(loc, compound_stmt, rescue_bodies, None)));
             }
         }
     } else if let Some(else_body) = else_ {
@@ -262,20 +254,20 @@ unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, e
 
         stmts.push(Box::new(
             Node::Begin(
-                ExprLoc { expr_: Token::range(else_tok).join(else_body.loc().expr()) },
+                Token::loc(else_tok).join(else_body.loc()),
                 vec![else_body])));
 
-        compound_stmt = Some(Box::new(Node::Begin(ExprLoc { expr_: join_exprs(stmts.as_slice()) }, stmts)));
+        compound_stmt = Some(Box::new(Node::Begin(join_exprs(stmts.as_slice()), stmts)));
     }
 
     if let Some(ensure_box) = ensure {
         let loc = {
-            let ensure_range = ensure_box.loc().expr();
+            let ensure_loc = ensure_box.loc();
 
-            ExprLoc { expr_: match compound_stmt {
-                Some(ref compound_stmt_box) => compound_stmt_box.loc().expr().join(ensure_range),
-                None => Token::range(ensure_tok).join(ensure_range),
-            } }
+            match compound_stmt {
+                Some(ref compound_stmt_box) => compound_stmt_box.loc().join(ensure_loc),
+                None => Token::loc(ensure_tok).join(ensure_loc),
+            }
         };
 
         compound_stmt = Some(Box::new(Node::Ensure(loc, compound_stmt, ensure_box)));
@@ -292,12 +284,7 @@ unsafe extern "C" fn binary_op(recv: *mut Node, oper: *const Token, arg: *mut No
     let recv = from_raw(recv);
     let arg = from_raw(arg);
 
-    let loc = SendLoc {
-        expr_: recv.loc().expr().join(arg.loc().expr()),
-        selector: Token::range(oper),
-    };
-
-    Node::Send(loc, Some(recv), Token::string(oper), vec![arg]).to_raw()
+    Node::Send(recv.loc().join(arg.loc()), Some(recv), token_id(oper), vec![arg]).to_raw()
 }
 
 unsafe extern "C" fn block(method_call: *mut Node, begin: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
@@ -321,43 +308,35 @@ unsafe extern "C" fn call_method(receiver: *mut Node, dot: *const Token, selecto
     let args = ffi::node_list_from_raw(args);
 
     let loc = {
-        let selector_range =
+        let selector_loc =
             if selector != ptr::null_mut() {
-                Token::range(selector)
+                Token::loc(selector)
             } else {
                 // if there is no selector (in the case of the foo.() #call syntax)
                 // syntactically there *must* be a dot:
-                Token::range(dot)
+                Token::loc(dot)
             };
 
-        let range_start =
+        let loc_start =
             match recv {
-                Some(ref node) => node.loc().expr(),
-                _ => &selector_range,
+                Some(ref node) => node.loc(),
+                _ => &selector_loc,
             };
 
-        let range =
-            if rparen != ptr::null_mut() {
-                range_start.join(&Token::range(rparen))
-            } else if args.len() > 0 {
-                range_start.join(args.last().unwrap().loc().expr())
-            } else {
-                range_start.join(&selector_range)
-            };
-
-        SendLoc {
-            expr_: range,
-            // clone is necessary because the borrow checker won't let us move
-            // selector_range after borrowing it above while computing `range`:
-            selector: selector_range.clone(),
+        if rparen != ptr::null_mut() {
+            loc_start.join(&Token::loc(rparen))
+        } else if args.len() > 0 {
+            loc_start.join(args.last().unwrap().loc())
+        } else {
+            loc_start.join(&selector_loc)
         }
     };
 
     let selector =
         if selector != ptr::null_mut() {
-            Token::string(selector)
+            token_id(selector)
         } else {
-            "call".to_owned()
+            Id(Token::loc(dot), "call".to_owned())
         };
 
     match call_type_for_dot(dot) {
@@ -384,10 +363,7 @@ unsafe extern "C" fn compstmt(nodes: *mut NodeList) -> *mut Node {
     match nodes.len() {
         0 => None,
         1 => Some(nodes.remove(0)),
-        _ => {
-            let loc = ExprLoc { expr_: join_exprs(nodes.as_slice()) };
-            Some(Box::new(Node::Begin(loc, nodes)))
-        }
+        _ => Some(Box::new(Node::Begin(join_exprs(nodes.as_slice()), nodes))),
     }.to_raw()
 }
 
@@ -400,41 +376,21 @@ unsafe extern "C" fn condition_mod(if_true: *mut Node, if_false: *mut Node, cond
 }
 
 unsafe extern "C" fn const_(name: *const Token) -> *mut Node {
-    let loc = ConstLoc {
-        expr_: Token::range(name),
-        colon: None,
-        name: Token::range(name),
-    };
-
-    Node::Const(loc, None, Token::string(name)).to_raw()
+    Node::Const(Token::loc(name), None, token_id(name)).to_raw()
 }
 
 unsafe extern "C" fn const_fetch(scope: *mut Node, colon: *const Token, name: *const Token) -> *mut Node {
     let scope = from_raw(scope);
 
-    let colon_range = Token::range(colon);
-    let name_range = Token::range(name);
+    let loc = Token::loc(colon).join(&Token::loc(name));
 
-    let loc = ConstLoc {
-        expr_: scope.loc().expr().join(&name_range),
-        colon: Some(colon_range),
-        name: name_range,
-    };
-
-    Node::Const(loc, Some(scope), Token::string(name)).to_raw()
+    Node::Const(loc, Some(scope), token_id(name)).to_raw()
 }
 
 unsafe extern "C" fn const_global(colon: *const Token, name: *const Token) -> *mut Node {
-    let colon_range = Token::range(colon);
-    let name_range = Token::range(name);
+    let loc = Token::loc(colon).join(&Token::loc(name));
 
-    let loc = ConstLoc {
-        expr_: colon_range.join(&name_range),
-        colon: Some(colon_range),
-        name: name_range,
-    };
-
-    Node::Const(loc, None, Token::string(name)).to_raw()
+    Node::Const(loc, Some(Box::new(Node::Cbase(Token::loc(colon)))), token_id(name)).to_raw()
 }
 
 unsafe extern "C" fn const_op_assignable(node: *mut Node) -> *mut Node {
@@ -454,9 +410,9 @@ unsafe extern "C" fn def_class(class_: *const Token, name: *mut Node, lt_: *cons
 }
 
 unsafe extern "C" fn def_method(def: *const Token, name: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
-    let loc = ExprLoc { expr_: Token::range(def).join(&Token::range(end)) };
+    let loc = Token::loc(def).join(&Token::loc(end));
 
-    Node::Def(loc, Token::string(name), from_maybe_raw(args), from_maybe_raw(body)).to_raw()
+    Node::Def(loc, token_id(name), from_maybe_raw(args), from_maybe_raw(body)).to_raw()
 }
 
 unsafe extern "C" fn def_module(module: *const Token, name: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
