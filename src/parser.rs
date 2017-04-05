@@ -1,3 +1,5 @@
+#![allow(unused_variables)]
+
 extern crate libc;
 
 use std::ptr;
