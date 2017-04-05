@@ -406,7 +406,7 @@ unsafe extern "C" fn dedent_string(node: *mut Node, dedent_level: size_t) -> *mu
 }
 
 unsafe extern "C" fn def_class(class_: *const Token, name: *mut Node, lt_: *const Token, superclass: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Class(join_tokens(class_, end_), from_raw(name), from_maybe_raw(superclass), from_maybe_raw(body)).to_raw()
 }
 
 unsafe extern "C" fn def_method(def: *const Token, name: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
