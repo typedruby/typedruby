@@ -176,17 +176,21 @@ unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -
     let lhs = *from_raw(lhs);
     let rhs = from_raw(rhs);
 
+    let asgn_loc = lhs.loc().join(rhs.loc());
+
     match lhs {
         Node::Send(loc, recv, mid, mut args) => {
-            let loc = loc.join((&rhs).loc());
             args.push(rhs);
-            Node::Send(loc, recv, mid, args)
+            Node::Send(asgn_loc, recv, mid, args)
         },
         Node::CSend(loc, recv, mid, mut args) => {
-            let loc = loc.join((&rhs).loc());
             args.push(rhs);
-            Node::CSend(loc, recv, mid, args)
+            Node::CSend(asgn_loc, recv, mid, args)
         },
+        Node::Lvassignable(loc, name) =>
+            Node::Lvasgn(asgn_loc, Id(loc, name), rhs),
+        Node::Const(loc, scope, name) =>
+            Node::Casgn(asgn_loc, scope, name, rhs),
         _ => {
             panic!("unimplemented lhs: {:?}", lhs);
         }
@@ -194,7 +198,16 @@ unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -
 }
 
 unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    match *from_raw(node) {
+        Node::Ident(loc, name) => {
+            Parser::declare(parser, &name);
+            Node::Lvassignable(loc, name)
+        },
+        Node::Const(loc, scope, name) =>
+            Node::Const(loc, scope, name),
+        lhs =>
+            panic!("not assignable on lhs: {:?}", lhs),
+    }.to_raw()
 }
 
 unsafe extern "C" fn associate(begin: *const Token, pairs: *mut NodeList, end: *const Token) -> *mut Node {
@@ -469,7 +482,7 @@ unsafe extern "C" fn gvar(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn ident(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Ident(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn index(receiver: *mut Node, lbrack: *const Token, indexes: *mut NodeList, rbrack: *const Token) -> *mut Node {
