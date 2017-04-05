@@ -11,15 +11,17 @@ ruby_parser_typedruby24_parse(const char* source_, size_t source_length, const r
 }
 
 bool
-ruby_parser_static_env_is_declared(const ruby_parser::parser::base* p, const ruby_parser::token* tok)
+ruby_parser_static_env_is_declared(const ruby_parser::parser::base* p, const char* name, size_t length)
 {
-  return p->lexer->is_declared(tok->string());
+  std::string id { name, length };
+  return p->lexer->is_declared(id);
 }
 
 void
-ruby_parser_static_env_declare(ruby_parser::parser::base* p, const ruby_parser::token* tok)
+ruby_parser_static_env_declare(ruby_parser::parser::base* p, const char* name, size_t length)
 {
-  p->lexer->declare(tok->string());
+  std::string id { name, length };
+  p->lexer->declare(id);
 }
 
 size_t
