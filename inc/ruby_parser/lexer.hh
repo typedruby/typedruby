@@ -95,7 +95,6 @@ namespace ruby_parser {
     std::string tok();
     std::string tok(const char* start);
     std::string tok(const char* start, const char* end);
-    bool static_env_declared(std::string& identifier);
     void emit(token_type type);
     void emit(token_type type, const std::string& str);
     void emit(token_type type, const std::string& str, const char* start, const char* end);
@@ -130,6 +129,7 @@ namespace ruby_parser {
     void extend_dynamic();
     void unextend();
     void declare(const std::string& name);
+    bool is_declared(const std::string& identifier) const;
 
     optional_size dedent_level();
   };
