@@ -12,10 +12,10 @@ void*
 ruby_parser_typedruby24_parse(const char* source, size_t source_length, const ruby_parser::builder* builder);
 
 bool
-ruby_parser_static_env_is_declared(const ruby_parser::parser::base* p, const ruby_parser::token* tok);
+ruby_parser_static_env_is_declared(const ruby_parser::parser::base* p, const char* name, size_t length);
 
 void
-ruby_parser_static_env_declare(ruby_parser::parser::base* p, const ruby_parser::token* tok);
+ruby_parser_static_env_declare(ruby_parser::parser::base* p, const char* name, size_t length);
 
 size_t
 ruby_parser_token_get_start(const ruby_parser::token* tok);
