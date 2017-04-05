@@ -76,10 +76,6 @@ unsafe fn call_type_for_dot(dot: *const Token) -> CallType {
     }
 }
 
-unsafe fn token_loc(tok: *const Token) -> Loc {
-    Token::loc(tok)
-}
-
 unsafe fn token_id(tok: *const Token) -> Id {
     Id(Token::loc(tok), Token::string(tok))
 }
@@ -97,7 +93,7 @@ unsafe extern "C" fn alias(alias: *const Token, to: *mut Node, from: *mut Node) 
 }
 
 unsafe extern "C" fn arg(name: *const Token) -> *mut Node {
-    Node::Arg(token_loc(name), Token::string(name)).to_raw()
+    Node::Arg(Token::loc(name), Token::string(name)).to_raw()
 }
 
 fn check_duplicate_args<'a>(args: &'a [Box<Node>]) {
@@ -428,15 +424,15 @@ unsafe extern "C" fn def_singleton(def: *const Token, definee: *mut Node, dot: *
 }
 
 unsafe extern "C" fn encoding_literal(tok: *const Token) -> *mut Node {
-    Node::EncodingLiteral(token_loc(tok)).to_raw()
+    Node::EncodingLiteral(Token::loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn false_(tok: *const Token) -> *mut Node {
-    Node::False(token_loc(tok)).to_raw()
+    Node::False(Token::loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn file_literal(tok: *const Token) -> *mut Node {
-    Node::FileLiteral(token_loc(tok)).to_raw()
+    Node::FileLiteral(Token::loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn float_(tok: *const Token) -> *mut Node {
@@ -452,11 +448,11 @@ unsafe extern "C" fn for_(for_: *const Token, iterator: *mut Node, in_: *const T
 }
 
 unsafe extern "C" fn gvar(tok: *const Token) -> *mut Node {
-    ptr::null_mut()
+    panic!("unimplemented");
 }
 
 unsafe extern "C" fn ident(tok: *const Token) -> *mut Node {
-    panic!("unimplemented")
+    panic!("unimplemented");
 }
 
 unsafe extern "C" fn index(receiver: *mut Node, lbrack: *const Token, indexes: *mut NodeList, rbrack: *const Token) -> *mut Node {
@@ -468,7 +464,7 @@ unsafe extern "C" fn index_asgn(receiver: *mut Node, lbrack: *const Token, index
 }
 
 unsafe extern "C" fn integer(tok: *const Token) -> *mut Node {
-    Box::into_raw(Box::new(Node::Integer(token_loc(tok), Token::string(tok))))
+    Box::into_raw(Box::new(Node::Integer(Token::loc(tok), Token::string(tok))))
 }
 
 unsafe extern "C" fn ivar(tok: *const Token) -> *mut Node {
@@ -496,7 +492,7 @@ unsafe extern "C" fn kwsplat(dstar: *const Token, arg: *mut Node) -> *mut Node {
 }
 
 unsafe extern "C" fn line_literal(tok: *const Token) -> *mut Node {
-    Node::LineLiteral(token_loc(tok)).to_raw()
+    Node::LineLiteral(Token::loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn logical_op(type_: c_int, lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
@@ -528,7 +524,7 @@ unsafe extern "C" fn negate(uminus: *const Token, numeric: *mut Node) -> *mut No
 }
 
 unsafe extern "C" fn nil(tok: *const Token) -> *mut Node {
-    Node::Nil(token_loc(tok)).to_raw()
+    Node::Nil(Token::loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn not_op(not_: *const Token, begin: *const Token, receiver: *mut Node, end: *const Token) -> *mut Node {
@@ -608,7 +604,7 @@ unsafe extern "C" fn restarg(star: *const Token, name: *const Token) -> *mut Nod
 }
 
 unsafe extern "C" fn self_(tok: *const Token) -> *mut Node {
-    Node::Self_(token_loc(tok)).to_raw()
+    Node::Self_(Token::loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn shadowarg(name: *const Token) -> *mut Node {
@@ -620,7 +616,7 @@ unsafe extern "C" fn splat(star: *const Token, arg: *mut Node) -> *mut Node {
 }
 
 unsafe extern "C" fn string(string_: *const Token) -> *mut Node {
-    Node::String(token_loc(string_), Token::string(string_)).to_raw()
+    Node::String(Token::loc(string_), Token::string(string_)).to_raw()
 }
 
 unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
@@ -632,7 +628,7 @@ unsafe extern "C" fn string_internal(string_: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn symbol(symbol: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Symbol(Token::loc(symbol), Token::string(symbol)).to_raw()
 }
 
 unsafe extern "C" fn symbol_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
@@ -712,7 +708,7 @@ unsafe extern "C" fn tr_tuple(begin: *const Token, types: *mut NodeList, end: *c
 }
 
 unsafe extern "C" fn true_(tok: *const Token) -> *mut Node {
-    Node::True(token_loc(tok)).to_raw()
+    Node::True(Token::loc(tok)).to_raw()
 }
 
 unsafe extern "C" fn typed_arg(type_: *mut Node, arg: *mut Node) -> *mut Node {
