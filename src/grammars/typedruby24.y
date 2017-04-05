@@ -3000,13 +3000,13 @@ opt_block_args_tail:
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
                       auto str = p.builder.string_compose(_1.get(), _2.get(), _3.get());
-                      $$ = put(p, p.builder.dedent_string(std::move(str), p.lexer->dedent_level()));
+                      $$ = put(p, p.builder.dedent_string(std::move(str), p.lexer->dedent_level() || 0));
                     }
                 | tSTRING
                     {
                       auto _1 = take(p, $1);
                       auto str = p.builder.string(_1.get());
-                      $$ = put(p, p.builder.dedent_string(std::move(str), p.lexer->dedent_level()));
+                      $$ = put(p, p.builder.dedent_string(std::move(str), p.lexer->dedent_level() || 0));
                     }
                 | tCHARACTER
                     {
@@ -3020,7 +3020,7 @@ opt_block_args_tail:
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
                       auto xstr = p.builder.xstring_compose(_1.get(), _2.get(), _3.get());
-                      $$ = put(p, p.builder.dedent_string(std::move(xstr), p.lexer->dedent_level()));
+                      $$ = put(p, p.builder.dedent_string(std::move(xstr), p.lexer->dedent_level() || 0));
                     }
 
           regexp: tREGEXP_BEG regexp_contents tSTRING_END tREGEXP_OPT

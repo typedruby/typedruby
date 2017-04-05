@@ -41,7 +41,7 @@ namespace ruby_parser {
     foreign_ptr(*const_global)(const token* colon, const token* name);
     foreign_ptr(*const_op_assignable)(foreign_ptr node);
     foreign_ptr(*cvar)(const token* tok);
-    foreign_ptr(*dedent_string)(foreign_ptr node, optional_size dedent_level);
+    foreign_ptr(*dedent_string)(foreign_ptr node, size_t dedent_level);
     foreign_ptr(*def_class)(const token* class_, foreign_ptr name, const token* lt_, foreign_ptr superclass, foreign_ptr body, const token* end_);
     foreign_ptr(*def_method)(const token* def, const token* name, foreign_ptr args, foreign_ptr body, const token* end);
     foreign_ptr(*def_module)(const token* module, foreign_ptr name, foreign_ptr body, const token* end_);
