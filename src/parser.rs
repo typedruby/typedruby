@@ -17,7 +17,7 @@ impl ToRaw for Option<Box<Node>> {
     fn to_raw(self) -> *mut Node {
         match self {
             None => ptr::null_mut(),
-            Some(x) => Box::into_raw(x),
+            Some(x) => x.to_raw(),
         }
     }
 }
@@ -25,6 +25,15 @@ impl ToRaw for Option<Box<Node>> {
 impl ToRaw for Box<Node> {
     fn to_raw(self) -> *mut Node {
         Box::into_raw(self)
+    }
+}
+
+impl ToRaw for Option<Node> {
+    fn to_raw(self) -> *mut Node {
+        match self {
+            None => ptr::null_mut(),
+            Some(x) => Box::new(x).to_raw(),
+        }
     }
 }
 
@@ -88,11 +97,69 @@ unsafe extern "C" fn alias(alias: *const Token, to: *mut Node, from: *mut Node) 
 }
 
 unsafe extern "C" fn arg(name: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Arg(token_loc(name), Token::string(name)).to_raw()
+}
+
+fn check_duplicate_args<'a>(args: &'a [Box<Node>]) {
+    let mut names = ::std::collections::HashSet::new();
+
+    fn arg_loc_and_name<'a>(node: &'a Node) -> (&'a Range, &'a str) {
+        match node {
+            &Node::Arg(ref loc, ref name) => (&loc.expr(), &name),
+            _ => panic!("not an arg node"),
+        }
+    }
+
+    let mut check_inner = |args: &'a [Box<Node>]| {
+        for arg in args {
+            let (range, name) = arg_loc_and_name(&*arg);
+
+            if name.starts_with("_") {
+                continue
+            }
+
+            if names.contains(name) {
+                // TODO error
+            }
+
+            names.insert(name);
+        }
+    };
+
+    check_inner(args)
+}
+
+unsafe fn collection_map(begin: *const Token, elements: &[Box<Node>], end: *const Token) -> Option<ExprLoc> {
+    let range =
+        if begin != ptr::null() {
+            assert!(end != ptr::null());
+
+            Some(Token::range(begin).join(&Token::range(end)))
+        } else {
+            assert!(end == ptr::null());
+
+            if elements.is_empty() {
+                None
+            } else {
+                let first = elements.first().unwrap();
+                let last = elements.last().unwrap();
+                Some(first.loc().expr().join(last.loc().expr()))
+            }
+        };
+
+    range.map(|r| ExprLoc { expr_: r })
 }
 
 unsafe extern "C" fn args(begin: *const Token, args: *mut NodeList, end: *const Token, check_args: bool) -> *mut Node {
-    panic!("unimplemented");
+    let args = ffi::node_list_from_raw(args);
+
+    if check_args {
+        check_duplicate_args(args.as_slice());
+    }
+
+    collection_map(begin, args.as_slice(), end).map(|loc|
+        Node::Args(loc, args)
+    ).to_raw()
 }
 
 unsafe extern "C" fn array(begin: *const Token, elements: *mut NodeList, end: *const Token) -> *mut Node {
@@ -156,7 +223,65 @@ unsafe extern "C" fn begin(begin: *const Token, body: *mut Node, end: *const Tok
 }
 
 unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, else_tok: *const Token, else_: *mut Node, ensure_tok: *const Token, ensure: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let mut compound_stmt = from_maybe_raw(body);
+    let rescue_bodies = ffi::node_list_from_raw(rescue_bodies);
+    let else_ = from_maybe_raw(else_);
+    let ensure = from_maybe_raw(ensure);
+
+    if !rescue_bodies.is_empty() {
+        match else_ {
+            Some(else_body) => {
+                let loc = {
+                    let loc = else_body.loc().expr();
+                    match compound_stmt {
+                        Some(ref body) => body.loc().expr().join(loc),
+                        None => loc.clone(),
+                    }
+                };
+                compound_stmt = Some(Box::new(Node::Rescue(ExprLoc { expr_: loc }, compound_stmt, rescue_bodies, Some(else_body))));
+            },
+            None => {
+                let loc = {
+                    let loc = rescue_bodies.last().unwrap().loc().expr();
+                    match compound_stmt {
+                        Some(ref body) => body.loc().expr().join(loc),
+                        None => loc.clone(),
+                    }
+                };
+                compound_stmt = Some(Box::new(Node::Rescue(ExprLoc { expr_: loc }, compound_stmt, rescue_bodies, None)));
+            }
+        }
+    } else if let Some(else_body) = else_ {
+        let mut stmts = match compound_stmt {
+            Some(node) => match *node {
+                Node::Begin(_, begin_stmts) => begin_stmts,
+                _ => vec![node],
+            },
+            _ => vec![],
+        };
+
+        stmts.push(Box::new(
+            Node::Begin(
+                ExprLoc { expr_: Token::range(else_tok).join(else_body.loc().expr()) },
+                vec![else_body])));
+
+        compound_stmt = Some(Box::new(Node::Begin(ExprLoc { expr_: join_exprs(stmts.as_slice()) }, stmts)));
+    }
+
+    if let Some(ensure_box) = ensure {
+        let loc = {
+            let ensure_range = ensure_box.loc().expr();
+
+            ExprLoc { expr_: match compound_stmt {
+                Some(ref compound_stmt_box) => compound_stmt_box.loc().expr().join(ensure_range),
+                None => Token::range(ensure_tok).join(ensure_range),
+            } }
+        };
+
+        compound_stmt = Some(Box::new(Node::Ensure(loc, compound_stmt, ensure_box)));
+    }
+
+    compound_stmt.to_raw()
 }
 
 unsafe extern "C" fn begin_keyword(begin: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
@@ -329,7 +454,9 @@ unsafe extern "C" fn def_class(class_: *const Token, name: *mut Node, lt_: *cons
 }
 
 unsafe extern "C" fn def_method(def: *const Token, name: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let loc = ExprLoc { expr_: Token::range(def).join(&Token::range(end)) };
+
+    Node::Def(loc, Token::string(name), from_maybe_raw(args), from_maybe_raw(body)).to_raw()
 }
 
 unsafe extern "C" fn def_module(module: *const Token, name: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
