@@ -424,7 +424,7 @@ unsafe extern "C" fn def_module(module: *const Token, name: *mut Node, body: *mu
 }
 
 unsafe extern "C" fn def_sclass(class_: *const Token, lshft_: *const Token, expr: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::SClass(join_tokens(class_, end_), from_raw(expr), from_maybe_raw(body)).to_raw()
 }
 
 unsafe extern "C" fn def_singleton(def: *const Token, definee: *mut Node, dot: *const Token, name: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
