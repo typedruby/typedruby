@@ -40,6 +40,7 @@ pub enum Node {
     Self_           (Loc),
     Send            (Loc,   Option<Box<Node>>, Id, Vec<Box<Node>>),
     String          (Loc,   String),
+    Symbol          (Loc,   String),
     True            (Loc),
 }
 
@@ -65,6 +66,7 @@ impl Node {
             &Node::Self_(ref loc) => loc,
             &Node::Send(ref loc, _, _, _) => loc,
             &Node::String(ref loc, _) => loc,
+            &Node::Symbol(ref loc, _) => loc,
             &Node::True(ref loc) => loc,
         }
     }
