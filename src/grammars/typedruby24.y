@@ -1069,12 +1069,12 @@
        mlhs_node: user_variable
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.assignable(std::move(_1)));
+                      $$ = put(p, p.builder.assignable(&p, std::move(_1)));
                     }
                 | keyword_variable
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.assignable(std::move(_1)));
+                      $$ = put(p, p.builder.assignable(&p, std::move(_1)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
@@ -1110,31 +1110,31 @@
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.assignable(
+                      $$ = put(p, p.builder.assignable(&p,
                                   p.builder.const_fetch(std::move(_1), _2.get(), _3.get())));
                     }
                 | tCOLON3 tCONSTANT
                     {
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
-                      $$ = put(p, p.builder.assignable(
+                      $$ = put(p, p.builder.assignable(&p,
                                   p.builder.const_global(_1.get(), _2.get())));
                     }
                 | backref
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.assignable(std::move(_1)));
+                      $$ = put(p, p.builder.assignable(&p, std::move(_1)));
                     }
 
              lhs: user_variable
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.assignable(std::move(_1)));
+                      $$ = put(p, p.builder.assignable(&p, std::move(_1)));
                     }
                 | keyword_variable
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.assignable(std::move(_1)));
+                      $$ = put(p, p.builder.assignable(&p, std::move(_1)));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
@@ -1170,20 +1170,20 @@
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.assignable(
+                      $$ = put(p, p.builder.assignable(&p,
                                   p.builder.const_fetch(std::move(_1), _2.get(), _3.get())));
                     }
                 | tCOLON3 tCONSTANT
                     {
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
-                      $$ = put(p, p.builder.assignable(
+                      $$ = put(p, p.builder.assignable(&p,
                                   p.builder.const_global(_1.get(), _2.get())));
                     }
                 | backref
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.assignable(std::move(_1)));
+                      $$ = put(p, p.builder.assignable(&p, std::move(_1)));
                     }
 
            cname: tIDENTIFIER
@@ -3334,23 +3334,23 @@ keyword_variable: kNIL
          var_ref: user_variable
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.accessible(std::move(_1)));
+                      $$ = put(p, p.builder.accessible(&p, std::move(_1)));
                     }
                 | keyword_variable
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.accessible(std::move(_1)));
+                      $$ = put(p, p.builder.accessible(&p, std::move(_1)));
                     }
 
          var_lhs: user_variable
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.assignable(std::move(_1)));
+                      $$ = put(p, p.builder.assignable(&p, std::move(_1)));
                     }
                 | keyword_variable
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.assignable(std::move(_1)));
+                      $$ = put(p, p.builder.assignable(&p, std::move(_1)));
                     }
 
          backref: tNTH_REF

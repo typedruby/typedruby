@@ -6,7 +6,7 @@ use std::ptr;
 
 use ast::*;
 use ffi;
-use ffi::{Builder, NodeList, Token};
+use ffi::{Builder, NodeList, Token, Parser};
 use self::libc::{size_t, c_int};
 
 trait ToRaw {
@@ -88,7 +88,7 @@ unsafe fn from_raw(p: *mut Node) -> Box<Node> {
     Box::from_raw(p)
 }
 
-unsafe extern "C" fn accessible(node: *mut Node) -> *mut Node {
+unsafe extern "C" fn accessible(parser: *mut Parser, node: *mut Node) -> *mut Node {
     node
 }
 
@@ -184,7 +184,7 @@ unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -
     }.to_raw()
 }
 
-unsafe extern "C" fn assignable(node: *mut Node) -> *mut Node {
+unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Node) -> *mut Node {
     panic!("unimplemented");
 }
 
