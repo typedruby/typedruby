@@ -186,12 +186,6 @@ std::string lexer::tok(const char* start, const char* end) {
   return std::string(start, (size_t)(end - start));
 }
 
-bool lexer::static_env_declared(std::string& identifier) {
-  environment& env = static_env.top();
-
-  return env.find(identifier) != env.end();
-}
-
 static const lexer::token_table PUNCTUATION = {
   { "=", token_type::tEQL },
   { "&", token_type::tAMPER2 },
@@ -1552,7 +1546,7 @@ void lexer::set_state_expr_value() {
 
     emit(token_type::tIDENTIFIER, ident);
 
-    if (static_env_declared(ident)) {
+    if (is_declared(ident)) {
       fnext expr_endfn; fbreak;
     } else {
       fnext *arg_or_cmdarg(); fbreak;
@@ -2231,7 +2225,7 @@ void lexer::set_state_expr_value() {
           }
           fhold; // continue as a symbol
 
-          if (static_env_declared(ident)) {
+          if (is_declared(ident)) {
             fnext expr_end;
           } else {
             fnext *arg_or_cmdarg();
@@ -2417,7 +2411,7 @@ void lexer::set_state_expr_value() {
 
           emit(token_type::tIDENTIFIER, ident);
 
-          if (!static_env_declared(ident)) {
+          if (!is_declared(ident)) {
             fnext *arg_or_cmdarg();
           }
         } else {
@@ -2714,6 +2708,12 @@ void lexer::unextend() {
 
 void lexer::declare(const std::string& name) {
   static_env.top().insert(name);
+}
+
+bool lexer::is_declared(const std::string& identifier) const {
+  const environment& env = static_env.top();
+
+  return env.find(identifier) != env.end();
 }
 
 optional_size lexer::dedent_level() {

@@ -10,6 +10,18 @@ ruby_parser_typedruby24_parse(const char* source_, size_t source_length, ruby_pa
     return ast;
 }
 
+bool
+ruby_parser_static_env_is_declared(ruby_parser::parser::base* p, ruby_parser::token* tok)
+{
+  return p->lexer->is_declared(tok->string());
+}
+
+void
+ruby_parser_static_env_declare(ruby_parser::parser::base* p, ruby_parser::token* tok)
+{
+  p->lexer->declare(tok->string());
+}
+
 size_t
 ruby_parser_token_get_start(ruby_parser::token* tok)
 {
