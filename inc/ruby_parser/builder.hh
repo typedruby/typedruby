@@ -11,13 +11,13 @@
 
 namespace ruby_parser {
   struct builder {
-    foreign_ptr(*accessible)(foreign_ptr node);
+    foreign_ptr(*accessible)(const ruby_parser::parser::base* p, foreign_ptr node);
     foreign_ptr(*alias)(const token* alias, foreign_ptr to, foreign_ptr from);
     foreign_ptr(*arg)(const token* name);
     foreign_ptr(*args)(const token* begin, const node_list* args, const token* end, bool check_args);
     foreign_ptr(*array)(const token* begin, const node_list* elements, const token* end);
     foreign_ptr(*assign)(foreign_ptr lhs, const token* eql, foreign_ptr rhs);
-    foreign_ptr(*assignable)(foreign_ptr node);
+    foreign_ptr(*assignable)(const ruby_parser::parser::base* p, foreign_ptr node);
     foreign_ptr(*associate)(const token* begin, const node_list* pairs, const token* end);
     foreign_ptr(*attr_asgn)(foreign_ptr receiver, const token* dot, const token* selector);
     foreign_ptr(*back_ref)(const token* tok);

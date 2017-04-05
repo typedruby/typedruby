@@ -9,13 +9,13 @@ use std::str;
 
 #[repr(C)]
 pub struct Builder {
-    pub accessible: unsafe extern "C" fn(node: *mut Node) -> *mut Node,
+    pub accessible: unsafe extern "C" fn(p: *mut Parser, node: *mut Node) -> *mut Node,
     pub alias: unsafe extern "C" fn(alias: *const Token, to: *mut Node, from: *mut Node) -> *mut Node,
     pub arg: unsafe extern "C" fn(name: *const Token) -> *mut Node,
     pub args: unsafe extern "C" fn(begin: *const Token, args: *mut NodeList, end: *const Token, check_args: bool) -> *mut Node,
     pub array: unsafe extern "C" fn(begin: *const Token, elements: *mut NodeList, end: *const Token) -> *mut Node,
     pub assign: unsafe extern "C" fn(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -> *mut Node,
-    pub assignable: unsafe extern "C" fn(node: *mut Node) -> *mut Node,
+    pub assignable: unsafe extern "C" fn(p: *mut Parser, node: *mut Node) -> *mut Node,
     pub associate: unsafe extern "C" fn(begin: *const Token, pairs: *mut NodeList, end: *const Token) -> *mut Node,
     pub attr_asgn: unsafe extern "C" fn(receiver: *mut Node, dot: *const Token, selector: *const Token) -> *mut Node,
     pub back_ref: unsafe extern "C" fn(tok: *const Token) -> *mut Node,
@@ -126,6 +126,7 @@ pub struct Builder {
     pub xstring_compose: unsafe extern "C" fn(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node,
 }
 
+pub enum Parser {}
 pub enum Token {}
 pub enum NodeList {}
 
