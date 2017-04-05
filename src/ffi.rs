@@ -134,6 +134,8 @@ pub enum NodeList {}
 #[link(name="rubyparser")]
 extern "C" {
     pub fn ruby_parser_typedruby24_parse(source: *const u8, source_length: size_t, builder: *const Builder) -> *mut Node;
+    fn ruby_parser_static_env_is_declared(p: *const Parser, name: *const u8, len: size_t) -> bool;
+    fn ruby_parser_static_env_declare(p: *mut Parser, name: *const u8, len: size_t);
     fn ruby_parser_token_get_start(token: *const Token) -> size_t;
     fn ruby_parser_token_get_end(token: *const Token) -> size_t;
     fn ruby_parser_token_get_string(token: *const Token, ptr: *mut *const u8) -> size_t;
@@ -161,6 +163,16 @@ impl Token {
         let mut string: *const u8 = ptr::null();
         let string_length = ruby_parser_token_get_string(ptr, &mut string);
         String::from(str::from_utf8_unchecked(slice::from_raw_parts(string, string_length)))
+    }
+}
+
+impl Parser {
+    pub unsafe fn is_declared(parser: *const Parser, id: &str) -> bool {
+        ruby_parser_static_env_is_declared(parser, id.as_ptr(), id.len())
+    }
+
+    pub unsafe fn declare(parser: *mut Parser, id: &str) {
+        ruby_parser_static_env_declare(parser, id.as_ptr(), id.len());
     }
 }
 

@@ -89,7 +89,16 @@ unsafe fn from_raw(p: *mut Node) -> Box<Node> {
 }
 
 unsafe extern "C" fn accessible(parser: *mut Parser, node: *mut Node) -> *mut Node {
-    node
+    match *from_raw(node) {
+        Node::Ident(loc, name) => {
+            if Parser::is_declared(parser, &name) {
+                Node::Lvar(loc, name)
+            } else {
+                Node::Send(loc.clone(), None, Id(loc, name), vec![])
+            }
+        },
+        boxed_node => boxed_node,
+    }.to_raw()
 }
 
 unsafe extern "C" fn alias(alias: *const Token, to: *mut Node, from: *mut Node) -> *mut Node {
