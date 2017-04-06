@@ -181,9 +181,12 @@ unsafe extern "C" fn args(begin: *const Token, args: *mut NodeList, end: *const 
         check_duplicate_args(args.as_slice());
     }
 
-    collection_map(begin, args.as_slice(), end).map(|loc|
-        Node::Args(loc, args)
-    ).to_raw()
+    let loc = collection_map(begin, args.as_slice(), end).unwrap_or(
+        // FIXME - we don't have any location information to work with here:
+        Loc { begin_pos: 0, end_pos: 0 }
+    );
+
+    Node::Args(loc, args).to_raw()
 }
 
 unsafe extern "C" fn array(begin: *const Token, elements: *mut NodeList, end: *const Token) -> *mut Node {
