@@ -618,11 +618,21 @@ unsafe extern "C" fn rational_complex(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn regexp_compose(begin: *const Token, parts: *mut NodeList, end: *const Token, options: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let parts = ffi::node_list_from_raw(parts);
+    let opts = from_maybe_raw(options);
+    let begin_loc = Token::loc(begin);
+    let loc = match opts {
+        Some(ref opt_box) => begin_loc.join(opt_box.loc()),
+        None => begin_loc.join(&Token::loc(end)),
+    };
+    Node::Regexp(loc, parts, opts).to_raw()
 }
 
 unsafe extern "C" fn regexp_options(regopt: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let mut options: Vec<char> = Token::string(regopt).chars().collect();
+    options.sort();
+    options.dedup();
+    Node::Regopt(Token::loc(regopt), options).to_raw()
 }
 
 unsafe extern "C" fn rescue_body(rescue: *const Token, exc_list: *mut Node, assoc: *const Token, exc_var: *mut Node, then: *const Token, body: *mut Node) -> *mut Node {
