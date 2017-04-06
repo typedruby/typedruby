@@ -316,7 +316,36 @@ unsafe extern "C" fn binary_op(recv: *mut Node, oper: *const Token, arg: *mut No
 }
 
 unsafe extern "C" fn block(method_call: *mut Node, begin: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let method_call = from_raw(method_call);
+    let args = from_raw(args);
+    let body = from_raw(body);
+
+    if let Node::Yield(_, _) = *method_call {
+        // diagnostic :error, :block_given_to_yield, nil, method_call.loc.keyword, [loc(begin_t)]
+    }
+
+    match *method_call {
+        Node::Send(_, _, _, ref args) |
+        Node::CSend(_, _, _, ref args) |
+        Node::Super(_, ref args) => {
+            if let Some(ref last_arg) = args.last() {
+                if let Node::BlockPass(ref loc, _) = ***last_arg {
+                    // diagnostic :error, :block_and_blockarg, nil, last_arg.loc.expression, [loc(begin_t)]
+                }
+            }
+        },
+        _ => (),
+    }
+
+    match *method_call {
+        Node::Send(_, _, _, _) |
+        Node::CSend(_, _, _, _) |
+        Node::Super(_, _) |
+        Node::ZSuper(_) |
+        Node::Lambda(_) =>
+            Node::Block(method_call.loc().join(&Token::loc(end)), method_call, args, body),
+        _ => panic!("unknown method call node: {:?}", method_call),
+    }.to_raw()
 }
 
 unsafe extern "C" fn block_pass(amper: *const Token, arg: *mut Node) -> *mut Node {
