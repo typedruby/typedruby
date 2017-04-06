@@ -28,6 +28,7 @@ pub enum Node {
     Begin           (Loc,   Vec<Box<Node>>),
     Block           (Loc,   Box<Node>, Box<Node>, Box<Node>),
     BlockPass       (Loc,   Box<Node>),
+    Case            (Loc,   Option<Box<Node>>, Vec<Box<Node>>, Option<Box<Node>>),
     Casgn           (Loc,   Option<Box<Node>>, Id, Box<Node>),
     Cbase           (Loc),
     Const           (Loc,   Option<Box<Node>>, Id),
@@ -71,6 +72,7 @@ pub enum Node {
     Super           (Loc,   Vec<Box<Node>>),
     Symbol          (Loc,   String),
     True            (Loc),
+    When            (Loc,   Vec<Box<Node>>, Option<Box<Node>>),
     Yield           (Loc,   Vec<Box<Node>>),
     ZSuper          (Loc),
 }
@@ -85,6 +87,7 @@ impl Node {
             &Node::Begin(ref loc, _) => loc,
             &Node::Block(ref loc, _, _, _) => loc,
             &Node::BlockPass(ref loc, _) => loc,
+            &Node::Case(ref loc, _, _, _) => loc,
             &Node::Casgn(ref loc, _, _, _) => loc,
             &Node::Cbase(ref loc) => loc,
             &Node::Class(ref loc, _, _, _) => loc,
@@ -128,6 +131,7 @@ impl Node {
             &Node::Super(ref loc, _) => loc,
             &Node::Symbol(ref loc, _) => loc,
             &Node::True(ref loc) => loc,
+            &Node::When(ref loc, _, _) => loc,
             &Node::Yield(ref loc, _) => loc,
             &Node::ZSuper(ref loc) => loc,
         }

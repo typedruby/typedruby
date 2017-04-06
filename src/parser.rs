@@ -403,7 +403,11 @@ unsafe extern "C" fn call_method(receiver: *mut Node, dot: *const Token, selecto
 }
 
 unsafe extern "C" fn case_(case_: *const Token, expr: *mut Node, when_bodies: *mut NodeList, else_tok: *const Token, else_body: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let expr = from_maybe_raw(expr);
+    let whens = ffi::node_list_from_raw(when_bodies);
+    let else_ = from_maybe_raw(else_body);
+
+    Node::Case(join_tokens(case_, end), expr, whens, else_).to_raw()
 }
 
 unsafe extern "C" fn character(char_: *const Token) -> *mut Node {
@@ -850,7 +854,20 @@ unsafe extern "C" fn undef_method(name_list: *mut NodeList) -> *mut Node {
 }
 
 unsafe extern "C" fn when(when: *const Token, patterns: *mut NodeList, then: *const Token, body: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let patterns = ffi::node_list_from_raw(patterns);
+    let body = from_maybe_raw(body);
+
+    let when_loc = Token::loc(when);
+
+    let loc = if let Some(ref body_box) = body {
+        when_loc.join(body_box.loc())
+    } else if then != ptr::null() {
+        when_loc.join(&Token::loc(then))
+    } else {
+        when_loc.join(patterns.last().unwrap().loc())
+    };
+
+    Node::When(loc, patterns, body).to_raw()
 }
 
 unsafe extern "C" fn word(parts: *mut NodeList) -> *mut Node {
