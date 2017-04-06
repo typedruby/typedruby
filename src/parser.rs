@@ -771,7 +771,11 @@ unsafe extern "C" fn symbols_compose(begin: *const Token, parts: *mut NodeList, 
 }
 
 unsafe extern "C" fn ternary(cond: *mut Node, question: *const Token, if_true: *mut Node, colon: *const Token, if_false: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let cond = from_raw(cond);
+    let if_true = from_raw(if_true);
+    let if_false = from_raw(if_false);
+
+    Node::If(cond.loc().join(if_false.loc()), Box::new(check_condition(*cond)), Some(if_true), Some(if_false)).to_raw()
 }
 
 unsafe extern "C" fn tr_array(begin: *const Token, type_: *mut Node, end: *const Token) -> *mut Node {
