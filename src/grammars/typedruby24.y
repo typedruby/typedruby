@@ -2221,12 +2221,12 @@
                 | kREDO
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_redo(_1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_redo(_1.get()));
                     }
                 | kRETRY
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_retry(_1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_retry(_1.get()));
                     }
 
    primary_value: primary
@@ -2826,7 +2826,7 @@ opt_block_args_tail:
                 | kSUPER
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_zsuper(_1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_zsuper(_1.get()));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
