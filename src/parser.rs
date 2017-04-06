@@ -650,7 +650,13 @@ unsafe extern "C" fn multi_lhs(begin: *const Token, items: *mut NodeList, end: *
 }
 
 unsafe extern "C" fn negate(uminus: *const Token, numeric: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let numeric = from_raw(numeric);
+    let loc = Token::loc(uminus).join(numeric.loc());
+
+    match *numeric {
+        Node::Integer(_, value) => Node::Integer(loc, "-".to_owned() + value.as_str()),
+        _ => panic!("unimplemented numeric type: {:?}", numeric),
+    }.to_raw()
 }
 
 unsafe extern "C" fn nil(tok: *const Token) -> *mut Node {
