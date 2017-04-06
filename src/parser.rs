@@ -369,7 +369,8 @@ unsafe extern "C" fn block(method_call: *mut Node, begin: *const Token, args: *m
 }
 
 unsafe extern "C" fn block_pass(amper: *const Token, arg: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let arg = from_raw(arg);
+    Node::BlockPass(Token::loc(amper).join(arg.loc()), arg).to_raw()
 }
 
 unsafe extern "C" fn blockarg(amper: *const Token, name: *const Token) -> *mut Node {
