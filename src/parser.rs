@@ -473,7 +473,17 @@ unsafe extern "C" fn condition(cond_tok: *const Token, cond: *mut Node, then: *c
     let cond = from_raw(cond);
     let if_true = from_maybe_raw(if_true);
     let if_false = from_maybe_raw(if_false);
-    Node::If(join_tokens(cond_tok, end), Box::new(check_condition(*cond)), if_true, if_false).to_raw()
+
+    let loc = if end != ptr::null() {
+        join_tokens(cond_tok, end)
+    } else if let Some(ref false_branch) = if_false {
+        Token::loc(cond_tok).join(false_branch.loc())
+    } else {
+        // if false branch is None, true branch must be Some
+        Token::loc(cond_tok).join(if_true.as_ref().unwrap().loc())
+    };
+
+    Node::If(loc, Box::new(check_condition(*cond)), if_true, if_false).to_raw()
 }
 
 unsafe extern "C" fn condition_mod(if_true: *mut Node, if_false: *mut Node, cond: *mut Node) -> *mut Node {
