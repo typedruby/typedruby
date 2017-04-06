@@ -1026,7 +1026,7 @@ unsafe extern "C" fn symbol_compose(begin: *const Token, parts: *mut NodeList, e
 }
 
 unsafe extern "C" fn symbol_internal(symbol: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Symbol(Token::loc(symbol), Token::string(symbol)).to_raw()
 }
 
 unsafe extern "C" fn symbols_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
