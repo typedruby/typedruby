@@ -554,7 +554,10 @@ unsafe extern "C" fn ident(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn index(receiver: *mut Node, lbrack: *const Token, indexes: *mut NodeList, rbrack: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let recv = from_raw(receiver);
+    let indexes = ffi::node_list_from_raw(indexes);
+
+    Node::Send(recv.loc().join(&Token::loc(rbrack)), Some(recv), Id(join_tokens(lbrack, rbrack), "[]".to_owned()), indexes).to_raw()
 }
 
 unsafe extern "C" fn index_asgn(receiver: *mut Node, lbrack: *const Token, indexes: *mut NodeList, rbrack: *const Token) -> *mut Node {
