@@ -7,7 +7,7 @@ use std::ptr;
 use ast::*;
 use ffi;
 use ffi::{Builder, NodeList, Token, Parser};
-use self::libc::{size_t, c_int};
+use self::libc::size_t;
 use std::collections::HashSet;
 
 trait ToRaw {
@@ -740,14 +740,32 @@ unsafe extern "C" fn loop_until(keyword: *const Token, cond: *mut Node, do_: *co
     Node::Until(join_tokens(keyword, end), cond, body).to_raw()
 }
 
+unsafe extern "C" fn loop_until_mod(body: *mut Node, cond: *mut Node) -> *mut Node {
+    let cond = from_raw(cond);
+    let body = from_raw(body);
+    let loc = body.loc().join(cond.loc());
+
+    match *body {
+        Node::KwBegin(_, _) => Node::UntilPost(loc, cond, body),
+        _ => Node::Until(loc, cond, Some(body))
+    }.to_raw()
+}
+
 unsafe extern "C" fn loop_while(keyword: *const Token, cond: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
     let cond = from_raw(cond);
     let body = from_maybe_raw(body);
     Node::While(join_tokens(keyword, end), cond, body).to_raw()
 }
 
-unsafe extern "C" fn loop_mod(type_: c_int, body: *mut Node, cond: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn loop_while_mod(body: *mut Node, cond: *mut Node) -> *mut Node {
+    let cond = from_raw(cond);
+    let body = from_raw(body);
+    let loc = body.loc().join(cond.loc());
+
+    match *body {
+        Node::KwBegin(_, _) => Node::WhilePost(loc, cond, body),
+        _ => Node::While(loc, cond, Some(body))
+    }.to_raw()
 }
 
 unsafe extern "C" fn match_op(receiver: *mut Node, oper: *const Token, arg: *mut Node) -> *mut Node {
@@ -1172,8 +1190,9 @@ const BUILDER: Builder = Builder {
     logical_and: logical_and,
     logical_or: logical_or,
     loop_until: loop_until,
+    loop_until_mod: loop_until_mod,
     loop_while: loop_while,
-    loop_mod: loop_mod,
+    loop_while_mod: loop_while_mod,
     match_op: match_op,
     multi_assign: multi_assign,
     multi_lhs: multi_lhs,
