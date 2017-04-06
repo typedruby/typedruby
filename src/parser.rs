@@ -171,7 +171,8 @@ unsafe extern "C" fn args(begin: *const Token, args: *mut NodeList, end: *const 
 }
 
 unsafe extern "C" fn array(begin: *const Token, elements: *mut NodeList, end: *const Token) -> *mut Node {
-    Node::Array(join_tokens(begin, end), ffi::node_list_from_raw(elements)).to_raw()
+    let elements = ffi::node_list_from_raw(elements);
+    Node::Array(collection_map(begin, elements.as_slice(), end).unwrap(), elements).to_raw()
 }
 
 unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -> *mut Node {
