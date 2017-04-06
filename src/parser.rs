@@ -135,7 +135,8 @@ fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
         &Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
         &Node::Kwarg(ref loc, ref name) => (loc, name),
         &Node::Kwoptarg(_, Id(ref loc, ref name), _) => (loc, name),
-        &Node::Restarg(_, Id(ref loc, ref name)) => (loc, name),
+        &Node::Restarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+        &Node::Restarg(_, None) => return,
         _ => panic!("not an arg node {:?}", arg),
     };
 
@@ -959,8 +960,12 @@ unsafe extern "C" fn rescue_body(rescue: *const Token, exc_list: *mut Node, asso
 }
 
 unsafe extern "C" fn restarg(star: *const Token, name: *const Token) -> *mut Node {
-    let id = token_id(name);
-    Node::Restarg(Token::loc(star).join(&id.0), id).to_raw()
+    if name != ptr::null() {
+        let id = token_id(name);
+        Node::Restarg(Token::loc(star).join(&id.0), Some(id))
+    } else {
+        Node::Restarg(Token::loc(star), None)
+    }.to_raw()
 }
 
 unsafe extern "C" fn self_(tok: *const Token) -> *mut Node {
