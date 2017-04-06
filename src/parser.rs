@@ -734,8 +734,16 @@ unsafe extern "C" fn logical_or(lhs: *mut Node, op: *const Token, rhs: *mut Node
     Node::Or(lhs.loc().join(rhs.loc()), lhs, rhs).to_raw()
 }
 
-unsafe extern "C" fn loop_(type_: c_int, keyword: *const Token, cond: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn loop_until(keyword: *const Token, cond: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
+    let cond = from_raw(cond);
+    let body = from_maybe_raw(body);
+    Node::Until(join_tokens(keyword, end), cond, body).to_raw()
+}
+
+unsafe extern "C" fn loop_while(keyword: *const Token, cond: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
+    let cond = from_raw(cond);
+    let body = from_maybe_raw(body);
+    Node::While(join_tokens(keyword, end), cond, body).to_raw()
 }
 
 unsafe extern "C" fn loop_mod(type_: c_int, body: *mut Node, cond: *mut Node) -> *mut Node {
@@ -1163,7 +1171,8 @@ const BUILDER: Builder = Builder {
     line_literal: line_literal,
     logical_and: logical_and,
     logical_or: logical_or,
-    loop_: loop_,
+    loop_until: loop_until,
+    loop_while: loop_while,
     loop_mod: loop_mod,
     match_op: match_op,
     multi_assign: multi_assign,

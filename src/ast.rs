@@ -92,7 +92,9 @@ pub enum Node {
     Super           (Loc,   Vec<Box<Node>>),
     Symbol          (Loc,   String),
     True            (Loc),
+    Until           (Loc,   Box<Node>, Option<Box<Node>>),
     When            (Loc,   Vec<Box<Node>>, Option<Box<Node>>),
+    While           (Loc,   Box<Node>, Option<Box<Node>>),
     Yield           (Loc,   Vec<Box<Node>>),
     ZSuper          (Loc),
 }
@@ -171,7 +173,9 @@ impl Node {
             &Node::Super(ref loc, _) => loc,
             &Node::Symbol(ref loc, _) => loc,
             &Node::True(ref loc) => loc,
+            &Node::Until(ref loc, _, _) => loc,
             &Node::When(ref loc, _, _) => loc,
+            &Node::While(ref loc, _, _) => loc,
             &Node::Yield(ref loc, _) => loc,
             &Node::ZSuper(ref loc) => loc,
         }
