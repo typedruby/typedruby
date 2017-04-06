@@ -119,6 +119,13 @@ fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
         return;
     }
 
+    if let Node::Mlhs(_, ref mlhs_items) = *arg {
+        for mlhs_item in mlhs_items {
+            check_duplicate_args_inner(names, mlhs_item);
+        }
+        return;
+    }
+
     let (range, name) = match arg {
         &Node::Arg(ref loc, ref name) => (loc, name),
         &Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
@@ -748,11 +755,16 @@ unsafe extern "C" fn match_op(receiver: *mut Node, oper: *const Token, arg: *mut
 }
 
 unsafe extern "C" fn multi_assign(mlhs: *mut Node, rhs: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let mlhs = from_raw(mlhs);
+    let rhs = from_raw(rhs);
+
+    Node::Masgn(mlhs.loc().join(rhs.loc()), mlhs, rhs).to_raw()
 }
 
 unsafe extern "C" fn multi_lhs(begin: *const Token, items: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let items = ffi::node_list_from_raw(items);
+
+    Node::Mlhs(collection_map(begin, items.as_slice(), end).unwrap(), items).to_raw()
 }
 
 unsafe extern "C" fn negate(uminus: *const Token, numeric: *mut Node) -> *mut Node {
