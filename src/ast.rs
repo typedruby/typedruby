@@ -22,6 +22,7 @@ pub struct Id(pub Loc, pub String);
 #[derive(Debug)]
 pub enum Node {
     And             (Loc,   Box<Node>, Box<Node>),
+    AndAsgn         (Loc,   Box<Node>, Box<Node>),
     Arg             (Loc,   String),
     Args            (Loc,   Vec<Box<Node>>),
     Array           (Loc,   Vec<Box<Node>>),
@@ -65,7 +66,9 @@ pub enum Node {
     MatchCurLine    (Loc,   Box<Node>),
     Next            (Loc,   Vec<Box<Node>>),
     Nil             (Loc),
+    OpAsgn          (Loc,   Box<Node>, Id, Box<Node>),
     Or              (Loc,   Box<Node>, Box<Node>),
+    OrAsgn          (Loc,   Box<Node>, Box<Node>),
     Pair            (Loc,   Box<Node>, Box<Node>),
     Procarg0        (Loc,   Box<Node>),
     Redo            (Loc),
@@ -91,6 +94,7 @@ impl Node {
     pub fn loc(&self) -> &Loc {
         match self {
             &Node::And(ref loc, _, _) => loc,
+            &Node::AndAsgn(ref loc, _, _) => loc,
             &Node::Arg(ref loc, _) => loc,
             &Node::Args(ref loc, _) => loc,
             &Node::Array(ref loc, _) => loc,
@@ -134,7 +138,9 @@ impl Node {
             &Node::MatchCurLine(ref loc, _) => loc,
             &Node::Next(ref loc, _) => loc,
             &Node::Nil(ref loc) => loc,
+            &Node::OpAsgn(ref loc, _, _, _) => loc,
             &Node::Or(ref loc, _, _) => loc,
+            &Node::OrAsgn(ref loc, _, _) => loc,
             &Node::Pair(ref loc, _, _) => loc,
             &Node::Procarg0(ref loc, _) => loc,
             &Node::Redo(ref loc) => loc,

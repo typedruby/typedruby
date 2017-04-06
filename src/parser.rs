@@ -764,7 +764,18 @@ unsafe extern "C" fn nth_ref(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn op_assign(lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let lhs = from_raw(lhs);
+    let rhs = from_raw(rhs);
+
+    // match lhs {
+    //  TODO error on back ref and nth ref
+    // }
+
+    match Token::string(op).as_str() {
+        "&&" => Node::AndAsgn(lhs.loc().join(rhs.loc()), lhs, rhs),
+        "||" => Node::OrAsgn(lhs.loc().join(rhs.loc()), lhs, rhs),
+        _    => Node::OpAsgn(lhs.loc().join(rhs.loc()), lhs, token_id(op), rhs),
+    }.to_raw()
 }
 
 unsafe extern "C" fn optarg(name: *const Token, eql: *const Token, value: *mut Node) -> *mut Node {
