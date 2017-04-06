@@ -115,6 +115,8 @@ fn check_duplicate_args<'a>(args: &'a [Box<Node>]) {
     fn arg_loc_and_name<'a>(node: &'a Node) -> (&'a Loc, &'a str) {
         match node {
             &Node::Arg(ref loc, ref name) => (&loc, &name),
+            &Node::Kwarg(ref loc, ref name) => (&loc, &name),
+            &Node::Kwoptarg(_, Id(ref loc, ref name), _) => (&loc, &name),
             _ => panic!("not an arg node"),
         }
     }
@@ -602,11 +604,13 @@ unsafe extern "C" fn keyword_cmd(type_: c_int, keyword: *const Token, lparen: *c
 }
 
 unsafe extern "C" fn kwarg(name: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Kwarg(Token::loc(name), Token::string(name)).to_raw()
 }
 
 unsafe extern "C" fn kwoptarg(name: *const Token, value: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let value = from_raw(value);
+    let id = token_id(name);
+    Node::Kwoptarg(id.0.join(value.loc()), id, value).to_raw()
 }
 
 unsafe extern "C" fn kwrestarg(dstar: *const Token, name: *const Token) -> *mut Node {
