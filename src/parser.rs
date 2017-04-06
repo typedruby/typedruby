@@ -239,7 +239,27 @@ unsafe extern "C" fn back_ref(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn begin(begin: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let body = from_maybe_raw(body);
+
+    let loc = if begin == ptr::null_mut() {
+        assert!(end == ptr::null_mut());
+        match body {
+            Some(ref boxed_body) => boxed_body.loc().clone(),
+            None => panic!("expected body to not be None"),
+        }
+    } else {
+        assert!(end != ptr::null_mut());
+        join_tokens(begin, end)
+    };
+
+    // TODO not exactly the logic from parser gem's begin
+    // revisit when Node::Mlhs exists
+    Node::Begin(loc, match body {
+        // A nil expression: `()'.
+        None => vec![],
+
+        Some(boxed_body) => vec![boxed_body],
+    }).to_raw()
 }
 
 unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, else_tok: *const Token, else_: *mut Node, ensure_tok: *const Token, ensure: *mut Node) -> *mut Node {
