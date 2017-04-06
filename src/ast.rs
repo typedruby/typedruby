@@ -82,7 +82,7 @@ pub enum Node {
     Regopt          (Loc,   Vec<char>),
     Resbody         (Loc,   Option<Box<Node>>, Option<Box<Node>>, Option<Box<Node>>),
     Rescue          (Loc,   Option<Box<Node>>, Vec<Box<Node>>, Option<Box<Node>>),
-    Restarg         (Loc,   Id),
+    Restarg         (Loc,   Option<Id>),
     Retry           (Loc),
     Return          (Loc,   Vec<Box<Node>>),
     SClass          (Loc,   Box<Node>, Option<Box<Node>>),
