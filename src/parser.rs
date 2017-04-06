@@ -625,8 +625,16 @@ unsafe extern "C" fn line_literal(tok: *const Token) -> *mut Node {
     Node::LineLiteral(Token::loc(tok)).to_raw()
 }
 
-unsafe extern "C" fn logical_op(type_: c_int, lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn logical_and(lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
+    let lhs = from_raw(lhs);
+    let rhs = from_raw(rhs);
+    Node::And(lhs.loc().join(rhs.loc()), lhs, rhs).to_raw()
+}
+
+unsafe extern "C" fn logical_or(lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
+    let lhs = from_raw(lhs);
+    let rhs = from_raw(rhs);
+    Node::Or(lhs.loc().join(rhs.loc()), lhs, rhs).to_raw()
 }
 
 unsafe extern "C" fn loop_(type_: c_int, keyword: *const Token, cond: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
@@ -976,7 +984,8 @@ const BUILDER: Builder = Builder {
     kwrestarg: kwrestarg,
     kwsplat: kwsplat,
     line_literal: line_literal,
-    logical_op: logical_op,
+    logical_and: logical_and,
+    logical_or: logical_or,
     loop_: loop_,
     loop_mod: loop_mod,
     match_op: match_op,
