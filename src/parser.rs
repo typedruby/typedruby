@@ -758,8 +758,27 @@ unsafe extern "C" fn nil(tok: *const Token) -> *mut Node {
     Node::Nil(Token::loc(tok)).to_raw()
 }
 
-unsafe extern "C" fn not_op(not_: *const Token, begin: *const Token, receiver: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn not_op(not: *const Token, begin: *const Token, receiver: *mut Node, end: *const Token) -> *mut Node {
+    let not_loc = Token::loc(not);
+    let id = Id(Token::loc(not), "!".to_owned());
+
+    match from_maybe_raw(receiver) {
+        Some(expr) => {
+            let loc = if end != ptr::null() {
+                not_loc.join(&Token::loc(end))
+            } else {
+                not_loc.join(expr.loc())
+            };
+            Node::Send(loc, Some(expr), id, vec![])
+        },
+        None => {
+            assert!(begin != ptr::null() && end != ptr::null());
+            let nil_loc = join_tokens(begin, end);
+            let loc = not_loc.join(&nil_loc);
+            let recv = Box::new(Node::Begin(nil_loc.clone(), vec![Box::new(Node::Nil(nil_loc))]));
+            Node::Send(loc, Some(recv), id, vec![])
+        }
+    }.to_raw()
 }
 
 unsafe extern "C" fn nth_ref(tok: *const Token) -> *mut Node {
