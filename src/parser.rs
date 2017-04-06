@@ -614,8 +614,9 @@ unsafe extern "C" fn keyword_break(keyword: *const Token, lparen: *const Token, 
     panic!("unimplemented");
 }
 
-unsafe extern "C" fn keyword_defined(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn keyword_defined(keyword: *const Token, arg: *mut Node) -> *mut Node {
+    let arg = from_raw(arg);
+    Node::Defined(Token::loc(keyword).join(arg.loc()), arg).to_raw()
 }
 
 unsafe extern "C" fn keyword_next(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
