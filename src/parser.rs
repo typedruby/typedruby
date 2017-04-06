@@ -358,7 +358,7 @@ unsafe extern "C" fn binary_op(recv: *mut Node, oper: *const Token, arg: *mut No
 unsafe extern "C" fn block(method_call: *mut Node, begin: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
     let method_call = from_raw(method_call);
     let args = from_raw(args);
-    let body = from_raw(body);
+    let body = from_maybe_raw(body);
 
     if let Node::Yield(_, _) = *method_call {
         // diagnostic :error, :block_given_to_yield, nil, method_call.loc.keyword, [loc(begin_t)]
