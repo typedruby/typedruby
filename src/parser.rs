@@ -328,7 +328,8 @@ unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, e
 }
 
 unsafe extern "C" fn begin_keyword(begin: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let body = from_raw(body);
+    Node::KwBegin(join_tokens(begin, end), body).to_raw()
 }
 
 unsafe extern "C" fn binary_op(recv: *mut Node, oper: *const Token, arg: *mut Node) -> *mut Node {
