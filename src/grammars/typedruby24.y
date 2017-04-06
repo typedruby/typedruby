@@ -893,35 +893,35 @@
                     {
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::SUPER, _1.get(),
+                      $$ = put(p, p.builder.keyword_super(_1.get(),
                                   nullptr, _2.get(), nullptr));
                     }
                 | kYIELD command_args
                     {
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::YIELD, _1.get(),
+                      $$ = put(p, p.builder.keyword_yield(_1.get(),
                                   nullptr, _2.get(), nullptr));
                     }
                 | kRETURN call_args
                     {
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::RETURN, _1.get(),
+                      $$ = put(p, p.builder.keyword_return(_1.get(),
                                   nullptr, _2.get(), nullptr));
                     }
                 | kBREAK call_args
                     {
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::BREAK, _1.get(),
+                      $$ = put(p, p.builder.keyword_break(_1.get(),
                                   nullptr, _2.get(), nullptr));
                     }
                 | kNEXT call_args
                     {
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::NEXT, _1.get(),
+                      $$ = put(p, p.builder.keyword_next(_1.get(),
                                   nullptr, _2.get(), nullptr));
                     }
 
@@ -1575,7 +1575,7 @@
                       auto _1 = take(p, $1);
                       auto args = make_node_list(std::move(_3));
 
-                      $$ = put(p, p.builder.keyword_cmd(node_type::DEFINED, _1.get(), nullptr, args.get(), nullptr));
+                      $$ = put(p, p.builder.keyword_defined(_1.get(), nullptr, args.get(), nullptr));
                     }
                 | arg tEH arg opt_nl tCOLON arg
                     {
@@ -1889,7 +1889,7 @@
                 | kRETURN
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::RETURN, _1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_return(_1.get(), nullptr, nullptr, nullptr));
                     }
                 | kYIELD tLPAREN2 call_args rparen
                     {
@@ -1897,7 +1897,7 @@
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
                       auto _4 = take(p, $4);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::YIELD, _1.get(), _2.get(), _3.get(), _4.get()));
+                      $$ = put(p, p.builder.keyword_yield(_1.get(), _2.get(), _3.get(), _4.get()));
                     }
                 | kYIELD tLPAREN2 rparen
                     {
@@ -1906,12 +1906,12 @@
                       auto _3 = take(p, $3);
                       auto args = make_node_list();
 
-                      $$ = put(p, p.builder.keyword_cmd(node_type::YIELD, _1.get(), _2.get(), args.get(), _3.get()));
+                      $$ = put(p, p.builder.keyword_yield(_1.get(), _2.get(), args.get(), _3.get()));
                     }
                 | kYIELD
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::YIELD, _1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_yield(_1.get(), nullptr, nullptr, nullptr));
                     }
                 | kDEFINED opt_nl tLPAREN2 expr rparen
                     {
@@ -1921,7 +1921,7 @@
                       auto _5 = take(p, $5);
                       auto args = make_node_list(std::move(_4));
 
-                      $$ = put(p, p.builder.keyword_cmd(node_type::DEFINED, _1.get(),
+                      $$ = put(p, p.builder.keyword_defined(_1.get(),
                                                     _3.get(), args.get(), _5.get()));
                     }
                 | kNOT tLPAREN2 expr rparen
@@ -2211,22 +2211,22 @@
                 | kBREAK
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::BREAK, _1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_break(_1.get(), nullptr, nullptr, nullptr));
                     }
                 | kNEXT
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::NEXT, _1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_next(_1.get(), nullptr, nullptr, nullptr));
                     }
                 | kREDO
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::REDO, _1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_redo(_1.get(), nullptr, nullptr, nullptr));
                     }
                 | kRETRY
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::RETRY, _1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_retry(_1.get(), nullptr, nullptr, nullptr));
                     }
 
    primary_value: primary
@@ -2818,7 +2818,7 @@ opt_block_args_tail:
                       auto delimited = take(p, $2);
 
                       $$ = put(p,
-                        p.builder.keyword_cmd(node_type::SUPER, _1.get(),
+                        p.builder.keyword_super(_1.get(),
                           delimited->begin.get(),
                           delimited->inner.get(),
                           delimited->end.get()));
@@ -2826,7 +2826,7 @@ opt_block_args_tail:
                 | kSUPER
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.keyword_cmd(node_type::ZSUPER, _1.get(), nullptr, nullptr, nullptr));
+                      $$ = put(p, p.builder.keyword_zsuper(_1.get(), nullptr, nullptr, nullptr));
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {

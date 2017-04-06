@@ -610,9 +610,42 @@ unsafe extern "C" fn ivar(tok: *const Token) -> *mut Node {
     Node::Ivar(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn keyword_cmd(type_: c_int, keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+unsafe extern "C" fn keyword_break(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
     panic!("unimplemented");
 }
+
+unsafe extern "C" fn keyword_defined(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+    panic!("unimplemented");
+}
+
+unsafe extern "C" fn keyword_next(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+    panic!("unimplemented");
+}
+
+unsafe extern "C" fn keyword_redo(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+    panic!("unimplemented");
+}
+
+unsafe extern "C" fn keyword_retry(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+    panic!("unimplemented");
+}
+
+unsafe extern "C" fn keyword_return(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+    panic!("unimplemented");
+}
+
+unsafe extern "C" fn keyword_super(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+    panic!("unimplemented");
+}
+
+unsafe extern "C" fn keyword_yield(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+    panic!("unimplemented");
+}
+
+unsafe extern "C" fn keyword_zsuper(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+    panic!("unimplemented");
+}
+
 
 unsafe extern "C" fn kwarg(name: *const Token) -> *mut Node {
     Node::Kwarg(Token::loc(name), Token::string(name)).to_raw()
@@ -1007,7 +1040,15 @@ const BUILDER: Builder = Builder {
     index_asgn: index_asgn,
     integer: integer,
     ivar: ivar,
-    keyword_cmd: keyword_cmd,
+    keyword_break: keyword_break,
+    keyword_defined: keyword_defined,
+    keyword_next: keyword_next,
+    keyword_redo: keyword_redo,
+    keyword_retry: keyword_retry,
+    keyword_return: keyword_return,
+    keyword_super: keyword_super,
+    keyword_yield: keyword_yield,
+    keyword_zsuper: keyword_zsuper,
     kwarg: kwarg,
     kwoptarg: kwoptarg,
     kwrestarg: kwrestarg,
