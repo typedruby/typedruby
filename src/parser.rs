@@ -220,6 +220,8 @@ unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -
             Node::Cvasgn(asgn_loc, Id(loc, name), rhs),
         Node::Ivar(loc, name) =>
             Node::Ivasgn(asgn_loc, Id(loc, name), rhs),
+        Node::Gvar(loc, name) =>
+            Node::Gvasgn(asgn_loc, Id(loc, name), rhs),
         _ => {
             panic!("unimplemented lhs: {:?}", lhs);
         }
@@ -235,6 +237,7 @@ unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Node) -> *mut No
         lhs @ Node::Const(_, _, _) |
         lhs @ Node::Ivar(_, _) |
         lhs @ Node::Cvar(_, _) => lhs,
+        lhs @ Node::Gvar(_, _) => lhs,
         lhs =>
             panic!("not assignable on lhs: {:?}", lhs),
     }.to_raw()
@@ -608,7 +611,7 @@ unsafe extern "C" fn for_(for_: *const Token, iterator: *mut Node, in_: *const T
 }
 
 unsafe extern "C" fn gvar(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Gvar(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn ident(tok: *const Token) -> *mut Node {
