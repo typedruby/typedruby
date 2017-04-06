@@ -907,7 +907,8 @@ unsafe extern "C" fn word(parts: *mut NodeList) -> *mut Node {
 }
 
 unsafe extern "C" fn words_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let words = ffi::node_list_from_raw(parts);
+    Node::Array(collection_map(begin, words.as_slice(), end).unwrap(), words).to_raw()
 }
 
 unsafe extern "C" fn xstring_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
