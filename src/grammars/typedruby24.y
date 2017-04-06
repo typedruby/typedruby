@@ -3854,7 +3854,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto argsig = take(p, $1);
                       auto restarg = p.builder.restarg(_2.get(), nullptr);
 
-                      if (restarg) {
+                      if (argsig) {
                         restarg = p.builder.typed_arg(std::move(argsig), std::move(restarg));
                       }
 
@@ -3873,7 +3873,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
                       auto blockarg = p.builder.blockarg(_2.get(), ident.get());
 
-                      if (blockarg) {
+                      if (argsig) {
                         blockarg = p.builder.typed_arg(std::move(argsig), std::move(blockarg));
                       }
 
@@ -3885,7 +3885,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto argsig = take(p, $1);
                       auto blockarg = p.builder.blockarg(_2.get(), nullptr);
 
-                      if (blockarg) {
+                      if (argsig) {
                         blockarg = p.builder.typed_arg(std::move(argsig), std::move(blockarg));
                       }
 
