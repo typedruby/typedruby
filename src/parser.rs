@@ -736,20 +736,17 @@ unsafe extern "C" fn string(string_: *const Token) -> *mut Node {
 unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
     let mut parts = ffi::node_list_from_raw(parts);
 
+    let loc = collection_map(begin, parts.as_slice(), end).unwrap();
+
     if parts.len() == 1 {
         let part = *parts.remove(0);
 
         match part {
-            Node::String(loc, val) =>
-                if begin == ptr::null() {
-                    Node::String(loc, val)
-                } else {
-                    Node::String(join_tokens(begin, end), val)
-                },
-            node => Node::DString(join_tokens(begin, end), vec![Box::new(node)]),
+            Node::String(loc, val) => Node::String(loc, val),
+            node => Node::DString(loc, vec![Box::new(node)]),
         }
     } else {
-        Node::DString(join_tokens(begin, end), parts)
+        Node::DString(loc, parts)
     }.to_raw()
 }
 
