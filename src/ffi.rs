@@ -1,7 +1,7 @@
 extern crate libc;
 
 use ::ast::{Node, Loc};
-use self::libc::{size_t, c_int};
+use self::libc::size_t;
 use std::vec::Vec;
 use std::ptr;
 use std::slice;
@@ -74,8 +74,9 @@ pub struct Builder {
     pub logical_and: unsafe extern "C" fn(lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node,
     pub logical_or: unsafe extern "C" fn(lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node,
     pub loop_until: unsafe extern "C" fn(keyword: *const Token, cond: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node,
+    pub loop_until_mod: unsafe extern "C" fn(body: *mut Node, cond: *mut Node) -> *mut Node,
     pub loop_while: unsafe extern "C" fn(keyword: *const Token, cond: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node,
-    pub loop_mod: unsafe extern "C" fn(type_: c_int, body: *mut Node, cond: *mut Node) -> *mut Node,
+    pub loop_while_mod: unsafe extern "C" fn(body: *mut Node, cond: *mut Node) -> *mut Node,
     pub match_op: unsafe extern "C" fn(receiver: *mut Node, oper: *const Token, arg: *mut Node) -> *mut Node,
     pub multi_assign: unsafe extern "C" fn(mlhs: *mut Node, rhs: *mut Node) -> *mut Node,
     pub multi_lhs: unsafe extern "C" fn(begin: *const Token, items: *mut NodeList, end: *const Token) -> *mut Node,

@@ -609,13 +609,13 @@
                     {
                       auto _1 = take(p, $1);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.loop_mod(node_type::WHILE, std::move(_1), std::move(_3)));
+                      $$ = put(p, p.builder.loop_while_mod(std::move(_1), std::move(_3)));
                     }
                 | stmt kUNTIL_MOD expr_value
                     {
                       auto _1 = take(p, $1);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.loop_mod(node_type::UNTIL, std::move(_1), std::move(_3)));
+                      $$ = put(p, p.builder.loop_until_mod(std::move(_1), std::move(_3)));
                     }
                 | stmt kRESCUE_MOD stmt
                     {
