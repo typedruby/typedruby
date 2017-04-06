@@ -8,6 +8,7 @@ use ast::*;
 use ffi;
 use ffi::{Builder, NodeList, Token, Parser};
 use self::libc::{size_t, c_int};
+use std::collections::HashSet;
 
 trait ToRaw {
     fn to_raw(self) -> *mut Node;
@@ -109,35 +110,34 @@ unsafe extern "C" fn arg(name: *const Token) -> *mut Node {
     Node::Arg(Token::loc(name), Token::string(name)).to_raw()
 }
 
-fn check_duplicate_args<'a>(args: &'a [Box<Node>]) {
-    let mut names = ::std::collections::HashSet::new();
-
-    fn arg_loc_and_name<'a>(node: &'a Node) -> (&'a Loc, &'a str) {
-        match node {
-            &Node::Arg(ref loc, ref name) => (&loc, &name),
-            &Node::Kwarg(ref loc, ref name) => (&loc, &name),
-            &Node::Kwoptarg(_, Id(ref loc, ref name), _) => (&loc, &name),
-            _ => panic!("not an arg node"),
-        }
+fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
+    if let Node::Procarg0(_, ref arg) = *arg {
+        check_duplicate_args_inner(names, arg);
+        return;
     }
 
-    let mut check_inner = |args: &'a [Box<Node>]| {
-        for arg in args {
-            let (range, name) = arg_loc_and_name(&*arg);
-
-            if name.starts_with("_") {
-                continue
-            }
-
-            if names.contains(name) {
-                // TODO error
-            }
-
-            names.insert(name);
-        }
+    let (range, name) = match arg {
+        &Node::Arg(ref loc, ref name) => (loc, name),
+        &Node::Kwarg(ref loc, ref name) => (loc, name),
+        &Node::Kwoptarg(_, Id(ref loc, ref name), _) => (loc, name),
+        _ => panic!("not an arg node"),
     };
 
-    check_inner(args)
+    if name.starts_with("_") {
+        return;
+    }
+
+    if names.contains(name.as_str()) {
+        // TODO error
+    }
+
+    names.insert(name);
+}
+
+fn check_duplicate_args<'a>(args: &[Box<Node>]) {
+    for arg in args {
+        check_duplicate_args_inner(&mut HashSet::new(), arg);
+    }
 }
 
 unsafe fn collection_map(begin: *const Token, elements: &[Box<Node>], end: *const Token) -> Option<Loc> {
@@ -698,7 +698,8 @@ unsafe extern "C" fn preexe(node: *mut Node) -> *mut Node {
 }
 
 unsafe extern "C" fn procarg0(arg: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let arg = from_raw(arg);
+    Node::Procarg0(arg.loc().clone(), arg).to_raw()
 }
 
 unsafe extern "C" fn prototype(genargs: *mut Node, args: *mut Node, return_type: *mut Node) -> *mut Node {
