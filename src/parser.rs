@@ -680,7 +680,9 @@ unsafe extern "C" fn pair(key: *mut Node, assoc: *const Token, value: *mut Node)
 }
 
 unsafe extern "C" fn pair_keyword(key: *const Token, value: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let sym = Node::Symbol(Token::loc(key), Token::string(key));
+    let value = from_raw(value);
+    Node::Pair(sym.loc().join(value.loc()), Box::new(sym), value).to_raw()
 }
 
 unsafe extern "C" fn pair_quoted(begin: *const Token, parts: *mut NodeList, end: *const Token, value: *mut Node) -> *mut Node {
