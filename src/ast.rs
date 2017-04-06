@@ -28,7 +28,7 @@ pub enum Node {
     Args            (Loc,   Vec<Box<Node>>),
     Array           (Loc,   Vec<Box<Node>>),
     Begin           (Loc,   Vec<Box<Node>>),
-    Block           (Loc,   Box<Node>, Box<Node>, Box<Node>),
+    Block           (Loc,   Box<Node>, Box<Node>, Option<Box<Node>>),
     BlockPass       (Loc,   Box<Node>),
     Break           (Loc,   Vec<Box<Node>>),
     Case            (Loc,   Option<Box<Node>>, Vec<Box<Node>>, Option<Box<Node>>),
