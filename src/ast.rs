@@ -21,6 +21,7 @@ pub struct Id(pub Loc, pub String);
 
 #[derive(Debug)]
 pub enum Node {
+    Alias           (Loc,   Box<Node>, Box<Node>),
     And             (Loc,   Box<Node>, Box<Node>),
     AndAsgn         (Loc,   Box<Node>, Box<Node>),
     Arg             (Loc,   String),
@@ -96,6 +97,7 @@ pub enum Node {
 impl Node {
     pub fn loc(&self) -> &Loc {
         match self {
+            &Node::Alias(ref loc, _, _) => loc,
             &Node::And(ref loc, _, _) => loc,
             &Node::AndAsgn(ref loc, _, _) => loc,
             &Node::Arg(ref loc, _) => loc,
