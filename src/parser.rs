@@ -1100,7 +1100,16 @@ unsafe extern "C" fn typed_arg(type_: *mut Node, arg: *mut Node) -> *mut Node {
 }
 
 unsafe extern "C" fn unary_op(oper: *const Token, receiver: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let id = token_id(oper);
+    let recv = from_raw(receiver);
+
+    let id = match id.1.as_str() {
+        "+" => Id(id.0, "+@".to_owned()),
+        "-" => Id(id.0, "-@".to_owned()),
+        _   => id,
+    };
+
+    Node::Send(id.0.join(recv.loc()), Some(recv), id, vec![]).to_raw()
 }
 
 unsafe extern "C" fn undef_method(name_list: *mut NodeList) -> *mut Node {
