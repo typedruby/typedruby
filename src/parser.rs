@@ -137,6 +137,8 @@ fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
         &Node::Kwoptarg(_, Id(ref loc, ref name), _) => (loc, name),
         &Node::Restarg(_, Some(Id(ref loc, ref name))) => (loc, name),
         &Node::Restarg(_, None) => return,
+        &Node::Blockarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+        &Node::Blockarg(_, None) => return,
         _ => panic!("not an arg node {:?}", arg),
     };
 
@@ -398,7 +400,12 @@ unsafe extern "C" fn block_pass(amper: *const Token, arg: *mut Node) -> *mut Nod
 }
 
 unsafe extern "C" fn blockarg(amper: *const Token, name: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    if name != ptr::null() {
+        let id = token_id(name);
+        Node::Blockarg(Token::loc(amper).join(&id.0), Some(id))
+    } else {
+        Node::Blockarg(Token::loc(amper), None)
+    }.to_raw()
 }
 
 unsafe extern "C" fn call_lambda(lambda: *const Token) -> *mut Node {
