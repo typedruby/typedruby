@@ -622,12 +622,12 @@ unsafe extern "C" fn keyword_next(keyword: *const Token, lparen: *const Token, a
     panic!("unimplemented");
 }
 
-unsafe extern "C" fn keyword_redo(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn keyword_redo(keyword: *const Token) -> *mut Node {
+    Node::Redo(Token::loc(keyword)).to_raw()
 }
 
-unsafe extern "C" fn keyword_retry(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn keyword_retry(keyword: *const Token) -> *mut Node {
+    Node::Retry(Token::loc(keyword)).to_raw()
 }
 
 unsafe extern "C" fn keyword_return(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
@@ -642,10 +642,9 @@ unsafe extern "C" fn keyword_yield(keyword: *const Token, lparen: *const Token, 
     panic!("unimplemented");
 }
 
-unsafe extern "C" fn keyword_zsuper(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn keyword_zsuper(keyword: *const Token) -> *mut Node {
+    Node::ZSuper(Token::loc(keyword)).to_raw()
 }
-
 
 unsafe extern "C" fn kwarg(name: *const Token) -> *mut Node {
     Node::Kwarg(Token::loc(name), Token::string(name)).to_raw()
