@@ -450,7 +450,9 @@ unsafe extern "C" fn def_sclass(class_: *const Token, lshft_: *const Token, expr
 }
 
 unsafe extern "C" fn def_singleton(def: *const Token, definee: *mut Node, dot: *const Token, name: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let loc = join_tokens(def, end);
+
+    Node::Defs(loc, from_raw(definee), token_id(name), from_maybe_raw(args), from_maybe_raw(body)).to_raw()
 }
 
 unsafe extern "C" fn encoding_literal(tok: *const Token) -> *mut Node {
