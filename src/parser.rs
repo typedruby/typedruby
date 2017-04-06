@@ -421,7 +421,7 @@ unsafe extern "C" fn const_op_assignable(node: *mut Node) -> *mut Node {
 }
 
 unsafe extern "C" fn cvar(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Cvar(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn dedent_string(node: *mut Node, dedent_level: size_t) -> *mut Node {
@@ -501,7 +501,7 @@ unsafe extern "C" fn integer(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn ivar(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Ivar(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn keyword_cmd(type_: c_int, keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
