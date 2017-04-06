@@ -679,8 +679,8 @@ unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, e
     }.to_raw()
 }
 
-unsafe extern "C" fn string_internal(string_: *const Token) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn string_internal(string: *const Token) -> *mut Node {
+    Node::String(Token::loc(string), Token::string(string)).to_raw()
 }
 
 unsafe extern "C" fn symbol(symbol: *const Token) -> *mut Node {
