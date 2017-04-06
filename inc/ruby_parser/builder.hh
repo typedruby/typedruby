@@ -59,7 +59,15 @@ namespace ruby_parser {
     foreign_ptr(*index_asgn)(foreign_ptr receiver, const token* lbrack, const node_list* indexes, const token* rbrack);
     foreign_ptr(*integer)(const token* tok);
     foreign_ptr(*ivar)(const token* tok);
-    foreign_ptr(*keyword_cmd)(node_type type, const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_break)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_defined)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_next)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_redo)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_retry)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_return)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_super)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_yield)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_zsuper)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
     foreign_ptr(*kwarg)(const token* name);
     foreign_ptr(*kwoptarg)(const token* name, foreign_ptr value);
     foreign_ptr(*kwrestarg)(const token* dstar, const token* name);
