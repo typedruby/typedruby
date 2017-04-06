@@ -211,7 +211,8 @@ unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Node) -> *mut No
 }
 
 unsafe extern "C" fn associate(begin: *const Token, pairs: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let pairs = ffi::node_list_from_raw(pairs);
+    Node::Hash(collection_map(begin, &pairs, end).unwrap(), pairs).to_raw()
 }
 
 unsafe extern "C" fn attr_asgn(receiver: *mut Node, dot: *const Token, selector: *const Token) -> *mut Node {
@@ -576,7 +577,9 @@ unsafe extern "C" fn optarg(name: *const Token, eql: *const Token, value: *mut N
 }
 
 unsafe extern "C" fn pair(key: *mut Node, assoc: *const Token, value: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let key = from_raw(key);
+    let value = from_raw(value);
+    Node::Pair(key.loc().join(value.loc()), key, value).to_raw()
 }
 
 unsafe extern "C" fn pair_keyword(key: *const Token, value: *mut Node) -> *mut Node {
