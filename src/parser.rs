@@ -715,7 +715,8 @@ unsafe extern "C" fn kwrestarg(dstar: *const Token, name: *const Token) -> *mut 
 }
 
 unsafe extern "C" fn kwsplat(dstar: *const Token, arg: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let arg = from_raw(arg);
+    Node::Kwsplat(Token::loc(dstar).join(arg.loc()), arg).to_raw()
 }
 
 unsafe extern "C" fn line_literal(tok: *const Token) -> *mut Node {
