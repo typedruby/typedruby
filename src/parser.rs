@@ -323,7 +323,7 @@ unsafe extern "C" fn blockarg(amper: *const Token, name: *const Token) -> *mut N
 }
 
 unsafe extern "C" fn call_lambda(lambda: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Lambda(Token::loc(lambda)).to_raw()
 }
 
 unsafe extern "C" fn call_method(receiver: *mut Node, dot: *const Token, selector: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
