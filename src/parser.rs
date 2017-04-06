@@ -817,11 +817,17 @@ unsafe extern "C" fn prototype(genargs: *mut Node, args: *mut Node, return_type:
 }
 
 unsafe extern "C" fn range_exclusive(lhs: *mut Node, oper: *const Token, rhs: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let lhs = from_raw(lhs);
+    let rhs = from_raw(rhs);
+
+    Node::ERange(lhs.loc().join(rhs.loc()), lhs, rhs).to_raw()
 }
 
 unsafe extern "C" fn range_inclusive(lhs: *mut Node, oper: *const Token, rhs: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let lhs = from_raw(lhs);
+    let rhs = from_raw(rhs);
+
+    Node::IRange(lhs.loc().join(rhs.loc()), lhs, rhs).to_raw()
 }
 
 unsafe extern "C" fn rational(tok: *const Token) -> *mut Node {
