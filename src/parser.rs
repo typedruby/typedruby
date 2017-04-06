@@ -766,7 +766,25 @@ unsafe extern "C" fn regexp_options(regopt: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn rescue_body(rescue: *const Token, exc_list: *mut Node, assoc: *const Token, exc_var: *mut Node, then: *const Token, body: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let exc_list = from_maybe_raw(exc_list);
+    let exc_var = from_maybe_raw(exc_var);
+    let body = from_maybe_raw(body);
+
+    let mut loc = Token::loc(rescue);
+
+    if let Some(ref boxed_exc_list) = exc_list {
+        loc = loc.join(boxed_exc_list.loc());
+    }
+
+    if let Some(ref boxed_exc_var) = exc_var {
+        loc = loc.join(boxed_exc_var.loc());
+    }
+
+    if let Some(ref boxed_body) = body {
+        loc = loc.join(boxed_body.loc());
+    }
+
+    Node::Resbody(loc, exc_list, exc_var, body).to_raw()
 }
 
 unsafe extern "C" fn restarg(star: *const Token, name: *const Token) -> *mut Node {
