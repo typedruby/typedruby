@@ -611,7 +611,15 @@ unsafe extern "C" fn ivar(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn keyword_break(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let args = ffi::node_list_from_raw(args);
+
+    let mut loc = Token::loc(keyword);
+
+    if let Some(operand_loc) = collection_map(lparen, args.as_slice(), rparen) {
+        loc = loc.join(&operand_loc);
+    }
+
+    Node::Break(loc, args).to_raw()
 }
 
 unsafe extern "C" fn keyword_defined(keyword: *const Token, arg: *mut Node) -> *mut Node {
@@ -620,7 +628,15 @@ unsafe extern "C" fn keyword_defined(keyword: *const Token, arg: *mut Node) -> *
 }
 
 unsafe extern "C" fn keyword_next(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let args = ffi::node_list_from_raw(args);
+
+    let mut loc = Token::loc(keyword);
+
+    if let Some(operand_loc) = collection_map(lparen, args.as_slice(), rparen) {
+        loc = loc.join(&operand_loc);
+    }
+
+    Node::Next(loc, args).to_raw()
 }
 
 unsafe extern "C" fn keyword_redo(keyword: *const Token) -> *mut Node {
@@ -632,15 +648,39 @@ unsafe extern "C" fn keyword_retry(keyword: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn keyword_return(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let args = ffi::node_list_from_raw(args);
+
+    let mut loc = Token::loc(keyword);
+
+    if let Some(operand_loc) = collection_map(lparen, args.as_slice(), rparen) {
+        loc = loc.join(&operand_loc);
+    }
+
+    Node::Return(loc, args).to_raw()
 }
 
 unsafe extern "C" fn keyword_super(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let args = ffi::node_list_from_raw(args);
+
+    let mut loc = Token::loc(keyword);
+
+    if let Some(operand_loc) = collection_map(lparen, args.as_slice(), rparen) {
+        loc = loc.join(&operand_loc);
+    }
+
+    Node::Super(loc, args).to_raw()
 }
 
 unsafe extern "C" fn keyword_yield(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let args = ffi::node_list_from_raw(args);
+
+    let mut loc = Token::loc(keyword);
+
+    if let Some(operand_loc) = collection_map(lparen, args.as_slice(), rparen) {
+        loc = loc.join(&operand_loc);
+    }
+
+    Node::Yield(loc, args).to_raw()
 }
 
 unsafe extern "C" fn keyword_zsuper(keyword: *const Token) -> *mut Node {
