@@ -1,4 +1,10 @@
-CXXFLAGS += -Wall -Wextra -pedantic -std=c++1y -I inc -g
+CXXFLAGS += -Wall -Wextra -pedantic -std=c++1y -I inc
+
+ifeq ($(PROFILE),release)
+	CXXFLAGS += -O3
+else
+	CXXFLAGS += -g
+endif
 
 OBJECTS = \
 	src/capi.o \
@@ -12,6 +18,8 @@ OBJECTS = \
 RAGEL ?= ragel
 BISON ?= bison
 
+LIB_PATH ?= librubyparser.a
+
 src/builder.o: CXXFLAGS += -Wno-unused-parameter
 src/lexer.o: CXXFLAGS += -Wno-unused-const-variable
 
@@ -19,15 +27,15 @@ src/lexer.o: CXXFLAGS += -Wno-unused-const-variable
 
 .PHONY: all clean
 
-all: librubyparser.a
+all: $(LIB_PATH)
 
-main: main.o librubyparser.a
+main: main.o $(LIB_PATH)
 	$(CXX) -o $@ $(CXXFLAGS) $(LDFLAGS) $^
 
 clean:
 	rm -f librubyparser.a $(OBJECTS)
 
-librubyparser.a: $(OBJECTS)
+$(LIB_PATH): $(OBJECTS)
 	$(AR) rcs $@ $^
 
 %.cc: %.rl
