@@ -554,7 +554,11 @@ unsafe extern "C" fn index(receiver: *mut Node, lbrack: *const Token, indexes: *
 }
 
 unsafe extern "C" fn index_asgn(receiver: *mut Node, lbrack: *const Token, indexes: *mut NodeList, rbrack: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    // Incomplete method call
+    let recv = from_raw(receiver);
+    let id = Id(join_tokens(lbrack, rbrack), "[]=".to_owned());
+    let indexes = ffi::node_list_from_raw(indexes);
+    Node::Send(recv.loc().clone(), Some(recv), id, indexes).to_raw()
 }
 
 unsafe extern "C" fn integer(tok: *const Token) -> *mut Node {
