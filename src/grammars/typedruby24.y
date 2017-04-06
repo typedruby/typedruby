@@ -1571,11 +1571,10 @@
                     }
                 | kDEFINED opt_nl arg
                     {
-                      auto _3 = take(p, $3);
                       auto _1 = take(p, $1);
-                      auto args = make_node_list(std::move(_3));
+                      auto arg = take(p, $3);
 
-                      $$ = put(p, p.builder.keyword_defined(_1.get(), nullptr, args.get(), nullptr));
+                      $$ = put(p, p.builder.keyword_defined(_1.get(), std::move(arg)));
                     }
                 | arg tEH arg opt_nl tCOLON arg
                     {
@@ -1915,14 +1914,12 @@
                     }
                 | kDEFINED opt_nl tLPAREN2 expr rparen
                     {
-                      auto _4 = take(p, $4);
+                      auto arg = take(p, $4);
                       auto _1 = take(p, $1);
                       auto _3 = take(p, $3);
                       auto _5 = take(p, $5);
-                      auto args = make_node_list(std::move(_4));
 
-                      $$ = put(p, p.builder.keyword_defined(_1.get(),
-                                                    _3.get(), args.get(), _5.get()));
+                      $$ = put(p, p.builder.keyword_defined(_1.get(), std::move(arg)));
                     }
                 | kNOT tLPAREN2 expr rparen
                     {

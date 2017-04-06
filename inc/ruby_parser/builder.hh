@@ -60,7 +60,7 @@ namespace ruby_parser {
     foreign_ptr(*integer)(const token* tok);
     foreign_ptr(*ivar)(const token* tok);
     foreign_ptr(*keyword_break)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
-    foreign_ptr(*keyword_defined)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
+    foreign_ptr(*keyword_defined)(const token* keyword, foreign_ptr arg);
     foreign_ptr(*keyword_next)(const token* keyword, const token* lparen, const node_list* args, const token* rparen);
     foreign_ptr(*keyword_redo)(const token* keyword);
     foreign_ptr(*keyword_retry)(const token* keyword);

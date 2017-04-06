@@ -58,7 +58,7 @@ pub struct Builder {
     pub integer: unsafe extern "C" fn(tok: *const Token) -> *mut Node,
     pub ivar: unsafe extern "C" fn(tok: *const Token) -> *mut Node,
     pub keyword_break: unsafe extern "C" fn(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node,
-    pub keyword_defined: unsafe extern "C" fn(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node,
+    pub keyword_defined: unsafe extern "C" fn(keyword: *const Token, arg: *mut Node) -> *mut Node,
     pub keyword_next: unsafe extern "C" fn(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node,
     pub keyword_redo: unsafe extern "C" fn(keyword: *const Token) -> *mut Node,
     pub keyword_retry: unsafe extern "C" fn(keyword: *const Token) -> *mut Node,
