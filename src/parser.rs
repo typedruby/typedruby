@@ -103,7 +103,10 @@ unsafe extern "C" fn accessible(parser: *mut Parser, node: *mut Node) -> *mut No
 }
 
 unsafe extern "C" fn alias(alias: *const Token, to: *mut Node, from: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let to = from_raw(to);
+    let from = from_raw(from);
+
+    Node::Alias(Token::loc(alias).join(from.loc()), to, from).to_raw()
 }
 
 unsafe extern "C" fn arg(name: *const Token) -> *mut Node {
