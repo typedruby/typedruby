@@ -6,3 +6,7 @@ build = "build.rs"
 
 [dependencies]
 libc = "0.2.0"
+
+[profile.dev]
+debug = true
+panic = "abort"
