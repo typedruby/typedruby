@@ -191,6 +191,10 @@ unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -
             Node::Lvasgn(asgn_loc, Id(loc, name), rhs),
         Node::Const(loc, scope, name) =>
             Node::Casgn(asgn_loc, scope, name, rhs),
+        Node::Cvar(loc, name) =>
+            Node::Cvasgn(asgn_loc, Id(loc, name), rhs),
+        Node::Ivar(loc, name) =>
+            Node::Ivasgn(asgn_loc, Id(loc, name), rhs),
         _ => {
             panic!("unimplemented lhs: {:?}", lhs);
         }
@@ -203,8 +207,9 @@ unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Node) -> *mut No
             Parser::declare(parser, &name);
             Node::Lvassignable(loc, name)
         },
-        Node::Const(loc, scope, name) =>
-            Node::Const(loc, scope, name),
+        lhs @ Node::Const(_, _, _) |
+        lhs @ Node::Ivar(_, _) |
+        lhs @ Node::Cvar(_, _) => lhs,
         lhs =>
             panic!("not assignable on lhs: {:?}", lhs),
     }.to_raw()
