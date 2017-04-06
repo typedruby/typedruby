@@ -25,6 +25,8 @@ pub enum Node {
     Args            (Loc,   Vec<Box<Node>>),
     Array           (Loc,   Vec<Box<Node>>),
     Begin           (Loc,   Vec<Box<Node>>),
+    Block           (Loc,   Box<Node>, Box<Node>, Box<Node>),
+    BlockPass       (Loc,   Box<Node>),
     Casgn           (Loc,   Option<Box<Node>>, Id, Box<Node>),
     Cbase           (Loc),
     Const           (Loc,   Option<Box<Node>>, Id),
@@ -58,8 +60,11 @@ pub enum Node {
     Self_           (Loc),
     Send            (Loc,   Option<Box<Node>>, Id, Vec<Box<Node>>),
     String          (Loc,   String),
+    Super           (Loc,   Vec<Box<Node>>),
     Symbol          (Loc,   String),
     True            (Loc),
+    Yield           (Loc,   Vec<Box<Node>>),
+    ZSuper          (Loc),
 }
 
 impl Node {
@@ -69,6 +74,8 @@ impl Node {
             &Node::Args(ref loc, _) => loc,
             &Node::Array(ref loc, _) => loc,
             &Node::Begin(ref loc, _) => loc,
+            &Node::Block(ref loc, _, _, _) => loc,
+            &Node::BlockPass(ref loc, _) => loc,
             &Node::Casgn(ref loc, _, _, _) => loc,
             &Node::Cbase(ref loc) => loc,
             &Node::Class(ref loc, _, _, _) => loc,
@@ -102,8 +109,11 @@ impl Node {
             &Node::Self_(ref loc) => loc,
             &Node::Send(ref loc, _, _, _) => loc,
             &Node::String(ref loc, _) => loc,
+            &Node::Super(ref loc, _) => loc,
             &Node::Symbol(ref loc, _) => loc,
             &Node::True(ref loc) => loc,
+            &Node::Yield(ref loc, _) => loc,
+            &Node::ZSuper(ref loc) => loc,
         }
     }
 }
