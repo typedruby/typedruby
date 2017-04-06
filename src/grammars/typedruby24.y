@@ -2022,7 +2022,7 @@
                       auto _4 = take(p, $4);
                       auto _6 = take(p, $6);
                       auto _7 = take(p, $7);
-                      $$ = put(p, p.builder.loop(node_type::WHILE, _1.get(), std::move(_3), _4.get(),
+                      $$ = put(p, p.builder.loop_while(_1.get(), std::move(_3), _4.get(),
                                              std::move(_6), _7.get()));
                     }
                 | kUNTIL
@@ -2040,7 +2040,7 @@
                       auto _4 = take(p, $4);
                       auto _6 = take(p, $6);
                       auto _7 = take(p, $7);
-                      $$ = put(p, p.builder.loop(node_type::UNTIL, _1.get(), std::move(_3), _4.get(),
+                      $$ = put(p, p.builder.loop_until(_1.get(), std::move(_3), _4.get(),
                                              std::move(_6), _7.get()));
                     }
                 | kCASE expr_value opt_terms case_body kEND
