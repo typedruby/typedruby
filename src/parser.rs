@@ -118,9 +118,11 @@ fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
 
     let (range, name) = match arg {
         &Node::Arg(ref loc, ref name) => (loc, name),
+        &Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
         &Node::Kwarg(ref loc, ref name) => (loc, name),
         &Node::Kwoptarg(_, Id(ref loc, ref name), _) => (loc, name),
-        _ => panic!("not an arg node"),
+        &Node::Restarg(_, Id(ref loc, ref name)) => (loc, name),
+        _ => panic!("not an arg node {:?}", arg),
     };
 
     if name.starts_with("_") {
@@ -780,7 +782,9 @@ unsafe extern "C" fn op_assign(lhs: *mut Node, op: *const Token, rhs: *mut Node)
 }
 
 unsafe extern "C" fn optarg(name: *const Token, eql: *const Token, value: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let id = token_id(name);
+    let value = from_raw(value);
+    Node::Optarg(id.0.join(value.loc()), id, value).to_raw()
 }
 
 unsafe extern "C" fn pair(key: *mut Node, assoc: *const Token, value: *mut Node) -> *mut Node {
@@ -879,7 +883,8 @@ unsafe extern "C" fn rescue_body(rescue: *const Token, exc_list: *mut Node, asso
 }
 
 unsafe extern "C" fn restarg(star: *const Token, name: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let id = token_id(name);
+    Node::Restarg(Token::loc(star).join(&id.0), id).to_raw()
 }
 
 unsafe extern "C" fn self_(tok: *const Token) -> *mut Node {
