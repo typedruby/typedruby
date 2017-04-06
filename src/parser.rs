@@ -86,6 +86,10 @@ unsafe fn token_id(tok: *const Token) -> Id {
 }
 
 unsafe fn from_raw(p: *mut Node) -> Box<Node> {
+    if p == ptr::null_mut() {
+        panic!("received null node pointer in from_raw!");
+    }
+
     Box::from_raw(p)
 }
 
