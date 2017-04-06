@@ -424,12 +424,39 @@ unsafe extern "C" fn compstmt(nodes: *mut NodeList) -> *mut Node {
     }.to_raw()
 }
 
+fn check_condition(cond: Node) -> Node {
+    match cond {
+        Node::Begin(loc, mut stmts) => {
+            if stmts.len() == 1 {
+                check_condition(*stmts.remove(0))
+            } else {
+                Node::Begin(loc, stmts)
+            }
+        },
+        Node::And(loc, a, b) => Node::And(loc, Box::new(check_condition(*a)), Box::new(check_condition(*b))),
+        Node::Or(loc, a, b) => Node::Or(loc, Box::new(check_condition(*a)), Box::new(check_condition(*b))),
+        Node::IRange(loc, a, b) => Node::IFlipflop(loc, Box::new(check_condition(*a)), Box::new(check_condition(*b))),
+        Node::ERange(loc, a, b) => Node::EFlipflop(loc, Box::new(check_condition(*a)), Box::new(check_condition(*b))),
+        Node::Regexp(loc, parts, options) => Node::MatchCurLine(loc.clone(), Box::new(Node::Regexp(loc, parts, options))),
+        other => other,
+    }
+}
+
 unsafe extern "C" fn condition(cond_tok: *const Token, cond: *mut Node, then: *const Token, if_true: *mut Node, else_: *const Token, if_false: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let cond = from_raw(cond);
+    let if_true = from_maybe_raw(if_true);
+    let if_false = from_maybe_raw(if_false);
+    Node::If(join_tokens(cond_tok, end), Box::new(check_condition(*cond)), if_true, if_false).to_raw()
 }
 
 unsafe extern "C" fn condition_mod(if_true: *mut Node, if_false: *mut Node, cond: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let cond = from_raw(cond);
+    let if_true = from_maybe_raw(if_true);
+    let if_false = from_maybe_raw(if_false);
+
+    let loc = cond.loc().join(if_true.as_ref().unwrap_or_else(|| if_false.as_ref().unwrap()).loc());
+
+    Node::If(loc, Box::new(check_condition(*cond)), if_true, if_false).to_raw()
 }
 
 unsafe extern "C" fn const_(name: *const Token) -> *mut Node {
