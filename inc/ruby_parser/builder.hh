@@ -65,7 +65,8 @@ namespace ruby_parser {
     foreign_ptr(*kwrestarg)(const token* dstar, const token* name);
     foreign_ptr(*kwsplat)(const token* dstar, foreign_ptr arg);
     foreign_ptr(*line_literal)(const token* tok);
-    foreign_ptr(*logical_op)(node_type type, foreign_ptr lhs, const token* op, foreign_ptr rhs);
+    foreign_ptr(*logical_and)(foreign_ptr lhs, const token* op, foreign_ptr rhs);
+    foreign_ptr(*logical_or)(foreign_ptr lhs, const token* op, foreign_ptr rhs);
     foreign_ptr(*loop)(node_type type, const token* keyword, foreign_ptr cond, const token* do_, foreign_ptr body, const token* end);
     foreign_ptr(*loop_mod)(node_type type, foreign_ptr body, foreign_ptr cond);
     foreign_ptr(*match_op)(foreign_ptr receiver, const token* oper, foreign_ptr arg);

@@ -766,14 +766,14 @@
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.logical_op(node_type::AND, std::move(_1), _2.get(), std::move(_3)));
+                      $$ = put(p, p.builder.logical_and(std::move(_1), _2.get(), std::move(_3)));
                     }
                 | expr kOR expr
                     {
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.logical_op(node_type::OR, std::move(_1), _2.get(), std::move(_3)));
+                      $$ = put(p, p.builder.logical_or(std::move(_1), _2.get(), std::move(_3)));
                     }
                 | kNOT opt_nl expr
                     {
@@ -1560,14 +1560,14 @@
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.logical_op(node_type::AND, std::move(_1), _2.get(), std::move(_3)));
+                      $$ = put(p, p.builder.logical_and(std::move(_1), _2.get(), std::move(_3)));
                     }
                 | arg tOROP arg
                     {
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.logical_op(node_type::OR, std::move(_1), _2.get(), std::move(_3)));
+                      $$ = put(p, p.builder.logical_or(std::move(_1), _2.get(), std::move(_3)));
                     }
                 | kDEFINED opt_nl arg
                     {
