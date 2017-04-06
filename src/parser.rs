@@ -736,7 +736,15 @@ unsafe extern "C" fn loop_mod(type_: c_int, body: *mut Node, cond: *mut Node) ->
 }
 
 unsafe extern "C" fn match_op(receiver: *mut Node, oper: *const Token, arg: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let recv = from_raw(receiver);
+    let arg = from_raw(arg);
+
+    if let Node::Regexp(_, ref parts, _) = *recv {
+        // TODO if parts are all static string literals, declare any named
+        // captures as local variables and emit MatchWithLvasgn node
+    }
+
+    Node::Send(recv.loc().join(arg.loc()), Some(recv), token_id(oper), vec![arg]).to_raw()
 }
 
 unsafe extern "C" fn multi_assign(mlhs: *mut Node, rhs: *mut Node) -> *mut Node {
