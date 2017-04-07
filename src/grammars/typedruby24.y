@@ -13,6 +13,7 @@
   #define YYERROR_VERBOSE 1
 
   using namespace ruby_parser;
+  using namespace std::string_literals;
 
   #define yyparse ruby_parser_typedruby24_yyparse
 
@@ -511,7 +512,7 @@
                       auto ensure = take(p, $4);
 
                       if (rescue_bodies->nodes.size() == 0 && else_ != nullptr) {
-                        // TODO diagnostic :warning, :useless_else, nullptr, else_t
+                        p.diagnostic(diagnostic::level::WARNING, "else without rescue is useless"s, *else_->token_);
                       }
 
                       $$ = put(p, p.builder.begin_body(take(p, $1),
@@ -554,7 +555,8 @@
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
                       auto _1 = take(p, $1);
-                      /* TODO diagnostic :error, :begin_in_method, nullptr, std::move(_1) */
+                      p.diagnostic(diagnostic::level::ERROR, "BEGIN in method"s, *_1);
+                      YYERROR;
                     }
 
             stmt: kALIAS fitem
@@ -588,7 +590,9 @@
                     }
                 | kALIAS tGVAR tNTH_REF
                     {
-                      // TODO diagnostic :error, :nth_ref_alias, nullptr, $3
+                      auto ref = take(p, $3);
+                      p.diagnostic(diagnostic::level::ERROR, "cannot define an alias for a back-reference variable"s, *ref);
+                      YYERROR;
                     }
                 | kUNDEF undef_list
                     {
@@ -1190,8 +1194,9 @@
 
            cname: tIDENTIFIER
                     {
-                      auto _1 = take(p, $1);
-                      // TODO diagnostic :error, :module_name_const, nullptr, std::move(_1)
+                      auto name = take(p, $1);
+                      p.diagnostic(diagnostic::level::ERROR, "class or module name must be a constant literal"s, *name);
+                      YYERROR;
                     }
                 | tCONSTANT
 
@@ -2102,10 +2107,12 @@
                     }
                     bodystmt kEND
                     {
-                      auto _1 = take(p, $1);
-                      auto _6 = take(p, $6);
+                      auto class_tok = take(p, $1);
+                      auto end_tok = take(p, $6);
+
                       if (p.def_level > 0) {
-                        // TODO   diagnostic :error, :class_in_def, nullptr, std::move(_1)
+                        p.diagnostic(diagnostic::level::ERROR, "class definition in method body"s, *class_tok);
+                        YYERROR;
                       }
 
                       auto superclass_ = take(p, $3);
@@ -2113,9 +2120,9 @@
                       auto lt_t       = superclass_ ? superclass_->token_.get() : nullptr;
                       auto superclass = superclass_ ? std::move(superclass_->node_) : nullptr;
 
-                      $$ = put(p, p.builder.def_class(_1.get(), take(p, $2),
+                      $$ = put(p, p.builder.def_class(class_tok.get(), take(p, $2),
                                                   lt_t, std::move(superclass),
-                                                  take(p, $5), _6.get()));
+                                                  take(p, $5), end_tok.get()));
 
                       p.lexer->cmdarg = *take(p, $<state_stack>4);
                       p.lexer->unextend();
@@ -2150,13 +2157,15 @@
                     }
                     bodystmt kEND
                     {
-                      auto _1 = take(p, $1);
-                      auto _5 = take(p, $5);
+                      auto module_tok = take(p, $1);
+                      auto end_tok = take(p, $5);
+
                       if (p.def_level > 0) {
-                        // TODO   diagnostic :error, :module_in_def, nullptr, std::move(_1)
+                        p.diagnostic(diagnostic::level::ERROR, "module definition in method body"s, *module_tok);
+                        YYERROR;
                       }
 
-                      $$ = put(p, p.builder.def_module(_1.get(), take(p, $2), take(p, $4), _5.get()));
+                      $$ = put(p, p.builder.def_module(module_tok.get(), take(p, $2), take(p, $4), end_tok.get()));
 
                       p.lexer->cmdarg = *take(p, $<state_stack>3);
                       p.lexer->unextend();
@@ -3608,18 +3617,21 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
        f_bad_arg: tIVAR
                     {
-                      auto _1 = take(p, $1);
-                      // TODO diagnostic :error, :argument_ivar, nullptr, std::move(_1)
+                      auto tok = take(p, $1);
+                      p.diagnostic(diagnostic::level::ERROR, "formal argument cannot be an instance variable"s, *tok);
+                      YYERROR;
                     }
                 | tGVAR
                     {
-                      auto _1 = take(p, $1);
-                      // TODO diagnostic :error, :argument_gvar, nullptr, std::move(_1)
+                      auto tok = take(p, $1);
+                      p.diagnostic(diagnostic::level::ERROR, "formal argument cannot be a global variable"s, *tok);
+                      YYERROR;
                     }
                 | tCVAR
                     {
-                      auto _1 = take(p, $1);
-                      // TODO diagnostic :error, :argument_cvar, nullptr, std::move(_1)
+                      auto tok = take(p, $1);
+                      p.diagnostic(diagnostic::level::ERROR, "formal argument cannot be a class variable"s, *tok);
+                      YYERROR;
                     }
 
       f_norm_arg: f_bad_arg

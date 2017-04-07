@@ -5,6 +5,7 @@
 
 #include "lexer.hh"
 #include "node.hh"
+#include "diagnostic.hh"
 
 namespace ruby_parser {
   struct builder;
@@ -90,6 +91,7 @@ namespace ruby_parser {
     public:
       foreign_ptr ast;
       std::unique_ptr<lexer> lexer;
+      std::vector<diagnostic> diagnostics;
       size_t def_level;
       const struct builder& builder;
       std::set<void*> saved_pointers;
@@ -97,6 +99,11 @@ namespace ruby_parser {
       base(ruby_version version, const std::string& source, const struct builder& builder);
 
       void check_kwarg_name(const token_ptr& name);
+
+      template<typename... Args>
+      void diagnostic(Args&&... args) {
+        diagnostics.emplace_back(std::forward<Args>(args)...);
+      }
     };
 
     class typedruby24 : public base {
