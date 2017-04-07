@@ -118,8 +118,9 @@ using namespace ruby_parser;
 
 %% prepush { check_stack_capacity(); }
 
-lexer::lexer(ruby_version version, const std::string& source_buffer_)
-  : version(version)
+lexer::lexer(parser::base& parser, ruby_version version, const std::string& source_buffer_)
+  : parser(parser)
+  , version(version)
   , source_buffer(source_buffer_)
   , cs(lex_en_line_begin)
   , _p(source_buffer.data())
