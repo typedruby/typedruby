@@ -10,6 +10,8 @@
   #include <utility>
   #include <cstdlib>
 
+  #define YYERROR_VERBOSE 1
+
   using namespace ruby_parser;
 
   #define yyparse ruby_parser_typedruby24_yyparse
