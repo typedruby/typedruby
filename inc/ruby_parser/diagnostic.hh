@@ -1,5 +1,5 @@
-#ifndef DIAGNOSTIC_HH
-#define DIAGNOSTIC_HH
+#ifndef RUBY_PARSER_DIAGNOSTIC_HH
+#define RUBY_PARSER_DIAGNOSTIC_HH
 
 #include <cstddef>
 #include <string>
@@ -7,14 +7,15 @@
 #include "token.hh"
 
 namespace ruby_parser {
+  enum class diagnostic_level {
+    NOTE,
+    WARNING,
+    ERROR,
+    FATAL,
+  };
+
   class diagnostic {
   public:
-    enum class level {
-      NOTE,
-      WARNING,
-      ERROR,
-      FATAL,
-    };
 
     struct range {
       const size_t begin_pos;
@@ -27,24 +28,24 @@ namespace ruby_parser {
     };
 
   private:
-    level level_;
+    diagnostic_level level_;
     std::string message_;
     range location_;
 
   public:
-    diagnostic(level level, std::string message, range location)
+    diagnostic(diagnostic_level level, std::string&& message, range location)
       : level_(level)
       , message_(message)
       , location_(location)
     {}
 
-    diagnostic(level level, std::string message, token& token)
+    diagnostic(diagnostic_level level, std::string&& message, token& token)
       : level_(level)
       , message_(message)
       , location_(token.start(), token.end())
     {}
 
-    level level() const {
+    diagnostic_level level() const {
       return level_;
     }
 

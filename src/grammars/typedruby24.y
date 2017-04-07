@@ -512,7 +512,7 @@
                       auto ensure = take(p, $4);
 
                       if (rescue_bodies->nodes.size() == 0 && else_ != nullptr) {
-                        p.diagnostic(diagnostic::level::WARNING, "else without rescue is useless"s, *else_->token_);
+                        p.diagnostic(diagnostic_level::WARNING, "else without rescue is useless"s, *else_->token_);
                       }
 
                       $$ = put(p, p.builder.begin_body(take(p, $1),
@@ -555,7 +555,7 @@
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
                       auto _1 = take(p, $1);
-                      p.diagnostic(diagnostic::level::ERROR, "BEGIN in method"s, *_1);
+                      p.diagnostic(diagnostic_level::ERROR, "BEGIN in method"s, *_1);
                       YYERROR;
                     }
 
@@ -591,7 +591,7 @@
                 | kALIAS tGVAR tNTH_REF
                     {
                       auto ref = take(p, $3);
-                      p.diagnostic(diagnostic::level::ERROR, "cannot define an alias for a back-reference variable"s, *ref);
+                      p.diagnostic(diagnostic_level::ERROR, "cannot define an alias for a back-reference variable"s, *ref);
                       YYERROR;
                     }
                 | kUNDEF undef_list
@@ -1195,7 +1195,7 @@
            cname: tIDENTIFIER
                     {
                       auto name = take(p, $1);
-                      p.diagnostic(diagnostic::level::ERROR, "class or module name must be a constant literal"s, *name);
+                      p.diagnostic(diagnostic_level::ERROR, "class or module name must be a constant literal"s, *name);
                       YYERROR;
                     }
                 | tCONSTANT
@@ -2111,7 +2111,7 @@
                       auto end_tok = take(p, $6);
 
                       if (p.def_level > 0) {
-                        p.diagnostic(diagnostic::level::ERROR, "class definition in method body"s, *class_tok);
+                        p.diagnostic(diagnostic_level::ERROR, "class definition in method body"s, *class_tok);
                         YYERROR;
                       }
 
@@ -2161,7 +2161,7 @@
                       auto end_tok = take(p, $5);
 
                       if (p.def_level > 0) {
-                        p.diagnostic(diagnostic::level::ERROR, "module definition in method body"s, *module_tok);
+                        p.diagnostic(diagnostic_level::ERROR, "module definition in method body"s, *module_tok);
                         YYERROR;
                       }
 
@@ -3618,19 +3618,19 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
        f_bad_arg: tIVAR
                     {
                       auto tok = take(p, $1);
-                      p.diagnostic(diagnostic::level::ERROR, "formal argument cannot be an instance variable"s, *tok);
+                      p.diagnostic(diagnostic_level::ERROR, "formal argument cannot be an instance variable"s, *tok);
                       YYERROR;
                     }
                 | tGVAR
                     {
                       auto tok = take(p, $1);
-                      p.diagnostic(diagnostic::level::ERROR, "formal argument cannot be a global variable"s, *tok);
+                      p.diagnostic(diagnostic_level::ERROR, "formal argument cannot be a global variable"s, *tok);
                       YYERROR;
                     }
                 | tCVAR
                     {
                       auto tok = take(p, $1);
-                      p.diagnostic(diagnostic::level::ERROR, "formal argument cannot be a class variable"s, *tok);
+                      p.diagnostic(diagnostic_level::ERROR, "formal argument cannot be a class variable"s, *tok);
                       YYERROR;
                     }
 
