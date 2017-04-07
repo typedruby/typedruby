@@ -4,7 +4,7 @@
 using namespace ruby_parser;
 
 parser::base::base(ruby_version version, const std::string& source, const struct builder& builder)
-    : lexer(std::make_unique<class lexer>(version, source))
+    : lexer(std::make_unique<class lexer>(*this, version, source))
     , def_level(0)
     , builder(builder)
 {
