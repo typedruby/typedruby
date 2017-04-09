@@ -16,7 +16,6 @@ namespace ruby_parser {
 
   class diagnostic {
   public:
-
     struct range {
       const size_t begin_pos;
       const size_t end_pos;
@@ -53,7 +52,7 @@ namespace ruby_parser {
       return message_;
     }
 
-    const range& range() const {
+    const range& location() const {
       return location_;
     }
   };
