@@ -115,6 +115,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 %% write data nofinal;
 
 using namespace ruby_parser;
+using namespace std::string_literals;
 
 %% prepush { check_stack_capacity(); }
 
@@ -588,6 +589,17 @@ void lexer::emit_num(const std::string& num) {
   }
 }
 
+void lexer::diagnostic(diagnostic_level level, std::string&& message) {
+  diagnostic(level, std::forward<std::string>(message), ts, te);
+}
+
+void lexer::diagnostic(diagnostic_level level, std::string&& message, const char* start, const char* end) {
+  size_t token_start = (size_t)(start - source_buffer.data());
+  size_t token_end = (size_t)(end - source_buffer.data());
+
+  parser.diagnostic(level, std::forward<std::string>(message), diagnostic::range(token_start, token_end));
+}
+
 /*
   # Return next token: [type, value].
   def advance
@@ -949,7 +961,7 @@ void lexer::set_state_expr_value() {
   }
 
   action invalid_complex_escape {
-    // TODO diagnostic :fatal, :invalid_escape
+    diagnostic(diagnostic_level::FATAL, "invalid escape character syntax"s);
   }
 
   action slash_c_char {
@@ -991,7 +1003,7 @@ void lexer::set_state_expr_value() {
       # %q[\x]
     | 'x' ( c_any - xdigit )
       % {
-        /* TODO diagnostic :fatal, :invalid_hex_escape, nil, range(@escape_s - 1, p + 2) */
+        diagnostic(diagnostic_level::FATAL, "invalid hex escape"s, escape_s - 1, p + 2);
       }
 
       # %q[\u123] %q[\u{12]
@@ -1003,7 +1015,7 @@ void lexer::set_state_expr_value() {
             )
           )
       % {
-        /* TODO diagnostic :fatal, :invalid_unicode_escape, nil, range(@escape_s - 1, p) */
+        diagnostic(diagnostic_level::FATAL, "invalid Unicode escape"s, escape_s - 1, p);
       }
 
       # \u{123 456}
@@ -1014,7 +1026,7 @@ void lexer::set_state_expr_value() {
         | ( c_any - '}' )* c_eof
         | xdigit{7,}
         ) % {
-          /* TODO diagnostic :fatal, :unterminated_unicode, nil, range(p - 1, p) */
+          diagnostic(diagnostic_level::FATAL, "unterminated Unicode escape"s, p - 1, p);
         }
       )
 
@@ -1040,7 +1052,7 @@ void lexer::set_state_expr_value() {
     | ( c_any - [0-7xuCMc] ) %unescape_char
 
     | c_eof % {
-      /* TODO diagnostic :fatal, :escape_eof, nil, range(p - 1, p) */
+      diagnostic(diagnostic_level::FATAL, "escape sequence meets end of file", p - 1, p);
     }
   );
 
@@ -1190,8 +1202,7 @@ void lexer::set_state_expr_value() {
     auto& current_literal = literal();
 
     if (te == pe) {
-      // diagnostic :fatal, :string_eof, nil,
-      //            range(current_literal.str_s, current_literal.str_s + 1)
+      diagnostic(diagnostic_level::FATAL, "unterminated string meets end of file"s, current_literal.str_s, current_literal.str_s + 1);
     }
 
     if (current_literal.heredoc()) {
@@ -1420,8 +1431,7 @@ void lexer::set_state_expr_value() {
         }
 
         if (!unknown_options.empty()) {
-          // diagnostic :error, :regexp_options,
-          //            { :options => unknown_options.join }
+          diagnostic(diagnostic_level::ERROR, "unknown regexp options: "s + unknown_options);
         }
 
         emit(token_type::tREGEXP_OPT, options);
@@ -1574,7 +1584,7 @@ void lexer::set_state_expr_value() {
       class_var_v
       => {
         if (ts[2] >= '0' && ts[2] <= '9') {
-          /* TODO diagnostic :error, :cvar_name, { :name => tok } */
+          diagnostic(diagnostic_level::ERROR, "`" + tok() + "' is not allowed as a class variable name");
         }
 
         emit(token_type::tCVAR);
@@ -1584,7 +1594,7 @@ void lexer::set_state_expr_value() {
       instance_var_v
       => {
         if (ts[1] >= '0' && ts[1] <= '9') {
-          /* TODO diagnostic :error, :ivar_name, { :name => tok } */
+          diagnostic(diagnostic_level::ERROR, "`" + tok() + "' is not allowed as an instance variable name");
         }
 
         emit(token_type::tIVAR);
@@ -1775,7 +1785,9 @@ void lexer::set_state_expr_value() {
       => {
         if (*tm == '/') {
           // Ambiguous regexp literal.
-          // TODO diagnostic :warning, :ambiguous_literal, nil, range(tm, tm + 1)
+          diagnostic(diagnostic_level::WARNING,
+            "ambiguous first argument; put parentheses or a space even after the operator"s,
+            tm, tm + 1);
         }
 
         p = tm - 1;
@@ -1786,8 +1798,7 @@ void lexer::set_state_expr_value() {
       # Ambiguous splat, kwsplat or block-pass.
       w_space+ %{ tm = p; } ( '+' | '-' | '*' | '&' | '**' )
       => {
-        // TODO diagnostic :warning, :ambiguous_prefix, { :prefix => tok(tm, @te) },
-        //            range(tm, @te)
+        diagnostic(diagnostic_level::WARNING, "`"s + tok(tm, te) + "' interpreted as argument prefix"s, tm, te);
 
         p = tm - 1;
         fgoto expr_beg;
@@ -2013,8 +2024,9 @@ void lexer::set_state_expr_value() {
           type = literal_type::LOWERX_XSTRING;
         } else {
           type = literal_type::PERCENT_STRING;
-          // TODO diagnostic :error, :unexpected_percent_str,
-          //        { :type => str_type }, @lexer.send(:range, ts, te - 1)
+          diagnostic(diagnostic_level::ERROR,
+            tok(ts, te - 1) + ": unknown type of percent-literal",
+            ts, te - 1);
         }
 
         fgoto *push_literal(type, std::string(te - 1, 1), ts);
@@ -2022,7 +2034,8 @@ void lexer::set_state_expr_value() {
 
       '%' c_eof
       => {
-        // TODO diagnostic :fatal, :string_eof, nil, range(@ts, @ts + 1)
+        diagnostic(diagnostic_level::FATAL, "unterminated string meets end of file",
+          ts, ts + 1);
       };
 
       # Heredoc start.
@@ -2145,9 +2158,18 @@ void lexer::set_state_expr_value() {
 
       '?' c_space_nl
       => {
-        // TODO escape = { " "  => '\s', "\r" => '\r', "\n" => '\n', "\t" => '\t',
-        //           "\v" => '\v', "\f" => '\f' }[@source_buffer.slice(@ts + 1)]
-        // TODO diagnostic :warning, :invalid_escape_use, { :escape => escape }, range
+        static const std::map<char, std::string> escape_map {
+          { ' ',  "\\s" },
+          { '\r', "\\r" },
+          { '\n', "\\n" },
+          { '\t', "\\t" },
+          { '\v', "\\v" },
+          { '\f', "\\f" },
+        };
+
+        auto& escape = escape_map.at(ts[1]);
+
+        diagnostic(diagnostic_level::WARNING, "invalid character syntax; use ?"s + escape);
 
         p = ts - 1;
         fgoto expr_end;
@@ -2155,7 +2177,7 @@ void lexer::set_state_expr_value() {
 
       '?' c_eof
       => {
-        // TODO diagnostic :fatal, :incomplete_escape, nil, range(@ts, @ts + 1)
+        diagnostic(diagnostic_level::FATAL, "incomplete character syntax", ts, ts + 1);
       };
 
       # f ?aa : b: Disambiguate with a character literal.
@@ -2440,17 +2462,16 @@ void lexer::set_state_expr_value() {
         auto digits = tok(num_digits_s, num_suffix_s);
 
         if (num_suffix_s[-1] == '_') {
-          // TODO diagnostic :error, :trailing_in_number, { :character => "_" },
-          //           range(@te - 1, @te)
+          diagnostic(diagnostic_level::ERROR, "trailing `_' in number"s, te - 1, te);
         } else if (num_digits_s == num_suffix_s && num_base == 8 && version == ruby_version::RUBY_18) {
           // 1.8 did not raise an error on 0o.
         } else if (num_digits_s == num_suffix_s) {
-          // TODO diagnostic :error, :empty_numeric
+          diagnostic(diagnostic_level::ERROR, "numeric literal without digits"s);
         } else if (num_base == 8) {
           for (const char* digit_p = num_digits_s; digit_p < num_suffix_s; digit_p++) {
             if (*digit_p == '8' || *digit_p == '9') {
-              // TODO diagnostic :error, :invalid_octal, nil,
-              //           range(digit_p, digit_p + 1)
+              diagnostic(diagnostic_level::ERROR, "invalid octal digit",
+                digit_p, digit_p + 1);
             }
           }
         }
@@ -2466,15 +2487,15 @@ void lexer::set_state_expr_value() {
 
       flo_frac flo_pow?
       => {
-        // TODO diagnostic :error, :no_dot_digit_literal
+        diagnostic(diagnostic_level::ERROR, "no .<digit> floating literal anymore; put 0 before dot");
       };
 
       flo_int [eE]
       => {
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          // TODO diagnostic :error,
-          //            :trailing_in_number, { :character => tok(@te - 1, @te) },
-          //            range(@te - 1, @te)
+          diagnostic(diagnostic_level::ERROR,
+            "trailing `"s + tok(te - 1, te) + "' in number",
+            te - 1, te);
         } else {
           emit(token_type::tINTEGER, tok(ts, te - 1), ts, te - 1);
           fhold; fbreak;
@@ -2484,9 +2505,9 @@ void lexer::set_state_expr_value() {
       flo_int flo_frac [eE]
       => {
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          // TODO diagnostic :error,
-          //            :trailing_in_number, { :character => tok(@te - 1, @te) },
-          //            range(@te - 1, @te)
+          diagnostic(diagnostic_level::ERROR,
+            "trailing `"s + tok(te - 1, te) + "' in number",
+            te - 1, te);
         } else {
           emit(token_type::tFLOAT, tok(ts, te - 1), ts, te - 1);
           fhold; fbreak;
@@ -2624,13 +2645,16 @@ void lexer::set_state_expr_value() {
            fnext expr_value; fbreak; };
 
       '\\' c_line {
-        // TODO diagnostic :error, :bare_backslash, nil, range(@ts, @ts + 1)
+        diagnostic(diagnostic_level::ERROR,
+          "bare backslash only allowed before newline",
+          ts, ts + 1);
         fhold;
       };
 
       c_any
       => {
-        // TODO diagnostic :fatal, :unexpected, { :character => tok.inspect[1..-2] }
+        diagnostic(diagnostic_level::ERROR,
+          "unexpected `"s + tok() + "'"s);
       };
 
       c_eof => do_eof;
@@ -2663,8 +2687,9 @@ void lexer::set_state_expr_value() {
 
       c_line* zlen
       => {
-        // TODO diagnostic :fatal, :embedded_document, nil,
-        //            range(@eq_begin_s, @eq_begin_s + '=begin'.length)
+        diagnostic(diagnostic_level::FATAL,
+          "embedded document meets end of file (and they embark on a romantic journey)"s,
+          eq_begin_s, eq_begin_s + "=begin"s.size());
       };
   *|;
 
