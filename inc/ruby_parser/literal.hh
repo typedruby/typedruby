@@ -36,7 +36,6 @@ namespace ruby_parser {
     lexer& _lexer;
     size_t _nesting;
     literal_type _type;
-    const char* str_s;
     std::string start_delim;
     std::string end_delim;
     bool indent;
@@ -52,6 +51,7 @@ namespace ruby_parser {
 
   public:
     // lexer needs access to these:
+    const char* str_s;
     const char* saved_herebody_s;
     const char* heredoc_e;
 

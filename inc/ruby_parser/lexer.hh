@@ -8,6 +8,7 @@
 #include <memory>
 #include <map>
 
+#include "diagnostic.hh"
 #include "literal.hh"
 #include "token.hh"
 #include "state_stack.hh"
@@ -43,10 +44,10 @@ namespace ruby_parser {
     };
 
   private:
+    parser::base& parser;
+
     ruby_version version;
     const std::string source_buffer;
-
-    parser::base& parser;
 
     std::stack<environment> static_env;
     std::stack<literal> literal_stack;
@@ -107,6 +108,8 @@ namespace ruby_parser {
     void emit_do(bool do_block = false);
     void emit_table(const token_table& table);
     void emit_num(const std::string& num);
+    void diagnostic(diagnostic_level level, std::string&& message);
+    void diagnostic(diagnostic_level level, std::string&& message, const char* start, const char* end);
     template<typename... Args> int push_literal(Args&&... args);
     literal& literal();
     int pop_literal();
@@ -140,5 +143,7 @@ namespace ruby_parser {
     optional_size dedent_level();
   };
 }
+
+#include "parser.hh"
 
 #endif
