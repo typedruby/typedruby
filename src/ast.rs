@@ -91,7 +91,7 @@ pub enum Node {
     SClass          (Loc,   Box<Node>, Option<Box<Node>>),
     Self_           (Loc),
     Send            (Loc,   Option<Box<Node>>, Id, Vec<Box<Node>>),
-    Splat           (Loc,   Box<Node>),
+    Splat           (Loc,   Option<Box<Node>>),
     String          (Loc,   String),
     Super           (Loc,   Vec<Box<Node>>),
     Symbol          (Loc,   String),
