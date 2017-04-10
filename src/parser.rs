@@ -612,7 +612,7 @@ unsafe extern "C" fn file_literal(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn float_(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Float(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn float_complex(tok: *const Token) -> *mut Node {
