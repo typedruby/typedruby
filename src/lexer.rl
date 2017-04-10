@@ -508,9 +508,7 @@ token_ptr lexer::advance_() {
   command_state = (cs == lex_en_expr_value || cs == lex_en_line_begin);
 
   const char* p = _p;
-  // TODO - the ruby lexer sets pe to @source_pts.size + 2...
-  // investigate why, but for now we'll do the same:
-  const char* pe = _pe + 2;
+  const char* pe = _pe;
   const char* eof = _pe;
 
   const char* tm = NULL;
