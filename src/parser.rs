@@ -569,12 +569,95 @@ unsafe extern "C" fn cvar(tok: *const Token) -> *mut Node {
     Node::Cvar(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn dedent_string(node: *mut Node, dedent_level: size_t) -> *mut Node {
-    if dedent_level != 0 {
-        panic!("unimplemented dedent_string (dedent_level = {})", dedent_level); // TODO
+struct Dedenter {
+    dedent_level: usize,
+    at_line_begin: bool,
+    indent_level: usize,
+}
+
+impl Dedenter {
+    fn new(dedent_level: usize) -> Dedenter {
+        Dedenter {
+            dedent_level: dedent_level,
+            at_line_begin: true,
+            indent_level: 0,
+        }
     }
 
-    return node;
+    fn dedent(&mut self, string: String) -> String {
+        let mut space_begin = 0;
+        let mut space_end = 0;
+        let mut offset = 0;
+
+        let mut bytes = string.into_bytes();
+
+        let mut index = 0;
+        while index < bytes.len() {
+            let c = bytes[index];
+            if self.at_line_begin {
+                if c == 10 /* \n */ || self.indent_level >= self.dedent_level {
+                    bytes.drain(space_begin..space_end);
+                    offset += space_end - space_begin - 1;
+                    self.at_line_begin = false;
+                    continue; // redo current index
+                }
+
+                if c == 32 /* space */ {
+                    self.indent_level += 1;
+                    space_end += 1;
+                }
+
+                if c == 9 /* tab */ {
+                    self.indent_level += 8 - (self.indent_level % 8);
+                    space_end += 1;
+                }
+            } else if c == 10 /* \n */ && index == bytes.len() - 1 {
+                self.at_line_begin = true;
+                self.indent_level = 0;
+                space_begin = index - offset + 1;
+                space_end = space_begin;
+            }
+
+            index += 1;
+        }
+
+        if self.at_line_begin {
+            bytes.drain(space_begin..space_end);
+        }
+
+        String::from_utf8(bytes).unwrap()
+    }
+
+    fn interrupt(&mut self) {
+        self.at_line_begin = false
+    }
+}
+
+fn dedent_parts(parts: Vec<Box<Node>>, mut dedenter: Dedenter) -> Vec<Box<Node>> {
+    parts.into_iter().map(|part| {
+        let node = *part;
+        let node = match node {
+            Node::String(loc, val) => Node::String(loc, dedenter.dedent(val)),
+            other => { dedenter.interrupt(); other },
+        };
+        Box::new(node)
+    }).collect()
+}
+
+unsafe extern "C" fn dedent_string(node: *mut Node, dedent_level: size_t) -> *mut Node {
+    let node = *from_raw(node);
+
+    if dedent_level != 0 {
+        let mut dedenter = Dedenter::new(dedent_level);
+        match node {
+            Node::String(loc, val) => Node::String(loc, dedenter.dedent(val)),
+            Node::DString(loc, parts) => Node::DString(loc, dedent_parts(parts, dedenter)),
+            Node::XString(loc, parts) => Node::XString(loc, dedent_parts(parts, dedenter)),
+            _ => panic!("unexpected node type"),
+        }
+    } else {
+        node
+    }.to_raw()
 }
 
 unsafe extern "C" fn def_class(class_: *const Token, name: *mut Node, lt_: *const Token, superclass: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
