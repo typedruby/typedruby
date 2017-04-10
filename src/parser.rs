@@ -265,7 +265,7 @@ unsafe extern "C" fn attr_asgn(receiver: *mut Node, dot: *const Token, selector:
 }
 
 unsafe extern "C" fn back_ref(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Backref(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn begin(begin: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
