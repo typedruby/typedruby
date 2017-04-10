@@ -1574,7 +1574,7 @@ void lexer::set_state_expr_value() {
   expr_variable := |*
       global_var
       => {
-        if (ts[1] >= '0' && ts[1] <= '9') {
+        if (ts[1] >= '1' && ts[1] <= '9') {
           emit(token_type::tNTH_REF, tok(ts + 1));
         } else if (ts[1] == '&' || ts[1] == '`' || ts[1] == '\'' || ts[1] == '+') {
           emit(token_type::tBACK_REF);
