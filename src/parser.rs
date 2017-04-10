@@ -586,7 +586,7 @@ unsafe extern "C" fn def_method(def: *const Token, name: *const Token, args: *mu
 }
 
 unsafe extern "C" fn def_module(module: *const Token, name: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::Module(join_tokens(module, end_), from_raw(name), from_maybe_raw(body)).to_raw()
 }
 
 unsafe extern "C" fn def_sclass(class_: *const Token, lshft_: *const Token, expr: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
