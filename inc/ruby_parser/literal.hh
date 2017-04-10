@@ -57,6 +57,10 @@ namespace ruby_parser {
 
     literal(lexer& lexer, literal_type type, std::string delimiter, const char* str_s, const char* heredoc_e = nullptr, bool indent = false, bool dedent_body = false, bool label_allowed = false);
 
+    // delete copy constructor to prevent accidental copies. we never
+    // legitimately need to copy literal.
+    literal(const literal&) = delete;
+
     bool words() const;
     bool backslash_delimited() const;
     bool interpolate() const;
