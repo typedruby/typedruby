@@ -2712,7 +2712,10 @@ void lexer::set_state_expr_value() {
 }%%
 
 token_ptr lexer::advance() {
-  return advance_();
+  auto tok = advance_();
+  last_token_s = tok->start();
+  last_token_e = tok->end();
+  return tok;
 }
 
 void lexer::extend_static() {
