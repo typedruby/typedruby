@@ -1066,7 +1066,20 @@ unsafe extern "C" fn symbol_internal(symbol: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn symbols_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let parts = ffi::node_list_from_raw(parts);
+
+    let parts = parts.into_iter().map(|part| {
+        let part = *part;
+        Box::new(
+            match part {
+                Node::String(loc, val) => Node::Symbol(loc, val),
+                Node::DString(loc, parts) => Node::DSymbol(loc, parts),
+                node => node,
+            }
+        )
+    }).collect::<Vec<_>>();
+
+    Node::Array(collection_map(begin, parts.as_slice(), end).unwrap(), parts).to_raw()
 }
 
 unsafe extern "C" fn ternary(cond: *mut Node, question: *const Token, if_true: *mut Node, colon: *const Token, if_false: *mut Node) -> *mut Node {
@@ -1180,7 +1193,15 @@ unsafe extern "C" fn when(when: *const Token, patterns: *mut NodeList, then: *co
 }
 
 unsafe extern "C" fn word(parts: *mut NodeList) -> *mut Node {
-    panic!("unimplemented");
+    let mut parts = ffi::node_list_from_raw(parts);
+
+    if parts.len() == 1 {
+        parts.remove(0)
+    } else {
+        assert!(!parts.is_empty());
+        let loc = parts.first().unwrap().loc().join(parts.last().unwrap().loc());
+        Box::new(Node::DString(loc, parts))
+    }.to_raw()
 }
 
 unsafe extern "C" fn words_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
