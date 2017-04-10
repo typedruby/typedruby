@@ -2131,7 +2131,8 @@
                     {
                       $<size>$ = p.def_level;
                       p.def_level = 0;
-
+                    }
+                    {
                       p.lexer->extend_static();
                       $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
                     }
@@ -2140,15 +2141,15 @@
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
-                      auto _6 = take(p, $6);
                       auto _7 = take(p, $7);
+                      auto _8 = take(p, $8);
                       $$ = put(p, p.builder.def_sclass(_1.get(), _2.get(), std::move(_3),
-                                                   std::move(_6), _7.get()));
-
-                      p.lexer->cmdarg = *take(p, $<state_stack>5);
-                      p.lexer->unextend();
+                                                   std::move(_7), _8.get()));
 
                       p.def_level = $<size>5;
+
+                      p.lexer->cmdarg = *take(p, $<state_stack>6);
+                      p.lexer->unextend();
                     }
                 | kMODULE cpath
                     {
