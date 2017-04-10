@@ -152,8 +152,8 @@ extern "C" {
     fn ruby_parser_token_get_start(token: *const Token) -> size_t;
     fn ruby_parser_token_get_end(token: *const Token) -> size_t;
     fn ruby_parser_token_get_string(token: *const Token, ptr: *mut *const u8) -> size_t;
-    pub fn ruby_parser_node_list_get_length(list: *mut NodeList) -> size_t;
-    pub fn ruby_parser_node_list_index(list: *mut NodeList, index: size_t) -> *mut Node;
+    fn ruby_parser_node_list_get_length(list: *mut NodeList) -> size_t;
+    fn ruby_parser_node_list_index(list: *mut NodeList, index: size_t) -> *mut Node;
     fn ruby_parser_diagnostics_get_length(parser: *const Parser) -> size_t;
     fn ruby_parser_diagnostic_get_level(parser: *const Parser, index: size_t) -> c_int;
     fn ruby_parser_diagnostic_get_message(parser: *const Parser, index: size_t, ptr: *mut *const u8) -> size_t;
