@@ -213,7 +213,7 @@ static bool lookahead_quoted_label(std::string& lookahead) {
 }
 
 bool literal::nest_and_try_closing(std::string& delimiter, const char* ts, const char* te, std::string lookahead) {
-  if (start_delim == delimiter) {
+  if (start_delim.size() > 0 && start_delim == delimiter) {
     _nesting++;
   } else if (is_delimiter(delimiter)) {
     _nesting--;
