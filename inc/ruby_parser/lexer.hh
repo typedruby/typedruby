@@ -123,6 +123,9 @@ namespace ruby_parser {
     state_stack cond;
     state_stack cmdarg;
 
+    size_t last_token_s;
+    size_t last_token_e;
+
     bool in_kwarg;            // true at the end of "def foo a:"
 
     lexer(parser::base& parser, ruby_version version, const std::string& source_buffer_);

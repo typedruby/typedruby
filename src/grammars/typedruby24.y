@@ -440,10 +440,10 @@
     );
   }
 
-  static int yyerror(parser::typedruby24& p, std::string message) {
-    (void)p;
-    std::cerr << message << std::endl;
-    abort();
+  #define yyerror(p, msg) yyerror_(p, msg)
+
+  static int yyerror_(parser::typedruby24& p, const char* msg) {
+    p.diagnostic(diagnostic_level::ERROR, std::string(msg), diagnostic::range(p.lexer->last_token_s, p.lexer->last_token_e));
   }
 
   static int yylex(YYSTYPE *lval, parser::typedruby24& p) {
