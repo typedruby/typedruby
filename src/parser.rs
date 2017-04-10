@@ -1210,7 +1210,8 @@ unsafe extern "C" fn words_compose(begin: *const Token, parts: *mut NodeList, en
 }
 
 unsafe extern "C" fn xstring_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let parts = ffi::node_list_from_raw(parts);
+    Node::XString(collection_map(begin, parts.as_slice(), end).unwrap(), parts).to_raw()
 }
 
 static BUILDER: Builder = Builder {

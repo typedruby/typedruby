@@ -106,6 +106,7 @@ pub enum Node {
     When            (Loc,   Vec<Box<Node>>, Option<Box<Node>>),
     While           (Loc,   Box<Node>, Option<Box<Node>>),
     WhilePost       (Loc,   Box<Node>, Box<Node>),
+    XString         (Loc,   Vec<Box<Node>>),
     Yield           (Loc,   Vec<Box<Node>>),
     ZSuper          (Loc),
 }
@@ -198,6 +199,7 @@ impl Node {
             &Node::When(ref loc, _, _) => loc,
             &Node::While(ref loc, _, _) => loc,
             &Node::WhilePost(ref loc, _, _) => loc,
+            &Node::XString(ref loc, _) => loc,
             &Node::Yield(ref loc, _) => loc,
             &Node::ZSuper(ref loc) => loc,
         }
