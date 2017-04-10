@@ -863,7 +863,7 @@ unsafe extern "C" fn not_op(not: *const Token, begin: *const Token, receiver: *m
 }
 
 unsafe extern "C" fn nth_ref(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::NthRef(Token::loc(tok), Token::string(tok).parse().unwrap()).to_raw()
 }
 
 unsafe extern "C" fn op_assign(lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
