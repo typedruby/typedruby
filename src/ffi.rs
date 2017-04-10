@@ -132,7 +132,7 @@ pub struct Builder {
     pub true_: unsafe extern "C" fn(tok: *const Token) -> *mut Node,
     pub typed_arg: unsafe extern "C" fn(type_: *mut Node, arg: *mut Node) -> *mut Node,
     pub unary_op: unsafe extern "C" fn(oper: *const Token, receiver: *mut Node) -> *mut Node,
-    pub undef_method: unsafe extern "C" fn(name_list: *mut NodeList) -> *mut Node,
+    pub undef_method: unsafe extern "C" fn(undef: *const Token, name_list: *mut NodeList) -> *mut Node,
     pub when: unsafe extern "C" fn(when: *const Token, patterns: *mut NodeList, then: *const Token, body: *mut Node) -> *mut Node,
     pub word: unsafe extern "C" fn(parts: *mut NodeList) -> *mut Node,
     pub words_compose: unsafe extern "C" fn(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node,

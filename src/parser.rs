@@ -1254,8 +1254,15 @@ unsafe extern "C" fn unary_op(oper: *const Token, receiver: *mut Node) -> *mut N
     Node::Send(id.0.join(recv.loc()), Some(recv), id, vec![]).to_raw()
 }
 
-unsafe extern "C" fn undef_method(name_list: *mut NodeList) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn undef_method(undef: *const Token, name_list: *mut NodeList) -> *mut Node {
+    let name_list = ffi::node_list_from_raw(name_list);
+
+    let loc = match name_list.last() {
+        Some(ref node) => Token::loc(undef).join(node.loc()),
+        None => Token::loc(undef),
+    };
+
+    Node::Undef(loc, name_list).to_raw()
 }
 
 unsafe extern "C" fn when(when: *const Token, patterns: *mut NodeList, then: *const Token, body: *mut Node) -> *mut Node {
