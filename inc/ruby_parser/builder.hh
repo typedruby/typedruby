@@ -132,7 +132,7 @@ namespace ruby_parser {
     foreign_ptr(*true_)(const token* tok);
     foreign_ptr(*typed_arg)(foreign_ptr type, foreign_ptr arg);
     foreign_ptr(*unary_op)(const token* oper, foreign_ptr receiver);
-    foreign_ptr(*undef_method)(const node_list* name_list);
+    foreign_ptr(*undef_method)(const token* undef, const node_list* name_list);
     foreign_ptr(*when)(const token* when, const node_list* patterns, const token* then, foreign_ptr body);
     foreign_ptr(*word)(const node_list* parts);
     foreign_ptr(*words_compose)(const token* begin, const node_list* parts, const token* end);

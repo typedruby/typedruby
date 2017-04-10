@@ -596,8 +596,9 @@
                     }
                 | kUNDEF undef_list
                     {
+                      auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
-                      $$ = put(p, p.builder.undef_method(_2.get()));
+                      $$ = put(p, p.builder.undef_method(_1.get(), _2.get()));
                     }
                 | stmt kIF_MOD expr_value
                     {
