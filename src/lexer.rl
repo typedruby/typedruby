@@ -1206,11 +1206,17 @@ void lexer::set_state_expr_value() {
     if (current_literal.heredoc()) {
       auto line = tok(herebody_s, ts);
 
-      /* TODO line.gsub(/\r+$/, "") */
+      while (line.back() == '\r') {
+        line.pop_back();
+      }
 
       if (version <= ruby_version::RUBY_20) {
         // See ruby:c48b4209c
-        /* TODO line = line.gsub(/\r.*$/, "") */
+        auto riter = line.rfind('\r');
+
+        if (riter != std::string::npos) {
+          line.erase(riter);
+        }
       }
 
       // Try ending the heredoc with the complete most recently
