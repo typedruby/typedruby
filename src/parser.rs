@@ -1038,7 +1038,20 @@ unsafe extern "C" fn symbol(symbol: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn symbol_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let mut parts = ffi::node_list_from_raw(parts);
+
+    let loc = collection_map(begin, parts.as_slice(), end).unwrap();
+
+    if parts.len() == 1 {
+        let part = *parts.remove(0);
+
+        match part {
+            Node::Symbol(loc, val) => Node::Symbol(loc, val),
+            node => Node::DSymbol(loc, vec![Box::new(node)]),
+        }
+    } else {
+        Node::DSymbol(loc, parts)
+    }.to_raw()
 }
 
 unsafe extern "C" fn symbol_internal(symbol: *const Token) -> *mut Node {
