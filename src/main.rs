@@ -28,8 +28,7 @@ fn main() {
 
         match result {
             Ok(source) => {
-                let result = parser::parse(filename.as_str(), source.as_str());
-                println!("{:?}", result);
+                parser::parse(filename.as_str(), source.as_str());
             }
             Err(e) => {
                 rc = 1;
