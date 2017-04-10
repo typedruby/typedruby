@@ -1000,9 +1000,12 @@ unsafe extern "C" fn shadowarg(name: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn splat(star: *const Token, arg: *mut Node) -> *mut Node {
-    let arg = from_raw(arg);
-
-    Node::Splat(Token::loc(star).join(arg.loc()), arg).to_raw()
+    let arg = from_maybe_raw(arg);
+    let loc = match arg {
+        Some(ref box_arg) => Token::loc(star).join(box_arg.loc()),
+        None => Token::loc(star),
+    };
+    Node::Splat(loc, arg).to_raw()
 }
 
 unsafe extern "C" fn string(string_: *const Token) -> *mut Node {
