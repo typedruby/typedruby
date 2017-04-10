@@ -132,13 +132,15 @@ fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
 
     let (range, name) = match arg {
         &Node::Arg(ref loc, ref name) => (loc, name),
-        &Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
+        &Node::Blockarg(_, None) => return,
+        &Node::Blockarg(_, Some(Id(ref loc, ref name))) => (loc, name),
         &Node::Kwarg(ref loc, ref name) => (loc, name),
         &Node::Kwoptarg(_, Id(ref loc, ref name), _) => (loc, name),
-        &Node::Restarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+        &Node::Kwrestarg(_, None) => return,
+        &Node::Kwrestarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+        &Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
         &Node::Restarg(_, None) => return,
-        &Node::Blockarg(_, Some(Id(ref loc, ref name))) => (loc, name),
-        &Node::Blockarg(_, None) => return,
+        &Node::Restarg(_, Some(Id(ref loc, ref name))) => (loc, name),
         _ => panic!("not an arg node {:?}", arg),
     };
 
@@ -742,7 +744,12 @@ unsafe extern "C" fn kwoptarg(name: *const Token, value: *mut Node) -> *mut Node
 }
 
 unsafe extern "C" fn kwrestarg(dstar: *const Token, name: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    if name != ptr::null() {
+        let id = token_id(name);
+        Node::Kwrestarg(Token::loc(dstar).join(&id.0), Some(id))
+    } else {
+        Node::Kwrestarg(Token::loc(dstar), None)
+    }.to_raw()
 }
 
 unsafe extern "C" fn kwsplat(dstar: *const Token, arg: *mut Node) -> *mut Node {
