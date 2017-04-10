@@ -2105,6 +2105,7 @@
                     {
                       p.lexer->extend_static();
                       $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
+                      p.lexer->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
@@ -2136,6 +2137,7 @@
                     {
                       p.lexer->extend_static();
                       $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
+                      p.lexer->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
@@ -2156,6 +2158,7 @@
                     {
                       p.lexer->extend_static();
                       $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
+                      p.lexer->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
@@ -2177,6 +2180,7 @@
                       p.def_level++;
                       p.lexer->extend_static();
                       $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
+                      p.lexer->cmdarg.clear();
                     }
                     f_arglist bodystmt kEND
                     {
@@ -2201,6 +2205,7 @@
                       p.def_level++;
                       p.lexer->extend_static();
                       $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
+                      p.lexer->cmdarg.clear();
                     }
                     f_arglist bodystmt kEND
                     {
