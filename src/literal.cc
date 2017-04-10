@@ -6,12 +6,12 @@ literal::literal(lexer& lexer, literal_type type, std::string delimiter, const c
   : _lexer(lexer)
   , _nesting(1)
   , _type(type)
-  , str_s(str_s)
   , indent(indent)
   , dedent_body(dedent_body)
   , label_allowed(label_allowed)
   , _interp_braces(0)
   , space_emitted(true)
+  , str_s(str_s)
   , saved_herebody_s(nullptr)
   , heredoc_e(heredoc_e)
 {

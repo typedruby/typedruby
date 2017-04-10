@@ -1,13 +1,23 @@
 #include <ruby_parser/capi.hh>
 #include <cstdio>
 
-void*
-ruby_parser_typedruby24_parse(const char* source_, size_t source_length, const ruby_parser::builder* builder)
+ruby_parser::parser::typedruby24*
+ruby_parser_typedruby24_new(const char* source_ptr, size_t source_length, const ruby_parser::builder* builder)
 {
-    std::string source { source_, source_length };
-    ruby_parser::parser::typedruby24 parser { source, *builder };
-    auto ast = parser.parse().release();
-    return ast;
+  std::string source { source_ptr, source_length };
+  return new ruby_parser::parser::typedruby24(source, *builder);
+}
+
+void
+ruby_parser_typedruby24_free(ruby_parser::parser::typedruby24* parser)
+{
+  delete parser;
+}
+
+void*
+ruby_parser_parse(ruby_parser::parser::base* parser)
+{
+  return parser->parse().release();
 }
 
 bool
@@ -53,4 +63,36 @@ void*
 ruby_parser_node_list_index(ruby_parser::node_list* list, size_t index)
 {
   return list->nodes.at(index).release();
+}
+
+size_t
+ruby_parser_diagnostics_get_length(const ruby_parser::parser::base* parser)
+{
+  return parser->diagnostics.size();
+}
+
+ruby_parser::diagnostic_level
+ruby_parser_diagnostic_get_level(const ruby_parser::parser::base* parser, size_t index)
+{
+  return parser->diagnostics.at(index).level();
+}
+
+size_t
+ruby_parser_diagnostic_get_message(const ruby_parser::parser::base* parser, size_t index, const char** out_ptr)
+{
+  auto& message = parser->diagnostics.at(index).message();
+  *out_ptr = message.data();
+  return message.size();
+}
+
+size_t
+ruby_parser_diagnostic_get_begin(const ruby_parser::parser::base* parser, size_t index)
+{
+  return parser->diagnostics.at(index).location().begin_pos;
+}
+
+size_t
+ruby_parser_diagnostic_get_end(const ruby_parser::parser::base* parser, size_t index)
+{
+  return parser->diagnostics.at(index).location().end_pos;
 }

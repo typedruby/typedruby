@@ -8,10 +8,10 @@
 
 namespace ruby_parser {
   enum class diagnostic_level {
-    NOTE,
-    WARNING,
-    ERROR,
-    FATAL,
+    NOTE    = 1,
+    WARNING = 2,
+    ERROR   = 3,
+    FATAL   = 4,
   };
 
   class diagnostic {

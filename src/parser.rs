@@ -1172,7 +1172,7 @@ unsafe extern "C" fn xstring_compose(begin: *const Token, parts: *mut NodeList, 
     panic!("unimplemented");
 }
 
-const BUILDER: Builder = Builder {
+static BUILDER: Builder = Builder {
     accessible: accessible,
     alias: alias,
     arg: arg,
@@ -1302,10 +1302,14 @@ const BUILDER: Builder = Builder {
 };
 
 pub fn parse(filename: &str, source: &str) -> Ast {
+    let parser = unsafe { Parser::new(source, &BUILDER) };
+    let ast = unsafe { Parser::parse(parser) };
+    let diagnostics = unsafe { Parser::diagnostics(parser) };
+    unsafe { Parser::free(parser) };
+
     Ast {
         filename: filename.to_owned(),
-        node: unsafe {
-            from_maybe_raw(ffi::ruby_parser_typedruby24_parse(source.as_ptr(), source.len(), &BUILDER))
-        },
+        node: ast,
+        diagnostics: diagnostics,
     }
 }

@@ -195,7 +195,23 @@ impl Node {
 }
 
 #[derive(Debug)]
+pub enum DiagnosticLevel {
+    Note,
+    Warning,
+    Error,
+    Fatal,
+}
+
+#[derive(Debug)]
+pub struct Diagnostic {
+    pub level: DiagnosticLevel,
+    pub message: String,
+    pub loc: Loc,
+}
+
+#[derive(Debug)]
 pub struct Ast {
     pub filename: String,
     pub node: Option<Box<Node>>,
+    pub diagnostics: Vec<Diagnostic>,
 }
