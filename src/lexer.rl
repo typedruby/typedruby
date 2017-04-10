@@ -1281,7 +1281,7 @@ void lexer::set_state_expr_value() {
   interp_var = '#' ( global_var | class_var_v | instance_var_v );
 
   action extend_interp_var {
-    auto current_literal = literal();
+    auto& current_literal = literal();
     current_literal.flush_string();
     current_literal.extend_content();
 
