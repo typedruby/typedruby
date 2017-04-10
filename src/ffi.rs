@@ -1,3 +1,5 @@
+#![allow(improper_ctypes)]
+
 extern crate libc;
 
 use ::ast::{Node, Loc, Diagnostic, DiagnosticLevel};
