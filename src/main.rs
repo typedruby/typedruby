@@ -19,16 +19,21 @@ fn main() {
     let mut rc = 0;
 
     for filename in args.iter().skip(1) {
+        println!("\x1b[34;1m{}\x1b[0m", filename);
+
         let result = File::open(filename).and_then(|mut file| {
             let mut source = String::new();
             file.read_to_string(&mut source).map(|_| source)
         });
 
         match result {
-            Ok(source) => { parser::parse(filename.as_str(), source.as_str()); }
+            Ok(source) => {
+                let result = parser::parse(filename.as_str(), source.as_str());
+                println!("{:?}", result);
+            }
             Err(e) => {
                 rc = 1;
-                writeln!(&mut std::io::stderr(), "{}: {}", filename, e).unwrap();
+                println!("{:?}", e);
             }
         };
     }

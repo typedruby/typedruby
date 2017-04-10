@@ -8,8 +8,16 @@
 
 extern "C" {
 
+typedef void ruby_parser_typedruby_t;
+
+ruby_parser::parser::typedruby24*
+ruby_parser_typedruby24_new(const char* source, size_t source_length, const ruby_parser::builder* builder);
+
+void
+ruby_parser_typedruby24_free(ruby_parser::parser::typedruby24* parser);
+
 void*
-ruby_parser_typedruby24_parse(const char* source, size_t source_length, const ruby_parser::builder* builder);
+ruby_parser_parse(ruby_parser::parser::base* parser);
 
 bool
 ruby_parser_static_env_is_declared(const ruby_parser::parser::base* p, const char* name, size_t length);
@@ -31,6 +39,21 @@ ruby_parser_node_list_get_length(const ruby_parser::node_list* list);
 
 void*
 ruby_parser_node_list_index(ruby_parser::node_list* list, size_t index);
+
+size_t
+ruby_parser_diagnostics_get_length(const ruby_parser::parser::base* parser);
+
+ruby_parser::diagnostic_level
+ruby_parser_diagnostic_get_level(const ruby_parser::parser::base* parser, size_t index);
+
+size_t
+ruby_parser_diagnostic_get_message(const ruby_parser::parser::base* parser, size_t index, const char** out_ptr);
+
+size_t
+ruby_parser_diagnostic_get_begin(const ruby_parser::parser::base* parser, size_t index);
+
+size_t
+ruby_parser_diagnostic_get_end(const ruby_parser::parser::base* parser, size_t index);
 
 }
 

@@ -10,6 +10,9 @@ parser::base::base(ruby_version version, const std::string& source, const struct
 {
 }
 
+parser::base::~base()
+{}
+
 parser::typedruby24::typedruby24(const std::string& source, const struct builder& builder)
     : base(ruby_version::RUBY_24, source, builder)
 {}

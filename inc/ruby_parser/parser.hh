@@ -97,6 +97,9 @@ namespace ruby_parser {
       std::set<void*> saved_pointers;
 
       base(ruby_version version, const std::string& source, const struct builder& builder);
+      virtual ~base();
+
+      virtual foreign_ptr parse() = 0;
 
       void check_kwarg_name(const token_ptr& name);
 
@@ -110,7 +113,7 @@ namespace ruby_parser {
     public:
       typedruby24(const std::string& source, const struct builder& builder);
 
-      foreign_ptr parse();
+      virtual foreign_ptr parse();
     };
   }
 };
