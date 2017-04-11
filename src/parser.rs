@@ -355,8 +355,8 @@ unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, e
 }
 
 unsafe extern "C" fn begin_keyword(begin: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
-    let body = from_raw(body);
-    Node::KwBegin(join_tokens(begin, end), body).to_raw()
+    let body = from_maybe_raw(body);
+    Node::Kwbegin(join_tokens(begin, end), body).to_raw()
 }
 
 unsafe extern "C" fn binary_op(recv: *mut Node, oper: *const Token, arg: *mut Node) -> *mut Node {
@@ -875,7 +875,7 @@ unsafe extern "C" fn loop_until_mod(body: *mut Node, cond: *mut Node) -> *mut No
     let loc = body.loc().join(cond.loc());
 
     match *body {
-        Node::KwBegin(_, _) => Node::UntilPost(loc, cond, body),
+        Node::Kwbegin(_, _) => Node::UntilPost(loc, cond, body),
         _ => Node::Until(loc, cond, Some(body))
     }.to_raw()
 }
@@ -892,7 +892,7 @@ unsafe extern "C" fn loop_while_mod(body: *mut Node, cond: *mut Node) -> *mut No
     let loc = body.loc().join(cond.loc());
 
     match *body {
-        Node::KwBegin(_, _) => Node::WhilePost(loc, cond, body),
+        Node::Kwbegin(_, _) => Node::WhilePost(loc, cond, body),
         _ => Node::While(loc, cond, Some(body))
     }.to_raw()
 }
