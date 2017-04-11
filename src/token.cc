@@ -33,7 +33,7 @@ const std::string& token::string() const {
   return _string;
 }
 
-std::ostream& ruby_parser::operator<<(std::ostream& os, const token& tok) {
+std::ostream& operator<<(std::ostream& os, const token& tok) {
   os << tok.type_name() << "(" << tok.string() << ")";
   return os;
 }
