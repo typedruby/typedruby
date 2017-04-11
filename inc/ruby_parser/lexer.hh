@@ -111,7 +111,7 @@ namespace ruby_parser {
     void diagnostic(diagnostic_level level, std::string&& message);
     void diagnostic(diagnostic_level level, std::string&& message, const char* start, const char* end);
     template<typename... Args> int push_literal(Args&&... args);
-    literal& literal();
+    literal& literal_();
     int pop_literal();
 
     token_ptr advance_();
