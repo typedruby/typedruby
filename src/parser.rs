@@ -924,6 +924,7 @@ unsafe extern "C" fn negate(uminus: *const Token, numeric: *mut Node) -> *mut No
 
     match *numeric {
         Node::Integer(_, value) => Node::Integer(loc, "-".to_owned() + value.as_str()),
+        Node::Float(_, value) => Node::Float(loc, "-".to_owned() + value.as_str()),
         _ => panic!("unimplemented numeric type: {:?}", numeric),
     }.to_raw()
 }
