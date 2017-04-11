@@ -91,8 +91,8 @@ namespace ruby_parser {
     foreign_ptr(*pair)(foreign_ptr key, const token* assoc, foreign_ptr value);
     foreign_ptr(*pair_keyword)(const token* key, foreign_ptr value);
     foreign_ptr(*pair_quoted)(const token* begin, const node_list* parts, const token* end, foreign_ptr value);
-    foreign_ptr(*postexe)(foreign_ptr body);
-    foreign_ptr(*preexe)(foreign_ptr node);
+    foreign_ptr(*postexe)(const token* begin, foreign_ptr node, const token* rbrace);
+    foreign_ptr(*preexe)(const token* begin, foreign_ptr node, const token* rbrace);
     foreign_ptr(*procarg0)(foreign_ptr arg);
     foreign_ptr(*prototype)(foreign_ptr genargs, foreign_ptr args, foreign_ptr return_type);
     foreign_ptr(*range_exclusive)(foreign_ptr lhs, const token* oper, foreign_ptr rhs);

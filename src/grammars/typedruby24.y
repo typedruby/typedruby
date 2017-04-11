@@ -508,8 +508,10 @@
         top_stmt: stmt
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
+                      auto _1 = take(p, $1);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.preexe(std::move(_3)));
+                      auto _4 = take(p, $4);
+                      $$ = put(p, p.builder.preexe(_1.get(), std::move(_3), _4.get()));
                     }
 
         bodystmt: compstmt opt_rescue opt_else opt_ensure
@@ -646,8 +648,10 @@
                     }
                 | klEND tLCURLY compstmt tRCURLY
                     {
+                      auto _1 = take(p, $1);
                       auto _3 = take(p, $3);
-                      $$ = put(p, p.builder.postexe(std::move(_3)));
+                      auto _4 = take(p, $4);
+                      $$ = put(p, p.builder.postexe(_1.get(), std::move(_3), _4.get()));
                     }
                 | command_asgn
                 | mlhs tEQL command_call
