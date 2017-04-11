@@ -443,11 +443,11 @@
   #define yyerror(p, msg) yyerror_(p, msg)
 
   static void yyerror_(parser::typedruby24& p, const char* msg) {
-    p.diagnostic(diagnostic_level::ERROR, std::string(msg), diagnostic::range(p.lexer->last_token_s, p.lexer->last_token_e));
+    p.diagnostic(diagnostic_level::ERROR, std::string(msg), diagnostic::range(p.lexer_->last_token_s, p.lexer_->last_token_e));
   }
 
   static int yylex(YYSTYPE *lval, parser::typedruby24& p) {
-    auto token = p.lexer->advance();
+    auto token = p.lexer_->advance();
 
     int token_type = static_cast<int>(token->type());
 
@@ -561,7 +561,7 @@
 
             stmt: kALIAS fitem
                     {
-                      p.lexer->set_state_expr_fname();
+                      p.lexer_->set_state_expr_fname();
                     }
                     fitem
                     {
@@ -1249,7 +1249,7 @@
                     }
                 | undef_list tCOMMA
                     {
-                      p.lexer->set_state_expr_fname();
+                      p.lexer_->set_state_expr_fname();
                     }
                     fitem
                     {
@@ -1708,12 +1708,12 @@
                     }
 
     command_args:   {
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.push(true);
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.push(true);
                     }
                   call_args
                     {
-                      p.lexer->cmdarg = *take(p, $<state_stack>1);
+                      p.lexer_->cmdarg = *take(p, $<state_stack>1);
 
                       $$ = $2;
                     }
@@ -1810,39 +1810,39 @@
                     }
                 | kBEGIN
                     {
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
                       auto _1 = take(p, $1);
                       auto _3 = take(p, $3);
                       auto _4 = take(p, $4);
-                      p.lexer->cmdarg = *take(p, $<state_stack>2);
+                      p.lexer_->cmdarg = *take(p, $<state_stack>2);
 
                       $$ = put(p, p.builder.begin_keyword(_1.get(), std::move(_3), _4.get()));
                     }
                 | tLPAREN_ARG
                     {
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                     stmt
                     {
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                     }
                     rparen
                     {
                       auto _1 = take(p, $1);
                       auto _3 = take(p, $3);
                       auto _5 = take(p, $5);
-                      p.lexer->cmdarg = *take(p, $<state_stack>2);
+                      p.lexer_->cmdarg = *take(p, $<state_stack>2);
 
                       $$ = put(p, p.builder.begin(_1.get(), std::move(_3), _5.get()));
                     }
                 | tLPAREN_ARG
                     {
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                     }
                     opt_nl tRPAREN
                     {
@@ -2017,11 +2017,11 @@
                     }
                 | kWHILE
                     {
-                      p.lexer->cond.push(true);
+                      p.lexer_->cond.push(true);
                     }
                     expr_value do
                     {
-                      p.lexer->cond.pop();
+                      p.lexer_->cond.pop();
                     }
                     compstmt kEND
                     {
@@ -2035,11 +2035,11 @@
                     }
                 | kUNTIL
                     {
-                      p.lexer->cond.push(true);
+                      p.lexer_->cond.push(true);
                     }
                     expr_value do
                     {
-                      p.lexer->cond.pop();
+                      p.lexer_->cond.pop();
                     }
                     compstmt kEND
                     {
@@ -2082,11 +2082,11 @@
                     }
                 | kFOR for_var kIN
                     {
-                      p.lexer->cond.push(true);
+                      p.lexer_->cond.push(true);
                     }
                     expr_value do
                     {
-                      p.lexer->cond.pop();
+                      p.lexer_->cond.pop();
                     }
                     compstmt kEND
                     {
@@ -2103,9 +2103,9 @@
                     }
                 | kCLASS cpath superclass
                     {
-                      p.lexer->extend_static();
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      p.lexer_->extend_static();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
@@ -2126,8 +2126,8 @@
                                                   lt_t, std::move(superclass),
                                                   take(p, $5), end_tok.get()));
 
-                      p.lexer->cmdarg = *take(p, $<state_stack>4);
-                      p.lexer->unextend();
+                      p.lexer_->cmdarg = *take(p, $<state_stack>4);
+                      p.lexer_->unextend();
                     }
                 | kCLASS tLSHFT expr term
                     {
@@ -2135,9 +2135,9 @@
                       p.def_level = 0;
                     }
                     {
-                      p.lexer->extend_static();
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      p.lexer_->extend_static();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
@@ -2151,14 +2151,14 @@
 
                       p.def_level = $<size>5;
 
-                      p.lexer->cmdarg = *take(p, $<state_stack>6);
-                      p.lexer->unextend();
+                      p.lexer_->cmdarg = *take(p, $<state_stack>6);
+                      p.lexer_->unextend();
                     }
                 | kMODULE cpath
                     {
-                      p.lexer->extend_static();
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      p.lexer_->extend_static();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
@@ -2172,15 +2172,15 @@
 
                       $$ = put(p, p.builder.def_module(module_tok.get(), take(p, $2), take(p, $4), end_tok.get()));
 
-                      p.lexer->cmdarg = *take(p, $<state_stack>3);
-                      p.lexer->unextend();
+                      p.lexer_->cmdarg = *take(p, $<state_stack>3);
+                      p.lexer_->unextend();
                     }
                 | kDEF fname
                     {
                       p.def_level++;
-                      p.lexer->extend_static();
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      p.lexer_->extend_static();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                     f_arglist bodystmt kEND
                     {
@@ -2192,20 +2192,20 @@
                       $$ = put(p, p.builder.def_method(_1.get(), _2.get(),
                                   std::move(_4), std::move(_5), _6.get()));
 
-                      p.lexer->cmdarg = *take(p, $<state_stack>3);
-                      p.lexer->unextend();
+                      p.lexer_->cmdarg = *take(p, $<state_stack>3);
+                      p.lexer_->unextend();
                       p.def_level--;
                     }
                 | kDEF singleton dot_or_colon
                     {
-                      p.lexer->set_state_expr_fname();
+                      p.lexer_->set_state_expr_fname();
                     }
                     fname
                     {
                       p.def_level++;
-                      p.lexer->extend_static();
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      p.lexer_->extend_static();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                     f_arglist bodystmt kEND
                     {
@@ -2219,8 +2219,8 @@
                       $$ = put(p, p.builder.def_singleton(_1.get(), std::move(_2), _3.get(),
                                   _5.get(), std::move(_7), std::move(_8), _9.get()));
 
-                      p.lexer->cmdarg = *take(p, $<state_stack>6);
-                      p.lexer->unextend();
+                      p.lexer_->cmdarg = *take(p, $<state_stack>6);
+                      p.lexer_->unextend();
                       p.def_level--;
                     }
                 | kBREAK
@@ -2565,7 +2565,7 @@ opt_block_args_tail:
                     }
                 | block_param_def
                     {
-                      p.lexer->set_state_expr_value();
+                      p.lexer_->set_state_expr_value();
                     }
                   tr_returnsig
                     {
@@ -2626,7 +2626,7 @@ opt_block_args_tail:
             bvar: tIDENTIFIER
                     {
                       auto ident = take(p, $1);
-                      p.lexer->declare(ident->string());
+                      p.lexer_->declare(ident->string());
                       $$ = put(p, p.builder.shadowarg(ident.get()));
                     }
                 | f_bad_arg
@@ -2635,17 +2635,17 @@ opt_block_args_tail:
                     }
 
           lambda:   {
-                      p.lexer->extend_dynamic();
+                      p.lexer_->extend_dynamic();
                     }
                   f_larglist
                     {
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                   lambda_body
                     {
-                      p.lexer->cmdarg = *take(p, $<state_stack>3);
-                      p.lexer->cmdarg.lexpop();
+                      p.lexer_->cmdarg = *take(p, $<state_stack>3);
+                      p.lexer_->cmdarg.lexpop();
 
                       auto delimited_block = take(p, $4);
 
@@ -2653,7 +2653,7 @@ opt_block_args_tail:
 
                       $$ = put(p, std::move(delimited_block));
 
-                      p.lexer->unextend();
+                      p.lexer_->unextend();
                     }
 
      f_larglist: tLPAREN2 f_args opt_bv_decl tRPAREN
@@ -2872,11 +2872,11 @@ opt_block_args_tail:
                     }
 
       brace_body:   {
-                      p.lexer->extend_dynamic();
+                      p.lexer_->extend_dynamic();
                     }
                     {
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                     opt_block_param compstmt
                     {
@@ -2884,17 +2884,17 @@ opt_block_args_tail:
                       auto _4 = take(p, $4);
                       $$ = put(p, std::make_unique<delimited_block>(nullptr, std::move(_3), std::move(_4), nullptr));
 
-                      p.lexer->unextend();
-                      p.lexer->cmdarg = *take(p, $<state_stack>2);
-                      p.lexer->cmdarg.pop();
+                      p.lexer_->unextend();
+                      p.lexer_->cmdarg = *take(p, $<state_stack>2);
+                      p.lexer_->cmdarg.pop();
                     }
 
          do_body:   {
-                      p.lexer->extend_dynamic();
+                      p.lexer_->extend_dynamic();
                     }
                     {
-                      $<state_stack>$ = put_copy(p, p.lexer->cmdarg);
-                      p.lexer->cmdarg.clear();
+                      $<state_stack>$ = put_copy(p, p.lexer_->cmdarg);
+                      p.lexer_->cmdarg.clear();
                     }
                     opt_block_param compstmt
                     {
@@ -2902,10 +2902,10 @@ opt_block_args_tail:
                       auto _4 = take(p, $4);
                       $$ = put(p, std::make_unique<delimited_block>(nullptr, std::move(_3), std::move(_4), nullptr));
 
-                      p.lexer->unextend();
+                      p.lexer_->unextend();
 
-                      p.lexer->cmdarg = *take(p, $<state_stack>2);
-                      p.lexer->cmdarg.pop();
+                      p.lexer_->cmdarg = *take(p, $<state_stack>2);
+                      p.lexer_->cmdarg.pop();
                     }
 
        case_body: kWHEN args then compstmt cases
@@ -3015,13 +3015,13 @@ opt_block_args_tail:
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
                       auto str = p.builder.string_compose(_1.get(), _2.get(), _3.get());
-                      $$ = put(p, p.builder.dedent_string(std::move(str), p.lexer->dedent_level() || 0));
+                      $$ = put(p, p.builder.dedent_string(std::move(str), p.lexer_->dedent_level() || 0));
                     }
                 | tSTRING
                     {
                       auto _1 = take(p, $1);
                       auto str = p.builder.string(_1.get());
-                      $$ = put(p, p.builder.dedent_string(std::move(str), p.lexer->dedent_level() || 0));
+                      $$ = put(p, p.builder.dedent_string(std::move(str), p.lexer_->dedent_level() || 0));
                     }
                 | tCHARACTER
                     {
@@ -3035,7 +3035,7 @@ opt_block_args_tail:
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
                       auto xstr = p.builder.xstring_compose(_1.get(), _2.get(), _3.get());
-                      $$ = put(p, p.builder.dedent_string(std::move(xstr), p.lexer->dedent_level() || 0));
+                      $$ = put(p, p.builder.dedent_string(std::move(xstr), p.lexer_->dedent_level() || 0));
                     }
 
           regexp: tREGEXP_BEG regexp_contents tSTRING_END tREGEXP_OPT
@@ -3188,16 +3188,16 @@ regexp_contents: // nothing
                     }
                 | tSTRING_DBEG
                     {
-                      p.lexer->cond.push(false);
-                      p.lexer->cmdarg.push(false);
+                      p.lexer_->cond.push(false);
+                      p.lexer_->cmdarg.push(false);
                     }
                     compstmt tSTRING_DEND
                     {
                       auto _1 = take(p, $1);
                       auto _3 = take(p, $3);
                       auto _4 = take(p, $4);
-                      p.lexer->cond.lexpop();
-                      p.lexer->cmdarg.lexpop();
+                      p.lexer_->cond.lexpop();
+                      p.lexer_->cmdarg.lexpop();
 
                       $$ = put(p, p.builder.begin(_1.get(), std::move(_3), _4.get()));
                     }
@@ -3223,7 +3223,7 @@ regexp_contents: // nothing
           symbol: tSYMBOL
                     {
                       auto _1 = take(p, $1);
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                       $$ = put(p, p.builder.symbol(_1.get()));
                     }
 
@@ -3232,7 +3232,7 @@ regexp_contents: // nothing
                       auto _1 = take(p, $1);
                       auto _2 = take(p, $2);
                       auto _3 = take(p, $3);
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                       $$ = put(p, p.builder.symbol_compose(_1.get(), _2.get(), _3.get()));
                     }
 
@@ -3250,37 +3250,37 @@ regexp_contents: // nothing
   simple_numeric: tINTEGER
                     {
                       auto _1 = take(p, $1);
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                       $$ = put(p, p.builder.integer(_1.get()));
                     }
                 | tFLOAT
                     {
                       auto _1 = take(p, $1);
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                       $$ = put(p, p.builder.float_(_1.get()));
                     }
                 | tRATIONAL
                     {
                       auto _1 = take(p, $1);
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                       $$ = put(p, p.builder.rational(_1.get()));
                     }
                 | tIMAGINARY
                     {
                       auto _1 = take(p, $1);
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                       $$ = put(p, p.builder.complex(_1.get()));
                     }
                 | tRATIONAL_IMAGINARY
                     {
                       auto _1 = take(p, $1);
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                       $$ = put(p, p.builder.rational_complex(_1.get()));
                     }
                 | tFLOAT_IMAGINARY
                     {
                       auto _1 = take(p, $1);
-                      p.lexer->set_state_expr_endarg();
+                      p.lexer_->set_state_expr_endarg();
                       $$ = put(p, p.builder.float_complex(_1.get()));
                     }
 
@@ -3381,7 +3381,7 @@ keyword_variable: kNIL
 
       superclass: tLT
                     {
-                      p.lexer->set_state_expr_value();
+                      p.lexer_->set_state_expr_value();
                     }
                     expr_value term
                     {
@@ -3408,7 +3408,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
        f_arglist: tr_methodgenargs tLPAREN2 f_args rparen
                     {
-                      p.lexer->set_state_expr_value();
+                      p.lexer_->set_state_expr_value();
                     }
                   tr_returnsig
                     {
@@ -3430,13 +3430,13 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tr_methodgenargs
                     {
-                      $<boolean>$ = p.lexer->in_kwarg;
-                      p.lexer->in_kwarg = true;
+                      $<boolean>$ = p.lexer_->in_kwarg;
+                      p.lexer_->in_kwarg = true;
                     }
                   f_args tr_returnsig term
                     {
                       auto _3 = take(p, $3);
-                      p.lexer->in_kwarg = $<boolean>2;
+                      p.lexer_->in_kwarg = $<boolean>2;
 
                       auto genargs = take(p, $1);
                       auto args = p.builder.args(nullptr, _3.get(), nullptr, true);
@@ -3646,7 +3646,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       auto ident = take(p, $1);
 
-                      p.lexer->declare(ident->string());
+                      p.lexer_->declare(ident->string());
 
                       $$ = put(p, std::move(ident));
                     }
@@ -3695,7 +3695,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
                       p.check_kwarg_name(label);
 
-                      p.lexer->declare(label->string());
+                      p.lexer_->declare(label->string());
 
                       $$ = put(p, std::move(label));
                     }
@@ -3785,7 +3785,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto _1 = take(p, $1);
                       auto ident = take(p, $2);
 
-                      p.lexer->declare(ident->string());
+                      p.lexer_->declare(ident->string());
 
                       $$ = put(p, make_node_list({ p.builder.kwrestarg(_1.get(), ident.get()) }));
                     }
@@ -3859,7 +3859,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto argsig = take(p, $1);
                       auto ident = take(p, $3);
 
-                      p.lexer->declare(ident->string());
+                      p.lexer_->declare(ident->string());
 
                       auto restarg = p.builder.restarg(_2.get(), ident.get());
 
@@ -3890,7 +3890,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto argsig = take(p, $1);
                       auto ident = take(p, $3);
 
-                      p.lexer->declare(ident->string());
+                      p.lexer_->declare(ident->string());
 
                       auto blockarg = p.builder.blockarg(_2.get(), ident.get());
 
@@ -4140,7 +4140,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
        tr_argsig: tr_type
                     {
                       $$ = $1;
-                      p.lexer->set_state_expr_beg();
+                      p.lexer_->set_state_expr_beg();
                     }
                 |
                     {
@@ -4169,10 +4169,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       $$ = put(p, make_node_list(p.builder.tr_gendeclarg(_1.get())));
                     }
 
-   tr_blockproto: { p.lexer->extend_dynamic(); }
+   tr_blockproto: { p.lexer_->extend_dynamic(); }
                   block_param_def
                     {
-                      p.lexer->unextend();
+                      p.lexer_->unextend();
                       $$ = $2;
                     }
 
