@@ -104,7 +104,7 @@ namespace ruby_parser {
       void check_kwarg_name(const token_ptr& name);
 
       template<typename... Args>
-      void diagnostic(Args&&... args) {
+      void diagnostic_(Args&&... args) {
         diagnostics.emplace_back(std::forward<Args>(args)...);
       }
     };

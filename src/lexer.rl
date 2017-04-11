@@ -587,15 +587,15 @@ void lexer::emit_num(const std::string& num) {
   }
 }
 
-void lexer::diagnostic(diagnostic_level level, std::string&& message) {
-  diagnostic(level, std::forward<std::string>(message), ts, te);
+void lexer::diagnostic_(diagnostic_level level, std::string&& message) {
+  diagnostic_(level, std::forward<std::string>(message), ts, te);
 }
 
-void lexer::diagnostic(diagnostic_level level, std::string&& message, const char* start, const char* end) {
+void lexer::diagnostic_(diagnostic_level level, std::string&& message, const char* start, const char* end) {
   size_t token_start = (size_t)(start - source_buffer.data());
   size_t token_end = (size_t)(end - source_buffer.data());
 
-  parser.diagnostic(level, std::forward<std::string>(message), diagnostic::range(token_start, token_end));
+  parser.diagnostic_(level, std::forward<std::string>(message), diagnostic::range(token_start, token_end));
 }
 
 /*
@@ -670,7 +670,7 @@ void lexer::diagnostic(diagnostic_level level, std::string&& message, const char
     nil
   end
 
-  def diagnostic(type, reason, arguments=nil, location=range, highlights=[])
+  def diagnostic_(type, reason, arguments=nil, location=range, highlights=[])
     @diagnostics.process(
         Parser::Diagnostic.new(type, reason, arguments, location, highlights))
   end
@@ -959,7 +959,7 @@ void lexer::set_state_expr_value() {
   }
 
   action invalid_complex_escape {
-    diagnostic(diagnostic_level::FATAL, "invalid escape character syntax"s);
+    diagnostic_(diagnostic_level::FATAL, "invalid escape character syntax"s);
   }
 
   action slash_c_char {
@@ -1001,7 +1001,7 @@ void lexer::set_state_expr_value() {
       # %q[\x]
     | 'x' ( c_any - xdigit )
       % {
-        diagnostic(diagnostic_level::FATAL, "invalid hex escape"s, escape_s - 1, p + 2);
+        diagnostic_(diagnostic_level::FATAL, "invalid hex escape"s, escape_s - 1, p + 2);
       }
 
       # %q[\u123] %q[\u{12]
@@ -1013,7 +1013,7 @@ void lexer::set_state_expr_value() {
             )
           )
       % {
-        diagnostic(diagnostic_level::FATAL, "invalid Unicode escape"s, escape_s - 1, p);
+        diagnostic_(diagnostic_level::FATAL, "invalid Unicode escape"s, escape_s - 1, p);
       }
 
       # \u{123 456}
@@ -1024,7 +1024,7 @@ void lexer::set_state_expr_value() {
         | ( c_any - '}' )* c_eof
         | xdigit{7,}
         ) % {
-          diagnostic(diagnostic_level::FATAL, "unterminated Unicode escape"s, p - 1, p);
+          diagnostic_(diagnostic_level::FATAL, "unterminated Unicode escape"s, p - 1, p);
         }
       )
 
@@ -1050,7 +1050,7 @@ void lexer::set_state_expr_value() {
     | ( c_any - [0-7xuCMc] ) %unescape_char
 
     | c_eof % {
-      diagnostic(diagnostic_level::FATAL, "escape sequence meets end of file", p - 1, p);
+      diagnostic_(diagnostic_level::FATAL, "escape sequence meets end of file", p - 1, p);
     }
   );
 
@@ -1201,7 +1201,7 @@ void lexer::set_state_expr_value() {
 
     if (te == pe) {
       abort();
-      diagnostic(diagnostic_level::FATAL, "unterminated string meets end of file"s, current_literal.str_s, current_literal.str_s + 1);
+      diagnostic_(diagnostic_level::FATAL, "unterminated string meets end of file"s, current_literal.str_s, current_literal.str_s + 1);
     }
 
     if (current_literal.heredoc()) {
@@ -1436,7 +1436,7 @@ void lexer::set_state_expr_value() {
         }
 
         if (!unknown_options.empty()) {
-          diagnostic(diagnostic_level::ERROR, "unknown regexp options: "s + unknown_options);
+          diagnostic_(diagnostic_level::ERROR, "unknown regexp options: "s + unknown_options);
         }
 
         emit(token_type::tREGEXP_OPT, options);
@@ -1589,7 +1589,7 @@ void lexer::set_state_expr_value() {
       class_var_v
       => {
         if (ts[2] >= '0' && ts[2] <= '9') {
-          diagnostic(diagnostic_level::ERROR, "`" + tok() + "' is not allowed as a class variable name");
+          diagnostic_(diagnostic_level::ERROR, "`" + tok() + "' is not allowed as a class variable name");
         }
 
         emit(token_type::tCVAR);
@@ -1599,7 +1599,7 @@ void lexer::set_state_expr_value() {
       instance_var_v
       => {
         if (ts[1] >= '0' && ts[1] <= '9') {
-          diagnostic(diagnostic_level::ERROR, "`" + tok() + "' is not allowed as an instance variable name");
+          diagnostic_(diagnostic_level::ERROR, "`" + tok() + "' is not allowed as an instance variable name");
         }
 
         emit(token_type::tIVAR);
@@ -1790,7 +1790,7 @@ void lexer::set_state_expr_value() {
       => {
         if (*tm == '/') {
           // Ambiguous regexp literal.
-          diagnostic(diagnostic_level::WARNING,
+          diagnostic_(diagnostic_level::WARNING,
             "ambiguous first argument; put parentheses or a space even after the operator"s,
             tm, tm + 1);
         }
@@ -1803,7 +1803,7 @@ void lexer::set_state_expr_value() {
       # Ambiguous splat, kwsplat or block-pass.
       w_space+ %{ tm = p; } ( '+' | '-' | '*' | '&' | '**' )
       => {
-        diagnostic(diagnostic_level::WARNING, "`"s + tok(tm, te) + "' interpreted as argument prefix"s, tm, te);
+        diagnostic_(diagnostic_level::WARNING, "`"s + tok(tm, te) + "' interpreted as argument prefix"s, tm, te);
 
         p = tm - 1;
         fgoto expr_beg;
@@ -2029,7 +2029,7 @@ void lexer::set_state_expr_value() {
           type = literal_type::LOWERX_XSTRING;
         } else {
           type = literal_type::PERCENT_STRING;
-          diagnostic(diagnostic_level::ERROR,
+          diagnostic_(diagnostic_level::ERROR,
             tok(ts, te - 1) + ": unknown type of percent-literal",
             ts, te - 1);
         }
@@ -2039,7 +2039,7 @@ void lexer::set_state_expr_value() {
 
       '%' c_eof
       => {
-        diagnostic(diagnostic_level::FATAL, "unterminated string meets end of file",
+        diagnostic_(diagnostic_level::FATAL, "unterminated string meets end of file",
           ts, ts + 1);
       };
 
@@ -2174,7 +2174,7 @@ void lexer::set_state_expr_value() {
 
         auto& escape = escape_map.at(ts[1]);
 
-        diagnostic(diagnostic_level::WARNING, "invalid character syntax; use ?"s + escape);
+        diagnostic_(diagnostic_level::WARNING, "invalid character syntax; use ?"s + escape);
 
         p = ts - 1;
         fgoto expr_end;
@@ -2182,7 +2182,7 @@ void lexer::set_state_expr_value() {
 
       '?' c_eof
       => {
-        diagnostic(diagnostic_level::FATAL, "incomplete character syntax", ts, ts + 1);
+        diagnostic_(diagnostic_level::FATAL, "incomplete character syntax", ts, ts + 1);
       };
 
       # f ?aa : b: Disambiguate with a character literal.
@@ -2467,15 +2467,15 @@ void lexer::set_state_expr_value() {
         auto digits = tok(num_digits_s, num_suffix_s);
 
         if (num_suffix_s[-1] == '_') {
-          diagnostic(diagnostic_level::ERROR, "trailing `_' in number"s, te - 1, te);
+          diagnostic_(diagnostic_level::ERROR, "trailing `_' in number"s, te - 1, te);
         } else if (num_digits_s == num_suffix_s && num_base == 8 && version == ruby_version::RUBY_18) {
           // 1.8 did not raise an error on 0o.
         } else if (num_digits_s == num_suffix_s) {
-          diagnostic(diagnostic_level::ERROR, "numeric literal without digits"s);
+          diagnostic_(diagnostic_level::ERROR, "numeric literal without digits"s);
         } else if (num_base == 8) {
           for (const char* digit_p = num_digits_s; digit_p < num_suffix_s; digit_p++) {
             if (*digit_p == '8' || *digit_p == '9') {
-              diagnostic(diagnostic_level::ERROR, "invalid octal digit",
+              diagnostic_(diagnostic_level::ERROR, "invalid octal digit",
                 digit_p, digit_p + 1);
             }
           }
@@ -2492,13 +2492,13 @@ void lexer::set_state_expr_value() {
 
       flo_frac flo_pow?
       => {
-        diagnostic(diagnostic_level::ERROR, "no .<digit> floating literal anymore; put 0 before dot");
+        diagnostic_(diagnostic_level::ERROR, "no .<digit> floating literal anymore; put 0 before dot");
       };
 
       flo_int [eE]
       => {
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          diagnostic(diagnostic_level::ERROR,
+          diagnostic_(diagnostic_level::ERROR,
             "trailing `"s + tok(te - 1, te) + "' in number",
             te - 1, te);
         } else {
@@ -2510,7 +2510,7 @@ void lexer::set_state_expr_value() {
       flo_int flo_frac [eE]
       => {
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          diagnostic(diagnostic_level::ERROR,
+          diagnostic_(diagnostic_level::ERROR,
             "trailing `"s + tok(te - 1, te) + "' in number",
             te - 1, te);
         } else {
@@ -2650,7 +2650,7 @@ void lexer::set_state_expr_value() {
            fnext expr_value; fbreak; };
 
       '\\' c_line {
-        diagnostic(diagnostic_level::ERROR,
+        diagnostic_(diagnostic_level::ERROR,
           "bare backslash only allowed before newline",
           ts, ts + 1);
         fhold;
@@ -2658,7 +2658,7 @@ void lexer::set_state_expr_value() {
 
       c_any
       => {
-        diagnostic(diagnostic_level::ERROR,
+        diagnostic_(diagnostic_level::ERROR,
           "unexpected `"s + tok() + "'"s);
       };
 
@@ -2692,7 +2692,7 @@ void lexer::set_state_expr_value() {
 
       c_line* zlen
       => {
-        diagnostic(diagnostic_level::FATAL,
+        diagnostic_(diagnostic_level::FATAL,
           "embedded document meets end of file (and they embark on a romantic journey)"s,
           eq_begin_s, eq_begin_s + "=begin"s.size());
       };

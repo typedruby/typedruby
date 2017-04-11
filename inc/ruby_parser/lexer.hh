@@ -108,8 +108,8 @@ namespace ruby_parser {
     void emit_do(bool do_block = false);
     void emit_table(const token_table& table);
     void emit_num(const std::string& num);
-    void diagnostic(diagnostic_level level, std::string&& message);
-    void diagnostic(diagnostic_level level, std::string&& message, const char* start, const char* end);
+    void diagnostic_(diagnostic_level level, std::string&& message);
+    void diagnostic_(diagnostic_level level, std::string&& message, const char* start, const char* end);
     template<typename... Args> int push_literal(Args&&... args);
     literal& literal_();
     int pop_literal();
