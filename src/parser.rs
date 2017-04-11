@@ -468,7 +468,7 @@ unsafe extern "C" fn case_(case_: *const Token, expr: *mut Node, when_bodies: *m
 }
 
 unsafe extern "C" fn character(char_: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::String(Token::loc(char_), Token::string(char_)).to_raw()
 }
 
 unsafe extern "C" fn complex(tok: *const Token) -> *mut Node {
@@ -999,12 +999,14 @@ unsafe extern "C" fn pair_quoted(begin: *const Token, parts: *mut NodeList, end:
     Node::Pair(key.loc().join(value.loc()), key, value).to_raw()
 }
 
-unsafe extern "C" fn postexe(body: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn postexe(begin: *const Token, node: *mut Node, rbrace: *const Token) -> *mut Node {
+    let node = from_raw(node);
+    Node::Postexe(Token::loc(begin).join(&Token::loc(rbrace)), node).to_raw()
 }
 
-unsafe extern "C" fn preexe(node: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn preexe(begin: *const Token, node: *mut Node, rbrace: *const Token) -> *mut Node {
+    let node = from_raw(node);
+    Node::Preexe(Token::loc(begin).join(&Token::loc(rbrace)), node).to_raw()
 }
 
 unsafe extern "C" fn procarg0(arg: *mut Node) -> *mut Node {
