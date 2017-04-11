@@ -67,15 +67,19 @@ fn main() {
     let mut rc = 0;
 
     for filename in args.iter().skip(1) {
-        println!("\x1b[34;1m{}\x1b[0m", filename);
-
         let file = SourceFile::open(filename).unwrap();
 
         let result = file.parse();
 
-        for diagnostic in result.diagnostics.iter().filter(show_diagnostic) {
-            println!("\x1b[31;1m{}:\x1b[0m {:?}", file.line_for_pos(diagnostic.loc.begin_pos), diagnostic.message);
-            rc = 1;
+        let errors = result.diagnostics.iter().filter(show_diagnostic).collect::<Vec<_>>();
+
+        if !errors.is_empty() {
+            println!("\x1b[34;1m{}\x1b[0m", filename);
+
+            for diagnostic in errors {
+                println!("\x1b[31;1m{}:\x1b[0m {:?}", file.line_for_pos(diagnostic.loc.begin_pos), diagnostic.message);
+                rc = 1;
+            }
         }
 
         // println!("{:#?}", result.ast);
