@@ -138,6 +138,6 @@ namespace ruby_parser {
     foreign_ptr(*words_compose)(const token* begin, const node_list* parts, const token* end);
     foreign_ptr(*xstring_compose)(const token* begin, const node_list* parts, const token* end);
   };
-};
+}
 
 #endif
