@@ -1004,12 +1004,12 @@ unsafe extern "C" fn pair_quoted(begin: *const Token, parts: *mut NodeList, end:
 }
 
 unsafe extern "C" fn postexe(begin: *const Token, node: *mut Node, rbrace: *const Token) -> *mut Node {
-    let node = from_raw(node);
+    let node = from_maybe_raw(node);
     Node::Postexe(Token::loc(begin).join(&Token::loc(rbrace)), node).to_raw()
 }
 
 unsafe extern "C" fn preexe(begin: *const Token, node: *mut Node, rbrace: *const Token) -> *mut Node {
-    let node = from_raw(node);
+    let node = from_maybe_raw(node);
     Node::Preexe(Token::loc(begin).join(&Token::loc(rbrace)), node).to_raw()
 }
 
