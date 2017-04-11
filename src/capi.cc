@@ -17,7 +17,7 @@ ruby_parser_typedruby24_free(ruby_parser::parser::typedruby24* parser)
 void*
 ruby_parser_parse(ruby_parser::parser::base* parser)
 {
-  return parser->parse().release();
+  return parser->parse();
 }
 
 bool
@@ -62,7 +62,7 @@ ruby_parser_node_list_get_length(const ruby_parser::node_list* list)
 void*
 ruby_parser_node_list_index(ruby_parser::node_list* list, size_t index)
 {
-  return list->nodes.at(index).release();
+  return list->nodes.at(index);
 }
 
 size_t
