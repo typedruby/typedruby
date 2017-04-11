@@ -90,7 +90,7 @@ namespace ruby_parser {
     class base {
     public:
       foreign_ptr ast;
-      std::unique_ptr<lexer> lexer;
+      std::unique_ptr<lexer> lexer_;
       std::vector<diagnostic> diagnostics;
       size_t def_level;
       const struct builder& builder;

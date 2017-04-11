@@ -24,14 +24,14 @@ bool
 ruby_parser_static_env_is_declared(const ruby_parser::parser::base* p, const char* name, size_t length)
 {
   std::string id { name, length };
-  return p->lexer->is_declared(id);
+  return p->lexer_->is_declared(id);
 }
 
 void
 ruby_parser_static_env_declare(ruby_parser::parser::base* p, const char* name, size_t length)
 {
   std::string id { name, length };
-  p->lexer->declare(id);
+  p->lexer_->declare(id);
 }
 
 size_t
