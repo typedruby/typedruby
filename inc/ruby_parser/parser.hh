@@ -116,6 +116,6 @@ namespace ruby_parser {
       virtual foreign_ptr parse();
     };
   }
-};
+}
 
 #endif

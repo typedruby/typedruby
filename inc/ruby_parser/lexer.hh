@@ -27,7 +27,7 @@ namespace ruby_parser {
 
   namespace parser {
     class base;
-  };
+  }
 
   class lexer {
   public:
