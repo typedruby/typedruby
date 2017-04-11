@@ -589,17 +589,20 @@ impl Dedenter {
         let mut space_end = 0;
         let mut offset = 0;
 
-        let mut bytes = string.into_bytes();
+        let bytes = string.into_bytes();
+        let mut result_bytes = bytes.clone();
 
         let mut index = 0;
         while index < bytes.len() {
             let c = bytes[index];
             if self.at_line_begin {
                 if c == 10 /* \n */ || self.indent_level >= self.dedent_level {
-                    bytes.drain(space_begin..space_end);
-                    offset += space_end - space_begin - 1;
+                    result_bytes.drain(space_begin..space_end);
+                    offset += space_end - space_begin;
                     self.at_line_begin = false;
-                    continue; // redo current index
+                    if c == 10 /* \n */ {
+                        continue; // redo current index
+                    }
                 }
 
                 if c == 32 /* space */ {
@@ -614,7 +617,7 @@ impl Dedenter {
             } else if c == 10 /* \n */ && index == bytes.len() - 1 {
                 self.at_line_begin = true;
                 self.indent_level = 0;
-                space_begin = index - offset + 1;
+                space_begin = index - offset;
                 space_end = space_begin;
             }
 
@@ -622,10 +625,10 @@ impl Dedenter {
         }
 
         if self.at_line_begin {
-            bytes.drain(space_begin..space_end);
+            result_bytes.drain(space_begin..space_end);
         }
 
-        String::from_utf8(bytes).unwrap()
+        String::from_utf8(result_bytes).unwrap()
     }
 
     fn interrupt(&mut self) {
