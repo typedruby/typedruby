@@ -1200,7 +1200,6 @@ void lexer::set_state_expr_value() {
     auto& current_literal = literal_();
 
     if (te == pe) {
-      abort();
       diagnostic_(diagnostic_level::FATAL, "unterminated string meets end of file"s, current_literal.str_s, current_literal.str_s + 1);
     }
 
