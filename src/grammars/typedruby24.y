@@ -33,7 +33,7 @@
   delimited_block_ptr* delimited_block;
   node_with_token_ptr* with_token;
   case_body_ptr* case_body;
-  foreign_ptr* node;
+  foreign_ptr node;
   node_list_ptr* list;
   state_stack_ptr* state_stack;
   size_t size;
@@ -405,11 +405,19 @@
     return ptr;
   }
 
+  static foreign_ptr take(parser::base& _, foreign_ptr raw_ptr) {
+    return raw_ptr;
+  }
+
   template<typename T>
   static T* put(parser::base& p, T ptr) {
     T* raw_ptr = new T(ptr.release());
     p.saved_pointers.insert((void*)raw_ptr);
     return raw_ptr;
+  }
+
+  static foreign_ptr put(parser::base& _, foreign_ptr ptr) {
+    return ptr;
   }
 
   template<typename T>

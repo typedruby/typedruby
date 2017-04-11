@@ -10,29 +10,7 @@
 namespace ruby_parser {
   struct builder;
 
-  class foreign_ptr {
-    void* ptr;
-  public:
-    foreign_ptr(const foreign_ptr&) = delete;
-    foreign_ptr() : ptr(nullptr) {}
-    foreign_ptr(void* ptr) : ptr(ptr) {}
-    foreign_ptr(foreign_ptr&& other) : ptr(other.release()) {}
-
-    foreign_ptr& operator=(foreign_ptr&& other) {
-      ptr = other.release();
-      return *this;
-    }
-
-    operator bool() const {
-      return ptr != nullptr;
-    }
-
-    void* release() {
-      void* raw_ptr = ptr;
-      ptr = nullptr;
-      return raw_ptr;
-    }
-  };
+  typedef void* foreign_ptr;
 
   struct object {
     object() {};
