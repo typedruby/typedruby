@@ -717,7 +717,7 @@ int lexer::push_literal(Args&&... args) {
   }
 }
 
-literal& lexer::literal() {
+literal& lexer::literal_() {
   return literal_stack.top();
 }
 
@@ -1120,7 +1120,7 @@ void lexer::set_state_expr_value() {
       lookahead = std::string(lookahead_s, (size_t)(lookahead_e - lookahead_s));
     }
 
-    auto& current_literal = literal();
+    auto& current_literal = literal_();
 
     if (!current_literal.heredoc() && current_literal.nest_and_try_closing(str, ts, te, lookahead)) {
       if (token_queue.back()->type() == token_type::tLABEL_END) {
@@ -1137,7 +1137,7 @@ void lexer::set_state_expr_value() {
   }
 
   action extend_string_escaped {
-    auto& current_literal = literal();
+    auto& current_literal = literal_();
 
     // TODO multibyte
     auto escaped_char = *escape_s;
@@ -1197,7 +1197,7 @@ void lexer::set_state_expr_value() {
   # As heredoc closing line can immediately precede EOF, this action
   # has to handle such case specially.
   action extend_string_eol {
-    auto& current_literal = literal();
+    auto& current_literal = literal_();
 
     if (te == pe) {
       abort();
@@ -1269,7 +1269,7 @@ void lexer::set_state_expr_value() {
   }
 
   action extend_string_space {
-    literal().extend_space(ts, te);
+    literal_().extend_space(ts, te);
   }
 
   #
@@ -1282,7 +1282,7 @@ void lexer::set_state_expr_value() {
   interp_var = '#' ( global_var | class_var_v | instance_var_v );
 
   action extend_interp_var {
-    auto& current_literal = literal();
+    auto& current_literal = literal_();
     current_literal.flush_string();
     current_literal.extend_content();
 
@@ -1310,13 +1310,13 @@ void lexer::set_state_expr_value() {
     cond.push(false); cmdarg.push(false);
 
     if (!literal_stack.empty()) {
-      literal().start_interp_brace();
+      literal_().start_interp_brace();
     }
   };
 
   e_rbrace = '}' % {
     if (!literal_stack.empty()) {
-      auto& current_literal = literal();
+      auto& current_literal = literal_();
 
       if (current_literal.end_interp_brace_and_try_closing()) {
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19) {
@@ -1337,7 +1337,7 @@ void lexer::set_state_expr_value() {
   };
 
   action extend_interp_code {
-    auto& current_literal = literal();
+    auto& current_literal = literal_();
     current_literal.flush_string();
     current_literal.extend_content();
 
