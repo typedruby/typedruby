@@ -1,4 +1,5 @@
 #include <ruby_parser/literal.hh>
+#include <cassert>
 
 using namespace ruby_parser;
 
@@ -117,6 +118,8 @@ token_type literal::start_token_type() const {
     case literal_type::BACKTICK_XSTRING:
     case literal_type::BACKTICK_HEREDOC:
       return token_type::tXSTRING_BEG;
+    default:
+      assert(false);
   }
 }
 
