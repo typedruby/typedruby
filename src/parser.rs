@@ -708,7 +708,11 @@ unsafe extern "C" fn float_complex(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn for_(for_: *const Token, iterator: *mut Node, in_: *const Token, iteratee: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let iterator = from_raw(iterator);
+    let iteratee = from_raw(iteratee);
+    let body = from_maybe_raw(body);
+
+    Node::For(Token::loc(for_).join(&Token::loc(end)), iterator, iteratee, body).to_raw()
 }
 
 unsafe extern "C" fn gvar(tok: *const Token) -> *mut Node {
