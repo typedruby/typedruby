@@ -393,10 +393,7 @@
 
     auto iter = p.saved_pointers.find((void*)raw_ptr);
 
-    if (iter == p.saved_pointers.end()) {
-      fprintf(stderr, "tried to take dodgy pointer!\n");
-      abort();
-    }
+    assert(iter != p.saved_pointers.end());
 
     p.saved_pointers.erase(iter);
 
@@ -459,11 +456,7 @@
 
     int token_type = static_cast<int>(token->type());
 
-    if (token_type < 0) {
-      // some sort of lex error!
-      std::cerr << "lex error" << std::endl;
-      abort();
-    }
+    assert(token_type >= 0);
 
     lval->token = put(p, std::move(token));
 
