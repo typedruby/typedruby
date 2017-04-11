@@ -739,7 +739,7 @@ unsafe extern "C" fn index_asgn(receiver: *mut Node, lbrack: *const Token, index
 }
 
 unsafe extern "C" fn integer(tok: *const Token) -> *mut Node {
-    Box::into_raw(Box::new(Node::Integer(Token::loc(tok), Token::string(tok))))
+    Node::Integer(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn ivar(tok: *const Token) -> *mut Node {
