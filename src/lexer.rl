@@ -122,7 +122,7 @@ using namespace std::string_literals;
 lexer::lexer(parser::base& parser, ruby_version version, const std::string& source_buffer_)
   : parser(parser)
   , version(version)
-  , source_buffer(source_buffer_)
+  , source_buffer(source_buffer_ + std::string("\0\0", 2))
   , cs(lex_en_line_begin)
   , _p(source_buffer.data())
   , _pe(source_buffer.data() + source_buffer.size())
@@ -1200,6 +1200,7 @@ void lexer::set_state_expr_value() {
     auto& current_literal = literal();
 
     if (te == pe) {
+      abort();
       diagnostic(diagnostic_level::FATAL, "unterminated string meets end of file"s, current_literal.str_s, current_literal.str_s + 1);
     }
 
