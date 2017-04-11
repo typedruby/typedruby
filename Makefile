@@ -1,4 +1,4 @@
-CXXFLAGS += -Wall -Wextra -pedantic -std=c++1y -I inc
+CXXFLAGS += -Wall -Wextra -pedantic -std=c++1y -I inc -fPIC
 
 ifeq ($(PROFILE),release)
 	CXXFLAGS += -O3
