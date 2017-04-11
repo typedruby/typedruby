@@ -143,8 +143,8 @@ pub enum Parser {}
 pub enum Token {}
 pub enum NodeList {}
 
-#[link(name="c++")]
 #[link(name="rubyparser")]
+#[link(name="c++")]
 extern "C" {
     fn ruby_parser_typedruby24_new(source: *const u8, source_length: size_t, builder: *const Builder) -> *mut Parser;
     fn ruby_parser_typedruby24_free(parser: *mut Parser);
