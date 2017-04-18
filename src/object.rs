@@ -25,7 +25,7 @@ impl GenId {
 }
 
 #[allow(non_snake_case)]
-pub struct Env {
+pub struct ObjectGraph {
     pub BasicObject: RubyObjectRef,
     pub Object: RubyObjectRef,
     pub Module: RubyObjectRef,
@@ -45,12 +45,12 @@ impl RubyObjectRef {
     }
 }
 
-impl Env {
+impl ObjectGraph {
     fn new_object_id(&self) -> ObjectId {
         self.ids.next()
     }
 
-    pub fn new() -> Env {
+    pub fn new() -> ObjectGraph {
         let mut objects = ObjectMap::new();
 
         // manually bootstrap cyclic core of object graph:
@@ -97,7 +97,7 @@ impl Env {
             superclass: module_ref.to_cell(),
         }));
 
-        Env {
+        ObjectGraph {
             BasicObject: basic_object_ref,
             Object: object_ref,
             Module: module_ref,
@@ -112,9 +112,9 @@ impl Env {
         let objects = self._objects.borrow();
         let ref_ = &**objects.get(&id).expect("dangling ObjectId");
 
-        // extend lifetime of &RubyObject to that of env
+        // extend lifetime of &RubyObject to that of self.
         // WARNING: potentially unsafe - these references *must not* be
-        // retained across GCs of the object graph:
+        // retained across GCs of the object graph.
         unsafe { ::std::mem::transmute::<&RubyObject, &RubyObject>(ref_) }
     }
 
@@ -159,7 +159,7 @@ impl Env {
                             of: *id,
                             class: class.clone(),
                             // no need to check for None superclass here - BasicObject's metaclass was already
-                            // constructed in Env::bootstrap:
+                            // constructed in ObjectGraph::bootstrap:
                             // TODO - we do need to replace the direct superclass field get with something that
                             // ignores iclasses:
                             superclass: self.metaclass(&RubyObjectRef { id: superclass.get() }).to_cell(),
