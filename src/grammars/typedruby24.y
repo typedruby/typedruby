@@ -4126,8 +4126,19 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                 | tSYMBOL
                     {
                       auto _1 = take(p, $1);
-                      $$ = put(p, p.builder.tr_special(_1.get()));
-                      // diagnostic :error, :bad_special_type, { value: std::move(_1)[0] }, std::move(_1)
+
+                      if (_1->string() == "any") {
+                        $$ = put(p, p.builder.tr_any(_1.get()));
+                      } else if (_1->string() == "class") {
+                        $$ = put(p, p.builder.tr_class(_1.get()));
+                      } else if (_1->string() == "instance") {
+                        $$ = put(p, p.builder.tr_instance(_1.get()));
+                      } else if (_1->string() == "self") {
+                        $$ = put(p, p.builder.tr_self(_1.get()));
+                      } else {
+                        p.diagnostic_(diagnostic_level::ERROR, "bad type: " + _1->string(), *_1);
+                        YYERROR;
+                      }
                     }
                 | tLPAREN tr_union_type rparen
                     {
