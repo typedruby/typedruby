@@ -1,216 +1,227 @@
-use gc::{Gc, GcCell};
+use std::collections::HashMap;
+use std::cell::{Cell, RefCell};
 
-type RubyObjectRef = Gc<GcCell<RubyObject>>;
+// can become NonZero<u64> once NonZero for non-pointer types hits stable:
+type ObjectId = u64;
+// then we can use Option<ObjectId> rather than manually treating 0 as none-ish:
+const NO_OBJECT_ID: ObjectId = 0;
 
-#[derive(Trace,Finalize)]
-struct BasicEnv {
-    basic_object: RubyObjectRef,
-    object: RubyObjectRef,
-    module: RubyObjectRef,
-    class: RubyObjectRef,
+type ObjectMap = HashMap<ObjectId, Box<RubyObject>>;
+
+struct GenId {
+    _next: Cell<ObjectId>,
 }
 
-#[derive(Trace,Finalize)]
+impl GenId {
+    fn new() -> GenId {
+        GenId { _next: Cell::new(1) }
+    }
+
+    fn next(&self) -> ObjectId {
+        let next = self._next.get();
+        self._next.set(next + 1);
+        next
+    }
+}
+
+#[allow(non_snake_case)]
 pub struct Env {
-    pub basic_object: RubyObjectRef,
-    pub object: RubyObjectRef,
-    pub module: RubyObjectRef,
-    pub class: RubyObjectRef,
+    pub BasicObject: RubyObjectRef,
+    pub Object: RubyObjectRef,
+    pub Module: RubyObjectRef,
+    pub Class: RubyObjectRef,
+
+    _objects: RefCell<ObjectMap>,
+    ids: GenId,
 }
 
-fn mkref(object: RubyObject) -> RubyObjectRef {
-    Gc::new(GcCell::new(object))
+pub struct RubyObjectRef {
+    id: ObjectId
+}
+
+impl RubyObjectRef {
+    fn to_cell(&self) -> Cell<ObjectId> {
+        Cell::new(self.id)
+    }
 }
 
 impl Env {
-    fn bootstrap() -> BasicEnv {
-        fn bootstrap_class(name: &str) -> Gc<GcCell<RubyObject>> {
-            mkref(RubyObject::Class {
-                _name: name.to_owned(),
-                _class: None,
-                _superclass: None,
-            })
-        }
-
-        let basic_object = bootstrap_class("BasicObject");
-        let object = bootstrap_class("Object");
-        let module = bootstrap_class("Module");
-        let class = bootstrap_class("Class");
-
-        fn set_class(object: &mut RubyObject, class: &Gc<GcCell<RubyObject>>) {
-            if let RubyObject::Class { ref mut _class, .. } = *object {
-                *_class = Some(class.clone());
-            }
-        }
-
-        fn set_superclass(object: &mut RubyObject, superclass: &Gc<GcCell<RubyObject>>) {
-            if let RubyObject::Class { ref mut _superclass, .. } = *object {
-                *_superclass = Some(superclass.clone());
-            }
-        }
-
-        // The superclass of a class's metaclass is the metaclass of the
-        // class's superclass. BasicObject's metaclass is slightly different
-        // however, because BasicObject does not have a superclass. In this
-        // case, BasicObject's metaclass's superclass is Class itself.
-        set_class(&mut *basic_object.borrow_mut(), &mkref(RubyObject::Metaclass {
-            _of: basic_object.clone(),
-            _class: Some(class.clone()),
-            _superclass: Some(class.clone()),
-        }));
-
-        set_class(&mut *object.borrow_mut(), &class);
-        set_class(&mut *module.borrow_mut(), &class);
-        set_class(&mut *class.borrow_mut(), &class);
-
-        set_superclass(&mut *object.borrow_mut(), &basic_object);
-        set_superclass(&mut *module.borrow_mut(), &object);
-        set_superclass(&mut *class.borrow_mut(), &module);
-
-        BasicEnv {
-            basic_object: basic_object,
-            object: object,
-            module: module,
-            class: class,
-        }
+    fn new_object_id(&self) -> ObjectId {
+        self.ids.next()
     }
 
     pub fn new() -> Env {
-        let basic_env = Env::bootstrap();
+        let mut objects = ObjectMap::new();
+
+        // manually bootstrap cyclic core of object graph:
+
+        let ids = GenId::new();
+        let basic_object_ref = RubyObjectRef { id: ids.next() };
+        let basic_object_metaclass_ref = RubyObjectRef { id: ids.next() };
+        let object_ref = RubyObjectRef { id: ids.next() };
+        let module_ref = RubyObjectRef { id: ids.next() };
+        let class_ref = RubyObjectRef { id: ids.next() };
+
+        objects.insert(basic_object_ref.id, Box::new(RubyObject::Class {
+            id: basic_object_ref.id,
+            name: "BasicObject".to_owned(),
+            class: basic_object_metaclass_ref.to_cell(),
+            superclass: Cell::new(NO_OBJECT_ID),
+        }));
+
+        objects.insert(basic_object_metaclass_ref.id, Box::new(RubyObject::Metaclass {
+            id: basic_object_metaclass_ref.id,
+            of: basic_object_ref.id,
+            class: class_ref.to_cell(),
+            superclass: class_ref.to_cell(),
+        }));
+
+        objects.insert(object_ref.id, Box::new(RubyObject::Class {
+            id: object_ref.id,
+            name: "Object".to_owned(),
+            class: class_ref.to_cell(),
+            superclass: basic_object_ref.to_cell(),
+        }));
+
+        objects.insert(module_ref.id, Box::new(RubyObject::Class {
+            id: module_ref.id,
+            name: "Module".to_owned(),
+            class: class_ref.to_cell(),
+            superclass: object_ref.to_cell(),
+        }));
+
+        objects.insert(class_ref.id, Box::new(RubyObject::Class {
+            id: class_ref.id,
+            name: "Class".to_owned(),
+            class: class_ref.to_cell(),
+            superclass: module_ref.to_cell(),
+        }));
 
         Env {
-            basic_object: basic_env.basic_object.clone(),
-            object: basic_env.object.clone(),
-            module: basic_env.module.clone(),
-            class: basic_env.class.clone(),
+            BasicObject: basic_object_ref,
+            Object: object_ref,
+            Module: module_ref,
+            Class: class_ref,
+
+            _objects: RefCell::new(objects),
+            ids: ids,
         }
     }
 
-    pub fn metaclass(&self, object: RubyObjectRef) -> RubyObjectRef {
-        match *object.borrow_mut() {
-            RubyObject::Object { ref mut _class, .. } |
-            RubyObject::Module { ref mut _class, .. } => {
-                let cell = _class.as_ref().unwrap();
+    fn get_object(&self, id: ObjectId) -> &RubyObject {
+        let objects = self._objects.borrow();
+        let ref_ = &**objects.get(&id).expect("dangling ObjectId");
 
-                match *cell.borrow() {
-                    RubyObject::Metaclass { .. } => cell.clone(),
-                    _ => mkref(RubyObject::Metaclass {
-                        _of: object.clone(),
-                        _class: Some(self.class.clone()),
-                        _superclass: Some(object.borrow().class()),
-                    })
+        // extend lifetime of &RubyObject to that of env
+        // WARNING: potentially unsafe - these references *must not* be
+        // retained across GCs of the object graph:
+        unsafe { ::std::mem::transmute::<&RubyObject, &RubyObject>(ref_) }
+    }
+
+    fn put_object(&self, id: ObjectId, object: RubyObject) -> RubyObjectRef {
+        self._objects.borrow_mut().insert(id, Box::new(object));
+        RubyObjectRef { id: id }
+    }
+
+    pub fn metaclass(&self, object_ref: &RubyObjectRef) -> RubyObjectRef {
+        match *self.get_object(object_ref.id) {
+            RubyObject::Object { id, ref class, .. } |
+            RubyObject::Module { id, ref class, .. } => {
+                match *self.get_object(class.get()) {
+                    RubyObject::Metaclass { id: metaclass_id, .. } =>
+                        RubyObjectRef { id: metaclass_id },
+                    _ => {
+                        let metaclass_id = self.new_object_id();
+
+                        class.set(metaclass_id);
+
+                        self.put_object(metaclass_id, RubyObject::Metaclass {
+                            id: metaclass_id,
+                            of: id,
+                            class: self.Class.to_cell(),
+                            superclass: class.clone(),
+                        })
+                    }
                 }
             },
-            RubyObject::Class { ref mut _class, .. } |
-            RubyObject::Metaclass { ref mut _class, .. } => {
-                let cell = _class.as_ref().unwrap();
-
-                match *cell.borrow() {
-                    RubyObject::Metaclass { .. } => cell.clone(),
+            RubyObject::Class { ref id, ref class, ref superclass, .. } |
+            RubyObject::Metaclass { ref id, ref class, ref superclass, .. } => {
+                match *self.get_object(class.get()) {
+                    RubyObject::Metaclass { id, .. } =>
+                        RubyObjectRef { id: id },
                     _ => {
-                        let class = object.borrow().raw_class();
-                        let superclass = self.metaclass(
-                            // no need to check for None superclass here -
-                            // BasicObject's metaclass was already constructed
-                            // in Env::bootstrap():
-                            object.borrow().superclass().unwrap()
-                        );
-                        mkref(RubyObject::Metaclass {
-                            _of: object.clone(),
-                            _class: Some(class),
-                            _superclass: Some(superclass),
+                        let metaclass_id = self.new_object_id();
+
+                        class.set(metaclass_id);
+
+                        self.put_object(metaclass_id, RubyObject::Metaclass {
+                            id: metaclass_id,
+                            of: *id,
+                            class: class.clone(),
+                            // no need to check for None superclass here - BasicObject's metaclass was already
+                            // constructed in Env::bootstrap:
+                            // TODO - we do need to replace the direct superclass field get with something that
+                            // ignores iclasses:
+                            superclass: self.metaclass(&RubyObjectRef { id: superclass.get() }).to_cell(),
                         })
                     },
                 }
             }
         }
     }
+
+    pub fn name(&self, object: &RubyObjectRef) -> String {
+        match *self.get_object(object.id) {
+            RubyObject::Object { ref class, .. } => {
+                format!("#<{}>", self.name(&RubyObjectRef { id: class.get() }))
+            },
+            RubyObject::Module { ref name, .. } =>
+                name.clone(),
+            RubyObject::Class { ref name, .. } =>
+                name.clone(),
+            RubyObject::Metaclass { of, .. } =>
+                format!("Class::[{}]", self.name(&RubyObjectRef { id: of })),
+        }
+    }
+
+    pub fn superclass(&self, object: &RubyObjectRef) -> Option<RubyObjectRef> {
+        match *self.get_object(object.id) {
+            RubyObject::Object { .. } =>
+                panic!("called superclass with RubyObject::Object!"),
+            RubyObject::Module { ref superclass, .. } |
+            RubyObject::Class { ref superclass, .. } |
+            RubyObject::Metaclass { ref superclass, .. } =>
+                // TODO - need to skip iclasses here:
+                if superclass.get() == NO_OBJECT_ID {
+                    None
+                } else {
+                    Some(RubyObjectRef { id: superclass.get() })
+                }
+        }
+    }
 }
 
-#[derive(Trace,Finalize)]
 pub enum RubyObject {
     Object {
-        _class: Option<Gc<GcCell<RubyObject>>>,
+        id: ObjectId,
+        class: Cell<ObjectId>,
     },
     Module {
-        _class: Option<Gc<GcCell<RubyObject>>>,
-        _name: String,
-        _superclass: Option<Gc<GcCell<RubyObject>>>,
+        id: ObjectId,
+        class: Cell<ObjectId>,
+        name: String,
+        superclass: Cell<ObjectId>,
     },
     Class {
-        _class: Option<Gc<GcCell<RubyObject>>>,
-        _name: String,
-        _superclass: Option<Gc<GcCell<RubyObject>>>,
+        id: ObjectId,
+        class: Cell<ObjectId>,
+        name: String,
+        superclass: Cell<ObjectId>,
     },
     Metaclass {
-        _class: Option<Gc<GcCell<RubyObject>>>,
-        _superclass: Option<Gc<GcCell<RubyObject>>>,
-        _of: Gc<GcCell<RubyObject>>,
-    }
-}
-
-impl RubyObject {
-    pub fn raw_class(&self) -> RubyObjectRef {
-        let cl = match *self {
-            RubyObject::Object    { _class: ref class, .. } => class,
-            RubyObject::Module    { _class: ref class, .. } => class,
-            RubyObject::Class     { _class: ref class, .. } => class,
-            RubyObject::Metaclass { _class: ref class, .. } => class,
-        };
-
-        match cl {
-            &None => panic!("all objects must have classes after initial bootstrap!"),
-            &Some(ref cell) => cell.clone(),
-        }
-    }
-
-    pub fn class(&self) -> RubyObjectRef {
-        self.raw_class()
-    }
-
-    pub fn name(&self) -> String {
-        match *self {
-            RubyObject::Object { .. } => {
-                let name = {
-                    let cl = self.class();
-                    { let b = cl.borrow(); b.name() }
-                };
-                format!("#<{}>", name)
-            },
-            RubyObject::Module { _name: ref name, .. } =>
-                name.clone(),
-            RubyObject::Class { _name: ref name, .. } =>
-                name.clone(),
-            RubyObject::Metaclass { _of: ref of, .. } =>
-                format!("Class::[{}]", of.borrow().name()),
-        }
-    }
-
-    pub fn superclass(&self) -> Option<RubyObjectRef> {
-        let cell = match *self {
-            RubyObject::Object { .. } =>
-                panic!("called superclass on RubyObject::Object!"),
-            RubyObject::Module { _superclass: ref superclass, .. } =>
-                superclass,
-            RubyObject::Class { _superclass: ref superclass, .. } =>
-                superclass,
-            RubyObject::Metaclass { _superclass: ref superclass, .. } =>
-                superclass,
-        };
-
-        cell.clone()
-    }
-
-    pub fn of(&self) -> RubyObjectRef {
-        match *self {
-            RubyObject::Object { .. } =>
-                panic!("called superclass on RubyObject::Object!"),
-            RubyObject::Module { .. } =>
-                panic!("called superclass on RubyObject::Module!"),
-            RubyObject::Class { .. } =>
-                panic!("called superclass on RubyObject::Class!"),
-            RubyObject::Metaclass { _of: ref of, .. } =>
-                of.clone(),
-        }
+        id: ObjectId,
+        class: Cell<ObjectId>,
+        superclass: Cell<ObjectId>,
+        of: ObjectId,
     }
 }
