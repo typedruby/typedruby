@@ -176,9 +176,8 @@ impl ObjectGraph {
 
     pub fn name(&self, object: &RubyObjectRef) -> String {
         match *self.get_object(object.id) {
-            RubyObject::Object { ref class, .. } => {
-                format!("#<{}>", self.name(&RubyObjectRef { id: class.get() }))
-            },
+            RubyObject::Object { ref class, .. } =>
+                format!("#<{}>", self.name(&RubyObjectRef { id: class.get() })),
             RubyObject::Module { ref name, .. } =>
                 name.clone(),
             RubyObject::Class { ref name, .. } =>
