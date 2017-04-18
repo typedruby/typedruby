@@ -1,0 +1,9 @@
+[package]
+name = "typedruby"
+version = "0.0.1"
+authors = ["Hailey Somerville <hailey@hailey.lol>"]
+
+[dependencies]
+gc = "*"
+gc_derive = "*"
+ruby_parser = { git = "ssh://git@github.com/github/ruby_parser.git" }
