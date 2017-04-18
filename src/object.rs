@@ -133,14 +133,16 @@ impl ObjectGraph {
                     _ => {
                         let metaclass_id = self.new_object_id();
 
-                        class.set(metaclass_id);
-
-                        self.put_object(metaclass_id, RubyObject::Metaclass {
+                        let metaclass_ref = self.put_object(metaclass_id, RubyObject::Metaclass {
                             id: metaclass_id,
                             of: id,
                             class: self.Class.to_cell(),
                             superclass: class.clone(),
-                        })
+                        });
+
+                        class.set(metaclass_id);
+
+                        metaclass_ref
                     }
                 }
             },
@@ -152,9 +154,7 @@ impl ObjectGraph {
                     _ => {
                         let metaclass_id = self.new_object_id();
 
-                        class.set(metaclass_id);
-
-                        self.put_object(metaclass_id, RubyObject::Metaclass {
+                        let metaclass_ref = self.put_object(metaclass_id, RubyObject::Metaclass {
                             id: metaclass_id,
                             of: *id,
                             class: class.clone(),
@@ -163,7 +163,11 @@ impl ObjectGraph {
                             // TODO - we do need to replace the direct superclass field get with something that
                             // ignores iclasses:
                             superclass: self.metaclass(&RubyObjectRef { id: superclass.get() }).to_cell(),
-                        })
+                        });
+
+                        class.set(metaclass_id);
+
+                        metaclass_ref
                     },
                 }
             }
