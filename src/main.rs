@@ -3,8 +3,16 @@ mod object;
 use object::ObjectGraph;
 
 fn main() {
-    let mut env = ObjectGraph::new();
+    let mut object = ObjectGraph::new();
 
-    let obj_meta = env.metaclass(&env.Object);
-    println!("{}", env.name(&obj_meta));
+    let mut c = object.metaclass(&object.Class);
+
+    loop {
+        println!("{}", object.name(&c));
+
+        match object.superclass(&c) {
+            Some(s) => c = s,
+            None => break,
+        };
+    }
 }
