@@ -1,5 +1,5 @@
+pub mod ast;
 mod ffi;
-mod ast;
 mod parser;
 
 use std::fs::File;
