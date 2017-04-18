@@ -118,29 +118,29 @@ unsafe extern "C" fn arg(name: *const Token) -> *mut Node {
 }
 
 fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
-    if let Node::Procarg0(_, ref arg) = *arg {
-        check_duplicate_args_inner(names, arg);
-        return;
-    }
-
-    if let Node::Mlhs(_, ref mlhs_items) = *arg {
-        for mlhs_item in mlhs_items {
-            check_duplicate_args_inner(names, mlhs_item);
-        }
-        return;
-    }
-
-    let (range, name) = match arg {
-        &Node::Arg(ref loc, ref name) => (loc, name),
-        &Node::Blockarg(_, None) => return,
-        &Node::Blockarg(_, Some(Id(ref loc, ref name))) => (loc, name),
-        &Node::Kwarg(ref loc, ref name) => (loc, name),
-        &Node::Kwoptarg(_, Id(ref loc, ref name), _) => (loc, name),
-        &Node::Kwrestarg(_, None) => return,
-        &Node::Kwrestarg(_, Some(Id(ref loc, ref name))) => (loc, name),
-        &Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
-        &Node::Restarg(_, None) => return,
-        &Node::Restarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+    let (range, name) = match *arg {
+        // nodes that wrap other arg nodes:
+        Node::Procarg0(_, ref arg) |
+        Node::TypedArg(_, _, ref arg) => {
+            return check_duplicate_args_inner(names, arg);
+        },
+        Node::Mlhs(_, ref mlhs_items) => {
+            for mlhs_item in mlhs_items {
+                check_duplicate_args_inner(names, mlhs_item);
+            }
+            return;
+        },
+        // normal arg nodes:
+        Node::Arg(ref loc, ref name) => (loc, name),
+        Node::Blockarg(_, None) => return,
+        Node::Blockarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+        Node::Kwarg(ref loc, ref name) => (loc, name),
+        Node::Kwoptarg(_, Id(ref loc, ref name), _) => (loc, name),
+        Node::Kwrestarg(_, None) => return,
+        Node::Kwrestarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+        Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
+        Node::Restarg(_, None) => return,
+        Node::Restarg(_, Some(Id(ref loc, ref name))) => (loc, name),
         _ => panic!("not an arg node {:?}", arg),
     };
 
@@ -1019,7 +1019,21 @@ unsafe extern "C" fn procarg0(arg: *mut Node) -> *mut Node {
 }
 
 unsafe extern "C" fn prototype(genargs: *mut Node, args: *mut Node, return_type: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let genargs = from_maybe_raw(genargs);
+    let args = from_raw(args);
+    let return_type = from_maybe_raw(return_type);
+
+    let mut loc = args.loc().clone();
+
+    if let Some(ref genargs_) = genargs {
+        loc = loc.join(genargs_.loc());
+    }
+
+    if let Some(ref return_type_) = return_type {
+        loc = loc.join(return_type_.loc());
+    }
+
+    Node::Prototype(loc, genargs, args, return_type).to_raw()
 }
 
 unsafe extern "C" fn range_exclusive(lhs: *mut Node, oper: *const Token, rhs: *mut Node) -> *mut Node {
@@ -1185,64 +1199,106 @@ unsafe extern "C" fn ternary(cond: *mut Node, question: *const Token, if_true: *
     Node::If(cond.loc().join(if_false.loc()), Box::new(check_condition(*cond)), Some(if_true), Some(if_false)).to_raw()
 }
 
+unsafe extern "C" fn tr_any(special: *const Token) -> *mut Node {
+    Node::TyAny(Token::loc(special)).to_raw()
+}
+
 unsafe extern "C" fn tr_array(begin: *const Token, type_: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let type_ = from_raw(type_);
+
+    Node::TyArray(join_tokens(begin, end), type_).to_raw()
 }
 
 unsafe extern "C" fn tr_cast(begin: *const Token, expr: *mut Node, colon: *const Token, type_: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let expr = from_raw(expr);
+    let type_ = from_raw(type_);
+
+    Node::TyCast(join_tokens(begin, end), expr, type_).to_raw()
+}
+
+unsafe extern "C" fn tr_class(special: *const Token) -> *mut Node {
+    Node::TyClass(Token::loc(special)).to_raw()
 }
 
 unsafe extern "C" fn tr_cpath(cpath: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let cpath = from_raw(cpath);
+
+    Node::TyCpath(cpath.loc().clone(), cpath).to_raw()
 }
 
 unsafe extern "C" fn tr_genargs(begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let genargs = ffi::node_list_from_raw(genargs);
+
+    Node::TyGenargs(join_tokens(begin, end), genargs).to_raw()
 }
 
 unsafe extern "C" fn tr_gendecl(cpath: *mut Node, begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let cpath = from_raw(cpath);
+    let genargs = ffi::node_list_from_raw(genargs);
+
+    Node::TyGendecl(cpath.loc().join(&Token::loc(end)), cpath, genargs).to_raw()
 }
 
 unsafe extern "C" fn tr_gendeclarg(tok: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::TyGendeclarg(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn tr_geninst(cpath: *mut Node, begin: *const Token, genargs: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn tr_geninst(cpath: *mut Node, begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Node {
+    let cpath = from_raw(cpath);
+    let genargs = ffi::node_list_from_raw(genargs);
+
+    Node::TyGendecl(cpath.loc().join(&Token::loc(end)), cpath, genargs).to_raw()
 }
 
 unsafe extern "C" fn tr_hash(begin: *const Token, key_type: *mut Node, assoc: *const Token, value_type: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let key_type = from_raw(key_type);
+    let value_type = from_raw(value_type);
+
+    Node::TyHash(join_tokens(begin, end), key_type, value_type).to_raw()
+}
+
+unsafe extern "C" fn tr_instance(special: *const Token) -> *mut Node {
+    Node::TyInstance(Token::loc(special)).to_raw()
 }
 
 unsafe extern "C" fn tr_ivardecl(name: *const Token, type_: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let name = token_id(name);
+    let type_ = from_raw(type_);
+
+    Node::TyIvardecl(name.0.join(type_.loc()), name, type_).to_raw()
 }
 
 unsafe extern "C" fn tr_nil(nil: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    Node::TyNil(Token::loc(nil)).to_raw()
 }
 
 unsafe extern "C" fn tr_nillable(tilde: *const Token, type_: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let type_ = from_raw(type_);
+
+    Node::TyNillable(Token::loc(tilde).join(type_.loc()), type_).to_raw()
 }
 
 unsafe extern "C" fn tr_or(a: *mut Node, b: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let a = from_raw(a);
+    let b = from_raw(b);
+
+    Node::TyOr(a.loc().join(b.loc()), a, b).to_raw()
 }
 
 unsafe extern "C" fn tr_proc(begin: *const Token, args: *mut Node, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let args = from_raw(args);
+
+    Node::TyProc(join_tokens(begin, end), args).to_raw()
 }
 
-unsafe extern "C" fn tr_special(special: *const Token) -> *mut Node {
-    panic!("unimplemented");
+unsafe extern "C" fn tr_self(special: *const Token) -> *mut Node {
+    Node::TySelf(Token::loc(special)).to_raw()
 }
 
 unsafe extern "C" fn tr_tuple(begin: *const Token, types: *mut NodeList, end: *const Token) -> *mut Node {
-    panic!("unimplemented");
+    let types = ffi::node_list_from_raw(types);
+
+    Node::TyTuple(join_tokens(begin, end), types).to_raw()
 }
 
 unsafe extern "C" fn true_(tok: *const Token) -> *mut Node {
@@ -1250,7 +1306,10 @@ unsafe extern "C" fn true_(tok: *const Token) -> *mut Node {
 }
 
 unsafe extern "C" fn typed_arg(type_: *mut Node, arg: *mut Node) -> *mut Node {
-    panic!("unimplemented");
+    let type_ = from_raw(type_);
+    let arg = from_raw(arg);
+
+    Node::TypedArg(type_.loc().join(arg.loc()), type_, arg).to_raw()
 }
 
 unsafe extern "C" fn unary_op(oper: *const Token, receiver: *mut Node) -> *mut Node {
@@ -1420,20 +1479,23 @@ static BUILDER: Builder = Builder {
     symbol_internal: symbol_internal,
     symbols_compose: symbols_compose,
     ternary: ternary,
+    tr_any: tr_any,
     tr_array: tr_array,
     tr_cast: tr_cast,
+    tr_class: tr_class,
     tr_cpath: tr_cpath,
     tr_genargs: tr_genargs,
     tr_gendecl: tr_gendecl,
     tr_gendeclarg: tr_gendeclarg,
     tr_geninst: tr_geninst,
     tr_hash: tr_hash,
+    tr_instance: tr_instance,
     tr_ivardecl: tr_ivardecl,
     tr_nil: tr_nil,
     tr_nillable: tr_nillable,
     tr_or: tr_or,
     tr_proc: tr_proc,
-    tr_special: tr_special,
+    tr_self: tr_self,
     tr_tuple: tr_tuple,
     true_: true_,
     typed_arg: typed_arg,
