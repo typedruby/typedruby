@@ -1,9 +1,9 @@
-mod environment;
+mod object;
 
-use environment::Env;
+use object::ObjectGraph;
 
 fn main() {
-    let mut env = Env::new();
+    let mut env = ObjectGraph::new();
 
     let obj_meta = env.metaclass(&env.Object);
     println!("{}", env.name(&obj_meta));
