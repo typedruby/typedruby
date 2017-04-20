@@ -42,12 +42,12 @@ impl Iterator for ScopeIter {
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 
-struct Eval<'ev> {
-    pub env: &'ev Environment,
+struct Eval<'ev, 'evinterior: 'ev> {
+    pub env: &'ev Environment<'evinterior>,
     pub scope: &'ev Rc<Scope>,
 }
 
-impl<'ev> Eval<'ev> {
+impl<'ev, 'evinterior> Eval<'ev, 'evinterior> {
     fn resolve_cpath<'a>(&self, node: &'a Node) -> EvalResult<'a, RubyObjectRef> {
         match *node {
             Node::Cbase(_) =>
@@ -99,7 +99,7 @@ impl<'ev> Eval<'ev> {
                 None => Ok((self.scope.module.clone(), id.as_str())),
             }
         } else {
-            panic!("expected class name to be a const node");
+            Err((name, "Class name is not a static constant"))
         }
     }
 

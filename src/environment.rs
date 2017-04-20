@@ -1,17 +1,21 @@
-use object::ObjectGraph;
-use ast::SourceFile;
-use top_level;
 use std::io;
 
-pub struct Environment {
+use ast::SourceFile;
+use errors::ErrorSink;
+use object::ObjectGraph;
+use top_level;
+
+pub struct Environment<'a> {
+    pub error_sink: &'a mut ErrorSink,
     pub object: ObjectGraph,
 }
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/stdlib.rb");
 
-impl Environment {
-    pub fn new() -> Environment {
+impl<'a> Environment<'a> {
+    pub fn new(error_sink: &'a mut ErrorSink) -> Environment {
         let env = Environment {
+            error_sink: error_sink,
             object: ObjectGraph::new(),
         };
 
