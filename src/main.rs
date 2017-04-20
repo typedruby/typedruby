@@ -14,7 +14,10 @@ fn main() {
     let mut errors = ErrorReporter::new(io::stderr());
     let env = Environment::new(&mut errors);
 
-    for arg in env::args() {
-        env.load_file(arg);
+    for arg in env::args().skip(1) {
+        match env.load_file(arg) {
+            Ok(()) => (),
+            Err(e) => println!("{:?}", e),
+        }
     }
 }
