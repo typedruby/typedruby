@@ -9,13 +9,14 @@ use ffi;
 use ffi::{Builder, NodeList, Token, Parser};
 use self::libc::size_t;
 use std::collections::HashSet;
+use std::rc::Rc;
 
 trait ToRaw {
-    fn to_raw(self) -> *mut Node;
+    fn to_raw(self) -> *mut Rc<Node>;
 }
 
-impl ToRaw for Option<Box<Node>> {
-    fn to_raw(self) -> *mut Node {
+impl ToRaw for Option<Rc<Node>> {
+    fn to_raw(self) -> *mut Rc<Node> {
         match self {
             None => ptr::null_mut(),
             Some(x) => x.to_raw(),
@@ -23,14 +24,14 @@ impl ToRaw for Option<Box<Node>> {
     }
 }
 
-impl ToRaw for Box<Node> {
-    fn to_raw(self) -> *mut Node {
-        Box::into_raw(self)
+impl ToRaw for Rc<Node> {
+    fn to_raw(self) -> *mut Rc<Node> {
+        Box::into_raw(Box::new(self))
     }
 }
 
 impl ToRaw for Option<Node> {
-    fn to_raw(self) -> *mut Node {
+    fn to_raw(self) -> *mut Rc<Node> {
         match self {
             None => ptr::null_mut(),
             Some(x) => Box::new(x).to_raw(),
@@ -39,20 +40,20 @@ impl ToRaw for Option<Node> {
 }
 
 impl ToRaw for Node {
-    fn to_raw(self) -> *mut Node {
-        Box::into_raw(Box::new(self))
+    fn to_raw(self) -> *mut Rc<Node> {
+        Box::into_raw(Box::new(Rc::new(self)))
     }
 }
 
-unsafe fn from_maybe_raw(p: *mut Node) -> Option<Box<Node>> {
+unsafe fn from_maybe_raw(p: *mut Rc<Node>) -> Option<Rc<Node>> {
     if p == ptr::null_mut() {
         None
     } else {
-        Some(Box::from_raw(p))
+        Some(*Box::from_raw(p))
     }
 }
 
-fn join_exprs(exprs: &[Box<Node>]) -> Loc {
+fn join_exprs(exprs: &[Rc<Node>]) -> Loc {
     assert!(!exprs.is_empty());
 
     let a = exprs.first().unwrap();
@@ -85,35 +86,37 @@ unsafe fn token_id(tok: *const Token) -> Id {
     Id(Token::loc(tok), Token::string(tok))
 }
 
-unsafe fn from_raw(p: *mut Node) -> Box<Node> {
+unsafe fn from_raw(p: *mut Rc<Node>) -> Rc<Node> {
     if p == ptr::null_mut() {
         panic!("received null node pointer in from_raw!");
     }
 
-    Box::from_raw(p)
+    *Box::from_raw(p)
 }
 
-unsafe extern "C" fn accessible(parser: *mut Parser, node: *mut Node) -> *mut Node {
-    match *from_raw(node) {
-        Node::Ident(loc, name) => {
-            if Parser::is_declared(parser, &name) {
-                Node::Lvar(loc, name)
+unsafe extern "C" fn accessible(parser: *mut Parser, node: *mut Rc<Node>) -> *mut Rc<Node> {
+    let node = from_raw(node);
+
+    match *node {
+        Node::Ident(ref loc, ref name) => {
+            if Parser::is_declared(parser, name) {
+                Node::Lvar(loc.clone(), name.clone())
             } else {
-                Node::Send(loc.clone(), None, Id(loc, name), vec![])
+                Node::Send(loc.clone(), None, Id(loc.clone(), name.clone()), vec![])
             }
-        },
-        boxed_node => boxed_node,
-    }.to_raw()
+        }.to_raw(),
+        _ => node.clone().to_raw(),
+    }
 }
 
-unsafe extern "C" fn alias(alias: *const Token, to: *mut Node, from: *mut Node) -> *mut Node {
+unsafe extern "C" fn alias(alias: *const Token, to: *mut Rc<Node>, from: *mut Rc<Node>) -> *mut Rc<Node> {
     let to = from_raw(to);
     let from = from_raw(from);
 
     Node::Alias(Token::loc(alias).join(from.loc()), to, from).to_raw()
 }
 
-unsafe extern "C" fn arg(name: *const Token) -> *mut Node {
+unsafe extern "C" fn arg(name: *const Token) -> *mut Rc<Node> {
     Node::Arg(Token::loc(name), Token::string(name)).to_raw()
 }
 
@@ -155,13 +158,13 @@ fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
     names.insert(name);
 }
 
-fn check_duplicate_args<'a>(args: &[Box<Node>]) {
+fn check_duplicate_args<'a>(args: &[Rc<Node>]) {
     for arg in args {
         check_duplicate_args_inner(&mut HashSet::new(), arg);
     }
 }
 
-unsafe fn collection_map(begin: *const Token, elements: &[Box<Node>], end: *const Token) -> Option<Loc> {
+unsafe fn collection_map(begin: *const Token, elements: &[Rc<Node>], end: *const Token) -> Option<Loc> {
     if begin != ptr::null() {
         assert!(end != ptr::null());
 
@@ -179,7 +182,7 @@ unsafe fn collection_map(begin: *const Token, elements: &[Box<Node>], end: *cons
     }
 }
 
-unsafe extern "C" fn args(begin: *const Token, args: *mut NodeList, end: *const Token, check_args: bool) -> *mut Node {
+unsafe extern "C" fn args(begin: *const Token, args: *mut NodeList, end: *const Token, check_args: bool) -> *mut Rc<Node> {
     let args = ffi::node_list_from_raw(args);
 
     if check_args {
@@ -194,13 +197,13 @@ unsafe extern "C" fn args(begin: *const Token, args: *mut NodeList, end: *const 
     Node::Args(loc, args).to_raw()
 }
 
-unsafe extern "C" fn array(begin: *const Token, elements: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn array(begin: *const Token, elements: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let elements = ffi::node_list_from_raw(elements);
     Node::Array(collection_map(begin, elements.as_slice(), end).unwrap(), elements).to_raw()
 }
 
-unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -> *mut Node {
-    let lhs = *from_raw(lhs);
+unsafe extern "C" fn assign(lhs: *mut Rc<Node>, eql: *const Token, rhs: *mut Rc<Node>) -> *mut Rc<Node> {
+    let lhs = Rc::try_unwrap(from_raw(lhs)).expect("unique ownership of AST nodes during parse");
     let rhs = from_raw(rhs);
 
     let asgn_loc = lhs.loc().join(rhs.loc());
@@ -230,8 +233,9 @@ unsafe extern "C" fn assign(lhs: *mut Node, eql: *const Token, rhs: *mut Node) -
     }.to_raw()
 }
 
-unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Node) -> *mut Node {
-    match *from_raw(node) {
+unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Rc<Node>) -> *mut Rc<Node> {
+    let node = Rc::try_unwrap(from_raw(node)).expect("unique ownership of AST nodes during parse");
+    match node {
         Node::Ident(loc, name) => {
             Parser::declare(parser, &name);
             Node::Lvassignable(loc, name)
@@ -245,12 +249,12 @@ unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Node) -> *mut No
     }.to_raw()
 }
 
-unsafe extern "C" fn associate(begin: *const Token, pairs: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn associate(begin: *const Token, pairs: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let pairs = ffi::node_list_from_raw(pairs);
     Node::Hash(collection_map(begin, &pairs, end).unwrap(), pairs).to_raw()
 }
 
-unsafe extern "C" fn attr_asgn(receiver: *mut Node, dot: *const Token, selector: *const Token) -> *mut Node {
+unsafe extern "C" fn attr_asgn(receiver: *mut Rc<Node>, dot: *const Token, selector: *const Token) -> *mut Rc<Node> {
     let recv = from_raw(receiver);
 
     let selector = Id(Token::loc(selector), Token::string(selector) + "=");
@@ -264,11 +268,11 @@ unsafe extern "C" fn attr_asgn(receiver: *mut Node, dot: *const Token, selector:
     }.to_raw()
 }
 
-unsafe extern "C" fn back_ref(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn back_ref(tok: *const Token) -> *mut Rc<Node> {
     Node::Backref(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn begin(begin: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn begin(begin: *const Token, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let body = from_maybe_raw(body);
 
     let loc = if begin == ptr::null_mut() {
@@ -292,7 +296,7 @@ unsafe extern "C" fn begin(begin: *const Token, body: *mut Node, end: *const Tok
     }).to_raw()
 }
 
-unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, else_tok: *const Token, else_: *mut Node, ensure_tok: *const Token, ensure: *mut Node) -> *mut Node {
+unsafe extern "C" fn begin_body(body: *mut Rc<Node>, rescue_bodies: *mut NodeList, else_tok: *const Token, else_: *mut Rc<Node>, ensure_tok: *const Token, ensure: *mut Rc<Node>) -> *mut Rc<Node> {
     let mut compound_stmt = from_maybe_raw(body);
     let rescue_bodies = ffi::node_list_from_raw(rescue_bodies);
     let else_ = from_maybe_raw(else_);
@@ -308,7 +312,7 @@ unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, e
                         None => loc.clone(),
                     }
                 };
-                compound_stmt = Some(Box::new(Node::Rescue(loc, compound_stmt, rescue_bodies, Some(else_body))));
+                compound_stmt = Some(Rc::new(Node::Rescue(loc, compound_stmt, rescue_bodies, Some(else_body))));
             },
             None => {
                 let loc = {
@@ -318,24 +322,24 @@ unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, e
                         None => loc.clone(),
                     }
                 };
-                compound_stmt = Some(Box::new(Node::Rescue(loc, compound_stmt, rescue_bodies, None)));
+                compound_stmt = Some(Rc::new(Node::Rescue(loc, compound_stmt, rescue_bodies, None)));
             }
         }
     } else if let Some(else_body) = else_ {
         let mut stmts = match compound_stmt {
-            Some(node) => match *node {
-                Node::Begin(_, begin_stmts) => begin_stmts,
-                _ => vec![node],
+            Some(ref node) => match **node {
+                Node::Begin(_, ref begin_stmts) => begin_stmts.clone(),
+                _ => vec![node.clone()],
             },
             _ => vec![],
         };
 
-        stmts.push(Box::new(
+        stmts.push(Rc::new(
             Node::Begin(
                 Token::loc(else_tok).join(else_body.loc()),
                 vec![else_body])));
 
-        compound_stmt = Some(Box::new(Node::Begin(join_exprs(stmts.as_slice()), stmts)));
+        compound_stmt = Some(Rc::new(Node::Begin(join_exprs(stmts.as_slice()), stmts)));
     }
 
     if let Some(ensure_box) = ensure {
@@ -348,25 +352,25 @@ unsafe extern "C" fn begin_body(body: *mut Node, rescue_bodies: *mut NodeList, e
             }
         };
 
-        compound_stmt = Some(Box::new(Node::Ensure(loc, compound_stmt, ensure_box)));
+        compound_stmt = Some(Rc::new(Node::Ensure(loc, compound_stmt, ensure_box)));
     }
 
     compound_stmt.to_raw()
 }
 
-unsafe extern "C" fn begin_keyword(begin: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn begin_keyword(begin: *const Token, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let body = from_maybe_raw(body);
     Node::Kwbegin(join_tokens(begin, end), body).to_raw()
 }
 
-unsafe extern "C" fn binary_op(recv: *mut Node, oper: *const Token, arg: *mut Node) -> *mut Node {
+unsafe extern "C" fn binary_op(recv: *mut Rc<Node>, oper: *const Token, arg: *mut Rc<Node>) -> *mut Rc<Node> {
     let recv = from_raw(recv);
     let arg = from_raw(arg);
 
     Node::Send(recv.loc().join(arg.loc()), Some(recv), token_id(oper), vec![arg]).to_raw()
 }
 
-unsafe extern "C" fn block(method_call: *mut Node, begin: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn block(method_call: *mut Rc<Node>, begin: *const Token, args: *mut Rc<Node>, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let method_call = from_raw(method_call);
     let args = from_raw(args);
     let body = from_maybe_raw(body);
@@ -399,12 +403,12 @@ unsafe extern "C" fn block(method_call: *mut Node, begin: *const Token, args: *m
     }.to_raw()
 }
 
-unsafe extern "C" fn block_pass(amper: *const Token, arg: *mut Node) -> *mut Node {
+unsafe extern "C" fn block_pass(amper: *const Token, arg: *mut Rc<Node>) -> *mut Rc<Node> {
     let arg = from_raw(arg);
     Node::BlockPass(Token::loc(amper).join(arg.loc()), arg).to_raw()
 }
 
-unsafe extern "C" fn blockarg(amper: *const Token, name: *const Token) -> *mut Node {
+unsafe extern "C" fn blockarg(amper: *const Token, name: *const Token) -> *mut Rc<Node> {
     if name != ptr::null() {
         let id = token_id(name);
         Node::Blockarg(Token::loc(amper).join(&id.0), Some(id))
@@ -413,11 +417,11 @@ unsafe extern "C" fn blockarg(amper: *const Token, name: *const Token) -> *mut N
     }.to_raw()
 }
 
-unsafe extern "C" fn call_lambda(lambda: *const Token) -> *mut Node {
+unsafe extern "C" fn call_lambda(lambda: *const Token) -> *mut Rc<Node> {
     Node::Lambda(Token::loc(lambda)).to_raw()
 }
 
-unsafe extern "C" fn call_method(receiver: *mut Node, dot: *const Token, selector: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+unsafe extern "C" fn call_method(receiver: *mut Rc<Node>, dot: *const Token, selector: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Rc<Node> {
     let recv = from_maybe_raw(receiver);
     let args = ffi::node_list_from_raw(args);
 
@@ -459,7 +463,7 @@ unsafe extern "C" fn call_method(receiver: *mut Node, dot: *const Token, selecto
     }.to_raw()
 }
 
-unsafe extern "C" fn case_(case_: *const Token, expr: *mut Node, when_bodies: *mut NodeList, else_tok: *const Token, else_body: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn case_(case_: *const Token, expr: *mut Rc<Node>, when_bodies: *mut NodeList, else_tok: *const Token, else_body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let expr = from_maybe_raw(expr);
     let whens = ffi::node_list_from_raw(when_bodies);
     let else_ = from_maybe_raw(else_body);
@@ -467,43 +471,54 @@ unsafe extern "C" fn case_(case_: *const Token, expr: *mut Node, when_bodies: *m
     Node::Case(join_tokens(case_, end), expr, whens, else_).to_raw()
 }
 
-unsafe extern "C" fn character(char_: *const Token) -> *mut Node {
+unsafe extern "C" fn character(char_: *const Token) -> *mut Rc<Node> {
     Node::String(Token::loc(char_), Token::string(char_)).to_raw()
 }
 
-unsafe extern "C" fn complex(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn complex(tok: *const Token) -> *mut Rc<Node> {
     panic!("unimplemented");
 }
 
-unsafe extern "C" fn compstmt(nodes: *mut NodeList) -> *mut Node {
+unsafe extern "C" fn compstmt(nodes: *mut NodeList) -> *mut Rc<Node> {
     let mut nodes = ffi::node_list_from_raw(nodes);
 
     match nodes.len() {
         0 => None,
         1 => Some(nodes.remove(0)),
-        _ => Some(Box::new(Node::Begin(join_exprs(nodes.as_slice()), nodes))),
+        _ => Some(Rc::new(Node::Begin(join_exprs(nodes.as_slice()), nodes))),
     }.to_raw()
 }
 
-fn check_condition(cond: Node) -> Node {
-    match cond {
-        Node::Begin(loc, mut stmts) => {
+fn check_condition(cond: Rc<Node>) -> Rc<Node> {
+    match *cond {
+        Node::Begin(ref loc, ref stmts) => {
             if stmts.len() == 1 {
-                check_condition(*stmts.remove(0))
+                check_condition(stmts[0].clone())
             } else {
-                Node::Begin(loc, stmts)
+                cond.clone()
             }
         },
-        Node::And(loc, a, b) => Node::And(loc, Box::new(check_condition(*a)), Box::new(check_condition(*b))),
-        Node::Or(loc, a, b) => Node::Or(loc, Box::new(check_condition(*a)), Box::new(check_condition(*b))),
-        Node::IRange(loc, a, b) => Node::IFlipflop(loc, Box::new(check_condition(*a)), Box::new(check_condition(*b))),
-        Node::ERange(loc, a, b) => Node::EFlipflop(loc, Box::new(check_condition(*a)), Box::new(check_condition(*b))),
-        Node::Regexp(loc, parts, options) => Node::MatchCurLine(loc.clone(), Box::new(Node::Regexp(loc, parts, options))),
-        other => other,
+
+        Node::And(ref loc, ref a, ref b) =>
+            Rc::new(Node::And(loc.clone(), check_condition(a.clone()), check_condition(b.clone()))),
+
+        Node::Or(ref loc, ref a, ref b) =>
+            Rc::new(Node::Or(loc.clone(), check_condition(a.clone()), check_condition(b.clone()))),
+
+        Node::IRange(ref loc, ref a, ref b) =>
+            Rc::new(Node::IFlipflop(loc.clone(), check_condition(a.clone()), check_condition(b.clone()))),
+
+        Node::ERange(ref loc, ref a, ref b) =>
+            Rc::new(Node::EFlipflop(loc.clone(), check_condition(a.clone()), check_condition(b.clone()))),
+
+        Node::Regexp(ref loc, ref parts, ref options) =>
+            Rc::new(Node::MatchCurLine(loc.clone(), cond.clone())),
+
+        _ => cond.clone(),
     }
 }
 
-unsafe extern "C" fn condition(cond_tok: *const Token, cond: *mut Node, then: *const Token, if_true: *mut Node, else_: *const Token, if_false: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn condition(cond_tok: *const Token, cond: *mut Rc<Node>, then: *const Token, if_true: *mut Rc<Node>, else_: *const Token, if_false: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let cond = from_raw(cond);
     let if_true = from_maybe_raw(if_true);
     let if_false = from_maybe_raw(if_false);
@@ -530,24 +545,24 @@ unsafe extern "C" fn condition(cond_tok: *const Token, cond: *mut Node, then: *c
         loc = loc.join(&Token::loc(end));
     }
 
-    Node::If(loc, Box::new(check_condition(*cond)), if_true, if_false).to_raw()
+    Node::If(loc, check_condition(cond), if_true, if_false).to_raw()
 }
 
-unsafe extern "C" fn condition_mod(if_true: *mut Node, if_false: *mut Node, cond: *mut Node) -> *mut Node {
+unsafe extern "C" fn condition_mod(if_true: *mut Rc<Node>, if_false: *mut Rc<Node>, cond: *mut Rc<Node>) -> *mut Rc<Node> {
     let cond = from_raw(cond);
     let if_true = from_maybe_raw(if_true);
     let if_false = from_maybe_raw(if_false);
 
     let loc = cond.loc().join(if_true.as_ref().unwrap_or_else(|| if_false.as_ref().unwrap()).loc());
 
-    Node::If(loc, Box::new(check_condition(*cond)), if_true, if_false).to_raw()
+    Node::If(loc, check_condition(cond), if_true, if_false).to_raw()
 }
 
-unsafe extern "C" fn const_(name: *const Token) -> *mut Node {
+unsafe extern "C" fn const_(name: *const Token) -> *mut Rc<Node> {
     Node::Const(Token::loc(name), None, token_id(name)).to_raw()
 }
 
-unsafe extern "C" fn const_fetch(scope: *mut Node, colon: *const Token, name: *const Token) -> *mut Node {
+unsafe extern "C" fn const_fetch(scope: *mut Rc<Node>, colon: *const Token, name: *const Token) -> *mut Rc<Node> {
     let scope = from_raw(scope);
 
     let loc = scope.loc().join(&Token::loc(name));
@@ -555,17 +570,17 @@ unsafe extern "C" fn const_fetch(scope: *mut Node, colon: *const Token, name: *c
     Node::Const(loc, Some(scope), token_id(name)).to_raw()
 }
 
-unsafe extern "C" fn const_global(colon: *const Token, name: *const Token) -> *mut Node {
+unsafe extern "C" fn const_global(colon: *const Token, name: *const Token) -> *mut Rc<Node> {
     let loc = join_tokens(colon, name);
 
-    Node::Const(loc, Some(Box::new(Node::Cbase(Token::loc(colon)))), token_id(name)).to_raw()
+    Node::Const(loc, Some(Rc::new(Node::Cbase(Token::loc(colon)))), token_id(name)).to_raw()
 }
 
-unsafe extern "C" fn const_op_assignable(node: *mut Node) -> *mut Node {
+unsafe extern "C" fn const_op_assignable(node: *mut Rc<Node>) -> *mut Rc<Node> {
     panic!("unimplemented");
 }
 
-unsafe extern "C" fn cvar(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn cvar(tok: *const Token) -> *mut Rc<Node> {
     Node::Cvar(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
@@ -584,13 +599,13 @@ impl Dedenter {
         }
     }
 
-    fn dedent(&mut self, string: String) -> String {
+    fn dedent(&mut self, string: &str) -> String {
         let mut space_begin = 0;
         let mut space_end = 0;
         let mut offset = 0;
 
-        let bytes = string.into_bytes();
-        let mut result_bytes = bytes.clone();
+        let bytes = string.as_bytes();
+        let mut result_bytes = bytes.to_vec();
 
         let mut index = 0;
         while index < bytes.len() {
@@ -636,26 +651,24 @@ impl Dedenter {
     }
 }
 
-fn dedent_parts(parts: Vec<Box<Node>>, mut dedenter: Dedenter) -> Vec<Box<Node>> {
-    parts.into_iter().map(|part| {
-        let node = *part;
-        let node = match node {
-            Node::String(loc, val) => Node::String(loc, dedenter.dedent(val)),
-            other => { dedenter.interrupt(); other },
-        };
-        Box::new(node)
+fn dedent_parts(parts: &[Rc<Node>], mut dedenter: Dedenter) -> Vec<Rc<Node>> {
+    parts.iter().map(|part| {
+        match **part {
+            Node::String(ref loc, ref val) => Rc::new(Node::String(loc.clone(), dedenter.dedent(val))),
+            _ => { dedenter.interrupt(); part.clone() },
+        }
     }).collect()
 }
 
-unsafe extern "C" fn dedent_string(node: *mut Node, dedent_level: size_t) -> *mut Node {
-    let node = *from_raw(node);
+unsafe extern "C" fn dedent_string(node: *mut Rc<Node>, dedent_level: size_t) -> *mut Rc<Node> {
+    let node = from_raw(node);
 
     if dedent_level != 0 {
         let mut dedenter = Dedenter::new(dedent_level);
-        match node {
-            Node::String(loc, val) => Node::String(loc, dedenter.dedent(val)),
-            Node::DString(loc, parts) => Node::DString(loc, dedent_parts(parts, dedenter)),
-            Node::XString(loc, parts) => Node::XString(loc, dedent_parts(parts, dedenter)),
+        match *node {
+            Node::String(ref loc, ref val) => Rc::new(Node::String(loc.clone(), dedenter.dedent(val))),
+            Node::DString(ref loc, ref parts) => Rc::new(Node::DString(loc.clone(), dedent_parts(parts, dedenter))),
+            Node::XString(ref loc, ref parts) => Rc::new(Node::XString(loc.clone(), dedent_parts(parts, dedenter))),
             _ => panic!("unexpected node type"),
         }
     } else {
@@ -663,51 +676,51 @@ unsafe extern "C" fn dedent_string(node: *mut Node, dedent_level: size_t) -> *mu
     }.to_raw()
 }
 
-unsafe extern "C" fn def_class(class_: *const Token, name: *mut Node, lt_: *const Token, superclass: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
+unsafe extern "C" fn def_class(class_: *const Token, name: *mut Rc<Node>, lt_: *const Token, superclass: *mut Rc<Node>, body: *mut Rc<Node>, end_: *const Token) -> *mut Rc<Node> {
     Node::Class(join_tokens(class_, end_), from_raw(name), from_maybe_raw(superclass), from_maybe_raw(body)).to_raw()
 }
 
-unsafe extern "C" fn def_method(def: *const Token, name: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn def_method(def: *const Token, name: *const Token, args: *mut Rc<Node>, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let loc = join_tokens(def, end);
 
     Node::Def(loc, token_id(name), from_maybe_raw(args), from_maybe_raw(body)).to_raw()
 }
 
-unsafe extern "C" fn def_module(module: *const Token, name: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
+unsafe extern "C" fn def_module(module: *const Token, name: *mut Rc<Node>, body: *mut Rc<Node>, end_: *const Token) -> *mut Rc<Node> {
     Node::Module(join_tokens(module, end_), from_raw(name), from_maybe_raw(body)).to_raw()
 }
 
-unsafe extern "C" fn def_sclass(class_: *const Token, lshft_: *const Token, expr: *mut Node, body: *mut Node, end_: *const Token) -> *mut Node {
+unsafe extern "C" fn def_sclass(class_: *const Token, lshft_: *const Token, expr: *mut Rc<Node>, body: *mut Rc<Node>, end_: *const Token) -> *mut Rc<Node> {
     Node::SClass(join_tokens(class_, end_), from_raw(expr), from_maybe_raw(body)).to_raw()
 }
 
-unsafe extern "C" fn def_singleton(def: *const Token, definee: *mut Node, dot: *const Token, name: *const Token, args: *mut Node, body: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn def_singleton(def: *const Token, definee: *mut Rc<Node>, dot: *const Token, name: *const Token, args: *mut Rc<Node>, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let loc = join_tokens(def, end);
 
     Node::Defs(loc, from_raw(definee), token_id(name), from_maybe_raw(args), from_maybe_raw(body)).to_raw()
 }
 
-unsafe extern "C" fn encoding_literal(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn encoding_literal(tok: *const Token) -> *mut Rc<Node> {
     Node::EncodingLiteral(Token::loc(tok)).to_raw()
 }
 
-unsafe extern "C" fn false_(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn false_(tok: *const Token) -> *mut Rc<Node> {
     Node::False(Token::loc(tok)).to_raw()
 }
 
-unsafe extern "C" fn file_literal(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn file_literal(tok: *const Token) -> *mut Rc<Node> {
     Node::FileLiteral(Token::loc(tok)).to_raw()
 }
 
-unsafe extern "C" fn float_(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn float_(tok: *const Token) -> *mut Rc<Node> {
     Node::Float(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn float_complex(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn float_complex(tok: *const Token) -> *mut Rc<Node> {
     panic!("unimplemented");
 }
 
-unsafe extern "C" fn for_(for_: *const Token, iterator: *mut Node, in_: *const Token, iteratee: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn for_(for_: *const Token, iterator: *mut Rc<Node>, in_: *const Token, iteratee: *mut Rc<Node>, do_: *const Token, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let iterator = from_raw(iterator);
     let iteratee = from_raw(iteratee);
     let body = from_maybe_raw(body);
@@ -715,22 +728,22 @@ unsafe extern "C" fn for_(for_: *const Token, iterator: *mut Node, in_: *const T
     Node::For(Token::loc(for_).join(&Token::loc(end)), iterator, iteratee, body).to_raw()
 }
 
-unsafe extern "C" fn gvar(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn gvar(tok: *const Token) -> *mut Rc<Node> {
     Node::Gvar(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn ident(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn ident(tok: *const Token) -> *mut Rc<Node> {
     Node::Ident(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn index(receiver: *mut Node, lbrack: *const Token, indexes: *mut NodeList, rbrack: *const Token) -> *mut Node {
+unsafe extern "C" fn index(receiver: *mut Rc<Node>, lbrack: *const Token, indexes: *mut NodeList, rbrack: *const Token) -> *mut Rc<Node> {
     let recv = from_raw(receiver);
     let indexes = ffi::node_list_from_raw(indexes);
 
     Node::Send(recv.loc().join(&Token::loc(rbrack)), Some(recv), Id(join_tokens(lbrack, rbrack), "[]".to_owned()), indexes).to_raw()
 }
 
-unsafe extern "C" fn index_asgn(receiver: *mut Node, lbrack: *const Token, indexes: *mut NodeList, rbrack: *const Token) -> *mut Node {
+unsafe extern "C" fn index_asgn(receiver: *mut Rc<Node>, lbrack: *const Token, indexes: *mut NodeList, rbrack: *const Token) -> *mut Rc<Node> {
     // Incomplete method call
     let recv = from_raw(receiver);
     let id = Id(join_tokens(lbrack, rbrack), "[]=".to_owned());
@@ -738,15 +751,15 @@ unsafe extern "C" fn index_asgn(receiver: *mut Node, lbrack: *const Token, index
     Node::Send(recv.loc().clone(), Some(recv), id, indexes).to_raw()
 }
 
-unsafe extern "C" fn integer(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn integer(tok: *const Token) -> *mut Rc<Node> {
     Node::Integer(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn ivar(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn ivar(tok: *const Token) -> *mut Rc<Node> {
     Node::Ivar(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn keyword_break(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+unsafe extern "C" fn keyword_break(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Rc<Node> {
     let args = ffi::node_list_from_raw(args);
 
     let mut loc = Token::loc(keyword);
@@ -758,12 +771,12 @@ unsafe extern "C" fn keyword_break(keyword: *const Token, lparen: *const Token, 
     Node::Break(loc, args).to_raw()
 }
 
-unsafe extern "C" fn keyword_defined(keyword: *const Token, arg: *mut Node) -> *mut Node {
+unsafe extern "C" fn keyword_defined(keyword: *const Token, arg: *mut Rc<Node>) -> *mut Rc<Node> {
     let arg = from_raw(arg);
     Node::Defined(Token::loc(keyword).join(arg.loc()), arg).to_raw()
 }
 
-unsafe extern "C" fn keyword_next(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+unsafe extern "C" fn keyword_next(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Rc<Node> {
     let args = ffi::node_list_from_raw(args);
 
     let mut loc = Token::loc(keyword);
@@ -775,15 +788,15 @@ unsafe extern "C" fn keyword_next(keyword: *const Token, lparen: *const Token, a
     Node::Next(loc, args).to_raw()
 }
 
-unsafe extern "C" fn keyword_redo(keyword: *const Token) -> *mut Node {
+unsafe extern "C" fn keyword_redo(keyword: *const Token) -> *mut Rc<Node> {
     Node::Redo(Token::loc(keyword)).to_raw()
 }
 
-unsafe extern "C" fn keyword_retry(keyword: *const Token) -> *mut Node {
+unsafe extern "C" fn keyword_retry(keyword: *const Token) -> *mut Rc<Node> {
     Node::Retry(Token::loc(keyword)).to_raw()
 }
 
-unsafe extern "C" fn keyword_return(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+unsafe extern "C" fn keyword_return(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Rc<Node> {
     let args = ffi::node_list_from_raw(args);
 
     let mut loc = Token::loc(keyword);
@@ -795,7 +808,7 @@ unsafe extern "C" fn keyword_return(keyword: *const Token, lparen: *const Token,
     Node::Return(loc, args).to_raw()
 }
 
-unsafe extern "C" fn keyword_super(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+unsafe extern "C" fn keyword_super(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Rc<Node> {
     let args = ffi::node_list_from_raw(args);
 
     let mut loc = Token::loc(keyword);
@@ -807,7 +820,7 @@ unsafe extern "C" fn keyword_super(keyword: *const Token, lparen: *const Token, 
     Node::Super(loc, args).to_raw()
 }
 
-unsafe extern "C" fn keyword_yield(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Node {
+unsafe extern "C" fn keyword_yield(keyword: *const Token, lparen: *const Token, args: *mut NodeList, rparen: *const Token) -> *mut Rc<Node> {
     let args = ffi::node_list_from_raw(args);
 
     let mut loc = Token::loc(keyword);
@@ -819,21 +832,21 @@ unsafe extern "C" fn keyword_yield(keyword: *const Token, lparen: *const Token, 
     Node::Yield(loc, args).to_raw()
 }
 
-unsafe extern "C" fn keyword_zsuper(keyword: *const Token) -> *mut Node {
+unsafe extern "C" fn keyword_zsuper(keyword: *const Token) -> *mut Rc<Node> {
     Node::ZSuper(Token::loc(keyword)).to_raw()
 }
 
-unsafe extern "C" fn kwarg(name: *const Token) -> *mut Node {
+unsafe extern "C" fn kwarg(name: *const Token) -> *mut Rc<Node> {
     Node::Kwarg(Token::loc(name), Token::string(name)).to_raw()
 }
 
-unsafe extern "C" fn kwoptarg(name: *const Token, value: *mut Node) -> *mut Node {
+unsafe extern "C" fn kwoptarg(name: *const Token, value: *mut Rc<Node>) -> *mut Rc<Node> {
     let value = from_raw(value);
     let id = token_id(name);
     Node::Kwoptarg(id.0.join(value.loc()), id, value).to_raw()
 }
 
-unsafe extern "C" fn kwrestarg(dstar: *const Token, name: *const Token) -> *mut Node {
+unsafe extern "C" fn kwrestarg(dstar: *const Token, name: *const Token) -> *mut Rc<Node> {
     if name != ptr::null() {
         let id = token_id(name);
         Node::Kwrestarg(Token::loc(dstar).join(&id.0), Some(id))
@@ -842,34 +855,34 @@ unsafe extern "C" fn kwrestarg(dstar: *const Token, name: *const Token) -> *mut 
     }.to_raw()
 }
 
-unsafe extern "C" fn kwsplat(dstar: *const Token, arg: *mut Node) -> *mut Node {
+unsafe extern "C" fn kwsplat(dstar: *const Token, arg: *mut Rc<Node>) -> *mut Rc<Node> {
     let arg = from_raw(arg);
     Node::Kwsplat(Token::loc(dstar).join(arg.loc()), arg).to_raw()
 }
 
-unsafe extern "C" fn line_literal(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn line_literal(tok: *const Token) -> *mut Rc<Node> {
     Node::LineLiteral(Token::loc(tok)).to_raw()
 }
 
-unsafe extern "C" fn logical_and(lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
+unsafe extern "C" fn logical_and(lhs: *mut Rc<Node>, op: *const Token, rhs: *mut Rc<Node>) -> *mut Rc<Node> {
     let lhs = from_raw(lhs);
     let rhs = from_raw(rhs);
     Node::And(lhs.loc().join(rhs.loc()), lhs, rhs).to_raw()
 }
 
-unsafe extern "C" fn logical_or(lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
+unsafe extern "C" fn logical_or(lhs: *mut Rc<Node>, op: *const Token, rhs: *mut Rc<Node>) -> *mut Rc<Node> {
     let lhs = from_raw(lhs);
     let rhs = from_raw(rhs);
     Node::Or(lhs.loc().join(rhs.loc()), lhs, rhs).to_raw()
 }
 
-unsafe extern "C" fn loop_until(keyword: *const Token, cond: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn loop_until(keyword: *const Token, cond: *mut Rc<Node>, do_: *const Token, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let cond = from_raw(cond);
     let body = from_maybe_raw(body);
     Node::Until(join_tokens(keyword, end), cond, body).to_raw()
 }
 
-unsafe extern "C" fn loop_until_mod(body: *mut Node, cond: *mut Node) -> *mut Node {
+unsafe extern "C" fn loop_until_mod(body: *mut Rc<Node>, cond: *mut Rc<Node>) -> *mut Rc<Node> {
     let cond = from_raw(cond);
     let body = from_raw(body);
     let loc = body.loc().join(cond.loc());
@@ -880,13 +893,13 @@ unsafe extern "C" fn loop_until_mod(body: *mut Node, cond: *mut Node) -> *mut No
     }.to_raw()
 }
 
-unsafe extern "C" fn loop_while(keyword: *const Token, cond: *mut Node, do_: *const Token, body: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn loop_while(keyword: *const Token, cond: *mut Rc<Node>, do_: *const Token, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let cond = from_raw(cond);
     let body = from_maybe_raw(body);
     Node::While(join_tokens(keyword, end), cond, body).to_raw()
 }
 
-unsafe extern "C" fn loop_while_mod(body: *mut Node, cond: *mut Node) -> *mut Node {
+unsafe extern "C" fn loop_while_mod(body: *mut Rc<Node>, cond: *mut Rc<Node>) -> *mut Rc<Node> {
     let cond = from_raw(cond);
     let body = from_raw(body);
     let loc = body.loc().join(cond.loc());
@@ -897,7 +910,7 @@ unsafe extern "C" fn loop_while_mod(body: *mut Node, cond: *mut Node) -> *mut No
     }.to_raw()
 }
 
-unsafe extern "C" fn match_op(receiver: *mut Node, oper: *const Token, arg: *mut Node) -> *mut Node {
+unsafe extern "C" fn match_op(receiver: *mut Rc<Node>, oper: *const Token, arg: *mut Rc<Node>) -> *mut Rc<Node> {
     let recv = from_raw(receiver);
     let arg = from_raw(arg);
 
@@ -909,35 +922,35 @@ unsafe extern "C" fn match_op(receiver: *mut Node, oper: *const Token, arg: *mut
     Node::Send(recv.loc().join(arg.loc()), Some(recv), token_id(oper), vec![arg]).to_raw()
 }
 
-unsafe extern "C" fn multi_assign(mlhs: *mut Node, rhs: *mut Node) -> *mut Node {
+unsafe extern "C" fn multi_assign(mlhs: *mut Rc<Node>, rhs: *mut Rc<Node>) -> *mut Rc<Node> {
     let mlhs = from_raw(mlhs);
     let rhs = from_raw(rhs);
 
     Node::Masgn(mlhs.loc().join(rhs.loc()), mlhs, rhs).to_raw()
 }
 
-unsafe extern "C" fn multi_lhs(begin: *const Token, items: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn multi_lhs(begin: *const Token, items: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let items = ffi::node_list_from_raw(items);
 
     Node::Mlhs(collection_map(begin, items.as_slice(), end).unwrap(), items).to_raw()
 }
 
-unsafe extern "C" fn negate(uminus: *const Token, numeric: *mut Node) -> *mut Node {
+unsafe extern "C" fn negate(uminus: *const Token, numeric: *mut Rc<Node>) -> *mut Rc<Node> {
     let numeric = from_raw(numeric);
     let loc = Token::loc(uminus).join(numeric.loc());
 
     match *numeric {
-        Node::Integer(_, value) => Node::Integer(loc, "-".to_owned() + value.as_str()),
-        Node::Float(_, value) => Node::Float(loc, "-".to_owned() + value.as_str()),
+        Node::Integer(_, ref value) => Rc::new(Node::Integer(loc, "-".to_owned() + value.as_str())),
+        Node::Float(_, ref value) => Rc::new(Node::Float(loc, "-".to_owned() + value.as_str())),
         _ => panic!("unimplemented numeric type: {:?}", numeric),
     }.to_raw()
 }
 
-unsafe extern "C" fn nil(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn nil(tok: *const Token) -> *mut Rc<Node> {
     Node::Nil(Token::loc(tok)).to_raw()
 }
 
-unsafe extern "C" fn not_op(not: *const Token, begin: *const Token, receiver: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn not_op(not: *const Token, begin: *const Token, receiver: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let not_loc = Token::loc(not);
     let id = Id(Token::loc(not), "!".to_owned());
 
@@ -954,17 +967,17 @@ unsafe extern "C" fn not_op(not: *const Token, begin: *const Token, receiver: *m
             assert!(begin != ptr::null() && end != ptr::null());
             let nil_loc = join_tokens(begin, end);
             let loc = not_loc.join(&nil_loc);
-            let recv = Box::new(Node::Begin(nil_loc.clone(), vec![Box::new(Node::Nil(nil_loc))]));
+            let recv = Rc::new(Node::Begin(nil_loc.clone(), vec![Rc::new(Node::Nil(nil_loc))]));
             Node::Send(loc, Some(recv), id, vec![])
         }
     }.to_raw()
 }
 
-unsafe extern "C" fn nth_ref(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn nth_ref(tok: *const Token) -> *mut Rc<Node> {
     Node::NthRef(Token::loc(tok), Token::string(tok).parse().unwrap()).to_raw()
 }
 
-unsafe extern "C" fn op_assign(lhs: *mut Node, op: *const Token, rhs: *mut Node) -> *mut Node {
+unsafe extern "C" fn op_assign(lhs: *mut Rc<Node>, op: *const Token, rhs: *mut Rc<Node>) -> *mut Rc<Node> {
     let lhs = from_raw(lhs);
     let rhs = from_raw(rhs);
 
@@ -979,46 +992,46 @@ unsafe extern "C" fn op_assign(lhs: *mut Node, op: *const Token, rhs: *mut Node)
     }.to_raw()
 }
 
-unsafe extern "C" fn optarg(name: *const Token, eql: *const Token, value: *mut Node) -> *mut Node {
+unsafe extern "C" fn optarg(name: *const Token, eql: *const Token, value: *mut Rc<Node>) -> *mut Rc<Node> {
     let id = token_id(name);
     let value = from_raw(value);
     Node::Optarg(id.0.join(value.loc()), id, value).to_raw()
 }
 
-unsafe extern "C" fn pair(key: *mut Node, assoc: *const Token, value: *mut Node) -> *mut Node {
+unsafe extern "C" fn pair(key: *mut Rc<Node>, assoc: *const Token, value: *mut Rc<Node>) -> *mut Rc<Node> {
     let key = from_raw(key);
     let value = from_raw(value);
     Node::Pair(key.loc().join(value.loc()), key, value).to_raw()
 }
 
-unsafe extern "C" fn pair_keyword(key: *const Token, value: *mut Node) -> *mut Node {
+unsafe extern "C" fn pair_keyword(key: *const Token, value: *mut Rc<Node>) -> *mut Rc<Node> {
     let sym = Node::Symbol(Token::loc(key), Token::string(key));
     let value = from_raw(value);
-    Node::Pair(sym.loc().join(value.loc()), Box::new(sym), value).to_raw()
+    Node::Pair(sym.loc().join(value.loc()), Rc::new(sym), value).to_raw()
 }
 
-unsafe extern "C" fn pair_quoted(begin: *const Token, parts: *mut NodeList, end: *const Token, value: *mut Node) -> *mut Node {
+unsafe extern "C" fn pair_quoted(begin: *const Token, parts: *mut NodeList, end: *const Token, value: *mut Rc<Node>) -> *mut Rc<Node> {
     let key = from_raw(symbol_compose(begin, parts, end));
     let value = from_raw(value);
     Node::Pair(key.loc().join(value.loc()), key, value).to_raw()
 }
 
-unsafe extern "C" fn postexe(begin: *const Token, node: *mut Node, rbrace: *const Token) -> *mut Node {
+unsafe extern "C" fn postexe(begin: *const Token, node: *mut Rc<Node>, rbrace: *const Token) -> *mut Rc<Node> {
     let node = from_maybe_raw(node);
     Node::Postexe(Token::loc(begin).join(&Token::loc(rbrace)), node).to_raw()
 }
 
-unsafe extern "C" fn preexe(begin: *const Token, node: *mut Node, rbrace: *const Token) -> *mut Node {
+unsafe extern "C" fn preexe(begin: *const Token, node: *mut Rc<Node>, rbrace: *const Token) -> *mut Rc<Node> {
     let node = from_maybe_raw(node);
     Node::Preexe(Token::loc(begin).join(&Token::loc(rbrace)), node).to_raw()
 }
 
-unsafe extern "C" fn procarg0(arg: *mut Node) -> *mut Node {
+unsafe extern "C" fn procarg0(arg: *mut Rc<Node>) -> *mut Rc<Node> {
     let arg = from_raw(arg);
     Node::Procarg0(arg.loc().clone(), arg).to_raw()
 }
 
-unsafe extern "C" fn prototype(genargs: *mut Node, args: *mut Node, return_type: *mut Node) -> *mut Node {
+unsafe extern "C" fn prototype(genargs: *mut Rc<Node>, args: *mut Rc<Node>, return_type: *mut Rc<Node>) -> *mut Rc<Node> {
     let genargs = from_maybe_raw(genargs);
     let args = from_raw(args);
     let return_type = from_maybe_raw(return_type);
@@ -1036,29 +1049,29 @@ unsafe extern "C" fn prototype(genargs: *mut Node, args: *mut Node, return_type:
     Node::Prototype(loc, genargs, args, return_type).to_raw()
 }
 
-unsafe extern "C" fn range_exclusive(lhs: *mut Node, oper: *const Token, rhs: *mut Node) -> *mut Node {
+unsafe extern "C" fn range_exclusive(lhs: *mut Rc<Node>, oper: *const Token, rhs: *mut Rc<Node>) -> *mut Rc<Node> {
     let lhs = from_raw(lhs);
     let rhs = from_raw(rhs);
 
     Node::ERange(lhs.loc().join(rhs.loc()), lhs, rhs).to_raw()
 }
 
-unsafe extern "C" fn range_inclusive(lhs: *mut Node, oper: *const Token, rhs: *mut Node) -> *mut Node {
+unsafe extern "C" fn range_inclusive(lhs: *mut Rc<Node>, oper: *const Token, rhs: *mut Rc<Node>) -> *mut Rc<Node> {
     let lhs = from_raw(lhs);
     let rhs = from_raw(rhs);
 
     Node::IRange(lhs.loc().join(rhs.loc()), lhs, rhs).to_raw()
 }
 
-unsafe extern "C" fn rational(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn rational(tok: *const Token) -> *mut Rc<Node> {
     panic!("unimplemented");
 }
 
-unsafe extern "C" fn rational_complex(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn rational_complex(tok: *const Token) -> *mut Rc<Node> {
     panic!("unimplemented");
 }
 
-unsafe extern "C" fn regexp_compose(begin: *const Token, parts: *mut NodeList, end: *const Token, options: *mut Node) -> *mut Node {
+unsafe extern "C" fn regexp_compose(begin: *const Token, parts: *mut NodeList, end: *const Token, options: *mut Rc<Node>) -> *mut Rc<Node> {
     let parts = ffi::node_list_from_raw(parts);
     let opts = from_maybe_raw(options);
     let begin_loc = Token::loc(begin);
@@ -1069,14 +1082,14 @@ unsafe extern "C" fn regexp_compose(begin: *const Token, parts: *mut NodeList, e
     Node::Regexp(loc, parts, opts).to_raw()
 }
 
-unsafe extern "C" fn regexp_options(regopt: *const Token) -> *mut Node {
+unsafe extern "C" fn regexp_options(regopt: *const Token) -> *mut Rc<Node> {
     let mut options: Vec<char> = Token::string(regopt).chars().collect();
     options.sort();
     options.dedup();
     Node::Regopt(Token::loc(regopt), options).to_raw()
 }
 
-unsafe extern "C" fn rescue_body(rescue: *const Token, exc_list: *mut Node, assoc: *const Token, exc_var: *mut Node, then: *const Token, body: *mut Node) -> *mut Node {
+unsafe extern "C" fn rescue_body(rescue: *const Token, exc_list: *mut Rc<Node>, assoc: *const Token, exc_var: *mut Rc<Node>, then: *const Token, body: *mut Rc<Node>) -> *mut Rc<Node> {
     let exc_list = from_maybe_raw(exc_list);
     let exc_var = from_maybe_raw(exc_var);
     let body = from_maybe_raw(body);
@@ -1098,7 +1111,7 @@ unsafe extern "C" fn rescue_body(rescue: *const Token, exc_list: *mut Node, asso
     Node::Resbody(loc, exc_list, exc_var, body).to_raw()
 }
 
-unsafe extern "C" fn restarg(star: *const Token, name: *const Token) -> *mut Node {
+unsafe extern "C" fn restarg(star: *const Token, name: *const Token) -> *mut Rc<Node> {
     if name != ptr::null() {
         let id = token_id(name);
         Node::Restarg(Token::loc(star).join(&id.0), Some(id))
@@ -1107,15 +1120,15 @@ unsafe extern "C" fn restarg(star: *const Token, name: *const Token) -> *mut Nod
     }.to_raw()
 }
 
-unsafe extern "C" fn self_(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn self_(tok: *const Token) -> *mut Rc<Node> {
     Node::Self_(Token::loc(tok)).to_raw()
 }
 
-unsafe extern "C" fn shadowarg(name: *const Token) -> *mut Node {
+unsafe extern "C" fn shadowarg(name: *const Token) -> *mut Rc<Node> {
     panic!("unimplemented");
 }
 
-unsafe extern "C" fn splat(star: *const Token, arg: *mut Node) -> *mut Node {
+unsafe extern "C" fn splat(star: *const Token, arg: *mut Rc<Node>) -> *mut Rc<Node> {
     let arg = from_maybe_raw(arg);
     let loc = match arg {
         Some(ref box_arg) => Token::loc(star).join(box_arg.loc()),
@@ -1124,195 +1137,196 @@ unsafe extern "C" fn splat(star: *const Token, arg: *mut Node) -> *mut Node {
     Node::Splat(loc, arg).to_raw()
 }
 
-unsafe extern "C" fn string(string_: *const Token) -> *mut Node {
+unsafe extern "C" fn string(string_: *const Token) -> *mut Rc<Node> {
     Node::String(Token::loc(string_), Token::string(string_)).to_raw()
 }
 
-unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
-    let mut parts = ffi::node_list_from_raw(parts);
+unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
+    let parts = ffi::node_list_from_raw(parts);
 
     let loc = collection_map(begin, parts.as_slice(), end).unwrap();
 
     if parts.len() == 1 {
-        let part = *parts.remove(0);
+        match *parts[0] {
+            Node::String(ref loc, ref val) =>
+                Node::String(loc.clone(), val.clone()),
 
-        match part {
-            Node::String(loc, val) => Node::String(loc, val),
-            node => Node::DString(loc, vec![Box::new(node)]),
+            _ => Node::DString(loc.clone(), vec![parts[0].clone()]),
         }
     } else {
         Node::DString(loc, parts)
     }.to_raw()
 }
 
-unsafe extern "C" fn string_internal(string: *const Token) -> *mut Node {
+unsafe extern "C" fn string_internal(string: *const Token) -> *mut Rc<Node> {
     Node::String(Token::loc(string), Token::string(string)).to_raw()
 }
 
-unsafe extern "C" fn symbol(symbol: *const Token) -> *mut Node {
+unsafe extern "C" fn symbol(symbol: *const Token) -> *mut Rc<Node> {
     Node::Symbol(Token::loc(symbol), Token::string(symbol)).to_raw()
 }
 
-unsafe extern "C" fn symbol_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
-    let mut parts = ffi::node_list_from_raw(parts);
+unsafe extern "C" fn symbol_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
+    let parts = ffi::node_list_from_raw(parts);
 
     let loc = collection_map(begin, parts.as_slice(), end).unwrap();
 
     if parts.len() == 1 {
-        let part = *parts.remove(0);
+        match *parts[0] {
+            Node::Symbol(ref loc, ref val) =>
+                Node::Symbol(loc.clone(), val.clone()),
 
-        match part {
-            Node::Symbol(loc, val) => Node::Symbol(loc, val),
-            node => Node::DSymbol(loc, vec![Box::new(node)]),
+            _ => Node::DSymbol(loc, vec![parts[0].clone()]),
         }
     } else {
         Node::DSymbol(loc, parts)
     }.to_raw()
 }
 
-unsafe extern "C" fn symbol_internal(symbol: *const Token) -> *mut Node {
+unsafe extern "C" fn symbol_internal(symbol: *const Token) -> *mut Rc<Node> {
     Node::Symbol(Token::loc(symbol), Token::string(symbol)).to_raw()
 }
 
-unsafe extern "C" fn symbols_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn symbols_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let parts = ffi::node_list_from_raw(parts);
 
-    let parts = parts.into_iter().map(|part| {
-        let part = *part;
-        Box::new(
-            match part {
-                Node::String(loc, val) => Node::Symbol(loc, val),
-                Node::DString(loc, parts) => Node::DSymbol(loc, parts),
-                node => node,
-            }
-        )
+    let parts = parts.iter().map(|part| {
+        match **part {
+            Node::String(ref loc, ref val) =>
+                Rc::new(Node::Symbol(loc.clone(), val.clone())),
+
+            Node::DString(ref loc, ref parts) =>
+                Rc::new(Node::DSymbol(loc.clone(), parts.clone())),
+
+            _ => part.clone(),
+        }
     }).collect::<Vec<_>>();
 
     Node::Array(collection_map(begin, parts.as_slice(), end).unwrap(), parts).to_raw()
 }
 
-unsafe extern "C" fn ternary(cond: *mut Node, question: *const Token, if_true: *mut Node, colon: *const Token, if_false: *mut Node) -> *mut Node {
+unsafe extern "C" fn ternary(cond: *mut Rc<Node>, question: *const Token, if_true: *mut Rc<Node>, colon: *const Token, if_false: *mut Rc<Node>) -> *mut Rc<Node> {
     let cond = from_raw(cond);
     let if_true = from_raw(if_true);
     let if_false = from_raw(if_false);
 
-    Node::If(cond.loc().join(if_false.loc()), Box::new(check_condition(*cond)), Some(if_true), Some(if_false)).to_raw()
+    Node::If(cond.loc().join(if_false.loc()), check_condition(cond), Some(if_true), Some(if_false)).to_raw()
 }
 
-unsafe extern "C" fn tr_any(special: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_any(special: *const Token) -> *mut Rc<Node> {
     Node::TyAny(Token::loc(special)).to_raw()
 }
 
-unsafe extern "C" fn tr_array(begin: *const Token, type_: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_array(begin: *const Token, type_: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let type_ = from_raw(type_);
 
     Node::TyArray(join_tokens(begin, end), type_).to_raw()
 }
 
-unsafe extern "C" fn tr_cast(begin: *const Token, expr: *mut Node, colon: *const Token, type_: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_cast(begin: *const Token, expr: *mut Rc<Node>, colon: *const Token, type_: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let expr = from_raw(expr);
     let type_ = from_raw(type_);
 
     Node::TyCast(join_tokens(begin, end), expr, type_).to_raw()
 }
 
-unsafe extern "C" fn tr_class(special: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_class(special: *const Token) -> *mut Rc<Node> {
     Node::TyClass(Token::loc(special)).to_raw()
 }
 
-unsafe extern "C" fn tr_cpath(cpath: *mut Node) -> *mut Node {
+unsafe extern "C" fn tr_cpath(cpath: *mut Rc<Node>) -> *mut Rc<Node> {
     let cpath = from_raw(cpath);
 
     Node::TyCpath(cpath.loc().clone(), cpath).to_raw()
 }
 
-unsafe extern "C" fn tr_genargs(begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_genargs(begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let genargs = ffi::node_list_from_raw(genargs);
 
     Node::TyGenargs(join_tokens(begin, end), genargs).to_raw()
 }
 
-unsafe extern "C" fn tr_gendecl(cpath: *mut Node, begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_gendecl(cpath: *mut Rc<Node>, begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let cpath = from_raw(cpath);
     let genargs = ffi::node_list_from_raw(genargs);
 
     Node::TyGendecl(cpath.loc().join(&Token::loc(end)), cpath, genargs).to_raw()
 }
 
-unsafe extern "C" fn tr_gendeclarg(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_gendeclarg(tok: *const Token) -> *mut Rc<Node> {
     Node::TyGendeclarg(Token::loc(tok), Token::string(tok)).to_raw()
 }
 
-unsafe extern "C" fn tr_geninst(cpath: *mut Node, begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_geninst(cpath: *mut Rc<Node>, begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let cpath = from_raw(cpath);
     let genargs = ffi::node_list_from_raw(genargs);
 
     Node::TyGendecl(cpath.loc().join(&Token::loc(end)), cpath, genargs).to_raw()
 }
 
-unsafe extern "C" fn tr_hash(begin: *const Token, key_type: *mut Node, assoc: *const Token, value_type: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_hash(begin: *const Token, key_type: *mut Rc<Node>, assoc: *const Token, value_type: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let key_type = from_raw(key_type);
     let value_type = from_raw(value_type);
 
     Node::TyHash(join_tokens(begin, end), key_type, value_type).to_raw()
 }
 
-unsafe extern "C" fn tr_instance(special: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_instance(special: *const Token) -> *mut Rc<Node> {
     Node::TyInstance(Token::loc(special)).to_raw()
 }
 
-unsafe extern "C" fn tr_ivardecl(name: *const Token, type_: *mut Node) -> *mut Node {
+unsafe extern "C" fn tr_ivardecl(name: *const Token, type_: *mut Rc<Node>) -> *mut Rc<Node> {
     let name = token_id(name);
     let type_ = from_raw(type_);
 
     Node::TyIvardecl(name.0.join(type_.loc()), name, type_).to_raw()
 }
 
-unsafe extern "C" fn tr_nil(nil: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_nil(nil: *const Token) -> *mut Rc<Node> {
     Node::TyNil(Token::loc(nil)).to_raw()
 }
 
-unsafe extern "C" fn tr_nillable(tilde: *const Token, type_: *mut Node) -> *mut Node {
+unsafe extern "C" fn tr_nillable(tilde: *const Token, type_: *mut Rc<Node>) -> *mut Rc<Node> {
     let type_ = from_raw(type_);
 
     Node::TyNillable(Token::loc(tilde).join(type_.loc()), type_).to_raw()
 }
 
-unsafe extern "C" fn tr_or(a: *mut Node, b: *mut Node) -> *mut Node {
+unsafe extern "C" fn tr_or(a: *mut Rc<Node>, b: *mut Rc<Node>) -> *mut Rc<Node> {
     let a = from_raw(a);
     let b = from_raw(b);
 
     Node::TyOr(a.loc().join(b.loc()), a, b).to_raw()
 }
 
-unsafe extern "C" fn tr_proc(begin: *const Token, args: *mut Node, end: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_proc(begin: *const Token, args: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let args = from_raw(args);
 
     Node::TyProc(join_tokens(begin, end), args).to_raw()
 }
 
-unsafe extern "C" fn tr_self(special: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_self(special: *const Token) -> *mut Rc<Node> {
     Node::TySelf(Token::loc(special)).to_raw()
 }
 
-unsafe extern "C" fn tr_tuple(begin: *const Token, types: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn tr_tuple(begin: *const Token, types: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let types = ffi::node_list_from_raw(types);
 
     Node::TyTuple(join_tokens(begin, end), types).to_raw()
 }
 
-unsafe extern "C" fn true_(tok: *const Token) -> *mut Node {
+unsafe extern "C" fn true_(tok: *const Token) -> *mut Rc<Node> {
     Node::True(Token::loc(tok)).to_raw()
 }
 
-unsafe extern "C" fn typed_arg(type_: *mut Node, arg: *mut Node) -> *mut Node {
+unsafe extern "C" fn typed_arg(type_: *mut Rc<Node>, arg: *mut Rc<Node>) -> *mut Rc<Node> {
     let type_ = from_raw(type_);
     let arg = from_raw(arg);
 
     Node::TypedArg(type_.loc().join(arg.loc()), type_, arg).to_raw()
 }
 
-unsafe extern "C" fn unary_op(oper: *const Token, receiver: *mut Node) -> *mut Node {
+unsafe extern "C" fn unary_op(oper: *const Token, receiver: *mut Rc<Node>) -> *mut Rc<Node> {
     let id = token_id(oper);
     let recv = from_raw(receiver);
 
@@ -1325,7 +1339,7 @@ unsafe extern "C" fn unary_op(oper: *const Token, receiver: *mut Node) -> *mut N
     Node::Send(id.0.join(recv.loc()), Some(recv), id, vec![]).to_raw()
 }
 
-unsafe extern "C" fn undef_method(undef: *const Token, name_list: *mut NodeList) -> *mut Node {
+unsafe extern "C" fn undef_method(undef: *const Token, name_list: *mut NodeList) -> *mut Rc<Node> {
     let name_list = ffi::node_list_from_raw(name_list);
 
     let loc = match name_list.last() {
@@ -1336,7 +1350,7 @@ unsafe extern "C" fn undef_method(undef: *const Token, name_list: *mut NodeList)
     Node::Undef(loc, name_list).to_raw()
 }
 
-unsafe extern "C" fn when(when: *const Token, patterns: *mut NodeList, then: *const Token, body: *mut Node) -> *mut Node {
+unsafe extern "C" fn when(when: *const Token, patterns: *mut NodeList, then: *const Token, body: *mut Rc<Node>) -> *mut Rc<Node> {
     let patterns = ffi::node_list_from_raw(patterns);
     let body = from_maybe_raw(body);
 
@@ -1353,7 +1367,7 @@ unsafe extern "C" fn when(when: *const Token, patterns: *mut NodeList, then: *co
     Node::When(loc, patterns, body).to_raw()
 }
 
-unsafe extern "C" fn word(parts: *mut NodeList) -> *mut Node {
+unsafe extern "C" fn word(parts: *mut NodeList) -> *mut Rc<Node> {
     let mut parts = ffi::node_list_from_raw(parts);
 
     if parts.len() == 1 {
@@ -1361,16 +1375,16 @@ unsafe extern "C" fn word(parts: *mut NodeList) -> *mut Node {
     } else {
         assert!(!parts.is_empty());
         let loc = parts.first().unwrap().loc().join(parts.last().unwrap().loc());
-        Box::new(Node::DString(loc, parts))
+        Rc::new(Node::DString(loc, parts))
     }.to_raw()
 }
 
-unsafe extern "C" fn words_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn words_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let words = ffi::node_list_from_raw(parts);
     Node::Array(collection_map(begin, words.as_slice(), end).unwrap(), words).to_raw()
 }
 
-unsafe extern "C" fn xstring_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Node {
+unsafe extern "C" fn xstring_compose(begin: *const Token, parts: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
     let parts = ffi::node_list_from_raw(parts);
     Node::XString(collection_map(begin, parts.as_slice(), end).unwrap(), parts).to_raw()
 }
@@ -1515,7 +1529,7 @@ pub fn parse(filename: &str, source: &str) -> Ast {
 
     Ast {
         filename: filename.to_owned(),
-        node: ast,
+        node: ast.map(|node| *node),
         diagnostics: diagnostics,
     }
 }
