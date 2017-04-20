@@ -1,9 +1,7 @@
-use ruby_parser::SourceFile;
-use ruby_parser::ast::{Id, Node};
+use ast::{SourceFile, Id, Node};
 use environment::Environment;
 use object::{RubyObjectRef, ObjectType};
 use std::rc::Rc;
-use std::ops::Deref;
 
 struct Scope {
     pub parent: Option<Rc<Scope>>,
@@ -87,15 +85,32 @@ impl<'ev> Eval<'ev> {
         }
     }
 
+    fn resolve_cbase<'a>(&self, cbase: &'a Option<Rc<Node>>) -> EvalResult<'a, RubyObjectRef> {
+        match *cbase {
+            None => Ok(self.scope.module.clone()),
+            Some(ref cbase_node) => self.resolve_cpath(cbase_node),
+        }
+    }
+
     fn resolve_decl_ref<'a>(&self, name: &'a Node) -> EvalResult<'a, (RubyObjectRef, &'a str)> {
         if let Node::Const(_, ref base, Id(_, ref id)) = *name {
             match *base {
                 Some(ref base_node) => self.resolve_cpath(base_node).map(|object_ref| (object_ref, id.as_str())),
-                None => Ok((Scope::root(self.scope).module.clone(), id.as_str())),
+                None => Ok((self.scope.module.clone(), id.as_str())),
             }
         } else {
             panic!("expected class name to be a const node");
         }
+    }
+
+    fn resolve_static<'a>(&self, node: &'a Node) -> EvalResult<'a, RubyObjectRef> {
+        let target = match *node {
+            Node::Self_(_) => &self.scope.module,
+            Node::Const(..) => return self.resolve_cpath(node),
+            _ => panic!("unknown static node {:?}", node),
+        };
+
+        Ok(target.clone())
     }
 
     fn enter_scope(&self, module: RubyObjectRef, body: &Option<Rc<Node>>) {
@@ -136,8 +151,9 @@ impl<'ev> Eval<'ev> {
                             self.env.object.constant_path(&base, id),
                             &superclass.unwrap_or(self.env.object.Object.clone()));
 
-                        self.env.object.set_const(&base, id, &class)
-                            .expect("internal error: would overwrite existing constant");
+                        if !self.env.object.set_const(&base, id, &class) {
+                            panic!("internal error: would overwrite existing constant");
+                        }
 
                         class
                     }
@@ -169,8 +185,9 @@ impl<'ev> Eval<'ev> {
                         let module = self.env.object.new_module(
                             self.env.object.constant_path(&base, id));
 
-                        self.env.object.set_const(&base, id, &module)
-                            .expect("internal error: would overwrite existing constant");
+                        if !self.env.object.set_const(&base, id, &module) {
+                            panic!("internal error: would overwrite existing constant");
+                        }
 
                         module
                     }
@@ -182,8 +199,12 @@ impl<'ev> Eval<'ev> {
         self.enter_scope(module, body);
     }
 
-    fn eval_node(&self, node: &Node) {
-        match *node {
+    fn decl_method(&self, target: &RubyObjectRef, name: &str, def_node: &Rc<Node>) {
+        self.env.object.define_method(target, name.to_owned(), def_node.clone())
+    }
+
+    fn eval_node(&self, node: &Rc<Node>) {
+        match **node {
             Node::Begin(_, ref stmts) => {
                 for stmt in stmts {
                     self.eval_node(stmt);
@@ -202,6 +223,77 @@ impl<'ev> Eval<'ev> {
             Node::Module(_, ref name, ref body) => {
                 self.decl_module(name, body);
             },
+            Node::Def(_, Id(_, ref name), ..) => {
+                self.decl_method(&self.scope.module, name, node);
+            },
+            Node::Defs(_, ref singleton, Id(_, ref name), ..) => {
+                match self.resolve_static(singleton) {
+                    Ok(metaclass) => {
+                        let metaclass = self.env.object.metaclass(&metaclass);
+                        self.decl_method(&metaclass, name, node);
+                    },
+                    e@Err(..) =>
+                        // TODO handle error
+                        panic!("{:?}", e),
+                }
+            },
+            Node::Send(_, None, Id(_, ref name), ref args) => {
+                if name == "include" {
+                    if args.is_empty() {
+                        // TODO handle error
+                        panic!("useless include!");
+                    }
+
+                    for arg in args {
+                        match self.resolve_static(arg) {
+                            Ok(obj) => {
+                                if !self.env.object.include_module(&self.scope.module, &obj) {
+                                    // cyclic include
+                                    // TODO handle error
+                                }
+                            },
+                            e@Err(..) =>
+                                // TODO handle error
+                                panic!("{:?}", e),
+                        }
+                    }
+                }
+            },
+            Node::Send(_, Some(ref recv), _, ref args) => {
+                self.eval_node(recv);
+                for arg in args {
+                    self.eval_node(arg);
+                }
+            },
+            Node::Casgn(_, ref base, Id(_, ref name), ref expr) => {
+                match self.resolve_cbase(base) {
+                    Ok(cbase) => {
+                        match **expr {
+                            Node::Const { .. } =>
+                                match self.resolve_cpath(expr) {
+                                    Ok(value) =>
+                                        if !self.env.object.set_const(&cbase, name, &value) {
+                                            // TODO error on reassigning constants
+                                            panic!("reassigning constant that's already set");
+                                        },
+                                    e@Err(..) =>
+                                        // TODO handle error
+                                        panic!("{:?}", e),
+                                },
+                            // TODO handle send
+                            // TODO handle tr_cast
+                            // TODO handle unresolved expressions
+                            _ => {},
+                        }
+                    },
+                    e@Err(..) =>
+                        // TODO handle error
+                        panic!("{:?}", e),
+                }
+            },
+            Node::Alias(_, ref from, ref to) => {
+                // TODO
+            }
             _ => panic!("unknown node: {:?}", node),
         }
     }

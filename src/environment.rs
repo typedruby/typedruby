@@ -1,6 +1,7 @@
 use object::ObjectGraph;
-use ruby_parser::SourceFile;
+use ast::SourceFile;
 use top_level;
+use std::io;
 
 pub struct Environment {
     pub object: ObjectGraph,
@@ -19,5 +20,16 @@ impl Environment {
         top_level::evaluate(&env, &source_file);
 
         env
+    }
+
+    pub fn load_file(&self, filename: String) -> io::Result<()> {
+        let source_file = match SourceFile::open(filename) {
+            Ok(sf) => sf,
+            Err(err) => return Err(err),
+        };
+
+        top_level::evaluate(self, &source_file);
+
+        Ok(())
     }
 }
