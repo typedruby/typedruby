@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::cell::{Cell, RefCell};
+use std::ops::DerefMut;
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
@@ -35,6 +36,7 @@ pub struct ObjectGraph {
     ids: GenId,
 }
 
+#[derive(Debug,Clone,Eq,PartialEq)]
 pub struct RubyObjectRef {
     id: ObjectId
 }
@@ -67,6 +69,7 @@ impl ObjectGraph {
             name: "BasicObject".to_owned(),
             class: basic_object_metaclass_ref.to_cell(),
             superclass: Cell::new(NO_OBJECT_ID),
+            constants: HashMap::new(),
         }));
 
         objects.insert(basic_object_metaclass_ref.id, Box::new(RubyObject::Metaclass {
@@ -74,6 +77,7 @@ impl ObjectGraph {
             of: basic_object_ref.id,
             class: class_ref.to_cell(),
             superclass: class_ref.to_cell(),
+            constants: HashMap::new(),
         }));
 
         objects.insert(object_ref.id, Box::new(RubyObject::Class {
@@ -81,6 +85,7 @@ impl ObjectGraph {
             name: "Object".to_owned(),
             class: class_ref.to_cell(),
             superclass: basic_object_ref.to_cell(),
+            constants: HashMap::new(),
         }));
 
         objects.insert(module_ref.id, Box::new(RubyObject::Class {
@@ -88,6 +93,7 @@ impl ObjectGraph {
             name: "Module".to_owned(),
             class: class_ref.to_cell(),
             superclass: object_ref.to_cell(),
+            constants: HashMap::new(),
         }));
 
         objects.insert(class_ref.id, Box::new(RubyObject::Class {
@@ -95,6 +101,7 @@ impl ObjectGraph {
             name: "Class".to_owned(),
             class: class_ref.to_cell(),
             superclass: module_ref.to_cell(),
+            constants: HashMap::new(),
         }));
 
         ObjectGraph {
@@ -108,19 +115,45 @@ impl ObjectGraph {
         }
     }
 
-    fn get_object(&self, id: ObjectId) -> &RubyObject {
-        let objects = self._objects.borrow();
-        let ref_ = &**objects.get(&id).expect("dangling ObjectId");
+    fn get_object(&self, id: ObjectId) -> &mut RubyObject {
+        let mut objects = self._objects.borrow_mut();
+        let ref_ = objects.get_mut(&id).expect("dangling ObjectId").deref_mut();
 
         // extend lifetime of &RubyObject to that of self.
         // WARNING: potentially unsafe - these references *must not* be
         // retained across GCs of the object graph.
-        unsafe { ::std::mem::transmute::<&RubyObject, &RubyObject>(ref_) }
+        // MORE WARNING: this can potentially create aliasing mutable
+        // references! use with care.
+        unsafe { ::std::mem::transmute::<&mut RubyObject, &mut RubyObject>(ref_) }
     }
 
     fn put_object(&self, id: ObjectId, object: RubyObject) -> RubyObjectRef {
         self._objects.borrow_mut().insert(id, Box::new(object));
         RubyObjectRef { id: id }
+    }
+
+    pub fn new_class(&self, name: String, superclass: &RubyObjectRef) -> RubyObjectRef {
+        let id = self.new_object_id();
+
+        self.put_object(id, RubyObject::Class {
+            id: id,
+            name: name,
+            class: self.Class.to_cell(),
+            superclass: superclass.to_cell(),
+            constants: HashMap::new(),
+        })
+    }
+
+    pub fn new_module(&self, name: String) -> RubyObjectRef {
+        let id = self.new_object_id();
+
+        self.put_object(id, RubyObject::Module {
+            id: id,
+            name: name,
+            class: self.Module.to_cell(),
+            superclass: Cell::new(NO_OBJECT_ID),
+            constants: HashMap::new(),
+        })
     }
 
     pub fn metaclass(&self, object_ref: &RubyObjectRef) -> RubyObjectRef {
@@ -138,6 +171,7 @@ impl ObjectGraph {
                             of: id,
                             class: self.Class.to_cell(),
                             superclass: class.clone(),
+                            constants: HashMap::new(),
                         });
 
                         class.set(metaclass_id);
@@ -163,6 +197,7 @@ impl ObjectGraph {
                             // TODO - we do need to replace the direct superclass field get with something that
                             // ignores iclasses:
                             superclass: self.metaclass(&RubyObjectRef { id: superclass.get() }).to_cell(),
+                            constants: HashMap::new(),
                         });
 
                         class.set(metaclass_id);
@@ -202,9 +237,91 @@ impl ObjectGraph {
                 }
         }
     }
+
+    pub fn type_of(&self, object: &RubyObjectRef) -> ObjectType {
+        match *self.get_object(object.id) {
+            RubyObject::Object {..} => ObjectType::Object,
+            RubyObject::Module {..} => ObjectType::Module,
+            RubyObject::Class {..} => ObjectType::Class,
+            RubyObject::Metaclass {..} => ObjectType::Metaclass,
+        }
+    }
+
+    pub fn has_const(&self, object: &RubyObjectRef, name: &str) -> bool {
+        self.get_const(object, name).is_some()
+    }
+
+    pub fn get_const(&self, object: &RubyObjectRef, name: &str) -> Option<RubyObjectRef> {
+        match *self.get_object(object.id) {
+            RubyObject::Object {..} => panic!("called get_const with RubyObject::Object!"),
+            RubyObject::Module { ref superclass, ref constants, .. } |
+            RubyObject::Class { ref superclass, ref constants, .. } |
+            RubyObject::Metaclass { ref superclass, ref constants, .. } => {
+                match constants.get(name) {
+                    Some(id) => Some(RubyObjectRef { id: *id }),
+                    None => match superclass.get() {
+                        NO_OBJECT_ID => None,
+                        id => self.get_const(&RubyObjectRef { id: id }, name),
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn set_const(&self, object: &RubyObjectRef, name: &str, value: &RubyObjectRef) -> Option<()> {
+        match *self.get_object(object.id) {
+            RubyObject::Object {..} => panic!("called put_const with RubyObject::Object!"),
+            RubyObject::Module { ref mut constants, .. } |
+            RubyObject::Class { ref mut constants, .. } |
+            RubyObject::Metaclass { ref mut constants, .. } =>
+                if constants.contains_key(name) {
+                    None
+                } else {
+                    constants.insert(name.to_owned(), value.id);
+                    Some(())
+                }
+        }
+    }
+
+    pub fn get_const_for_definition(&self, object: &RubyObjectRef, name: &str) -> Option<RubyObjectRef> {
+        match *self.get_object(object.id) {
+            RubyObject::Object {..} => panic!("called get_const_for_definition with RubyObject::Object!"),
+            RubyObject::Module { ref superclass, ref constants, .. } |
+            RubyObject::Class { ref superclass, ref constants, .. } |
+            RubyObject::Metaclass { ref superclass, ref constants, .. } => {
+                match constants.get(name) {
+                    Some(id) => Some(RubyObjectRef { id: *id }),
+                    None => {
+                        // vm_search_const_defined_class special cases constant lookups against
+                        // Object when used in a class/module definition context:
+                        if *object == self.Object {
+                            self.get_const(&RubyObjectRef { id: superclass.get() }, name)
+                        } else {
+                            None
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    pub fn constant_path(&self, object: &RubyObjectRef, name: &str) -> String {
+        if *object == self.Object {
+            name.to_owned()
+        } else {
+            self.name(object) + name
+        }
+    }
 }
 
-pub enum RubyObject {
+pub enum ObjectType {
+    Object,
+    Module,
+    Class,
+    Metaclass,
+}
+
+enum RubyObject {
     Object {
         id: ObjectId,
         class: Cell<ObjectId>,
@@ -214,17 +331,20 @@ pub enum RubyObject {
         class: Cell<ObjectId>,
         name: String,
         superclass: Cell<ObjectId>,
+        constants: HashMap<String, ObjectId>,
     },
     Class {
         id: ObjectId,
         class: Cell<ObjectId>,
         name: String,
         superclass: Cell<ObjectId>,
+        constants: HashMap<String, ObjectId>,
     },
     Metaclass {
         id: ObjectId,
         class: Cell<ObjectId>,
         superclass: Cell<ObjectId>,
         of: ObjectId,
+        constants: HashMap<String, ObjectId>,
     }
 }
