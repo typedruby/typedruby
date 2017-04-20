@@ -1,18 +1,11 @@
-mod object;
+extern crate ruby_parser;
 
-use object::ObjectGraph;
+mod environment;
+mod object;
+mod top_level;
+
+use environment::Environment;
 
 fn main() {
-    let mut object = ObjectGraph::new();
-
-    let mut c = object.metaclass(&object.Class);
-
-    loop {
-        println!("{}", object.name(&c));
-
-        match object.superclass(&c) {
-            Some(s) => c = s,
-            None => break,
-        };
-    }
+    Environment::new();
 }
