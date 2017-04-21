@@ -12,19 +12,36 @@ pub struct SourceFile {
     line_map: Vec<usize>,
 }
 
+pub struct SourceLine {
+    pub number: usize,
+    pub begin_pos: usize,
+    pub end_pos: usize,
+}
+
+fn line_map_from_source(source: &str) -> Vec<usize> {
+    let mut line_map = vec![];
+
+    let mut previous_index = 0;
+
+    for (index, c) in source.char_indices() {
+        if c == '\n' {
+            line_map.push(previous_index);
+            previous_index = index + 1;
+        }
+    }
+
+    line_map.push(previous_index);
+
+    line_map
+}
+
 impl SourceFile {
     pub fn new(filename: String, source: String) -> SourceFile {
-        let mut line_map = vec![];
-
-        for (index, c) in source.char_indices() {
-            if c == '\n' {
-                line_map.push(index);
-            }
-        }
+        let line_map = line_map_from_source(&source);
 
         SourceFile {
-            filename: filename.to_owned(),
-            source: source.to_owned(),
+            filename: filename,
+            source: source,
             line_map: line_map,
         }
     }
@@ -42,11 +59,21 @@ impl SourceFile {
         parser::parse(self.filename.as_str(), self.source.as_str())
     }
 
-    pub fn line_for_pos(&self, byte_pos: usize) -> usize {
-        match self.line_map.binary_search(&byte_pos) {
-            Ok(idx) => idx + 1,
-            Err(idx) => idx + 1,
+    pub fn line_for_pos(&self, byte_pos: usize) -> SourceLine {
+        let idx = match self.line_map.binary_search(&byte_pos) {
+            Ok(idx) => idx,
+            Err(idx) => idx - 1,
+        };
+
+        SourceLine {
+            number: idx + 1,
+            begin_pos: self.line_map[idx],
+            end_pos: self.line_map[idx + 1],
         }
+    }
+
+    pub fn filename(&self) -> &str {
+        &self.filename
     }
 
     pub fn source(&self) -> &str {
