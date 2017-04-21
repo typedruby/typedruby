@@ -48,4 +48,8 @@ impl SourceFile {
             Err(idx) => idx + 1,
         }
     }
+
+    pub fn source(&self) -> &str {
+        &self.source
+    }
 }
