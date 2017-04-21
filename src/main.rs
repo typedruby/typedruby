@@ -12,7 +12,7 @@ use std::io;
 
 fn main() {
     let mut errors = ErrorReporter::new(io::stderr());
-    let env = Environment::new(&mut errors);
+    let mut env = Environment::new(&mut errors);
 
     for arg in env::args().skip(1) {
         match env.load_file(arg) {
