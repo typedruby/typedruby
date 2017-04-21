@@ -1,4 +1,4 @@
-use ast::{SourceFile, Id, Node};
+use ast::{SourceFile, Id, Node, Loc};
 use environment::Environment;
 use object::{RubyObjectRef, ObjectType};
 use std::rc::Rc;
@@ -43,11 +43,16 @@ impl Iterator for ScopeIter {
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 
 struct Eval<'ev, 'evinterior: 'ev> {
-    pub env: &'ev Environment<'evinterior>,
+    pub env: &'ev mut Environment<'evinterior>,
     pub scope: &'ev Rc<Scope>,
+    pub source_file: &'ev SourceFile,
 }
 
 impl<'ev, 'evinterior> Eval<'ev, 'evinterior> {
+    fn error(&mut self, message: &str, details: &[(&str, &SourceFile, &Loc)]) {
+        self.env.error_sink.error(message, details)
+    }
+
     fn resolve_cpath<'a>(&self, node: &'a Node) -> EvalResult<'a, RubyObjectRef> {
         match *node {
             Node::Cbase(_) =>
@@ -113,16 +118,22 @@ impl<'ev, 'evinterior> Eval<'ev, 'evinterior> {
         Ok(target.clone())
     }
 
-    fn enter_scope(&self, module: RubyObjectRef, body: &Option<Rc<Node>>) {
+    fn enter_scope(&mut self, module: RubyObjectRef, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            Eval { env: self.env, scope: &Scope::spawn(self.scope, module) }.eval_node(node)
+            let mut eval = Eval {
+                env: self.env,
+                scope: &Scope::spawn(self.scope, module),
+                source_file: self.source_file
+            };
+
+            eval.eval_node(node)
         }
     }
 
-    fn decl_class(&self, name: &Node, genargs: &[Rc<Node>], superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
+    fn decl_class(&mut self, name: &Node, genargs: &[Rc<Node>], superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
         // TODO need to autoload
 
-        let superclass = superclass.as_ref().map(|node| self.resolve_cpath(node).unwrap() /* TODO handle error */);
+        let superclass = superclass.as_ref().map(|node| (node, self.resolve_cpath(node).unwrap() /* TODO handle error */));
 
         let class = match self.resolve_decl_ref(name) {
             Ok((base, id)) => {
@@ -131,15 +142,30 @@ impl<'ev, 'evinterior> Eval<'ev, 'evinterior> {
                         match self.env.object.type_of(const_value) {
                             ObjectType::Object |
                             ObjectType::Module => {
-                                // TODO handle error
-                                panic!("not a class!");
+                                self.error(&format!("{} is not a class", id), &[
+                                    ("here", self.source_file, name.loc()),
+                                    // TODO - show location of previous definition
+                                ]);
+
+                                const_value.clone()
                             },
                             ObjectType::Class |
                             ObjectType::Metaclass => {
-                                if let Some(ref superclass) = superclass {
-                                    if Some(superclass.clone()) != self.env.object.superclass(const_value) {
-                                        // TODO handle error
-                                        panic!("superclass mismatch!");
+                                // check superclass matches
+                                if let Some((ref superclass_node, ref superclass)) = superclass {
+                                    let existing_superclass = self.env.object.superclass(const_value);
+                                    if Some(superclass.clone()) != existing_superclass {
+                                        let existing_superclass_name =
+                                            match existing_superclass {
+                                                Some(existing_superclass) =>
+                                                    self.env.object.name(&existing_superclass),
+                                                None => "nil".to_owned(),
+                                            };
+
+                                        self.error(&format!("Superclass does not match existing superclass {}", existing_superclass_name), &[
+                                            ("here", self.source_file, superclass_node.loc()),
+                                            // TODO - show location of previous definition
+                                        ]);
                                     }
                                 }
 
@@ -149,7 +175,10 @@ impl<'ev, 'evinterior> Eval<'ev, 'evinterior> {
                     None => {
                         let class = self.env.object.new_class(
                             self.env.object.constant_path(&base, id),
-                            &superclass.unwrap_or(self.env.object.Object.clone()));
+                            match superclass {
+                                Some((_, ref superclass)) => superclass,
+                                None => &self.env.object.Object,
+                            });
 
                         if !self.env.object.set_const(&base, id, &class) {
                             panic!("internal error: would overwrite existing constant");
@@ -165,7 +194,7 @@ impl<'ev, 'evinterior> Eval<'ev, 'evinterior> {
         self.enter_scope(class, body);
     }
 
-    fn decl_module(&self, name: &Node, body: &Option<Rc<Node>>) {
+    fn decl_module(&mut self, name: &Node, body: &Option<Rc<Node>>) {
         // TODO need to autoload
 
         let module = match self.resolve_decl_ref(name) {
@@ -203,7 +232,7 @@ impl<'ev, 'evinterior> Eval<'ev, 'evinterior> {
         self.env.object.define_method(target, name.to_owned(), def_node.clone())
     }
 
-    fn eval_node(&self, node: &Rc<Node>) {
+    fn eval_node(&mut self, node: &Rc<Node>) {
         match **node {
             Node::Begin(_, ref stmts) => {
                 for stmt in stmts {
@@ -299,11 +328,11 @@ impl<'ev, 'evinterior> Eval<'ev, 'evinterior> {
     }
 }
 
-pub fn evaluate(env: &Environment, source_file: &SourceFile) {
+pub fn evaluate(env: &mut Environment, source_file: &SourceFile) {
     let ast = source_file.parse();
     let scope = Rc::new(Scope { parent: None, module: env.object.Object.clone() });
 
     if let Some(ref node) = ast.node {
-        Eval { env: env, scope: &scope }.eval_node(node);
+        Eval { env: env, scope: &scope, source_file: source_file }.eval_node(node);
     }
 }
