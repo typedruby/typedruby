@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 use std::cell::{Cell, RefCell};
-use std::ops::DerefMut;
 use std::rc::Rc;
 use ast::Node;
 
@@ -157,7 +156,7 @@ impl ObjectGraph {
 
     fn get_object(&self, id: ObjectId) -> &mut RubyObject {
         let mut objects = self._objects.borrow_mut();
-        let ref_ = objects.get_mut(&id).expect("dangling ObjectId").deref_mut();
+        let mut ref_ = objects.get_mut(&id).expect("dangling ObjectId");
 
         // extend lifetime of &RubyObject to that of self.
         // WARNING: potentially unsafe - these references *must not* be
