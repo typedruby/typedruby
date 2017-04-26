@@ -237,7 +237,7 @@ impl<'a> ObjectGraph<'a> {
                             // constructed in ObjectGraph::bootstrap:
                             // TODO - we do need to replace the direct superclass field get with something that
                             // ignores iclasses:
-                            superclass: Cell::new(self.superclass(object_ref).map(|c| self.metaclass(c))),
+                            superclass: Cell::new(object_ref.superclass().map(|c| self.metaclass(c))),
                         });
 
                         class.set(metaclass_ref);
@@ -247,33 +247,6 @@ impl<'a> ObjectGraph<'a> {
                 }
             },
             RubyObject::IClass {..} => panic!("iclass has no metaclass"),
-        }
-    }
-
-    // returns the next module, class, or metaclass in the ancestry chain.
-    // skips iclasses.
-    pub fn superclass(&self, object: &'a RubyObject<'a>) -> Option<&'a RubyObject<'a>> {
-        match *object {
-            RubyObject::Object { .. } =>
-                panic!("called superclass with RubyObject::Object!"),
-            RubyObject::Module { ref superclass, .. } |
-            RubyObject::Class { ref superclass, .. } |
-            RubyObject::Metaclass { ref superclass, .. } => {
-                let mut superclass = superclass;
-
-                loop {
-                    match superclass.get() {
-                        None => return None,
-                        Some(&RubyObject::Object { .. }) => panic!(),
-                        Some(class@&RubyObject::Module { .. }) |
-                        Some(class@&RubyObject::Class { .. }) |
-                        Some(class@&RubyObject::Metaclass { .. }) => return Some(class),
-                        Some(&RubyObject::IClass { superclass: ref superclass_, .. }) => superclass = superclass_,
-                    }
-                }
-            },
-            RubyObject::IClass { .. } =>
-                panic!("should not get superclass of iclass directly"),
         }
     }
 
@@ -630,6 +603,33 @@ impl<'a> RubyObject<'a> {
 
     pub fn ancestors(&'a self) -> AncestorIterator<'a> {
         AncestorIterator { object: Some(self) }
+    }
+
+    // returns the next module, class, or metaclass in the ancestry chain.
+    // skips iclasses.
+    pub fn superclass(&'a self) -> Option<&'a RubyObject<'a>> {
+        match *self {
+            RubyObject::Object { .. } =>
+                panic!("called superclass with RubyObject::Object!"),
+            RubyObject::Module { ref superclass, .. } |
+            RubyObject::Class { ref superclass, .. } |
+            RubyObject::Metaclass { ref superclass, .. } => {
+                let mut superclass = superclass;
+
+                loop {
+                    match superclass.get() {
+                        None => return None,
+                        Some(&RubyObject::Object { .. }) => panic!(),
+                        Some(class@&RubyObject::Module { .. }) |
+                        Some(class@&RubyObject::Class { .. }) |
+                        Some(class@&RubyObject::Metaclass { .. }) => return Some(class),
+                        Some(&RubyObject::IClass { superclass: ref superclass_, .. }) => superclass = superclass_,
+                    }
+                }
+            },
+            RubyObject::IClass { .. } =>
+                panic!("should not get superclass of iclass directly"),
+        }
     }
 }
 
