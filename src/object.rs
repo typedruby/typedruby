@@ -1,14 +1,14 @@
 use std::collections::HashMap;
+use std::hash::{Hash, Hasher};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use typed_arena::Arena;
 use ast::{Node, SourceFile, Loc};
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
 // then we can use Option<ObjectId> rather than manually treating 0 as none-ish:
 const NO_OBJECT_ID: ObjectId = 0;
-
-type ObjectMap = HashMap<ObjectId, Box<RubyObject>>;
 
 struct GenId {
     _next: Cell<ObjectId>,
@@ -26,24 +26,12 @@ impl GenId {
     }
 }
 
-#[derive(Debug,Clone,Eq,PartialEq)]
-pub struct RubyObjectRef {
-    id: ObjectId,
-}
-
-impl RubyObjectRef {
-    fn to_cell(&self) -> Cell<ObjectId> {
-        Cell::new(self.id)
-    }
-}
-
 struct AncestorIterator<'a> {
-    graph: &'a ObjectGraph,
-    object: Option<&'a RubyObject>,
+    object: Option<&'a RubyObject<'a>>,
 }
 
 impl<'a> Iterator for AncestorIterator<'a> {
-    type Item = &'a RubyObject;
+    type Item = &'a RubyObject<'a>;
 
     fn next(&mut self) -> Option<Self::Item> {
         match self.object {
@@ -53,16 +41,12 @@ impl<'a> Iterator for AncestorIterator<'a> {
             Some(&RubyObject::Class { ref superclass, .. }) |
             Some(&RubyObject::Metaclass { ref superclass, .. }) |
             Some(&RubyObject::IClass { ref superclass, .. }) => {
-                let superclass_id = superclass.get();
-
                 let cur = self.object;
 
-                self.object =
-                    if superclass_id == NO_OBJECT_ID {
-                        None
-                    } else {
-                        Some(self.graph.get_object(superclass_id))
-                    };
+                self.object = match superclass.get() {
+                    None => None,
+                    Some(ref c) => Some(c),
+                };
 
                 cur
             }
@@ -71,142 +55,120 @@ impl<'a> Iterator for AncestorIterator<'a> {
 }
 
 #[allow(non_snake_case)]
-pub struct ObjectGraph {
-    pub BasicObject: RubyObjectRef,
-    pub Object: RubyObjectRef,
-    pub Module: RubyObjectRef,
-    pub Class: RubyObjectRef,
-
-    _objects: RefCell<ObjectMap>,
+pub struct ObjectGraph<'a> {
     ids: GenId,
+    arena: &'a Arena<RubyObject<'a>>,
 
-    constants: HashMap<ObjectId, HashMap<String, ConstantEntry>>,
-    methods: HashMap<ObjectId, HashMap<String, MethodEntry>>,
+    pub BasicObject: &'a RubyObject<'a>,
+    pub Object: &'a RubyObject<'a>,
+    pub Module: &'a RubyObject<'a>,
+    pub Class: &'a RubyObject<'a>,
+
+    constants: RefCell<HashMap<&'a RubyObject<'a>, HashMap<String, ConstantEntry<'a>>>>,
+    methods: RefCell<HashMap<&'a RubyObject<'a>, HashMap<String, MethodEntry>>>,
 }
 
-impl ObjectGraph {
+impl<'a> ObjectGraph<'a> {
     fn new_object_id(&self) -> ObjectId {
         self.ids.next()
     }
 
-    pub fn new() -> ObjectGraph {
-        let mut objects = ObjectMap::new();
-
+    pub fn new(arena: &'a Arena<RubyObject<'a>>) -> ObjectGraph<'a> {
         // manually bootstrap cyclic core of object graph:
 
+        let unsafe_null_ref = unsafe { &*::std::ptr::null() };
+
         let ids = GenId::new();
-        let basic_object_ref = RubyObjectRef { id: ids.next() };
-        let basic_object_metaclass_ref = RubyObjectRef { id: ids.next() };
-        let object_ref = RubyObjectRef { id: ids.next() };
-        let module_ref = RubyObjectRef { id: ids.next() };
-        let class_ref = RubyObjectRef { id: ids.next() };
 
-        objects.insert(basic_object_ref.id, Box::new(RubyObject::Class {
-            id: basic_object_ref.id,
+        let basic_object = arena.alloc(RubyObject::Class {
+            id: ids.next(),
             name: "BasicObject".to_owned(),
-            class: basic_object_metaclass_ref.to_cell(),
-            superclass: Cell::new(NO_OBJECT_ID),
-        }));
+            class: Cell::new(unsafe_null_ref),
+            superclass: Cell::new(None),
+        });
 
-        objects.insert(basic_object_metaclass_ref.id, Box::new(RubyObject::Metaclass {
-            id: basic_object_metaclass_ref.id,
-            of: basic_object_ref.id,
-            class: class_ref.to_cell(),
-            superclass: class_ref.to_cell(),
-        }));
+        let basic_object_metaclass = arena.alloc(RubyObject::Metaclass {
+            id: ids.next(),
+            of: basic_object,
+            class: Cell::new(unsafe_null_ref),
+            superclass: Cell::new(None),
+        });
 
-        objects.insert(object_ref.id, Box::new(RubyObject::Class {
-            id: object_ref.id,
+        let object = arena.alloc(RubyObject::Class {
+            id: ids.next(),
             name: "Object".to_owned(),
-            class: class_ref.to_cell(),
-            superclass: basic_object_ref.to_cell(),
-        }));
+            class: Cell::new(unsafe_null_ref),
+            superclass: Cell::new(Some(basic_object)),
+        });
 
-        objects.insert(module_ref.id, Box::new(RubyObject::Class {
-            id: module_ref.id,
+        let module = arena.alloc(RubyObject::Class {
+            id: ids.next(),
             name: "Module".to_owned(),
-            class: class_ref.to_cell(),
-            superclass: object_ref.to_cell(),
-        }));
+            class: Cell::new(unsafe_null_ref),
+            superclass: Cell::new(Some(object)),
+        });
 
-        objects.insert(class_ref.id, Box::new(RubyObject::Class {
-            id: class_ref.id,
+        let class = arena.alloc(RubyObject::Class {
+            id: ids.next(),
             name: "Class".to_owned(),
-            class: class_ref.to_cell(),
-            superclass: module_ref.to_cell(),
-        }));
+            class: Cell::new(unsafe_null_ref),
+            superclass: Cell::new(Some(module)),
+        });
 
         ObjectGraph {
-            BasicObject: basic_object_ref,
-            Object: object_ref,
-            Module: module_ref,
-            Class: class_ref,
-
-            _objects: RefCell::new(objects),
             ids: ids,
+            arena: arena,
 
-            constants: HashMap::new(),
-            methods: HashMap::new(),
+            BasicObject: basic_object,
+            Object: object,
+            Module: module,
+            Class: class,
+
+            constants: RefCell::new(HashMap::new()),
+            methods: RefCell::new(HashMap::new()),
         }
     }
 
-    fn get_object(&self, id: ObjectId) -> &RubyObject {
-        let mut objects = self._objects.borrow_mut();
-        let ref_ = objects.get_mut(&id).expect("dangling ObjectId");
-
-        // extend lifetime of &RubyObject to that of self.
-        // WARNING: potentially unsafe - these references *must not* be
-        // retained across GCs of the object graph.
-        // MORE WARNING: this can potentially create aliasing mutable
-        // references! use with care.
-        unsafe { ::std::mem::transmute::<&mut RubyObject, &mut RubyObject>(ref_) }
+    fn alloc(&self, obj: RubyObject<'a>) -> &'a RubyObject<'a> {
+        self.arena.alloc(obj)
     }
 
-    fn put_object(&self, id: ObjectId, object: RubyObject) -> RubyObjectRef {
-        self._objects.borrow_mut().insert(id, Box::new(object));
-        RubyObjectRef { id: id }
-    }
-
-    pub fn new_class(&self, name: String, superclass: &RubyObjectRef) -> RubyObjectRef {
-        let id = self.new_object_id();
-
-        self.put_object(id, RubyObject::Class {
-            id: id,
+    pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
+        self.alloc(RubyObject::Class {
+            id: self.new_object_id(),
             name: name,
-            class: self.Class.to_cell(),
-            superclass: superclass.to_cell(),
+            class: Cell::new(self.Class),
+            superclass: Cell::new(Some(superclass)),
         })
     }
 
-    pub fn new_module(&self, name: String) -> RubyObjectRef {
-        let id = self.new_object_id();
-
-        self.put_object(id, RubyObject::Module {
-            id: id,
+    pub fn new_module(&self, name: String) -> &'a RubyObject<'a> {
+        self.alloc(RubyObject::Module {
+            id: self.new_object_id(),
             name: name,
-            class: self.Module.to_cell(),
-            superclass: Cell::new(NO_OBJECT_ID),
+            class: Cell::new(self.Module),
+            superclass: Cell::new(None),
         })
     }
 
-    pub fn metaclass(&self, object_ref: &RubyObjectRef) -> RubyObjectRef {
-        match *self.get_object(object_ref.id) {
+    pub fn metaclass(&self, object_ref: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
+        match *object_ref {
             RubyObject::Object { id, ref class, .. } |
             RubyObject::Module { id, ref class, .. } => {
-                match *self.get_object(class.get()) {
-                    RubyObject::Metaclass { id: metaclass_id, .. } =>
-                        RubyObjectRef { id: metaclass_id },
-                    _ => {
+                match class.get() {
+                    metaclass_ref@&RubyObject::Metaclass { .. } =>
+                        metaclass_ref,
+                    class_ref@_ => {
                         let metaclass_id = self.new_object_id();
 
-                        let metaclass_ref = self.put_object(metaclass_id, RubyObject::Metaclass {
-                            id: metaclass_id,
-                            of: id,
-                            class: self.Class.to_cell(),
-                            superclass: object_ref.to_cell(),
+                        let metaclass_ref = self.alloc(RubyObject::Metaclass {
+                            id: self.new_object_id(),
+                            of: object_ref,
+                            class: Cell::new(self.Class),
+                            superclass: Cell::new(Some(class_ref)),
                         });
 
-                        class.set(metaclass_id);
+                        class.set(metaclass_ref);
 
                         metaclass_ref
                     }
@@ -214,24 +176,22 @@ impl ObjectGraph {
             },
             RubyObject::Class { ref id, ref class, ref superclass, .. } |
             RubyObject::Metaclass { ref id, ref class, ref superclass, .. } => {
-                match *self.get_object(class.get()) {
-                    RubyObject::Metaclass { id, .. } =>
-                        RubyObjectRef { id: id },
-                    _ => {
-                        let metaclass_id = self.new_object_id();
-
-                        let metaclass_ref = self.put_object(metaclass_id, RubyObject::Metaclass {
-                            id: metaclass_id,
-                            of: *id,
+                match class.get() {
+                    metaclass_ref@&RubyObject::Metaclass { .. } =>
+                        metaclass_ref,
+                    class_ref@_ => {
+                        let metaclass_ref = self.arena.alloc(RubyObject::Metaclass {
+                            id: self.new_object_id(),
+                            of: object_ref,
                             class: class.clone(),
                             // no need to check for None superclass here - BasicObject's metaclass was already
                             // constructed in ObjectGraph::bootstrap:
                             // TODO - we do need to replace the direct superclass field get with something that
                             // ignores iclasses:
-                            superclass: self.metaclass(&RubyObjectRef { id: superclass.get() }).to_cell(),
+                            superclass: Cell::new(superclass.get().map(|c| self.metaclass(c))),
                         });
 
-                        class.set(metaclass_id);
+                        class.set(metaclass_ref);
 
                         metaclass_ref
                     },
@@ -241,47 +201,43 @@ impl ObjectGraph {
         }
     }
 
-    pub fn name(&self, object: &RubyObjectRef) -> String {
-        match *self.get_object(object.id) {
+    pub fn name(&self, object: &'a RubyObject<'a>) -> String {
+        match *object {
             RubyObject::Object { ref class, .. } =>
-                format!("#<{}>", self.name(&RubyObjectRef { id: class.get() })),
+                format!("#<{}>", self.name(class.get())),
             RubyObject::Module { ref name, .. } =>
                 name.clone(),
             RubyObject::Class { ref name, .. } =>
                 name.clone(),
             RubyObject::Metaclass { of, .. } =>
-                format!("Class::[{}]", self.name(&RubyObjectRef { id: of })),
+                format!("Class::[{}]", self.name(of)),
             RubyObject::IClass { .. } =>
                 panic!("iclass has no name"),
         }
     }
 
-    fn ancestors<'a>(&'a self, object: &'a RubyObject) -> AncestorIterator<'a> {
-        AncestorIterator { graph: self, object: Some(object) }
+    fn ancestors(&self, object: &'a RubyObject<'a>) -> AncestorIterator<'a> {
+        AncestorIterator { object: Some(object) }
     }
 
     // returns the next module, class, or metaclass in the ancestry chain
     // skips iclasses.
-    pub fn superclass(&self, object: &RubyObjectRef) -> Option<RubyObjectRef> {
-        match *self.get_object(object.id) {
+    pub fn superclass(&self, object: &'a RubyObject<'a>) -> Option<&'a RubyObject<'a>> {
+        match *object {
             RubyObject::Object { .. } =>
                 panic!("called superclass with RubyObject::Object!"),
             RubyObject::Module { ref superclass, .. } |
             RubyObject::Class { ref superclass, .. } |
             RubyObject::Metaclass { ref superclass, .. } =>
                 // TODO - need to skip iclasses here:
-                if superclass.get() == NO_OBJECT_ID {
-                    None
-                } else {
-                    Some(RubyObjectRef { id: superclass.get() })
-                },
+                superclass.get(),
             RubyObject::IClass { .. } =>
                 panic!("should not get superclass of iclass directly"),
         }
     }
 
-    pub fn type_of(&self, object: &RubyObjectRef) -> ObjectType {
-        match *self.get_object(object.id) {
+    pub fn type_of(&self, object: &'a RubyObject<'a>) -> ObjectType {
+        match *object {
             RubyObject::Object {..} => ObjectType::Object,
             RubyObject::Module {..} => ObjectType::Module,
             RubyObject::Class {..} => ObjectType::Class,
@@ -290,33 +246,35 @@ impl ObjectGraph {
         }
     }
 
-    pub fn has_const(&self, object: &RubyObjectRef, name: &str) -> bool {
+    pub fn has_const(&self, object: &'a RubyObject<'a>, name: &str) -> bool {
         self.get_const(object, name).is_some()
     }
 
-    pub fn get_const(&self, object: &RubyObjectRef, name: &str) -> Option<RubyObjectRef> {
+    pub fn get_const(&self, object: &'a RubyObject<'a>, name: &str) -> Option<&'a RubyObject<'a>> {
+        let constants_ref = self.constants.borrow();
+
         let (superclass, constants) =
-            match *self.get_object(object.id) {
-                RubyObject::Object {..} => panic!("called get_const with RubyObject::Object!"),
-                RubyObject::Module { ref id, ref superclass, .. } |
-                RubyObject::Class { ref id, ref superclass, .. } |
-                RubyObject::Metaclass { ref id, ref superclass, .. } =>
-                    (superclass, self.constants.get(id)),
+            match *object {
+                RubyObject::Object { .. } => panic!("called get_const with RubyObject::Object!"),
+                RubyObject::Module { ref superclass, .. } |
+                RubyObject::Class { ref superclass, .. } |
+                RubyObject::Metaclass { ref superclass, .. } =>
+                    (superclass, constants_ref.get(object)),
                 RubyObject::IClass { ref superclass, ref module, .. } =>
-                    (superclass, self.constants.get(module))
+                    (superclass, constants_ref.get(module))
             };
 
         match constants.and_then(|c| c.get(name)) {
-            Some(ce) => Some(RubyObjectRef { id: ce.value }),
+            Some(ce) => Some(ce.value),
             None => match superclass.get() {
-                NO_OBJECT_ID => None,
-                id => self.get_const(&RubyObjectRef { id: id }, name),
+                None => None,
+                Some(c) => self.get_const(c, name),
             }
         }
     }
 
-    pub fn set_const(&mut self, object: &RubyObjectRef, name: &str, source_file: Rc<SourceFile>, loc: Loc, value: &RubyObjectRef) -> bool {
-        match *self.get_object(object.id) {
+    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, source_file: Rc<SourceFile>, loc: Loc, value: &'a RubyObject<'a>) -> bool {
+        match *object {
             RubyObject::Object { .. } => panic!("called put_const with RubyObject::Object!"),
             RubyObject::Module { .. } |
             RubyObject::Class { .. } |
@@ -324,7 +282,9 @@ impl ObjectGraph {
             RubyObject::IClass { .. } => panic!("cannot set constant directly on iclass"),
         };
 
-        let object_constants = self.constants.entry(object.id).or_insert_with(|| HashMap::new());
+        let mut constants_ref = self.constants.borrow_mut();
+
+        let object_constants = constants_ref.entry(object).or_insert_with(|| HashMap::new());
 
         if object_constants.contains_key(name) {
             false
@@ -332,14 +292,14 @@ impl ObjectGraph {
             object_constants.insert(name.to_owned(), ConstantEntry {
                 source_file: source_file,
                 loc: loc,
-                value: value.id,
+                value: value,
             });
             true
         }
     }
 
-    pub fn has_own_const(&self, object: &RubyObjectRef, name: &str) -> bool {
-        match *self.get_object(object.id) {
+    pub fn has_own_const(&self, object: &'a RubyObject<'a>, name: &str) -> bool {
+        match *object {
             RubyObject::Object { .. } => panic!("called has_own_const with RubyObject::Object!"),
             RubyObject::Module { .. } |
             RubyObject::Class { .. } |
@@ -347,7 +307,9 @@ impl ObjectGraph {
             RubyObject::IClass { .. } => panic!("called has_own_const with RubyObject::IClass!"),
         };
 
-        let constants = self.constants.get(&object.id);
+        let constants_ref = self.constants.borrow();
+
+        let constants = constants_ref.get(object);
 
         match constants.and_then(|c| c.get(name)) {
             Some(_) => true,
@@ -355,16 +317,18 @@ impl ObjectGraph {
         }
     }
 
-    pub fn get_const_for_definition(&self, object: &RubyObjectRef, name: &str) -> Option<RubyObjectRef> {
-        let constants = self.constants.get(&object.id);
+    pub fn get_const_for_definition(&self, object: &'a RubyObject<'a>, name: &str) -> Option<&'a RubyObject<'a>> {
+        let constants_ref = self.constants.borrow();
+
+        let constants = constants_ref.get(object);
 
         match constants.and_then(|c| c.get(name)) {
-            Some(ce) => Some(RubyObjectRef { id: ce.value }),
+            Some(ce) => Some(ce.value),
             None => {
                 // vm_search_const_defined_class special cases constant lookups against
                 // Object when used in a class/module definition context:
-                if *object == self.Object {
-                    let superclass = match *self.get_object(object.id) {
+                if object == self.Object {
+                    let superclass = match *object {
                         RubyObject::Object {..} => panic!("called get_const_for_definition with RubyObject::Object!"),
                         RubyObject::Module { ref superclass, .. } |
                         RubyObject::Class { ref superclass, .. } |
@@ -372,7 +336,10 @@ impl ObjectGraph {
                         RubyObject::IClass { .. } => panic!("called get_const_for_definition with RubyObject::IClass"),
                     };
 
-                    self.get_const(&RubyObjectRef { id: superclass }, name)
+                    match superclass {
+                        None => None,
+                        Some(c) => self.get_const(c, name),
+                    }
                 } else {
                     None
                 }
@@ -380,16 +347,16 @@ impl ObjectGraph {
         }
     }
 
-    pub fn constant_path(&self, object: &RubyObjectRef, name: &str) -> String {
-        if *object == self.Object {
+    pub fn constant_path(&self, object: &'a RubyObject<'a>, name: &str) -> String {
+        if object == self.Object {
             name.to_owned()
         } else {
             self.name(object) + name
         }
     }
 
-    pub fn define_method(&mut self, target: &RubyObjectRef, name: String, source_file: Rc<SourceFile>, node: Rc<Node>) {
-        match *self.get_object(target.id) {
+    pub fn define_method(&self, target: &'a RubyObject<'a>, name: String, source_file: Rc<SourceFile>, node: Rc<Node>) {
+        match *target {
             RubyObject::Object { .. } => panic!("called define_method with RubyObject::Object!"),
             RubyObject::Module { .. } |
             RubyObject::Class { .. } |
@@ -397,7 +364,9 @@ impl ObjectGraph {
             RubyObject::IClass {..} => panic!("called define_method with RubyObject::IClass!"),
         }
 
-        let methods = self.methods.entry(target.id).or_insert_with(|| HashMap::new());
+        let mut methods_ref = self.methods.borrow_mut();
+
+        let methods = methods_ref.entry(target).or_insert_with(|| HashMap::new());
 
         methods.insert(name, MethodEntry {
             node: node,
@@ -405,12 +374,12 @@ impl ObjectGraph {
         });
     }
 
-    pub fn include_module(&self, target: &RubyObjectRef, module: &RubyObjectRef) -> bool {
+    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> bool {
         // TODO - we'll need this to implement prepends later.
         // MRI's prepend implementation relies on changing the type of the object
         // at the module's address. We can't do that here, so instead let's go with
         // JRuby's algorithm involving keeping a reference to the real module.
-        fn method_location(obj: &RubyObject) -> &RubyObject {
+        fn method_location<'a>(obj: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
             match *obj {
                 RubyObject::Object {..} => panic!(),
                 RubyObject::Module {..} |
@@ -421,7 +390,7 @@ impl ObjectGraph {
             }
         }
 
-        fn delegate<'a>(g: &'a ObjectGraph, obj: &'a RubyObject) -> &'a RubyObject {
+        fn delegate<'a>(g: &ObjectGraph<'a>, obj: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
             match *obj {
                 RubyObject::Object {..} => panic!(),
                 RubyObject::Module {..} |
@@ -429,12 +398,9 @@ impl ObjectGraph {
                 RubyObject::Metaclass {..} =>
                     obj,
                 RubyObject::IClass { module, .. } =>
-                    g.get_object(module),
+                    module,
             }
         }
-
-        let target = self.get_object(target.id);
-        let module = self.get_object(module.id);
 
         if target == delegate(self, module) {
             // cyclic include
@@ -465,10 +431,8 @@ impl ObjectGraph {
                 }
             }
 
-            let iclass_id = self.new_object_id();
-
-            self.put_object(iclass_id, RubyObject::IClass {
-                id: iclass_id,
+            let iclass = self.alloc(RubyObject::IClass {
+                id: self.new_object_id(),
                 superclass: match *current_inclusion_point {
                     RubyObject::Object { .. } =>
                         panic!("current_inclusion_point is object"),
@@ -478,10 +442,19 @@ impl ObjectGraph {
                     RubyObject::IClass { ref superclass, .. } =>
                         superclass.clone(),
                 },
-                module: delegate(self, next_module).id(),
+                module: delegate(self, next_module),
             });
 
-            current_inclusion_point = self.get_object(iclass_id);
+            match *current_inclusion_point {
+                RubyObject::Object { .. } => panic!(),
+                RubyObject::Module { ref superclass, .. } |
+                RubyObject::Class { ref superclass, .. } |
+                RubyObject::Metaclass { ref superclass, .. } |
+                RubyObject::IClass { ref superclass, .. } =>
+                    superclass.set(Some(iclass)),
+            };
+
+            current_inclusion_point = iclass;
         }
 
         true
@@ -501,49 +474,45 @@ pub struct MethodEntry {
     pub node: Rc<Node>,
 }
 
-pub struct Scope {
-
-}
-
 #[derive(Clone)]
-pub struct ConstantEntry {
+pub struct ConstantEntry<'object> {
     pub source_file: Rc<SourceFile>,
     pub loc: Loc,
-    pub value: ObjectId,
+    pub value: &'object RubyObject<'object>,
 }
 
 #[derive(Debug)]
-enum RubyObject {
+pub enum RubyObject<'a> {
     Object {
         id: ObjectId,
-        class: Cell<ObjectId>,
+        class: Cell<&'a RubyObject<'a>>,
     },
     Module {
         id: ObjectId,
-        class: Cell<ObjectId>,
+        class: Cell<&'a RubyObject<'a>>,
         name: String,
-        superclass: Cell<ObjectId>,
+        superclass: Cell<Option<&'a RubyObject<'a>>>,
     },
     Class {
         id: ObjectId,
-        class: Cell<ObjectId>,
+        class: Cell<&'a RubyObject<'a>>,
         name: String,
-        superclass: Cell<ObjectId>,
+        superclass: Cell<Option<&'a RubyObject<'a>>>,
     },
     Metaclass {
         id: ObjectId,
-        class: Cell<ObjectId>,
-        superclass: Cell<ObjectId>,
-        of: ObjectId,
+        class: Cell<&'a RubyObject<'a>>,
+        superclass: Cell<Option<&'a RubyObject<'a>>>,
+        of: &'a RubyObject<'a>,
     },
     IClass {
         id: ObjectId,
-        superclass: Cell<ObjectId>,
-        module: ObjectId,
+        superclass: Cell<Option<&'a RubyObject<'a>>>,
+        module: &'a RubyObject<'a>,
     }
 }
 
-impl RubyObject {
+impl<'a> RubyObject<'a> {
     fn id(&self) -> ObjectId {
         match *self {
             RubyObject::Object { id, .. } => id,
@@ -555,10 +524,16 @@ impl RubyObject {
     }
 }
 
-impl PartialEq for RubyObject {
+impl<'a> PartialEq for RubyObject<'a> {
     fn eq(&self, other: &RubyObject) -> bool {
         self.id() == other.id()
     }
 }
 
-impl Eq for RubyObject {}
+impl<'a> Eq for RubyObject<'a> {}
+
+impl<'a> Hash for RubyObject<'a> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.id().hash(state)
+    }
+}

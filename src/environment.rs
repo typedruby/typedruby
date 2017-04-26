@@ -1,38 +1,44 @@
 use std::io;
+use std::rc::Rc;
+use std::cell::RefCell;
 
-use ast::SourceFile;
+use typed_arena::Arena;
+
+use ast::{SourceFile};
 use errors::ErrorSink;
-use object::ObjectGraph;
+use object::{ObjectGraph, RubyObject};
 use top_level;
 
-pub struct Environment<'a> {
-    pub error_sink: &'a mut ErrorSink,
-    pub object: ObjectGraph,
+pub struct Environment<'object> {
+    arena: &'object Arena<RubyObject<'object>>,
+    pub object: ObjectGraph<'object>,
+    pub error_sink: RefCell<Box<ErrorSink>>,
 }
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/stdlib.rb");
 
-impl<'a> Environment<'a> {
-    pub fn new(error_sink: &'a mut ErrorSink) -> Environment {
+impl<'object> Environment<'object> {
+    pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>) -> Environment<'object> {
         let mut env = Environment {
-            error_sink: error_sink,
-            object: ObjectGraph::new(),
+            arena: arena,
+            error_sink: RefCell::new(error_sink),
+            object: ObjectGraph::new(&arena),
         };
 
         let source_file = SourceFile::new("(builtin stdlib)".to_owned(), STDLIB_DEFINITIONS.to_owned());
 
-        top_level::evaluate(&mut env, &source_file);
+        top_level::evaluate(&env, Rc::new(source_file));
 
         env
     }
 
-    pub fn load_file(&mut self, filename: String) -> io::Result<()> {
+    pub fn load_file<'env>(&'env self, filename: String) -> io::Result<()> {
         let source_file = match SourceFile::open(filename) {
             Ok(sf) => sf,
             Err(err) => return Err(err),
         };
 
-        top_level::evaluate(self, &source_file);
+        top_level::evaluate(self, Rc::new(source_file));
 
         Ok(())
     }
