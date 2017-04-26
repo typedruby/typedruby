@@ -243,6 +243,62 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
+    fn process_self_send(&self, send_node: &Node, id_loc: &Loc, id: &str, args: &[Rc<Node>]) {
+        match id {
+            "include" => {
+                if args.is_empty() {
+                    self.error("Wrong number of arguments to include", &[
+                        ("here", &self.source_file, id_loc),
+                    ]);
+                }
+
+                for arg in args {
+                    match self.resolve_static(arg) {
+                        Ok(obj) => {
+                            if !self.env.object.include_module(&self.scope.module, &obj) {
+                                self.error("Cyclic include", &[
+                                    ("here", &self.source_file, arg.loc()),
+                                ])
+                            }
+                        },
+                        Err((node, message)) => {
+                            self.warning("Could not statically resolve module reference in include", &[
+                                (message, &self.source_file, node.loc()),
+                            ]);
+                        }
+                    }
+                }
+            },
+            "require" => {
+                if args.len() == 0 {
+                    self.error("Missing argument to require", &[
+                        ("here", &self.source_file, id_loc),
+                    ]);
+                    return;
+                }
+
+                if args.len() > 1 {
+                    self.error("Too many arguments to require", &[
+                        ("from here", &self.source_file, args[1].loc()),
+                    ]);
+                    return;
+                }
+
+                match *args[0] {
+                    Node::String(ref loc, ref string) => {
+                        self.error("Require! :3", &[("here", &self.source_file, loc)]);
+                    },
+                    _ => {
+                        self.warning("Could not resolve dynamic path in require", &[
+                            ("here", &self.source_file, args[0].loc()),
+                        ]);
+                    }
+                }
+            },
+            _ => {},
+        }
+    }
+
     fn eval_node(&self, node: &Rc<Node>) {
         match **node {
             Node::Begin(_, ref stmts) => {
@@ -293,30 +349,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 }
             },
             Node::Send(_, None, Id(ref id_loc, ref id), ref args) => {
-                if id == "include" {
-                    if args.is_empty() {
-                        self.error("Wrong number of arguments to include", &[
-                            ("here", &self.source_file, id_loc),
-                        ]);
-                    }
-
-                    for arg in args {
-                        match self.resolve_static(arg) {
-                            Ok(obj) => {
-                                if !self.env.object.include_module(&self.scope.module, &obj) {
-                                    self.error("Cyclic include", &[
-                                        ("here", &self.source_file, arg.loc()),
-                                    ])
-                                }
-                            },
-                            Err((node, message)) => {
-                                self.warning("Could not statically resolve module reference in include", &[
-                                    (message, &self.source_file, node.loc()),
-                                ]);
-                            }
-                        }
-                    }
-                }
+                self.process_self_send(node, id_loc, id, args.as_slice());
             },
             Node::Send(_, Some(ref recv), _, ref args) => {
                 self.eval_node(recv);
