@@ -11,7 +11,6 @@ use typed_arena::Arena;
 use environment::Environment;
 use errors::ErrorReporter;
 
-use std::env;
 use std::io;
 
 fn main() {
