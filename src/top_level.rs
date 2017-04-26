@@ -1,6 +1,6 @@
 use ast::{SourceFile, Id, Node, Loc};
 use environment::Environment;
-use object::{RubyObject, ObjectType, Scope, MethodEntry};
+use object::{RubyObject, ObjectType, Scope, MethodEntry, IvarEntry};
 use std::rc::Rc;
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
@@ -85,7 +85,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn enter_scope(&self, module: &'object RubyObject<'object>, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let mut eval = Eval {
+            let eval = Eval {
                 env: self.env,
                 scope: Scope::spawn(&self.scope, module),
                 source_file: self.source_file.clone(),
@@ -200,11 +200,47 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>) {
-        self.env.object.define_method(target, name.to_owned(), MethodEntry::Ruby {
+        self.env.object.define_method(target, name.to_owned(), Rc::new(MethodEntry::Ruby {
             node: def_node.clone(),
             source_file: self.source_file.clone(),
             scope: self.scope.clone(),
-        })
+        }))
+    }
+
+    fn symbol_name<'node>(&self, node: &'node Rc<Node>) -> Option<&'node str> {
+        match **node {
+            Node::Symbol(_, ref sym) => Some(sym),
+            _ => {
+                self.error("Dynamic symbol", &[
+                    ("here", &self.source_file, node.loc()),
+                ]);
+
+                None
+            },
+        }
+    }
+
+    fn alias_method(&self, klass: &'object RubyObject<'object>, from: &Rc<Node>, to: &Rc<Node>) {
+        let from_name = self.symbol_name(from);
+        let to_name = self.symbol_name(to);
+
+        if let Some(method) = from_name.and_then(|name| self.env.object.lookup_method(klass, name)) {
+            if let Some(name) = to_name {
+                self.env.object.define_method(klass, name.to_owned(), method.clone());
+            }
+        } else {
+            if let Some(name) = from_name {
+                // no need to check None case, symbol_name would have already emitted an error
+                self.error("Could not resolve source method in alias", &[
+                    (&format!("{}#{}", klass.name(), name), &self.source_file, from.loc()),
+                ]);
+            }
+
+            if let Some(name) = to_name {
+                // define alias target as untyped so that uses of it don't produce even more errors:
+                self.env.object.define_method(klass, name.to_owned(), Rc::new(MethodEntry::Untyped));
+            }
+        }
     }
 
     fn eval_node(&self, node: &Rc<Node>) {
@@ -321,9 +357,24 @@ impl<'env, 'object> Eval<'env, 'object> {
                     }
                 }
             },
-            Node::Alias(_, ref from, ref to) => {
-                // TODO
-            }
+            Node::Alias(_, ref to, ref from) => {
+                self.alias_method(self.scope.module, from, to);
+            },
+            Node::TyIvardecl(_, Id(ref ivar_loc, ref ivar), ref type_node) => {
+                if let Some(ivar_decl) = self.env.object.lookup_ivar(&self.scope.module, ivar) {
+                    self.error("Duplicate instance variable type declaration", &[
+                        ("here", &self.source_file, ivar_loc),
+                        ("previous declaration was here", &ivar_decl.source_file, &ivar_decl.ivar_loc),
+                    ]);
+                } else {
+                    self.env.object.define_ivar(&self.scope.module, ivar.to_owned(), Rc::new(IvarEntry {
+                        source_file: self.source_file.clone(),
+                        ivar_loc: ivar_loc.clone(),
+                        type_node: type_node.clone(),
+                        scope: self.scope.clone(),
+                    }));
+                }
+            },
             _ => panic!("unknown node: {:?}", node),
         }
     }
