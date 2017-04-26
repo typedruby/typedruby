@@ -7,8 +7,6 @@ use ast::{Node, SourceFile, Loc};
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
-// then we can use Option<ObjectId> rather than manually treating 0 as none-ish:
-const NO_OBJECT_ID: ObjectId = 0;
 
 struct GenId {
     _next: Cell<ObjectId>,
