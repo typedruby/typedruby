@@ -367,7 +367,7 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn define_method(&self, target: &'a RubyObject<'a>, name: String, source_file: Rc<SourceFile>, node: Rc<Node>, scope: Rc<Scope<'a>>) {
+    pub fn define_method(&self, target: &'a RubyObject<'a>, name: String, entry: MethodEntry<'a>) {
         match *target {
             RubyObject::Object { .. } => panic!("called define_method with RubyObject::Object!"),
             RubyObject::Module { .. } |
@@ -380,11 +380,7 @@ impl<'a> ObjectGraph<'a> {
 
         let methods = methods_ref.entry(target).or_insert_with(|| HashMap::new());
 
-        methods.insert(name, MethodEntry {
-            node: node,
-            source_file: source_file,
-            scope: scope,
-        });
+        methods.insert(name, entry);
     }
 
     pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> bool {
@@ -519,10 +515,12 @@ impl<'object> Scope<'object> {
 }
 
 #[derive(Clone)]
-pub struct MethodEntry<'object> {
-    pub source_file: Rc<SourceFile>,
-    pub node: Rc<Node>,
-    pub scope: Rc<Scope<'object>>,
+pub enum MethodEntry<'object> {
+    Ruby {
+        source_file: Rc<SourceFile>,
+        node: Rc<Node>,
+        scope: Rc<Scope<'object>>,
+    },
 }
 
 #[derive(Clone)]
