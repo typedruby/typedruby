@@ -87,13 +87,6 @@ impl<'a> ObjectGraph<'a> {
             superclass: Cell::new(None),
         });
 
-        let basic_object_metaclass = arena.alloc(RubyObject::Metaclass {
-            id: ids.next(),
-            of: basic_object,
-            class: Cell::new(unsafe_null_ref),
-            superclass: Cell::new(None),
-        });
-
         let object = arena.alloc(RubyObject::Class {
             id: ids.next(),
             name: "Object".to_owned(),
@@ -114,6 +107,29 @@ impl<'a> ObjectGraph<'a> {
             class: Cell::new(unsafe_null_ref),
             superclass: Cell::new(Some(module)),
         });
+
+        let basic_object_metaclass = arena.alloc(RubyObject::Metaclass {
+            id: ids.next(),
+            of: basic_object,
+            class: Cell::new(unsafe_null_ref),
+            superclass: Cell::new(Some(class)),
+        });
+
+        fn set_class<'a>(object: &'a RubyObject<'a>, class: &'a RubyObject<'a>) {
+            match *object {
+                RubyObject::Object { class: ref class_, .. } |
+                RubyObject::Class { class: ref class_, .. } |
+                RubyObject::Module { class: ref class_, .. } |
+                RubyObject::Metaclass { class: ref class_, .. } => class_.set(class),
+                RubyObject::IClass { .. } => panic!(),
+            }
+        }
+
+        set_class(basic_object, basic_object_metaclass);
+        set_class(basic_object_metaclass, class);
+        set_class(object, class);
+        set_class(module, class);
+        set_class(class, class);
 
         ObjectGraph {
             ids: ids,
