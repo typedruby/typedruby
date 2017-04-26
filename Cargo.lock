@@ -3,6 +3,7 @@ name = "typedruby"
 version = "0.0.1"
 dependencies = [
  "ruby_parser 0.1.0 (git+ssh://git@github.com/github/ruby_parser.git)",
+ "typed-arena 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -13,11 +14,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "ruby_parser"
 version = "0.1.0"
-source = "git+ssh://git@github.com/github/ruby_parser.git#c56aad8b15e19d303e5c7e3ac4f8a8ee2fa0ead9"
+source = "git+ssh://git@github.com/github/ruby_parser.git#4a70c9857f977ae2dba71f5037caec84161a4566"
 dependencies = [
  "libc 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
+[[package]]
+name = "typed-arena"
+version = "1.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+
 [metadata]
 "checksum libc 0.2.21 (registry+https://github.com/rust-lang/crates.io-index)" = "88ee81885f9f04bff991e306fea7c1c60a5f0f9e409e99f6b40e3311a3363135"
 "checksum ruby_parser 0.1.0 (git+ssh://git@github.com/github/ruby_parser.git)" = "<none>"
+"checksum typed-arena 1.2.0 (registry+https://github.com/rust-lang/crates.io-index)" = "8e2f9dc90da4f9d66ffc9ad3ead2c7d57582a26f4a3292d2ce7011bd29965100"
