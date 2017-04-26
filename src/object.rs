@@ -190,8 +190,8 @@ impl<'a> ObjectGraph<'a> {
                     }
                 }
             },
-            RubyObject::Class { ref id, ref class, ref superclass, .. } |
-            RubyObject::Metaclass { ref id, ref class, ref superclass, .. } => {
+            RubyObject::Class { ref id, ref class, .. } |
+            RubyObject::Metaclass { ref id, ref class, .. } => {
                 match class.get() {
                     metaclass_ref@&RubyObject::Metaclass { .. } =>
                         metaclass_ref,
@@ -204,7 +204,7 @@ impl<'a> ObjectGraph<'a> {
                             // constructed in ObjectGraph::bootstrap:
                             // TODO - we do need to replace the direct superclass field get with something that
                             // ignores iclasses:
-                            superclass: Cell::new(superclass.get().map(|c| self.metaclass(c))),
+                            superclass: Cell::new(self.superclass(object_ref).map(|c| self.metaclass(c))),
                         });
 
                         class.set(metaclass_ref);
@@ -244,9 +244,20 @@ impl<'a> ObjectGraph<'a> {
                 panic!("called superclass with RubyObject::Object!"),
             RubyObject::Module { ref superclass, .. } |
             RubyObject::Class { ref superclass, .. } |
-            RubyObject::Metaclass { ref superclass, .. } =>
-                // TODO - need to skip iclasses here:
-                superclass.get(),
+            RubyObject::Metaclass { ref superclass, .. } => {
+                let mut superclass = superclass;
+
+                loop {
+                    match superclass.get() {
+                        None => return None,
+                        Some(&RubyObject::Object { .. }) => panic!(),
+                        Some(class@&RubyObject::Module { .. }) |
+                        Some(class@&RubyObject::Class { .. }) |
+                        Some(class@&RubyObject::Metaclass { .. }) => return Some(class),
+                        Some(&RubyObject::IClass { superclass: ref superclass_, .. }) => superclass = superclass_,
+                    }
+                }
+            },
             RubyObject::IClass { .. } =>
                 panic!("should not get superclass of iclass directly"),
         }
