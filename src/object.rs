@@ -421,6 +421,7 @@ impl<'a> ObjectGraph<'a> {
         None
     }
 
+    // TODO - check for instance variable name conflicts in superclasses and subclasses:
     pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> bool {
         // TODO - we'll need this to implement prepends later.
         // MRI's prepend implementation relies on changing the type of the object
