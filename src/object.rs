@@ -250,10 +250,6 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    fn ancestors(&self, object: &'a RubyObject<'a>) -> AncestorIterator<'a> {
-        AncestorIterator { object: Some(object) }
-    }
-
     // returns the next module, class, or metaclass in the ancestry chain.
     // skips iclasses.
     pub fn superclass(&self, object: &'a RubyObject<'a>) -> Option<&'a RubyObject<'a>> {
@@ -394,7 +390,7 @@ impl<'a> ObjectGraph<'a> {
     }
 
     pub fn lookup_method(&self, klass: &'a RubyObject<'a>, name: &str) -> Option<Rc<MethodEntry<'a>>> {
-        for ancestor in self.ancestors(klass) {
+        for ancestor in klass.ancestors() {
             let delegate = ancestor.delegate();
 
             if let Some(method) = Self::class_table_lookup(&self.methods, delegate, name) {
@@ -410,7 +406,7 @@ impl<'a> ObjectGraph<'a> {
     }
 
     pub fn lookup_ivar(&self, klass: &'a RubyObject<'a>, name: &str) -> Option<Rc<IvarEntry<'a>>> {
-        for ancestor in self.ancestors(klass) {
+        for ancestor in klass.ancestors() {
             let delegate = ancestor.delegate();
 
             if let Some(ivar) = Self::class_table_lookup(&self.ivars, delegate, name) {
@@ -445,7 +441,7 @@ impl<'a> ObjectGraph<'a> {
 
         let mut current_inclusion_point = method_location(target);
 
-        'next_module: for next_module in self.ancestors(module) {
+        'next_module: for next_module in module.ancestors() {
             if target == next_module.delegate() {
                 // cyclic include
                 return false
@@ -453,7 +449,7 @@ impl<'a> ObjectGraph<'a> {
 
             let mut superclass_seen = false;
 
-            for next_class in self.ancestors(method_location(target)).skip(1) {
+            for next_class in method_location(target).ancestors().skip(1) {
                 if let RubyObject::IClass {..} = *next_class {
                     if next_class.delegate() == next_module.delegate() {
                         if !superclass_seen {
@@ -630,6 +626,10 @@ impl<'a> RubyObject<'a> {
             RubyObject::IClass { module, .. } =>
                 module,
         }
+    }
+
+    pub fn ancestors(&'a self) -> AncestorIterator<'a> {
+        AncestorIterator { object: Some(self) }
     }
 }
 
