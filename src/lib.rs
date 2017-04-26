@@ -10,6 +10,7 @@ pub struct SourceFile {
     filename: String,
     source: String,
     line_map: Vec<usize>,
+    ast: ast::Ast,
 }
 
 pub struct SourceLine {
@@ -38,11 +39,13 @@ fn line_map_from_source(source: &str) -> Vec<usize> {
 impl SourceFile {
     pub fn new(filename: String, source: String) -> SourceFile {
         let line_map = line_map_from_source(&source);
+        let ast = parser::parse(filename.as_str(), source.as_str());
 
         SourceFile {
             filename: filename,
             source: source,
             line_map: line_map,
+            ast: ast,
         }
     }
 
@@ -55,8 +58,8 @@ impl SourceFile {
         Ok(SourceFile::new(filename, source))
     }
 
-    pub fn parse(&self) -> ast::Ast {
-        parser::parse(self.filename.as_str(), self.source.as_str())
+    pub fn ast(&self) -> &ast::Ast {
+        &self.ast
     }
 
     pub fn line_for_pos(&self, byte_pos: usize) -> SourceLine {
