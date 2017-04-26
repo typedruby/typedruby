@@ -65,7 +65,7 @@ pub struct ObjectGraph<'a> {
     pub Class: &'a RubyObject<'a>,
 
     constants: RefCell<HashMap<&'a RubyObject<'a>, HashMap<String, ConstantEntry<'a>>>>,
-    methods: RefCell<HashMap<&'a RubyObject<'a>, HashMap<String, MethodEntry>>>,
+    methods: RefCell<HashMap<&'a RubyObject<'a>, HashMap<String, MethodEntry<'a>>>>,
 }
 
 impl<'a> ObjectGraph<'a> {
@@ -367,7 +367,7 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn define_method(&self, target: &'a RubyObject<'a>, name: String, source_file: Rc<SourceFile>, node: Rc<Node>) {
+    pub fn define_method(&self, target: &'a RubyObject<'a>, name: String, source_file: Rc<SourceFile>, node: Rc<Node>, scope: Rc<Scope<'a>>) {
         match *target {
             RubyObject::Object { .. } => panic!("called define_method with RubyObject::Object!"),
             RubyObject::Module { .. } |
@@ -383,6 +383,7 @@ impl<'a> ObjectGraph<'a> {
         methods.insert(name, MethodEntry {
             node: node,
             source_file: source_file,
+            scope: scope,
         });
     }
 
@@ -518,9 +519,10 @@ impl<'object> Scope<'object> {
 }
 
 #[derive(Clone)]
-pub struct MethodEntry {
+pub struct MethodEntry<'object> {
     pub source_file: Rc<SourceFile>,
     pub node: Rc<Node>,
+    pub scope: Rc<Scope<'object>>,
 }
 
 #[derive(Clone)]

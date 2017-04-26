@@ -200,7 +200,7 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>) {
-        self.env.object.define_method(target, name.to_owned(), self.source_file.clone(), def_node.clone())
+        self.env.object.define_method(target, name.to_owned(), self.source_file.clone(), def_node.clone(), self.scope.clone())
     }
 
     fn eval_node(&self, node: &Rc<Node>) {
