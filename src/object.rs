@@ -480,6 +480,43 @@ pub enum ObjectType {
     Metaclass,
 }
 
+pub struct ScopeIter<'object> {
+    scope: Option<Rc<Scope<'object>>>,
+}
+
+impl<'object> Iterator for ScopeIter<'object> {
+    type Item = Rc<Scope<'object>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.scope.clone().map(|scope| {
+            self.scope = scope.parent.clone();
+            scope
+        })
+    }
+}
+
+pub struct Scope<'object> {
+    pub parent: Option<Rc<Scope<'object>>>,
+    pub module: &'object RubyObject<'object>,
+}
+
+impl<'object> Scope<'object> {
+    pub fn root(scope: &Rc<Scope<'object>>) -> Rc<Scope<'object>> {
+        match scope.parent {
+            Some(ref parent) => Scope::root(parent),
+            None => scope.clone(),
+        }
+    }
+
+    pub fn ancestors(scope: &Rc<Scope<'object>>) -> ScopeIter<'object> {
+        ScopeIter { scope: Some(scope.clone()) }
+    }
+
+    pub fn spawn(scope: &Rc<Scope<'object>>, module: &'object RubyObject<'object>) -> Rc<Scope<'object>> {
+        Rc::new(Scope { parent: Some(scope.clone()), module: module })
+    }
+}
+
 #[derive(Clone)]
 pub struct MethodEntry {
     pub source_file: Rc<SourceFile>,
