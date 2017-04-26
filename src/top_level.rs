@@ -159,8 +159,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                                     if Some(superclass.clone()) != existing_superclass {
                                         let existing_superclass_name =
                                             match existing_superclass {
-                                                Some(existing_superclass) =>
-                                                    self.env.object.name(&existing_superclass),
+                                                Some(existing_superclass) => existing_superclass.name(),
                                                 None => "nil".to_owned(),
                                             };
 

@@ -217,26 +217,11 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn name(&self, object: &'a RubyObject<'a>) -> String {
-        match *object {
-            RubyObject::Object { ref class, .. } =>
-                format!("#<{}>", self.name(class.get())),
-            RubyObject::Module { ref name, .. } =>
-                name.clone(),
-            RubyObject::Class { ref name, .. } =>
-                name.clone(),
-            RubyObject::Metaclass { of, .. } =>
-                format!("Class::[{}]", self.name(of)),
-            RubyObject::IClass { .. } =>
-                panic!("iclass has no name"),
-        }
-    }
-
     fn ancestors(&self, object: &'a RubyObject<'a>) -> AncestorIterator<'a> {
         AncestorIterator { object: Some(object) }
     }
 
-    // returns the next module, class, or metaclass in the ancestry chain
+    // returns the next module, class, or metaclass in the ancestry chain.
     // skips iclasses.
     pub fn superclass(&self, object: &'a RubyObject<'a>) -> Option<&'a RubyObject<'a>> {
         match *object {
@@ -378,7 +363,7 @@ impl<'a> ObjectGraph<'a> {
         if object == self.Object {
             name.to_owned()
         } else {
-            self.name(object) + name
+            format!("{}::{}", object.name(), name)
         }
     }
 
@@ -547,6 +532,21 @@ impl<'a> RubyObject<'a> {
             RubyObject::Class { id, .. } => id,
             RubyObject::Metaclass { id, .. } => id,
             RubyObject::IClass { id, .. } => id,
+        }
+    }
+
+    pub fn name(&self) -> String {
+        match *self {
+            RubyObject::Object { ref class, .. } =>
+                format!("#<{}>", class.get().name()),
+            RubyObject::Module { ref name, .. } =>
+                name.clone(),
+            RubyObject::Class { ref name, .. } =>
+                name.clone(),
+            RubyObject::Metaclass { of, .. } =>
+                format!("Class::[{}]", of.name()),
+            RubyObject::IClass { .. } =>
+                panic!("iclass has no name"),
         }
     }
 }
