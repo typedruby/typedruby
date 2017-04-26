@@ -118,7 +118,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                             ObjectType::Metaclass => {
                                 // check superclass matches
                                 if let Some((ref superclass_node, ref superclass)) = superclass {
-                                    let existing_superclass = self.env.object.superclass(const_value);
+                                    let existing_superclass = const_value.superclass();
                                     if Some(superclass.clone()) != existing_superclass {
                                         let existing_superclass_name =
                                             match existing_superclass {
