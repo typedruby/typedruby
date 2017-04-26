@@ -14,7 +14,7 @@ use errors::ErrorReporter;
 use std::io;
 
 fn main() {
-    let mut errors = ErrorReporter::new(io::stderr());
+    let errors = ErrorReporter::new(io::stderr());
     let arena = Arena::new();
     let env = Environment::new(&arena, Box::new(errors));
 
