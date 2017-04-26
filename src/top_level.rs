@@ -1,6 +1,6 @@
 use ast::{SourceFile, Id, Node, Loc};
 use environment::Environment;
-use object::{RubyObject, ObjectType, Scope};
+use object::{RubyObject, ObjectType, Scope, MethodEntry};
 use std::rc::Rc;
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
@@ -200,7 +200,11 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>) {
-        self.env.object.define_method(target, name.to_owned(), self.source_file.clone(), def_node.clone(), self.scope.clone())
+        self.env.object.define_method(target, name.to_owned(), MethodEntry::Ruby {
+            node: def_node.clone(),
+            source_file: self.source_file.clone(),
+            scope: self.scope.clone(),
+        })
     }
 
     fn eval_node(&self, node: &Rc<Node>) {
