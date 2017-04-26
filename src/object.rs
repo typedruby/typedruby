@@ -52,6 +52,8 @@ impl<'a> Iterator for AncestorIterator<'a> {
     }
 }
 
+type ClassTable<'a, T> = RefCell<HashMap<&'a RubyObject<'a>, HashMap<String, Rc<T>>>>;
+
 #[allow(non_snake_case)]
 pub struct ObjectGraph<'a> {
     ids: GenId,
@@ -62,8 +64,9 @@ pub struct ObjectGraph<'a> {
     pub Module: &'a RubyObject<'a>,
     pub Class: &'a RubyObject<'a>,
 
-    constants: RefCell<HashMap<&'a RubyObject<'a>, HashMap<String, ConstantEntry<'a>>>>,
-    methods: RefCell<HashMap<&'a RubyObject<'a>, HashMap<String, MethodEntry<'a>>>>,
+    constants: ClassTable<'a, ConstantEntry<'a>>,
+    methods: ClassTable<'a, MethodEntry<'a>>,
+    ivars: ClassTable<'a, IvarEntry<'a>>,
 }
 
 impl<'a> ObjectGraph<'a> {
@@ -140,11 +143,43 @@ impl<'a> ObjectGraph<'a> {
 
             constants: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
+            ivars: RefCell::new(HashMap::new()),
         }
     }
 
     fn alloc(&self, obj: RubyObject<'a>) -> &'a RubyObject<'a> {
         self.arena.alloc(obj)
+    }
+
+    fn class_table_lookup<T>(table: &ClassTable<'a, T>, class: &'a RubyObject<'a>, key: &str) -> Option<Rc<T>> {
+        match *class {
+            RubyObject::Object { .. } => panic!("RubyObject::Object has no associated class table"),
+            RubyObject::Module { .. } |
+            RubyObject::Class { .. } |
+            RubyObject::Metaclass { .. } => {}
+            RubyObject::IClass {..} => panic!("RubyObject::IClass has no associated class table"),
+        }
+
+        let table_ref = table.borrow();
+
+        table_ref.get(class)
+            .and_then(|t| t.get(key))
+            .map(|rc| rc.clone())
+    }
+
+    fn class_table_insert<T>(table: &ClassTable<'a, T>, class: &'a RubyObject<'a>, key: String, value: Rc<T>) {
+        match *class {
+            RubyObject::Object { .. } => panic!("RubyObject::Object has no associated class table"),
+            RubyObject::Module { .. } |
+            RubyObject::Class { .. } |
+            RubyObject::Metaclass { .. } => {}
+            RubyObject::IClass {..} => panic!("RubyObject::IClass has no associated class table"),
+        }
+
+        let mut table_ref = table.borrow_mut();
+
+        table_ref.entry(class).or_insert_with(|| HashMap::new())
+            .insert(key, value);
     }
 
     pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
@@ -284,27 +319,16 @@ impl<'a> ObjectGraph<'a> {
     }
 
     pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, source_file: Rc<SourceFile>, loc: Loc, value: &'a RubyObject<'a>) -> bool {
-        match *object {
-            RubyObject::Object { .. } => panic!("called put_const with RubyObject::Object!"),
-            RubyObject::Module { .. } |
-            RubyObject::Class { .. } |
-            RubyObject::Metaclass { .. } => {},
-            RubyObject::IClass { .. } => panic!("cannot set constant directly on iclass"),
-        };
-
-        let mut constants_ref = self.constants.borrow_mut();
-
-        let object_constants = constants_ref.entry(object).or_insert_with(|| HashMap::new());
-
-        if object_constants.contains_key(name) {
-            false
-        } else {
-            object_constants.insert(name.to_owned(), ConstantEntry {
-                source_file: source_file,
-                loc: loc,
-                value: value,
-            });
-            true
+        match Self::class_table_lookup(&self.constants, object, name) {
+            Some(_) => false,
+            None => {
+                Self::class_table_insert(&self.constants, object, name.to_owned(), Rc::new(ConstantEntry {
+                    source_file: source_file,
+                    loc: loc,
+                    value: value,
+                }));
+                true
+            },
         }
     }
 
@@ -365,20 +389,36 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn define_method(&self, target: &'a RubyObject<'a>, name: String, entry: MethodEntry<'a>) {
-        match *target {
-            RubyObject::Object { .. } => panic!("called define_method with RubyObject::Object!"),
-            RubyObject::Module { .. } |
-            RubyObject::Class { .. } |
-            RubyObject::Metaclass { .. } => {}
-            RubyObject::IClass {..} => panic!("called define_method with RubyObject::IClass!"),
+    pub fn define_method(&self, target: &'a RubyObject<'a>, name: String, entry: Rc<MethodEntry<'a>>) {
+        Self::class_table_insert(&self.methods, target, name, entry)
+    }
+
+    pub fn lookup_method(&self, klass: &'a RubyObject<'a>, name: &str) -> Option<Rc<MethodEntry<'a>>> {
+        for ancestor in self.ancestors(klass) {
+            let delegate = ancestor.delegate();
+
+            if let Some(method) = Self::class_table_lookup(&self.methods, delegate, name) {
+                return Some(method.clone());
+            }
         }
 
-        let mut methods_ref = self.methods.borrow_mut();
+        None
+    }
 
-        let methods = methods_ref.entry(target).or_insert_with(|| HashMap::new());
+    pub fn define_ivar(&self, target: &'a RubyObject<'a>, name: String, ivar: Rc<IvarEntry<'a>>) {
+        Self::class_table_insert(&self.ivars, target, name, ivar)
+    }
 
-        methods.insert(name, entry);
+    pub fn lookup_ivar(&self, klass: &'a RubyObject<'a>, name: &str) -> Option<Rc<IvarEntry<'a>>> {
+        for ancestor in self.ancestors(klass) {
+            let delegate = ancestor.delegate();
+
+            if let Some(ivar) = Self::class_table_lookup(&self.ivars, delegate, name) {
+                return Some(ivar.clone())
+            }
+        }
+
+        None
     }
 
     pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> bool {
@@ -397,19 +437,7 @@ impl<'a> ObjectGraph<'a> {
             }
         }
 
-        fn delegate<'a>(g: &ObjectGraph<'a>, obj: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
-            match *obj {
-                RubyObject::Object {..} => panic!(),
-                RubyObject::Module {..} |
-                RubyObject::Class {..} |
-                RubyObject::Metaclass {..} =>
-                    obj,
-                RubyObject::IClass { module, .. } =>
-                    module,
-            }
-        }
-
-        if target == delegate(self, module) {
+        if target == module.delegate() {
             // cyclic include
             return false
         }
@@ -417,7 +445,7 @@ impl<'a> ObjectGraph<'a> {
         let mut current_inclusion_point = method_location(target);
 
         'next_module: for next_module in self.ancestors(module) {
-            if target == delegate(self, next_module) {
+            if target == next_module.delegate() {
                 // cyclic include
                 return false
             }
@@ -426,7 +454,7 @@ impl<'a> ObjectGraph<'a> {
 
             for next_class in self.ancestors(method_location(target)).skip(1) {
                 if let RubyObject::IClass {..} = *next_class {
-                    if delegate(self, next_class) == delegate(self, next_module) {
+                    if next_class.delegate() == next_module.delegate() {
                         if !superclass_seen {
                             current_inclusion_point = next_class;
                         }
@@ -449,7 +477,7 @@ impl<'a> ObjectGraph<'a> {
                     RubyObject::IClass { ref superclass, .. } =>
                         superclass.clone(),
                 },
-                module: delegate(self, next_module),
+                module: next_module.delegate(),
             });
 
             match *current_inclusion_point {
@@ -512,20 +540,26 @@ impl<'object> Scope<'object> {
     }
 }
 
-#[derive(Clone)]
 pub enum MethodEntry<'object> {
     Ruby {
         source_file: Rc<SourceFile>,
         node: Rc<Node>,
         scope: Rc<Scope<'object>>,
     },
+    Untyped,
 }
 
-#[derive(Clone)]
 pub struct ConstantEntry<'object> {
     pub source_file: Rc<SourceFile>,
     pub loc: Loc,
     pub value: &'object RubyObject<'object>,
+}
+
+pub struct IvarEntry<'object> {
+    pub source_file: Rc<SourceFile>,
+    pub ivar_loc: Loc,
+    pub type_node: Rc<Node>,
+    pub scope: Rc<Scope<'object>>,
 }
 
 #[derive(Debug)]
@@ -582,6 +616,18 @@ impl<'a> RubyObject<'a> {
                 format!("Class::[{}]", of.name()),
             RubyObject::IClass { .. } =>
                 panic!("iclass has no name"),
+        }
+    }
+
+    pub fn delegate(&'a self) -> &'a RubyObject<'a> {
+        match *self {
+            RubyObject::Object { .. } => panic!(),
+            RubyObject::Module { .. } |
+            RubyObject::Class { .. } |
+            RubyObject::Metaclass { .. } =>
+                self,
+            RubyObject::IClass { module, .. } =>
+                module,
         }
     }
 }
