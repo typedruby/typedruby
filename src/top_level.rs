@@ -1,51 +1,14 @@
 use ast::{SourceFile, Id, Node, Loc};
 use environment::Environment;
-use object::{RubyObject, ObjectType};
+use object::{RubyObject, ObjectType, Scope};
 use std::rc::Rc;
-
-struct Scope<'object> {
-    pub parent: Option<Rc<Scope<'object>>>,
-    pub module: &'object RubyObject<'object>,
-}
-
-impl<'object> Scope<'object> {
-    pub fn root(scope: &Rc<Scope<'object>>) -> Rc<Scope<'object>> {
-        match scope.parent {
-            Some(ref parent) => Scope::root(parent),
-            None => scope.clone(),
-        }
-    }
-
-    pub fn ancestors(scope: &Rc<Scope<'object>>) -> ScopeIter<'object> {
-        ScopeIter { scope: Some(scope.clone()) }
-    }
-
-    pub fn spawn(scope: &Rc<Scope<'object>>, module: &'object RubyObject<'object>) -> Rc<Scope<'object>> {
-        Rc::new(Scope { parent: Some(scope.clone()), module: module })
-    }
-}
-
-struct ScopeIter<'object> {
-    scope: Option<Rc<Scope<'object>>>,
-}
-
-impl<'object> Iterator for ScopeIter<'object> {
-    type Item = Rc<Scope<'object>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.scope.clone().map(|scope| {
-            self.scope = scope.parent.clone();
-            scope
-        })
-    }
-}
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 
 struct Eval<'env, 'object: 'env> {
     pub env: &'env Environment<'object>,
     pub scope: Rc<Scope<'object>>,
-    pub source_file:Rc<SourceFile>,
+    pub source_file: Rc<SourceFile>,
 }
 
 impl<'env, 'object> Eval<'env, 'object> {
