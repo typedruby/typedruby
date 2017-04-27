@@ -228,7 +228,7 @@ impl<'a> ObjectGraph<'a> {
                 match class.get() {
                     metaclass_ref@&RubyObject::Metaclass { .. } =>
                         metaclass_ref,
-                    class_ref@_ => {
+                    _ => {
                         let metaclass_ref = self.arena.alloc(RubyObject::Metaclass {
                             id: self.new_object_id(),
                             of: object_ref,
@@ -247,16 +247,6 @@ impl<'a> ObjectGraph<'a> {
                 }
             },
             RubyObject::IClass {..} => panic!("iclass has no metaclass"),
-        }
-    }
-
-    pub fn type_of(&self, object: &'a RubyObject<'a>) -> ObjectType {
-        match *object {
-            RubyObject::Object {..} => ObjectType::Object,
-            RubyObject::Module {..} => ObjectType::Module,
-            RubyObject::Class {..} => ObjectType::Class,
-            RubyObject::Metaclass {..} => ObjectType::Metaclass,
-            RubyObject::IClass {..} => panic!("iclass is hidden object type"),
         }
     }
 
@@ -464,13 +454,6 @@ impl<'a> ObjectGraph<'a> {
 
         true
     }
-}
-
-pub enum ObjectType {
-    Object,
-    Module,
-    Class,
-    Metaclass,
 }
 
 pub struct ScopeIter<'object> {

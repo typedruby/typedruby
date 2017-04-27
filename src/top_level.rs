@@ -1,6 +1,6 @@
 use ast::{SourceFile, Id, Node, Loc};
 use environment::Environment;
-use object::{RubyObject, ObjectType, Scope, MethodEntry, IvarEntry};
+use object::{RubyObject, Scope, MethodEntry, IvarEntry};
 use std::rc::Rc;
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
@@ -27,12 +27,11 @@ impl<'env, 'object> Eval<'env, 'object> {
 
             Node::Const(_, Some(ref base), Id(_, ref name)) => {
                 match self.resolve_cpath(base) {
-                    Ok(base_ref) => match self.env.object.type_of(&base_ref) {
-                        ObjectType::Object => Err((base, "not a class/module")),
-                        _ => match self.env.object.get_const(&base_ref, name) {
-                            Some(const_ref) => Ok(const_ref),
-                            None => /* TODO autoload */ Err((node, "no such constant")),
-                        }
+                    Ok(&RubyObject::Object { .. }) => Err((base, "not a class/module")),
+                    Ok(&RubyObject::IClass { .. }) => panic!(),
+                    Ok(base_ref) => match self.env.object.get_const(&base_ref, name) {
+                        Some(const_ref) => Ok(const_ref),
+                        None => /* TODO autoload */ Err((node, "no such constant")),
                     },
                     error => error,
                 }
@@ -103,39 +102,46 @@ impl<'env, 'object> Eval<'env, 'object> {
         let class = match self.resolve_decl_ref(name) {
             Ok((base, id)) => {
                 match self.env.object.get_const_for_definition(&base, id) {
-                    Some(ref const_value) =>
-                        match self.env.object.type_of(const_value) {
-                            ObjectType::Object |
-                            ObjectType::Module => {
-                                self.error(&format!("{} is not a class", id), &[
-                                    ("here", &self.source_file, name.loc()),
+                    Some(object_ref@&RubyObject::Object { .. }) => {
+                        self.error(&format!("{} is not a class", id), &[
+                            ("here", &self.source_file, name.loc()),
+                            // TODO - show location of previous definition
+                        ]);
+
+                        // open the object's metaclass instead as error recovery:
+                        self.env.object.metaclass(object_ref)
+                    },
+                    Some(module_ref@&RubyObject::Module { .. }) => {
+                        self.error(&format!("{} is not a class", id), &[
+                            ("here", &self.source_file, name.loc()),
+                            // TODO - show location of previous definition
+                        ]);
+
+                        // open the module instead:
+                        module_ref
+                    },
+                    Some(class_ref@&RubyObject::Class { .. }) |
+                    Some(class_ref@&RubyObject::Metaclass { .. }) => {
+                        // check superclass matches
+                        if let Some((ref superclass_node, ref superclass)) = superclass {
+                            let existing_superclass = class_ref.superclass();
+                            if Some(superclass.clone()) != existing_superclass {
+                                let existing_superclass_name =
+                                    match existing_superclass {
+                                        Some(existing_superclass) => existing_superclass.name(),
+                                        None => "nil".to_owned(),
+                                    };
+
+                                self.error(&format!("Superclass does not match existing superclass {}", existing_superclass_name), &[
+                                    ("here", &self.source_file, superclass_node.loc()),
                                     // TODO - show location of previous definition
                                 ]);
+                            }
+                        }
 
-                                const_value.clone()
-                            },
-                            ObjectType::Class |
-                            ObjectType::Metaclass => {
-                                // check superclass matches
-                                if let Some((ref superclass_node, ref superclass)) = superclass {
-                                    let existing_superclass = const_value.superclass();
-                                    if Some(superclass.clone()) != existing_superclass {
-                                        let existing_superclass_name =
-                                            match existing_superclass {
-                                                Some(existing_superclass) => existing_superclass.name(),
-                                                None => "nil".to_owned(),
-                                            };
-
-                                        self.error(&format!("Superclass does not match existing superclass {}", existing_superclass_name), &[
-                                            ("here", &self.source_file, superclass_node.loc()),
-                                            // TODO - show location of previous definition
-                                        ]);
-                                    }
-                                }
-
-                                const_value.clone()
-                            },
-                        },
+                        class_ref
+                    },
+                    Some(&RubyObject::IClass { .. }) => panic!(),
                     None => {
                         let class = self.env.object.new_class(
                             self.env.object.constant_path(&base, id),
@@ -149,7 +155,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         }
 
                         class
-                    }
+                    },
                 }
             },
             Err((node, message)) => {
@@ -167,20 +173,19 @@ impl<'env, 'object> Eval<'env, 'object> {
         let module = match self.resolve_decl_ref(name) {
             Ok((base, id)) => {
                 match self.env.object.get_const_for_definition(&base, id) {
-                    Some(ref const_value) =>
-                        match self.env.object.type_of(const_value) {
-                            ObjectType::Object |
-                            ObjectType::Class |
-                            ObjectType::Metaclass => {
-                                self.error(&format!("{} is not a module", id), &[
-                                    ("here", &self.source_file, name.loc()),
-                                    // TODO show location of previous definition
-                                ]);
+                    Some(const_value@&RubyObject::Object { .. }) |
+                    Some(const_value@&RubyObject::Class { .. }) |
+                    Some(const_value@&RubyObject::Metaclass { .. }) => {
+                        self.error(&format!("{} is not a module", id), &[
+                            ("here", &self.source_file, name.loc()),
+                            // TODO show location of previous definition
+                        ]);
 
-                                const_value.clone()
-                            },
-                            ObjectType::Module => const_value.clone(),
-                        },
+                        const_value.clone()
+                    },
+                    Some(&RubyObject::IClass { .. }) => panic!(),
+                    Some(const_value@&RubyObject::Module { .. }) =>
+                        const_value.clone(),
                     None => {
                         let module = self.env.object.new_module(
                             self.env.object.constant_path(&base, id));
