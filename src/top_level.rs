@@ -94,7 +94,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
-    fn decl_class(&self, name: &Node, genargs: &[Rc<Node>], superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
+    fn decl_class(&self, name: &Node, type_parameters: &[Rc<Node>], superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
         // TODO need to autoload
 
         let superclass = superclass.as_ref().map(|node| (node, self.resolve_cpath(node).unwrap() /* TODO handle error */));
@@ -143,12 +143,36 @@ impl<'env, 'object> Eval<'env, 'object> {
                     },
                     Some(&RubyObject::IClass { .. }) => panic!(),
                     None => {
+                        let superclass = match superclass {
+                            Some((_, ref superclass)) => superclass,
+                            None => &self.env.object.Object,
+                        };
+
+                        let type_parameters =
+                            if superclass.type_parameters().is_empty() {
+                                type_parameters.iter().map(|param|
+                                    if let Node::TyGendeclarg(_, ref name) = **param {
+                                        name.to_owned()
+                                    } else {
+                                        panic!("expected TyGendeclarg in TyGendecl");
+                                    }
+                                ).collect()
+                            } else if type_parameters.is_empty() {
+                                Vec::new()
+                            } else {
+                                let loc = type_parameters.first().unwrap().loc().join(
+                                            type_parameters.last().unwrap().loc());
+
+                                self.error("Subclasses of generic classes may not specify type parameters", &[
+                                    ("here", &self.source_file, &loc),
+                                ]);
+
+                                Vec::new()
+                            };
+
                         let class = self.env.object.new_class(
                             self.env.object.constant_path(&base, id),
-                            match superclass {
-                                Some((_, ref superclass)) => superclass,
-                                None => &self.env.object.Object,
-                            });
+                            superclass, type_parameters);
 
                         if !self.env.object.set_const(&base, id, self.source_file.clone(), name.loc().clone(), &class) {
                             panic!("internal error: would overwrite existing constant");
