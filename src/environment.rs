@@ -62,8 +62,8 @@ impl<'object> Environment<'object> {
             match loaded_features_ref.get(path) {
                 None => {},
                 Some(&LoadState::Loading) => {
-                    // circular require
-                    panic!("circular require")
+                    // circular require, pass for now
+                    return Ok(());
                 },
                 Some(&LoadState::Loaded) => {
                     return Ok(());
