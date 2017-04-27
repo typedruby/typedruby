@@ -2,13 +2,13 @@ use ast::SourceLoc;
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
 
-pub struct Types<'ty, 'object: 'ty> {
+pub struct Types<'ty, 'env, 'object: 'ty + 'env> {
     arena: &'ty Arena<Type<'ty, 'object>>,
-    object: &'object ObjectGraph<'object>,
+    object: &'env ObjectGraph<'object>,
 }
 
-impl<'ty, 'object> Types<'ty, 'object> {
-    pub fn new(arena: &'ty Arena<Type<'ty, 'object>>, object: &'object ObjectGraph<'object>) -> Types<'ty, 'object> {
+impl<'ty, 'env, 'object: 'ty + 'env> Types<'ty, 'env, 'object> {
+    pub fn new(arena: &'ty Arena<Type<'ty, 'object>>, object: &'env ObjectGraph<'object>) -> Types<'ty, 'env, 'object> {
         Types { arena: arena, object: object }
     }
 
