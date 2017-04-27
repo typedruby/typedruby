@@ -24,7 +24,7 @@ impl GenId {
     }
 }
 
-struct AncestorIterator<'a> {
+pub struct AncestorIterator<'a> {
     object: Option<&'a RubyObject<'a>>,
 }
 
