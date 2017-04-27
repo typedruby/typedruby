@@ -86,6 +86,7 @@ impl<'a> ObjectGraph<'a> {
             name: "BasicObject".to_owned(),
             class: Cell::new(unsafe_null_ref),
             superclass: Cell::new(None),
+            type_parameters: Vec::new(),
         });
 
         let object = arena.alloc(RubyObject::Class {
@@ -93,6 +94,7 @@ impl<'a> ObjectGraph<'a> {
             name: "Object".to_owned(),
             class: Cell::new(unsafe_null_ref),
             superclass: Cell::new(Some(basic_object)),
+            type_parameters: Vec::new(),
         });
 
         let module = arena.alloc(RubyObject::Class {
@@ -100,6 +102,7 @@ impl<'a> ObjectGraph<'a> {
             name: "Module".to_owned(),
             class: Cell::new(unsafe_null_ref),
             superclass: Cell::new(Some(object)),
+            type_parameters: Vec::new(),
         });
 
         let class = arena.alloc(RubyObject::Class {
@@ -107,6 +110,7 @@ impl<'a> ObjectGraph<'a> {
             name: "Class".to_owned(),
             class: Cell::new(unsafe_null_ref),
             superclass: Cell::new(Some(module)),
+            type_parameters: Vec::new(),
         });
 
         let basic_object_metaclass = arena.alloc(RubyObject::Metaclass {
@@ -182,12 +186,13 @@ impl<'a> ObjectGraph<'a> {
             .insert(key, value);
     }
 
-    pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
+    pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>, type_parameters: Vec<String>) -> &'a RubyObject<'a> {
         self.alloc(RubyObject::Class {
             id: self.new_object_id(),
             name: name,
             class: Cell::new(self.Class),
             superclass: Cell::new(Some(superclass)),
+            type_parameters: type_parameters,
         })
     }
 
@@ -202,14 +207,12 @@ impl<'a> ObjectGraph<'a> {
 
     pub fn metaclass(&self, object_ref: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
         match *object_ref {
-            RubyObject::Object { id, ref class, .. } |
-            RubyObject::Module { id, ref class, .. } => {
+            RubyObject::Object { ref class, .. } |
+            RubyObject::Module { ref class, .. } => {
                 match class.get() {
                     metaclass_ref@&RubyObject::Metaclass { .. } =>
                         metaclass_ref,
                     class_ref@_ => {
-                        let metaclass_id = self.new_object_id();
-
                         let metaclass_ref = self.alloc(RubyObject::Metaclass {
                             id: self.new_object_id(),
                             of: object_ref,
@@ -223,8 +226,8 @@ impl<'a> ObjectGraph<'a> {
                     }
                 }
             },
-            RubyObject::Class { ref id, ref class, .. } |
-            RubyObject::Metaclass { ref id, ref class, .. } => {
+            RubyObject::Class { ref class, .. } |
+            RubyObject::Metaclass { ref class, .. } => {
                 match class.get() {
                     metaclass_ref@&RubyObject::Metaclass { .. } =>
                         metaclass_ref,
@@ -248,10 +251,6 @@ impl<'a> ObjectGraph<'a> {
             },
             RubyObject::IClass {..} => panic!("iclass has no metaclass"),
         }
-    }
-
-    pub fn has_const(&self, object: &'a RubyObject<'a>, name: &str) -> bool {
-        self.get_const(object, name).is_some()
     }
 
     pub fn get_const(&self, object: &'a RubyObject<'a>, name: &str) -> Option<&'a RubyObject<'a>> {
@@ -532,6 +531,7 @@ pub enum RubyObject<'a> {
         class: Cell<&'a RubyObject<'a>>,
         name: String,
         superclass: Cell<Option<&'a RubyObject<'a>>>,
+        type_parameters: Vec<String>,
     },
     Metaclass {
         id: ObjectId,
@@ -612,6 +612,21 @@ impl<'a> RubyObject<'a> {
             },
             RubyObject::IClass { .. } =>
                 panic!("should not get superclass of iclass directly"),
+        }
+    }
+
+    pub fn type_parameters(&'a self) -> &'a [String] {
+        match *self {
+            RubyObject::Object { .. } =>
+                panic!("called type_parameters on RubyObject::Object!"),
+            RubyObject::Module { .. } |
+            RubyObject::Metaclass { .. } => {
+                &[]
+            },
+            RubyObject::Class { ref type_parameters, .. } =>
+                type_parameters,
+            RubyObject::IClass { .. } =>
+                panic!("called type_parameters on RubyObject::IClass!"),
         }
     }
 }
