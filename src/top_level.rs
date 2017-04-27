@@ -248,7 +248,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
-    fn process_self_send(&self, send_node: &Node, id_loc: &Loc, id: &str, args: &[Rc<Node>]) {
+    fn process_self_send(&self, id_loc: &Loc, id: &str, args: &[Rc<Node>]) {
         match id {
             "include" => {
                 if args.is_empty() {
@@ -291,10 +291,16 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                 match *args[0] {
                     Node::String(ref loc, ref string) => {
-                        self.error("Require! :3", &[("here", &self.source_file, loc)]);
+                        if let Some(path) = self.env.search_require_path(string) {
+                            self.env.require(&path);
+                        } else {
+                            self.error("Could not resolve require", &[
+                                ("here", &self.source_file, args[0].loc()),
+                            ]);
+                        }
                     },
                     _ => {
-                        self.warning("Could not resolve dynamic path in require", &[
+                        self.error("Could not resolve dynamic path in require", &[
                             ("here", &self.source_file, args[0].loc()),
                         ]);
                     }
@@ -354,7 +360,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 }
             },
             Node::Send(_, None, Id(ref id_loc, ref id), ref args) => {
-                self.process_self_send(node, id_loc, id, args.as_slice());
+                self.process_self_send(id_loc, id, args.as_slice());
             },
             Node::Send(_, Some(ref recv), _, ref args) => {
                 self.eval_node(recv);
