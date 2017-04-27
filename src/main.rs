@@ -12,6 +12,7 @@ mod environment;
 mod errors;
 mod object;
 mod top_level;
+mod typecheck;
 
 use environment::Environment;
 use errors::ErrorReporter;
@@ -59,4 +60,6 @@ fn main() {
             Err(e) => println!("{}: {:?}", file.display(), e),
         }
     }
+
+    env.typecheck();
 }
