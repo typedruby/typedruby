@@ -80,7 +80,7 @@ impl<'object> Environment<'object> {
 
         let mut loaded_features_ref = self.loaded_features.borrow_mut();
 
-        match self.load_file(path) {
+        match result {
             Ok(()) => {
                 loaded_features_ref.insert(path.to_owned(), LoadState::Loaded);
                 Ok(())
