@@ -29,7 +29,7 @@ static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/stdlib.rb
 
 impl<'object> Environment<'object> {
     pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: Config) -> Environment<'object> {
-        let mut env = Environment {
+        let env = Environment {
             arena: arena,
             error_sink: RefCell::new(error_sink),
             object: ObjectGraph::new(&arena),
