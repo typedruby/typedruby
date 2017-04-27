@@ -113,7 +113,7 @@ impl<'object> Environment<'object> {
         self.method_queue.borrow_mut().push_back(method);
     }
 
-    pub fn typecheck<'env: 'object>(&'env self) {
+    pub fn typecheck(&self) {
         while let Some(method) = self.method_queue.borrow_mut().pop_front() {
             typecheck::check(self, method);
         }
