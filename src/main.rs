@@ -30,6 +30,7 @@ fn config() -> (Config, Vec<PathBuf>) {
             .help("Adds a directory to the load path")
             .takes_value(true))
         .arg(Arg::with_name("source")
+            .index(1)
             .multiple(true)
             .required(true)
             .help("Source files to type check"))
