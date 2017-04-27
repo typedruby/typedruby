@@ -494,6 +494,8 @@ impl<'object> Scope<'object> {
 
 pub enum MethodEntry<'object> {
     Ruby {
+        owner: &'object RubyObject<'object>,
+        name: String,
         source_file: Rc<SourceFile>,
         node: Rc<Node>,
         scope: Rc<Scope<'object>>,

@@ -2,15 +2,16 @@ use std::io;
 use std::rc::Rc;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use typed_arena::Arena;
 
 use ast::{SourceFile};
 use errors::ErrorSink;
-use object::{ObjectGraph, RubyObject};
+use object::{ObjectGraph, RubyObject, MethodEntry};
 use top_level;
 use config::Config;
+use typecheck;
 
 enum LoadState {
     Loading,
@@ -23,6 +24,7 @@ pub struct Environment<'object> {
     pub error_sink: RefCell<Box<ErrorSink>>,
     pub config: Config,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
+    method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
 }
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/stdlib.rb");
@@ -35,6 +37,7 @@ impl<'object> Environment<'object> {
             object: ObjectGraph::new(&arena),
             config: config,
             loaded_features: RefCell::new(HashMap::new()),
+            method_queue: RefCell::new(VecDeque::new()),
         };
 
         let source_file = SourceFile::new("(builtin stdlib)".to_owned(), STDLIB_DEFINITIONS.to_owned());
@@ -44,7 +47,7 @@ impl<'object> Environment<'object> {
         env
     }
 
-    pub fn load_file<'env>(&'env self, path: &Path) -> io::Result<()> {
+    pub fn load_file(&self, path: &Path) -> io::Result<()> {
         let source_file = match SourceFile::open(path.to_str().unwrap().to_owned()) {
             Ok(sf) => sf,
             Err(err) => return Err(err),
@@ -55,7 +58,7 @@ impl<'object> Environment<'object> {
         Ok(())
     }
 
-    pub fn require<'env>(&'env self, path: &Path) -> io::Result<()> {
+    pub fn require(&self, path: &Path) -> io::Result<()> {
         {
             let loaded_features_ref = self.loaded_features.borrow();
 
@@ -104,5 +107,15 @@ impl<'object> Environment<'object> {
         }
 
         None
+    }
+
+    pub fn enqueue_method_for_type_check(&self, method: Rc<MethodEntry<'object>>) {
+        self.method_queue.borrow_mut().push_back(method);
+    }
+
+    pub fn typecheck<'env: 'object>(&'env self) {
+        while let Some(method) = self.method_queue.borrow_mut().pop_front() {
+            typecheck::check(self, method);
+        }
     }
 }

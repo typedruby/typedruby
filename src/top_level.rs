@@ -229,11 +229,17 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>) {
-        self.env.object.define_method(target, name.to_owned(), Rc::new(MethodEntry::Ruby {
+        let method = Rc::new(MethodEntry::Ruby {
+            owner: target,
+            name: name.to_owned(),
             node: def_node.clone(),
             source_file: self.source_file.clone(),
             scope: self.scope.clone(),
-        }))
+        });
+
+        self.env.object.define_method(target, name.to_owned(), method.clone());
+
+        self.env.enqueue_method_for_type_check(method);
     }
 
     fn symbol_name<'node>(&self, node: &'node Rc<Node>) -> Option<&'node str> {
