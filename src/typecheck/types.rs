@@ -44,6 +44,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         self.alloc(Type::Var { loc: loc, id: self.new_id() })
     }
 
+    pub fn any(&self, loc: Loc) -> &'ty Type<'ty, 'object> {
+        self.alloc(Type::Any { loc: loc })
+    }
+
     fn set_var(&self, id: TypeVarId, ty: &'ty Type<'ty, 'object>) -> TypeEnv<'ty, 'env, 'object> {
         TypeEnv {
             arena: self.arena,
