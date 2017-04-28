@@ -2021,7 +2021,6 @@ end
 
 class Module < Object
   def name => String
-    ""
   end
 end
 
