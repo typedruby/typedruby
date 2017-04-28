@@ -1280,7 +1280,7 @@ unsafe extern "C" fn tr_geninst(cpath: *mut Rc<Node>, begin: *const Token, genar
     let cpath = from_raw(cpath);
     let genargs = ffi::node_list_from_raw(genargs);
 
-    Node::TyGendecl(cpath.loc().join(&token_loc(end)), cpath, genargs).to_raw()
+    Node::TyGeninst(cpath.loc().join(&token_loc(end)), cpath, genargs).to_raw()
 }
 
 unsafe extern "C" fn tr_hash(begin: *const Token, key_type: *mut Rc<Node>, assoc: *const Token, value_type: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
