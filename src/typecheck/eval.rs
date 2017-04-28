@@ -73,42 +73,69 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
+    fn create_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: Vec<&'ty Type<'ty, 'object>>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
+        match self.env.resolve_cpath(cpath, scope) {
+            Ok(class) =>
+                match *class {
+                    RubyObject::Object { .. } => {
+                        self.error("Constant mentioned in type name does not reference class/module", &[
+                            ("here", cpath.loc()),
+                        ]);
+
+                        self.tyenv.any(cpath.loc().clone())
+                    },
+                    RubyObject::Module { .. } |
+                    RubyObject::Metaclass { .. } |
+                    RubyObject::Class { .. } => {
+                        let supplied_params = type_parameters.len();
+                        let expected_params = class.type_parameters().len();
+
+                        if supplied_params == expected_params {
+                            self.tyenv.alloc(Type::Instance { loc: loc.clone(), class: class, type_parameters: type_parameters })
+                        } else {
+                            if supplied_params == 0 {
+                                self.error("Type referenced is generic but no type parameters were supplied", &[
+                                    ("here", cpath.loc()),
+                                ]);
+                            } else if supplied_params < expected_params {
+                                let mut message = format!("{} also expects ", class.name());
+
+                                for (i, &Id(_, ref name)) in class.type_parameters().iter().skip(supplied_params).enumerate() {
+                                    if i > 0 {
+                                        message += ", ";
+                                    }
+
+                                    message += name;
+                                }
+
+                                self.error("Too few type parameters supplied in instantiation of generic type", &[
+                                    (&message, cpath.loc()),
+                                ]);
+                            }
+
+                            self.tyenv.any(cpath.loc().clone())
+                        }
+                    },
+                    RubyObject::IClass { .. } => panic!("unexpected iclass"),
+                },
+            Err((err_node, message)) => {
+                self.error(message, &[
+                    ("here", err_node.loc()),
+                ]);
+
+                self.tyenv.any(cpath.loc().clone())
+            }
+        }
+    }
+
     fn parse_type(&self, node: &Node, self_type: &'ty Type<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
         match *node {
             Node::TyCpath(_, ref cpath) =>
-                match self.env.resolve_cpath(node, scope) {
-                    Ok(class) =>
-                        match *class {
-                            RubyObject::Object { .. } => {
-                                self.error("Constant mentioned in type name does not reference class/module", &[
-                                    ("here", cpath.loc()),
-                                ]);
-
-                                self.tyenv.any(node.loc().clone())
-                            },
-                            RubyObject::Module { .. } |
-                            RubyObject::Metaclass { .. } =>
-                                self.tyenv.alloc(Type::Instance { loc: node.loc().clone(), class: class, type_parameters: Vec::new() }),
-                            RubyObject::Class { ref type_parameters, .. } =>
-                                if type_parameters.is_empty() {
-                                    self.tyenv.alloc(Type::Instance { loc: node.loc().clone(), class: class, type_parameters: Vec::new() })
-                                } else {
-                                    self.error("Type referenced is generic but no type parameters were supplied", &[
-                                        ("here", cpath.loc()),
-                                    ]);
-
-                                    self.tyenv.any(node.loc().clone())
-                                },
-                            RubyObject::IClass { .. } => panic!("unexpected iclass"),
-                        },
-                    Err((node, message)) => {
-                        self.error(message, &[
-                            ("here", node.loc()),
-                        ]);
-
-                        self.tyenv.any(node.loc().clone())
-                    }
-                },
+                self.create_instance_type(node.loc(), cpath, Vec::new(), scope),
+            Node::TyGeninst(_, ref cpath, ref args) => {
+                let type_parameters = args.iter().map(|arg| self.parse_type(arg, self_type, scope.clone())).collect();
+                self.create_instance_type(node.loc(), cpath, type_parameters, scope)
+            },
             _ => panic!("unknown type node: {:?}", node),
         }
     }
