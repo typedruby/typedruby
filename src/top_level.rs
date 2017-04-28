@@ -12,11 +12,11 @@ struct Eval<'env, 'object: 'env> {
 }
 
 impl<'env, 'object> Eval<'env, 'object> {
-    fn error(&self, message: &str, details: &[(&str, &SourceFile, &Loc)]) {
+    fn error(&self, message: &str, details: &[(&str, &Loc)]) {
         self.env.error_sink.borrow_mut().error(message, details)
     }
 
-    fn warning(&self, message: &str, details: &[(&str, &SourceFile, &Loc)]) {
+    fn warning(&self, message: &str, details: &[(&str, &Loc)]) {
         self.env.error_sink.borrow_mut().warning(message, details)
     }
 
@@ -104,7 +104,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 match self.env.object.get_const_for_definition(&base, id) {
                     Some(object_ref@&RubyObject::Object { .. }) => {
                         self.error(&format!("{} is not a class", id), &[
-                            ("here", &self.source_file, name.loc()),
+                            ("here", name.loc()),
                             // TODO - show location of previous definition
                         ]);
 
@@ -113,7 +113,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     },
                     Some(module_ref@&RubyObject::Module { .. }) => {
                         self.error(&format!("{} is not a class", id), &[
-                            ("here", &self.source_file, name.loc()),
+                            ("here", name.loc()),
                             // TODO - show location of previous definition
                         ]);
 
@@ -133,7 +133,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                                     };
 
                                 self.error(&format!("Superclass does not match existing superclass {}", existing_superclass_name), &[
-                                    ("here", &self.source_file, superclass_node.loc()),
+                                    ("here", superclass_node.loc()),
                                     // TODO - show location of previous definition
                                 ]);
                             }
@@ -164,7 +164,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                                             type_parameters.last().unwrap().loc());
 
                                 self.error("Subclasses of generic classes may not specify type parameters", &[
-                                    ("here", &self.source_file, &loc),
+                                    ("here", &loc),
                                 ]);
 
                                 Vec::new()
@@ -183,7 +183,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 }
             },
             Err((node, message)) => {
-                self.error(&message, &[("here", &self.source_file, node.loc())]);
+                self.error(&message, &[("here", node.loc())]);
                 return;
             },
         };
@@ -201,7 +201,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     Some(const_value@&RubyObject::Class { .. }) |
                     Some(const_value@&RubyObject::Metaclass { .. }) => {
                         self.error(&format!("{} is not a module", id), &[
-                            ("here", &self.source_file, name.loc()),
+                            ("here", name.loc()),
                             // TODO show location of previous definition
                         ]);
 
@@ -247,7 +247,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Symbol(_, ref sym) => Some(sym),
             _ => {
                 self.error("Dynamic symbol", &[
-                    ("here", &self.source_file, node.loc()),
+                    ("here", node.loc()),
                 ]);
 
                 None
@@ -267,7 +267,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             if let Some(name) = from_name {
                 // no need to check None case, symbol_name would have already emitted an error
                 self.error("Could not resolve source method in alias", &[
-                    (&format!("{}#{}", klass.name(), name), &self.source_file, from.loc()),
+                    (&format!("{}#{}", klass.name(), name), from.loc()),
                 ]);
             }
 
@@ -283,7 +283,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             "include" => {
                 if args.is_empty() {
                     self.error("Wrong number of arguments to include", &[
-                        ("here", &self.source_file, id_loc),
+                        ("here", id_loc),
                     ]);
                 }
 
@@ -292,13 +292,13 @@ impl<'env, 'object> Eval<'env, 'object> {
                         Ok(obj) => {
                             if !self.env.object.include_module(&self.scope.module, &obj) {
                                 self.error("Cyclic include", &[
-                                    ("here", &self.source_file, arg.loc()),
+                                    ("here", arg.loc()),
                                 ])
                             }
                         },
                         Err((node, message)) => {
                             self.warning("Could not statically resolve module reference in include", &[
-                                (message, &self.source_file, node.loc()),
+                                (message, node.loc()),
                             ]);
                         }
                     }
@@ -307,14 +307,14 @@ impl<'env, 'object> Eval<'env, 'object> {
             "require" => {
                 if args.len() == 0 {
                     self.error("Missing argument to require", &[
-                        ("here", &self.source_file, id_loc),
+                        ("here", id_loc),
                     ]);
                     return;
                 }
 
                 if args.len() > 1 {
                     self.error("Too many arguments to require", &[
-                        ("from here", &self.source_file, args[1].loc()),
+                        ("from here", args[1].loc()),
                     ]);
                     return;
                 }
@@ -325,13 +325,13 @@ impl<'env, 'object> Eval<'env, 'object> {
                             self.env.require(&path);
                         } else {
                             self.error("Could not resolve require", &[
-                                ("here", &self.source_file, args[0].loc()),
+                                ("here", loc),
                             ]);
                         }
                     },
                     _ => {
                         self.error("Could not resolve dynamic path in require", &[
-                            ("here", &self.source_file, args[0].loc()),
+                            ("here", args[0].loc()),
                         ]);
                     }
                 }
@@ -365,7 +365,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     Ok(singleton) => singleton,
                     Err((node, message)) => {
                         self.warning("Could not statically resolve singleton expression", &[
-                            (message, &self.source_file, node.loc()),
+                            (message, node.loc()),
                         ]);
                         return;
                     }
@@ -385,7 +385,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         self.decl_method(&metaclass, name, node);
                     },
                     Err((node, message)) => {
-                        self.error(message, &[("here", &self.source_file, node.loc())]);
+                        self.error(message, &[("here", node.loc())]);
                     },
                 }
             },
@@ -408,7 +408,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     Ok(cbase) => {
                         if self.env.object.has_own_const(&cbase, name) {
                             self.error("Constant reassignment", &[
-                                ("here", &self.source_file, &loc),
+                                ("here", &loc),
                                 // TODO show where constant was previously set
                             ]);
                             return;
@@ -426,7 +426,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     },
                     Err((node, message)) => {
                         self.warning("Could not statically resolve constant in assignment", &[
-                            (message, &self.source_file, node.loc()),
+                            (message, node.loc()),
                         ]);
                     }
                 }
@@ -437,8 +437,8 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::TyIvardecl(_, Id(ref ivar_loc, ref ivar), ref type_node) => {
                 if let Some(ivar_decl) = self.env.object.lookup_ivar(&self.scope.module, ivar) {
                     self.error("Duplicate instance variable type declaration", &[
-                        ("here", &self.source_file, ivar_loc),
-                        ("previous declaration was here", &ivar_decl.source_file, &ivar_decl.ivar_loc),
+                        ("here", ivar_loc),
+                        ("previous declaration was here", &ivar_decl.ivar_loc),
                     ]);
                 } else {
                     self.env.object.define_ivar(&self.scope.module, ivar.to_owned(), Rc::new(IvarEntry {
@@ -454,10 +454,8 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 }
 
-pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, source_file: Rc<SourceFile>) {
+pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>) {
     let scope = Rc::new(Scope { parent: None, module: env.object.Object });
 
-    if let Some(ref node) = source_file.ast().node {
-        Eval { env: env, scope: scope, source_file: source_file.clone() }.eval_node(node);
-    }
+    Eval { env: env, scope: scope, source_file: node.loc().file.clone() }.eval_node(&node);
 }

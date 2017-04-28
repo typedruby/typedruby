@@ -3,7 +3,7 @@ extern crate immutable_map;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
-use ast::SourceLoc;
+use ast::Loc;
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
 use self::immutable_map::TreeMap;
@@ -40,7 +40,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         self.arena.alloc(ty)
     }
 
-    pub fn new_var(&self, loc: SourceLoc) -> &'ty Type<'ty, 'object> {
+    pub fn new_var(&self, loc: Loc) -> &'ty Type<'ty, 'object> {
         self.alloc(Type::Var { loc: loc, id: self.new_id() })
     }
 
@@ -171,48 +171,42 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     }
 }
 
-impl fmt::Debug for SourceLoc {
-    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        Ok(())
-    }
-}
-
 #[derive(Debug)]
 pub enum Type<'ty, 'object: 'ty> {
     Instance {
-        loc: SourceLoc,
+        loc: Loc,
         class: &'object RubyObject<'object>,
         type_parameters: Vec<&'ty Type<'ty, 'object>>,
     },
     Tuple {
-        loc: SourceLoc,
+        loc: Loc,
         lead: Vec<&'ty Type<'ty, 'object>>,
         splat: Option<&'ty Type<'ty, 'object>>,
         post: Vec<&'ty Type<'ty, 'object>>,
     },
     Union {
-        loc: SourceLoc,
+        loc: Loc,
         types: Vec<&'ty Type<'ty, 'object>>,
     },
     Any {
-        loc: SourceLoc,
+        loc: Loc,
     },
     TypeParameter {
-        loc: SourceLoc,
+        loc: Loc,
         name: String,
     },
     KeywordHash {
-        loc: SourceLoc,
+        loc: Loc,
         keywords: Vec<(String, &'ty Type<'ty, 'object>)>,
     },
     Proc {
-        loc: SourceLoc,
+        loc: Loc,
         args: Vec<&'ty Type<'ty, 'object>>,
         block: Option<&'ty Type<'ty, 'object>>,
         retn: &'ty Type<'ty, 'object>,
     },
     Var {
-        loc: SourceLoc,
+        loc: Loc,
         id: TypeVarId,
     }
 }
