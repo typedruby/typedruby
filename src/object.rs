@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use typed_arena::Arena;
-use ast::{Node, SourceFile, Loc, Id};
+use ast::{Node, Loc, Id};
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
@@ -276,12 +276,11 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, source_file: Rc<SourceFile>, loc: Loc, value: &'a RubyObject<'a>) -> bool {
+    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, loc: Loc, value: &'a RubyObject<'a>) -> bool {
         match Self::class_table_lookup(&self.constants, object, name) {
             Some(_) => false,
             None => {
                 Self::class_table_insert(&self.constants, object, name.to_owned(), Rc::new(ConstantEntry {
-                    source_file: source_file,
                     loc: loc,
                     value: value,
                 }));
@@ -496,7 +495,6 @@ pub enum MethodEntry<'object> {
     Ruby {
         owner: &'object RubyObject<'object>,
         name: String,
-        source_file: Rc<SourceFile>,
         node: Rc<Node>,
         scope: Rc<Scope<'object>>,
     },
@@ -504,13 +502,11 @@ pub enum MethodEntry<'object> {
 }
 
 pub struct ConstantEntry<'object> {
-    pub source_file: Rc<SourceFile>,
     pub loc: Loc,
     pub value: &'object RubyObject<'object>,
 }
 
 pub struct IvarEntry<'object> {
-    pub source_file: Rc<SourceFile>,
     pub ivar_loc: Loc,
     pub type_node: Rc<Node>,
     pub scope: Rc<Scope<'object>>,

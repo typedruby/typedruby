@@ -1,4 +1,4 @@
-use ast::{SourceFile, Id, Node, Loc};
+use ast::{Id, Node, Loc};
 use environment::Environment;
 use object::{RubyObject, Scope, MethodEntry, IvarEntry};
 use std::rc::Rc;
@@ -8,7 +8,6 @@ type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 struct Eval<'env, 'object: 'env> {
     pub env: &'env Environment<'object>,
     pub scope: Rc<Scope<'object>>,
-    pub source_file: Rc<SourceFile>,
 }
 
 impl<'env, 'object> Eval<'env, 'object> {
@@ -55,7 +54,6 @@ impl<'env, 'object> Eval<'env, 'object> {
             let eval = Eval {
                 env: self.env,
                 scope: Scope::spawn(&self.scope, module),
-                source_file: self.source_file.clone(),
             };
 
             eval.eval_node(node)
@@ -142,7 +140,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                             self.env.object.constant_path(&base, id),
                             superclass, type_parameters);
 
-                        if !self.env.object.set_const(&base, id, self.source_file.clone(), name.loc().clone(), &class) {
+                        if !self.env.object.set_const(&base, id, name.loc().clone(), &class) {
                             panic!("internal error: would overwrite existing constant");
                         }
 
@@ -182,7 +180,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         let module = self.env.object.new_module(
                             self.env.object.constant_path(&base, id));
 
-                        if !self.env.object.set_const(&base, id, self.source_file.clone(), name.loc().clone(), &module) {
+                        if !self.env.object.set_const(&base, id, name.loc().clone(), &module) {
                             panic!("internal error: would overwrite existing constant");
                         }
 
@@ -201,7 +199,6 @@ impl<'env, 'object> Eval<'env, 'object> {
             owner: target,
             name: name.to_owned(),
             node: def_node.clone(),
-            source_file: self.source_file.clone(),
             scope: self.scope.clone(),
         });
 
@@ -384,7 +381,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         match **expr {
                             Node::Const { .. } =>
                                 if let Ok(value) = self.resolve_cpath(expr) {
-                                    self.env.object.set_const(&cbase, name, self.source_file.clone(), loc, &value);
+                                    self.env.object.set_const(&cbase, name, loc, &value);
                                 },
                             // TODO handle send
                             // TODO handle tr_cast
@@ -410,7 +407,6 @@ impl<'env, 'object> Eval<'env, 'object> {
                     ]);
                 } else {
                     self.env.object.define_ivar(&self.scope.module, ivar.to_owned(), Rc::new(IvarEntry {
-                        source_file: self.source_file.clone(),
                         ivar_loc: ivar_loc.clone(),
                         type_node: type_node.clone(),
                         scope: self.scope.clone(),
@@ -425,5 +421,5 @@ impl<'env, 'object> Eval<'env, 'object> {
 pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>) {
     let scope = Rc::new(Scope { parent: None, module: env.object.Object });
 
-    Eval { env: env, scope: scope, source_file: node.loc().file.clone() }.eval_node(&node);
+    Eval { env: env, scope: scope }.eval_node(&node);
 }
