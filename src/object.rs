@@ -3,7 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use typed_arena::Arena;
-use ast::{Node, SourceFile, Loc};
+use ast::{Node, SourceFile, Loc, Id};
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
@@ -186,7 +186,7 @@ impl<'a> ObjectGraph<'a> {
             .insert(key, value);
     }
 
-    pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>, type_parameters: Vec<String>) -> &'a RubyObject<'a> {
+    pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
         self.alloc(RubyObject::Class {
             id: self.new_object_id(),
             name: name,
@@ -533,7 +533,7 @@ pub enum RubyObject<'a> {
         class: Cell<&'a RubyObject<'a>>,
         name: String,
         superclass: Cell<Option<&'a RubyObject<'a>>>,
-        type_parameters: Vec<String>,
+        type_parameters: Vec<Id>,
     },
     Metaclass {
         id: ObjectId,
@@ -617,7 +617,7 @@ impl<'a> RubyObject<'a> {
         }
     }
 
-    pub fn type_parameters(&'a self) -> &'a [String] {
+    pub fn type_parameters(&'a self) -> &'a [Id] {
         match *self {
             RubyObject::Object { .. } =>
                 panic!("called type_parameters on RubyObject::Object!"),

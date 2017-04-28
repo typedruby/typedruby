@@ -119,8 +119,8 @@ impl<'env, 'object> Eval<'env, 'object> {
                         let type_parameters =
                             if superclass.type_parameters().is_empty() {
                                 type_parameters.iter().map(|param|
-                                    if let Node::TyGendeclarg(_, ref name) = **param {
-                                        name.to_owned()
+                                    if let Node::TyGendeclarg(ref loc, ref name) = **param {
+                                        Id(loc.clone(), name.to_owned())
                                     } else {
                                         panic!("expected TyGendeclarg in TyGendecl");
                                     }
