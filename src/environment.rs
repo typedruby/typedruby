@@ -6,7 +6,7 @@ use std::collections::{HashMap, VecDeque};
 
 use typed_arena::Arena;
 
-use ast::{SourceFile};
+use ast::{parse, SourceFile, Node, Id};
 use errors::ErrorSink;
 use object::{ObjectGraph, RubyObject, MethodEntry};
 use top_level;
@@ -40,22 +40,30 @@ impl<'object> Environment<'object> {
             method_queue: RefCell::new(VecDeque::new()),
         };
 
-        let source_file = SourceFile::new("(builtin stdlib)".to_owned(), STDLIB_DEFINITIONS.to_owned());
+        let source_file = SourceFile::new(PathBuf::from("(builtin stdlib)"), STDLIB_DEFINITIONS.to_owned());
 
-        top_level::evaluate(&env, Rc::new(source_file));
+        env.load_source_file(source_file);
 
         env
     }
 
     pub fn load_file(&self, path: &Path) -> io::Result<()> {
-        let source_file = match SourceFile::open(path.to_str().unwrap().to_owned()) {
+        let source_file = match SourceFile::open(path.to_owned()) {
             Ok(sf) => sf,
             Err(err) => return Err(err),
         };
 
-        top_level::evaluate(self, Rc::new(source_file));
+        self.load_source_file(source_file);
 
         Ok(())
+    }
+
+    fn load_source_file(&self, source_file: SourceFile) {
+        let ast = parse(Rc::new(source_file));
+
+        if let Some(ref node) = ast.node {
+            top_level::evaluate(self, node.clone());
+        }
     }
 
     pub fn require(&self, path: &Path) -> io::Result<()> {
