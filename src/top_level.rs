@@ -21,39 +21,7 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn resolve_cpath<'a>(&self, node: &'a Node) -> EvalResult<'a, &'object RubyObject<'object>> {
-        match *node {
-            Node::Cbase(_) =>
-                Ok(Scope::root(&self.scope).module),
-
-            Node::Const(_, Some(ref base), Id(_, ref name)) => {
-                match self.resolve_cpath(base) {
-                    Ok(&RubyObject::Object { .. }) => Err((base, "not a class/module")),
-                    Ok(&RubyObject::IClass { .. }) => panic!(),
-                    Ok(base_ref) => match self.env.object.get_const(&base_ref, name) {
-                        Some(const_ref) => Ok(const_ref),
-                        None => /* TODO autoload */ Err((node, "no such constant")),
-                    },
-                    error => error,
-                }
-            },
-
-            Node::Const(_, None, Id(_, ref name)) => {
-                for scope in Scope::ancestors(&self.scope) {
-                    if let Some(obj) = self.env.object.get_const(&scope.module, name) {
-                        return Ok(obj);
-                    }
-                }
-
-                for scope in Scope::ancestors(&self.scope) {
-                    // TODO autoload
-                }
-
-                Err((node, "no such constant"))
-            }
-
-            _ =>
-                Err((node, "not a static cpath")),
-        }
+        self.env.resolve_cpath(node, self.scope.clone())
     }
 
     fn resolve_cbase<'a>(&self, cbase: &'a Option<Rc<Node>>) -> EvalResult<'a, &'object RubyObject<'object>> {
