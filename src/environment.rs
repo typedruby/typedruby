@@ -8,7 +8,7 @@ use typed_arena::Arena;
 
 use ast::{parse, SourceFile, Node, Id};
 use errors::ErrorSink;
-use object::{ObjectGraph, RubyObject, MethodEntry};
+use object::{ObjectGraph, RubyObject, MethodEntry, Scope};
 use top_level;
 use config::Config;
 use typecheck;
@@ -126,4 +126,41 @@ impl<'object> Environment<'object> {
             typecheck::check(self, method);
         }
     }
+
+    pub fn resolve_cpath<'node>(&self, node: &'node Node, scope: Rc<Scope<'object>>) -> Result<&'object RubyObject<'object>, (&'node Node, &'static str)> {
+        match *node {
+            Node::Cbase(_) =>
+                Ok(Scope::root(&scope).module),
+
+            Node::Const(_, Some(ref base), Id(_, ref name)) => {
+                match self.resolve_cpath(base, scope) {
+                    Ok(&RubyObject::Object { .. }) => Err((base, "not a class/module")),
+                    Ok(&RubyObject::IClass { .. }) => panic!(),
+                    Ok(base_ref) => match self.object.get_const(&base_ref, name) {
+                        Some(const_ref) => Ok(const_ref),
+                        None => /* TODO autoload */ Err((node, "no such constant")),
+                    },
+                    error => error,
+                }
+            },
+
+            Node::Const(_, None, Id(_, ref name)) => {
+                for scope in Scope::ancestors(&scope) {
+                    if let Some(obj) = self.object.get_const(&scope.module, name) {
+                        return Ok(obj);
+                    }
+                }
+
+                for scope in Scope::ancestors(&scope) {
+                    // TODO autoload
+                }
+
+                Err((node, "no such constant"))
+            }
+
+            _ =>
+                Err((node, "not a static cpath")),
+        }
+    }
+
 }
