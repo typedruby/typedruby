@@ -1,13 +1,22 @@
-mod evaluator;
+mod eval;
 mod types;
 
 use std::rc::Rc;
 use environment::Environment;
 use object::MethodEntry;
 use typed_arena::Arena;
-use self::types::Types;
+use self::types::TypeEnv;
+use self::eval::Eval;
 
 pub fn check<'env, 'object: 'env>(env: &'env Environment<'object>, method: Rc<MethodEntry<'object>>) {
     let arena = Arena::new();
-    let types = Types::new(&arena, &env.object);
+    let types = TypeEnv::new(&arena, &env.object);
+
+    match *method {
+        MethodEntry::Ruby { ref scope, ref node, ref owner, .. } =>
+            Eval::new(types, scope.clone(), owner).eval(node),
+        MethodEntry::Untyped => {
+            // pass
+        }
+    }
 }
