@@ -2,7 +2,7 @@
 
 extern crate libc;
 
-use ::ast::{Node, Loc, Diagnostic, DiagnosticLevel};
+use ::ast::{Node, DiagnosticLevel};
 use self::libc::{size_t, c_int};
 use std::vec::Vec;
 use std::rc::Rc;
@@ -176,11 +176,8 @@ impl Token {
         ruby_parser_token_get_end(ptr)
     }
 
-    pub unsafe fn loc(ptr: *const Token) -> Loc {
-        Loc {
-            begin_pos: Token::start(ptr),
-            end_pos: Token::end(ptr),
-        }
+    pub unsafe fn loc(ptr: *const Token) -> (usize, usize) {
+        (Token::start(ptr), Token::end(ptr))
     }
 
     pub unsafe fn string(ptr: *const Token) -> String {
@@ -217,7 +214,7 @@ impl Parser {
         ruby_parser_static_env_declare(parser, id.as_ptr(), id.len());
     }
 
-    pub unsafe fn diagnostics(parser: *mut Parser) -> Vec<Diagnostic> {
+    pub unsafe fn diagnostics(parser: *mut Parser) -> Vec<(DiagnosticLevel, String, usize, usize)> {
         let mut vec = Vec::new();
 
         for index in 0..ruby_parser_diagnostics_get_length(parser) {
@@ -225,20 +222,19 @@ impl Parser {
             let message_len = ruby_parser_diagnostic_get_message(parser, index, &mut message_ptr);
             let message = String::from(str::from_utf8_unchecked(slice::from_raw_parts(message_ptr, message_len)));
 
-            vec.push(Diagnostic {
-                level: match ruby_parser_diagnostic_get_level(parser, index) {
-                    1 => DiagnosticLevel::Note,
-                    2 => DiagnosticLevel::Warning,
-                    3 => DiagnosticLevel::Error,
-                    4 => DiagnosticLevel::Fatal,
-                    _ => panic!("bad diagnostic level"),
-                },
-                message: message,
-                loc: Loc {
-                    begin_pos: ruby_parser_diagnostic_get_begin(parser, index),
-                    end_pos: ruby_parser_diagnostic_get_end(parser, index),
-                },
-            })
+            let level = match ruby_parser_diagnostic_get_level(parser, index) {
+                1 => DiagnosticLevel::Note,
+                2 => DiagnosticLevel::Warning,
+                3 => DiagnosticLevel::Error,
+                4 => DiagnosticLevel::Fatal,
+                _ => panic!("bad diagnostic level"),
+            };
+
+            let begin = ruby_parser_diagnostic_get_begin(parser, index);
+
+            let end = ruby_parser_diagnostic_get_end(parser, index);
+
+            vec.push((level, message, begin, end));
         }
 
         vec
