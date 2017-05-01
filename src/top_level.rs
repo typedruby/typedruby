@@ -140,7 +140,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                             self.env.object.constant_path(&base, id),
                             superclass, type_parameters);
 
-                        if !self.env.object.set_const(&base, id, name.loc().clone(), &class) {
+                        if !self.env.object.set_const(&base, id, Some(name.loc().clone()), &class) {
                             panic!("internal error: would overwrite existing constant");
                         }
 
@@ -180,7 +180,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         let module = self.env.object.new_module(
                             self.env.object.constant_path(&base, id));
 
-                        if !self.env.object.set_const(&base, id, name.loc().clone(), &module) {
+                        if !self.env.object.set_const(&base, id, Some(name.loc().clone()), &module) {
                             panic!("internal error: would overwrite existing constant");
                         }
 
@@ -381,7 +381,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         match **expr {
                             Node::Const { .. } =>
                                 if let Ok(value) = self.resolve_cpath(expr) {
-                                    self.env.object.set_const(&cbase, name, loc, &value);
+                                    self.env.object.set_const(&cbase, name, Some(loc), &value);
                                 },
                             // TODO handle send
                             // TODO handle tr_cast

@@ -63,6 +63,11 @@ pub struct ObjectGraph<'a> {
     pub Object: &'a RubyObject<'a>,
     pub Module: &'a RubyObject<'a>,
     pub Class: &'a RubyObject<'a>,
+    pub Kernel: &'a RubyObject<'a>,
+    pub Boolean: &'a RubyObject<'a>,
+    pub TrueClass: &'a RubyObject<'a>,
+    pub FalseClass: &'a RubyObject<'a>,
+    pub NilClass: &'a RubyObject<'a>,
 
     constants: ClassTable<'a, ConstantEntry<'a>>,
     methods: ClassTable<'a, MethodEntry<'a>>,
@@ -136,7 +141,7 @@ impl<'a> ObjectGraph<'a> {
         set_class(module, class);
         set_class(class, class);
 
-        ObjectGraph {
+        let mut o = ObjectGraph {
             ids: ids,
             arena: arena,
 
@@ -144,11 +149,31 @@ impl<'a> ObjectGraph<'a> {
             Object: object,
             Module: module,
             Class: class,
+            // temporary values, will overwrite before returning:
+            Kernel: object,
+            Boolean: object,
+            TrueClass: object,
+            FalseClass: object,
+            NilClass: object,
 
             constants: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
             ivars: RefCell::new(HashMap::new()),
-        }
+        };
+
+        o.set_const(o.BasicObject, "BasicObject", None, o.BasicObject);
+        o.set_const(o.Object, "Object", None, o.Object);
+        o.set_const(o.Object, "Module", None, o.Module);
+        o.set_const(o.Object, "Class", None, o.Class);
+
+        o.Kernel = o.define_module(None, o.Object, "Kernel");
+        o.include_module(o.Object, o.Kernel);
+        o.Boolean = o.define_class(None, o.Object, "Boolean", o.Object, Vec::new());
+        o.TrueClass = o.define_class(None, o.Object, "TrueClass", o.Boolean, Vec::new());
+        o.FalseClass = o.define_class(None, o.Object, "FalseClass", o.Boolean, Vec::new());
+        o.NilClass = o.define_class(None, o.Object, "NilClass", o.Object, Vec::new());
+
+        o
     }
 
     fn alloc(&self, obj: RubyObject<'a>) -> &'a RubyObject<'a> {
@@ -203,6 +228,22 @@ impl<'a> ObjectGraph<'a> {
             class: Cell::new(self.Module),
             superclass: Cell::new(None),
         })
+    }
+
+    pub fn define_class(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
+        let class = self.new_class(self.constant_path(owner, name), superclass, type_parameters);
+
+        self.set_const(owner, name, loc, class);
+
+        class
+    }
+
+    pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str) -> &'a RubyObject<'a> {
+        let module = self.new_module(self.constant_path(owner, name));
+
+        self.set_const(owner, name, loc, module);
+
+        module
     }
 
     pub fn metaclass(&self, object_ref: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
@@ -276,7 +317,7 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, loc: Loc, value: &'a RubyObject<'a>) -> bool {
+    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, loc: Option<Loc>, value: &'a RubyObject<'a>) -> bool {
         match Self::class_table_lookup(&self.constants, object, name) {
             Some(_) => false,
             None => {
@@ -502,7 +543,7 @@ pub enum MethodEntry<'object> {
 }
 
 pub struct ConstantEntry<'object> {
-    pub loc: Loc,
+    pub loc: Option<Loc>,
     pub value: &'object RubyObject<'object>,
 }
 
