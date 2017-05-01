@@ -3,20 +3,20 @@ extern crate immutable_map;
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
-use ast::Loc;
+use ast::{Loc, Node};
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
 use self::immutable_map::TreeMap;
 
 pub type TypeVarId = usize;
 
-pub type UnificationResult<'ty, 'env, 'object> = Result<TypeEnv<'ty, 'env, 'object>, (&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>)>;
+pub type UnificationResult<'ty, 'object> = Result<(), (&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>)>;
 
 #[derive(Clone)]
 pub struct TypeEnv<'ty, 'env, 'object: 'ty + 'env> {
     arena: &'ty Arena<Type<'ty, 'object>>,
     next_id: Rc<Cell<TypeVarId>>,
-    instance_map: TreeMap<TypeVarId, &'ty Type<'ty, 'object>>,
+    instance_map: RefCell<TreeMap<TypeVarId, &'ty Type<'ty, 'object>>>,
     object: &'env ObjectGraph<'object>,
 }
 
@@ -25,7 +25,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         TypeEnv {
             arena: arena,
             object: object,
-            instance_map: TreeMap::new(),
+            instance_map: RefCell::new(TreeMap::new()),
             next_id: Rc::new(Cell::new(1)),
         }
     }
@@ -48,21 +48,18 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         self.alloc(Type::Any { loc: loc })
     }
 
-    fn set_var(&self, id: TypeVarId, ty: &'ty Type<'ty, 'object>) -> TypeEnv<'ty, 'env, 'object> {
-        TypeEnv {
-            arena: self.arena,
-            object: self.object,
-            instance_map: self.instance_map.insert_or_update(id, ty.clone(), |v|
-                panic!("attempted to set typevar {} to {:?}, but is already {:?}",
-                    id, ty, v)
-            ),
-            next_id: self.next_id.clone(),
-        }
+    fn set_var(&self, id: TypeVarId, ty: &'ty Type<'ty, 'object>) {
+        let mut instance_map_ref = self.instance_map.borrow_mut();
+
+        *instance_map_ref = instance_map_ref.insert_or_update(id, ty.clone(), |v|
+            panic!("attempted to set typevar {} to {:?}, but is already {:?}",
+                id, ty, v)
+        );
     }
 
     pub fn prune(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
         if let Type::Var { ref loc, ref id } = *ty {
-            if let Some(instance) = self.instance_map.get(id) {
+            if let Some(instance) = { self.instance_map.borrow().get(id) } {
                 return self.prune(instance)
             }
         }
@@ -70,7 +67,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         ty.clone()
     }
 
-    pub fn unify(&self, t1: &'ty Type<'ty, 'object>, t2: &'ty Type<'ty, 'object>) -> UnificationResult<'ty, 'env, 'object> {
+    pub fn unify(&self, t1: &'ty Type<'ty, 'object>, t2: &'ty Type<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let t1 = self.prune(t1);
         let t2 = self.prune(t2);
 
@@ -79,11 +76,12 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 if let Type::Var { id: ref id2, .. } = *t2 {
                     if id1 == id2 {
                         // already unified
-                        return Ok(self.clone());
+                        return Ok(());
                     }
                 }
 
-                Ok(self.set_var(*id1, t2.clone()))
+                self.set_var(*id1, t2.clone());
+                Ok(())
             },
 
             (_, &Type::Var { .. }) =>
@@ -104,15 +102,15 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 self.unify_slice(lead1, lead2)
                     .and_then(|res|
                         match (*splat1, *splat2) {
-                            (Some(ref a), Some(ref b)) => Some(res.and_then(|env|
-                                env.unify(a, b)
+                            (Some(ref a), Some(ref b)) => Some(res.and_then(|_|
+                                self.unify(a, b)
                             )),
                             (None, None) => Some(res),
                             _ => None,
                         }
                     ).and_then(|res|
                         match res {
-                            Ok(env) => env.unify_slice(post1, post2),
+                            Ok(_) => self.unify_slice(post1, post2),
                             Err(e) => Some(Err(e)),
                         }
                     ).unwrap_or(
@@ -130,14 +128,14 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 Err((t1.clone(), t2.clone())),
 
             (&Type::Any { .. }, &Type::Any { .. }) =>
-                Ok(self.clone()),
+                Ok(()),
 
             (&Type::Any { .. }, _) =>
                 Err((t1.clone(), t2.clone())),
 
             (&Type::TypeParameter { name: ref name1, .. }, &Type::TypeParameter { name: ref name2, .. }) =>
                 if name1 == name2 {
-                    Ok(self.clone())
+                    Ok(())
                 } else {
                     Err((t1.clone(), t2.clone()))
                 },
@@ -149,29 +147,35 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    fn unify_slice(&self, types1: &[&'ty Type<'ty, 'object>], types2: &[&'ty Type<'ty, 'object>]) -> Option<UnificationResult<'ty, 'env, 'object>> {
-        let mut env = self.clone();
-
+    fn unify_slice(&self, types1: &[&'ty Type<'ty, 'object>], types2: &[&'ty Type<'ty, 'object>]) -> Option<UnificationResult<'ty, 'object>> {
         if types1.len() != types2.len() {
             return None;
         }
 
         for (a, b) in types1.iter().zip(types2.iter()) {
-            match env.unify(a, b) {
-                Ok(new_env) => env = new_env,
+            match self.unify(a, b) {
+                Ok(_) => {},
                 err@Err(..) => return Some(err),
             }
         }
 
-        Some(Ok(env))
+        Some(Ok(()))
     }
 
-    fn unify_option(&self, opt1: &Option<&'ty Type<'ty, 'object>>, opt2: &Option<&'ty Type<'ty, 'object>>) -> Option<UnificationResult<'ty, 'env, 'object>> {
+    fn unify_option(&self, opt1: &Option<&'ty Type<'ty, 'object>>, opt2: &Option<&'ty Type<'ty, 'object>>) -> Option<UnificationResult<'ty, 'object>> {
         match (*opt1, *opt2) {
             (Some(ref t1), Some(ref t2)) => Some(self.unify(t1, t2)),
-            (None, None) => Some(Ok(self.clone())),
+            (None, None) => Some(Ok(())),
             _ => None,
         }
+    }
+
+    pub fn update_loc(&self, ty: &'ty Type<'ty, 'object>, loc: Loc) -> &'ty Type<'ty, 'object> {
+        let tyvar = self.new_var(loc);
+
+        self.unify(tyvar, ty).expect("unifying new tyvar");
+
+        tyvar
     }
 }
 
@@ -205,12 +209,36 @@ pub enum Type<'ty, 'object: 'ty> {
     },
     Proc {
         loc: Loc,
-        args: Vec<&'ty Type<'ty, 'object>>,
-        block: Option<&'ty Type<'ty, 'object>>,
-        retn: &'ty Type<'ty, 'object>,
+        args: Vec<Arg<'ty, 'object>>,
+        retn: Option<&'ty Type<'ty, 'object>>,
     },
     Var {
         loc: Loc,
         id: TypeVarId,
     }
+}
+
+#[derive(Debug)]
+pub enum Arg<'ty, 'object: 'ty> {
+    Required {
+        loc: Loc,
+        ty: Option<&'ty Type<'ty, 'object>>,
+    },
+    Procarg0 {
+        loc: Loc,
+        arg: Box<Arg<'ty, 'object>>,
+    },
+    Optional {
+        loc: Loc,
+        ty: Option<&'ty Type<'ty, 'object>>,
+        expr: Rc<Node>,
+    },
+    Rest {
+        loc: Loc,
+        ty: Option<&'ty Type<'ty, 'object>>,
+    },
+    Block {
+        loc: Loc,
+        ty: Option<&'ty Type<'ty, 'object>>,
+    },
 }
