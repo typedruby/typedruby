@@ -1,4 +1,5 @@
 use std::rc::Rc;
+use std::collections::HashMap;
 use typecheck::types::{Arg, TypeEnv, Type};
 use object::{Scope, RubyObject};
 use ast::{Node, Loc, Id};
@@ -20,18 +21,43 @@ enum Locals<'ty, 'object: 'ty> {
     },
 }
 
-enum Computation<'ty, 'object: 'ty> {
-    Result(&'ty Type<'ty, 'object>, Rc<Locals<'ty, 'object>>),
-    Return(&'ty Type<'ty, 'object>, Rc<Locals<'ty, 'object>>),
-    Divergent(Rc<Computation<'ty, 'object>>, Rc<Computation<'ty, 'object>>),
-}
-
 fn assign<'ty, 'object: 'ty>(locals: Rc<Locals<'ty, 'object>>, name: String, ty: &'ty Type<'ty, 'object>) -> Rc<Locals<'ty, 'object>> {
     Rc::new(Locals::Var {
         parent: locals,
         name: name,
         ty: ty,
     })
+}
+
+enum Computation<'ty, 'object: 'ty> {
+    Result(&'ty Type<'ty, 'object>, Rc<Locals<'ty, 'object>>),
+    Return(&'ty Type<'ty, 'object>, Rc<Locals<'ty, 'object>>),
+    Divergent(Rc<Computation<'ty, 'object>>, Rc<Computation<'ty, 'object>>),
+}
+
+#[derive(Clone)]
+pub struct TypeContext<'ty, 'object: 'ty> {
+    self_type: &'ty Type<'ty, 'object>,
+    type_names: HashMap<String, &'ty Type<'ty, 'object>>,
+}
+
+impl<'ty, 'object> TypeContext<'ty, 'object> {
+    fn new(self_type: &'ty Type<'ty, 'object>) -> TypeContext<'ty, 'object> {
+        let type_names = match *self_type {
+            Type::Instance { class, ref type_parameters, .. } => {
+                class.type_parameters().iter()
+                    .map(|&Id(_, ref name)| name.clone())
+                    .zip(type_parameters.iter().cloned())
+                    .collect()
+            },
+            _ => HashMap::new(),
+        };
+
+        TypeContext {
+            self_type: self_type,
+            type_names: type_names,
+        }
+    }
 }
 
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
@@ -73,7 +99,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             ).collect(),
         });
 
-        let (prototype, locals) = self.resolve_prototype(prototype_node, Rc::new(Locals::None), self_type, self.scope.clone());
+        let mut context = TypeContext::new(self_type);
+
+        let (prototype, locals) = self.resolve_prototype(prototype_node, Rc::new(Locals::None), &mut context, self.scope.clone());
 
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
@@ -112,7 +140,19 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: Vec<&'ty Type<'ty, 'object>>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
+    fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: Vec<&'ty Type<'ty, 'object>>, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
+        if let Node::Const(_, None, Id(ref name_loc, ref name)) = *cpath {
+            if let Some(ty) = context.type_names.get(name) {
+                if !type_parameters.is_empty() {
+                    self.error("Type parameters were supplied but type mentioned does not take any", &[
+                        ("here", name_loc),
+                    ]);
+                }
+
+                return self.tyenv.update_loc(ty, name_loc.clone());
+            }
+        }
+
         match self.env.resolve_cpath(cpath, scope) {
             Ok(class) => match *class {
                 RubyObject::Object { .. } => {
@@ -143,13 +183,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         self.create_instance_type(loc, array_class, vec![element_type])
     }
 
-    fn resolve_type(&self, node: &Node, self_type: &'ty Type<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
+    fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
         match *node {
             Node::TyCpath(ref loc, ref cpath) =>
-                self.resolve_instance_type(loc, cpath, Vec::new(), scope),
+                self.resolve_instance_type(loc, cpath, Vec::new(), context, scope),
             Node::TyGeninst(ref loc, ref cpath, ref args) => {
-                let type_parameters = args.iter().map(|arg| self.resolve_type(arg, self_type, scope.clone())).collect();
-                self.resolve_instance_type(loc, cpath, type_parameters, scope)
+                let type_parameters = args.iter().map(|arg| self.resolve_type(arg, context, scope.clone())).collect();
+                self.resolve_instance_type(loc, cpath, type_parameters, context, scope)
             },
             Node::TyNil(ref loc) => {
                 self.create_instance_type(loc, self.env.object.NilClass, Vec::new())
@@ -158,27 +198,27 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.tyenv.any(loc.clone())
             },
             Node::TyArray(ref loc, ref element) => {
-                self.create_array_type(loc, self.resolve_type(element, self_type, scope))
+                self.create_array_type(loc, self.resolve_type(element, context, scope))
             },
             Node::TyProc(ref loc, ref prototype) => {
-                self.resolve_prototype(prototype, Rc::new(Locals::None), self_type, scope).0
+                self.resolve_prototype(prototype, Rc::new(Locals::None), context, scope).0
             },
             Node::TyClass(ref loc) => {
-                let self_class = match *self_type {
+                let self_class = match *context.self_type {
                     Type::Instance { ref class, .. } => class,
-                    _ => panic!("unknown self_type in TyClass resolution: {:?}", self_type),
+                    _ => panic!("unknown self_type in TyClass resolution: {:?}", context.self_type),
                 };
 
                 // metaclasses never have type parameters:
                 self.create_instance_type(loc, self.env.object.metaclass(self_class), Vec::new())
             },
             Node::TySelf(ref loc) => {
-                self.tyenv.update_loc(self_type, loc.clone())
+                self.tyenv.update_loc(context.self_type, loc.clone())
             },
             Node::TyInstance(ref loc) => {
-                let self_class = match *self_type {
+                let self_class = match *context.self_type {
                     Type::Instance { class, .. } => class,
-                    _ => panic!("unknown self_type in TyInstance resolution: {:?}", self_type),
+                    _ => panic!("unknown self_type in TyInstance resolution: {:?}", context.self_type),
                 };
 
                 match *self_class {
@@ -205,7 +245,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     loc: loc.clone(),
                     types: vec![
                         self.create_instance_type(loc, self.env.object.NilClass, Vec::new()),
-                        self.resolve_type(type_node, self_type, scope),
+                        self.resolve_type(type_node, context, scope),
                     ],
                 })
             },
@@ -213,8 +253,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.tyenv.alloc(Type::Union {
                     loc: loc.clone(),
                     types: vec![
-                        self.resolve_type(a, self_type, scope.clone()),
-                        self.resolve_type(b, self_type, scope),
+                        self.resolve_type(a, context, scope.clone()),
+                        self.resolve_type(b, context, scope),
                     ],
                 })
             }
@@ -222,12 +262,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn resolve_arg(&self, arg_node: &Node, locals: Rc<Locals<'ty, 'object>>, self_type: &'ty Type<'ty, 'object>, scope: Rc<Scope<'object>>)
+    fn resolve_arg(&self, arg_node: &Node, locals: Rc<Locals<'ty, 'object>>, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
         -> (Arg<'ty, 'object>, Rc<Locals<'ty, 'object>>)
     {
         let (ty, arg_node) = match *arg_node {
             Node::TypedArg(_, ref type_node, ref arg) => {
-                let ty = self.resolve_type(type_node, self_type, scope.clone());
+                let ty = self.resolve_type(type_node, context, scope.clone());
                 (Some(ty), &**arg)
             },
             _ => (None, arg_node),
@@ -249,19 +289,32 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Restarg(ref loc, Some(Id(_, ref name))) =>
                 (Arg::Rest { loc: loc.clone(), ty: ty }, assign(locals, name.to_owned(), self.create_array_type(loc, ty_or_any))),
             Node::Procarg0(ref loc, ref inner_arg_node) => {
-                let (inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, self_type, scope);
+                let (inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
                 (Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
             },
             _ => panic!("arg_node: {:?}", arg_node),
         }
     }
 
-    fn resolve_prototype(&self, node: &Node, locals: Rc<Locals<'ty, 'object>>, self_type: &'ty Type<'ty, 'object>, scope: Rc<Scope<'object>>)
+    fn resolve_prototype(&self, node: &Node, locals: Rc<Locals<'ty, 'object>>, context_: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
         -> (&'ty Type<'ty, 'object>, Rc<Locals<'ty, 'object>>)
     {
+        let mut context = context_.clone();
+
         let (args_node, return_type) = match *node {
-            Node::Prototype(_, ref gendecl, ref args, ref ret) =>
-                (&**args, ret.as_ref().map(|ret_node| self.resolve_type(ret_node, self_type, scope.clone()))),
+            Node::Prototype(_, ref genargs, ref args, ref ret) => {
+                if let Some(ref genargs_) = *genargs {
+                    if let Node::TyGenargs(_, ref gendeclargs) = **genargs_ {
+                        for gendeclarg in gendeclargs {
+                            if let Node::TyGendeclarg(ref loc, ref name) = **gendeclarg {
+                                context.type_names.insert(name.clone(), self.tyenv.new_var(loc.clone()));
+                            }
+                        }
+                    }
+                }
+
+                (&**args, ret.as_ref().map(|ret_node| self.resolve_type(ret_node, &context, scope.clone())))
+            },
             Node::Args(..) => (node, None),
             _ => panic!("unexpected {:?}", node),
         };
@@ -276,7 +329,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let mut locals = locals;
 
         for arg_node in arg_nodes {
-            let (arg, locals_) = self.resolve_arg(arg_node, locals, self_type, scope.clone());
+            let (arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
             locals = locals_;
         }
 
