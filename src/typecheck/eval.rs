@@ -1,5 +1,6 @@
 use std::rc::Rc;
 use std::collections::HashMap;
+use typecheck::flow::{Computation, Locals};
 use typecheck::types::{Arg, TypeEnv, Type};
 use object::{Scope, RubyObject};
 use ast::{Node, Loc, Id};
@@ -10,29 +11,6 @@ pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     tyenv: TypeEnv<'ty, 'env, 'object>,
     scope: Rc<Scope<'object>>,
     class: &'object RubyObject<'object>,
-}
-
-enum Locals<'ty, 'object: 'ty> {
-    None,
-    Var {
-        parent: Rc<Locals<'ty, 'object>>,
-        name: String,
-        ty: &'ty Type<'ty, 'object>,
-    },
-}
-
-fn assign<'ty, 'object: 'ty>(locals: Rc<Locals<'ty, 'object>>, name: String, ty: &'ty Type<'ty, 'object>) -> Rc<Locals<'ty, 'object>> {
-    Rc::new(Locals::Var {
-        parent: locals,
-        name: name,
-        ty: ty,
-    })
-}
-
-enum Computation<'ty, 'object: 'ty> {
-    Result(&'ty Type<'ty, 'object>, Rc<Locals<'ty, 'object>>),
-    Return(&'ty Type<'ty, 'object>, Rc<Locals<'ty, 'object>>),
-    Divergent(Rc<Computation<'ty, 'object>>, Rc<Computation<'ty, 'object>>),
 }
 
 #[derive(Clone)]
@@ -105,7 +83,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
-            println!("body: {:?}", body_node);
+            println!("{:?}", self.process_node(body_node, locals));
         }
     }
 
@@ -277,17 +255,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         match *arg_node {
             Node::Arg(ref loc, ref name) =>
-                (Arg::Required { loc: loc.clone(), ty: ty }, assign(locals, name.to_owned(), ty_or_any)),
+                (Arg::Required { loc: loc.clone(), ty: ty }, Locals::assign(locals, name.to_owned(), ty_or_any)),
             Node::Blockarg(ref loc, None) =>
                 (Arg::Block { loc: loc.clone(), ty: ty }, locals),
             Node::Blockarg(ref loc, Some(Id(_, ref name))) =>
-                (Arg::Block { loc: loc.clone(), ty: ty }, assign(locals, name.to_owned(), ty_or_any)),
+                (Arg::Block { loc: loc.clone(), ty: ty }, Locals::assign(locals, name.to_owned(), ty_or_any)),
             Node::Optarg(_, Id(ref loc, ref name), ref expr) =>
-                (Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, assign(locals, name.to_owned(), ty_or_any)),
+                (Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, Locals::assign(locals, name.to_owned(), ty_or_any)),
             Node::Restarg(ref loc, None) =>
                 (Arg::Rest { loc: loc.clone(), ty: ty }, locals),
             Node::Restarg(ref loc, Some(Id(_, ref name))) =>
-                (Arg::Rest { loc: loc.clone(), ty: ty }, assign(locals, name.to_owned(), self.create_array_type(loc, ty_or_any))),
+                (Arg::Rest { loc: loc.clone(), ty: ty }, Locals::assign(locals, name.to_owned(), self.create_array_type(loc, ty_or_any))),
             Node::Procarg0(ref loc, ref inner_arg_node) => {
                 let (inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
                 (Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
@@ -340,5 +318,36 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         });
 
         (proc_type, locals)
+    }
+
+    fn process_node(&self, node: &Node, locals: Rc<Locals<'ty, 'object>>) -> Rc<Computation<'ty, 'object>> {
+        match *node {
+            Node::Array(ref loc, ref elements) => {
+                let element_ty = self.tyenv.new_var(loc.clone());
+                let array_ty = self.create_array_type(loc, element_ty);
+
+                if elements.is_empty() {
+                    return Computation::new_result(array_ty, locals);
+                }
+
+                let first_elem = elements.first().unwrap();
+                let first_comp = self.process_node(first_elem, locals);
+
+                let comp = elements.iter().skip(1).fold(first_comp, |comp, element_node| Computation::seq(comp, &|ty, l| {
+                    self.tyenv.unify(element_ty, ty);
+                    self.process_node(element_node, l)
+                }));
+
+                Computation::seq(comp, &|ty, l| {
+                    self.tyenv.unify(element_ty, ty);
+                    Computation::new_result(array_ty, l)
+                })
+            },
+            Node::Integer(ref loc, _) => {
+                let integer_class = self.env.object.get_const(self.env.object.Object, "Integer").expect("Integer is defined");
+                Computation::new_result(self.create_instance_type(loc, integer_class, Vec::new()), locals)
+            },
+            _ => panic!("node: {:?}", node),
+        }
     }
 }
