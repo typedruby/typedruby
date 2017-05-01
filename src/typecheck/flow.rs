@@ -47,6 +47,19 @@ impl<'ty, 'object> Computation<'ty, 'object> {
         }
     }
 
+    pub fn term<F>(comp: Rc<Computation<'ty, 'object>>, f: &F)
+        where F: Fn(&'ty Type<'ty, 'object>, Rc<Locals<'ty, 'object>>)
+    {
+        match *comp {
+            Computation::Result(ref ty, ref locals) |
+            Computation::Return(ref ty, ref locals) => f(ty.clone(), locals.clone()),
+            Computation::Divergent(ref a, ref b) => {
+                Computation::term(a.clone(), f);
+                Computation::term(b.clone(), f);
+            },
+        }
+    }
+
     pub fn converge(comp: Rc<Computation<'ty, 'object>>) -> Rc<Computation<'ty, 'object>> {
         match *comp {
             Computation::Result(..) => comp.clone(),

@@ -81,9 +81,19 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let (prototype, locals) = self.resolve_prototype(prototype_node, Rc::new(Locals::None), &mut context, self.scope.clone());
 
+        let return_type = if let Type::Proc { retn, .. } = *prototype {
+            retn
+        } else {
+            panic!()
+        };
+
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
-            println!("{:?}", self.process_node(body_node, locals));
+            let comp = self.process_node(body_node, locals);
+            Computation::term(comp, &|ty, l|
+                if let Some(retn) = return_type {
+                    self.unify(retn, ty, None)
+                });
         }
     }
 
@@ -318,6 +328,24 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         });
 
         (proc_type, locals)
+    }
+
+    fn unify(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, node: Option<&Node>) {
+        if let Err((err_a, err_b)) = self.tyenv.unify(a, b) {
+            let message_a = self.tyenv.describe(err_a) + ", with:";
+            let message_b = self.tyenv.describe(err_b);
+
+            let mut details: Vec<(&str, &Loc)> = vec![
+                (&message_a, err_a.loc()),
+                (&message_b, err_b.loc()),
+            ];
+
+            if let Some(node) = node {
+                details.push(("in this expression", node.loc()));
+            }
+
+            self.error("Could not match types:", &details);
+        }
     }
 
     fn process_node(&self, node: &Node, locals: Rc<Locals<'ty, 'object>>) -> Rc<Computation<'ty, 'object>> {
