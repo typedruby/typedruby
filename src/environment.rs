@@ -134,11 +134,11 @@ impl<'object> Environment<'object> {
 
             Node::Const(_, Some(ref base), Id(_, ref name)) => {
                 match self.resolve_cpath(base, scope) {
-                    Ok(&RubyObject::Object { .. }) => Err((base, "not a class/module")),
+                    Ok(&RubyObject::Object { .. }) => Err((base, "Not a class or module")),
                     Ok(&RubyObject::IClass { .. }) => panic!(),
                     Ok(base_ref) => match self.object.get_const(&base_ref, name) {
                         Some(const_ref) => Ok(const_ref),
-                        None => /* TODO autoload */ Err((node, "no such constant")),
+                        None => /* TODO autoload */ Err((node, "No such constant")),
                     },
                     error => error,
                 }
@@ -155,11 +155,11 @@ impl<'object> Environment<'object> {
                     // TODO autoload
                 }
 
-                Err((node, "no such constant"))
+                Err((node, "No such constant"))
             }
 
             _ =>
-                Err((node, "not a static cpath")),
+                Err((node, "Not a static constant path")),
         }
     }
 
