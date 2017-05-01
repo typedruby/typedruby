@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::fmt;
 use typed_arena::Arena;
 use ast::{Node, Loc, Id};
 
@@ -553,7 +554,6 @@ pub struct IvarEntry<'object> {
     pub scope: Rc<Scope<'object>>,
 }
 
-#[derive(Debug)]
 pub enum RubyObject<'a> {
     Object {
         id: ObjectId,
@@ -667,6 +667,12 @@ impl<'a> RubyObject<'a> {
             RubyObject::IClass { .. } =>
                 panic!("called type_parameters on RubyObject::IClass!"),
         }
+    }
+}
+
+impl<'a> fmt::Debug for RubyObject<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}", self.name())
     }
 }
 
