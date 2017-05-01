@@ -177,6 +177,95 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
         tyvar
     }
+
+    fn describe_rec(&self, ty: &'ty Type<'ty, 'object>, buffer: &mut String) {
+        use std::fmt::Write;
+
+        match *self.prune(ty) {
+            Type::Instance { ref class, ref type_parameters, .. } => {
+                write!(buffer, "{}", class.name());
+
+                if !type_parameters.is_empty() {
+                    write!(buffer, "::[");
+
+                    self.describe_rec(type_parameters.first().unwrap(), buffer);
+
+                    for param in type_parameters.iter().skip(1) {
+                        write!(buffer, ", ");
+                    }
+
+                    write!(buffer, "]");
+                }
+            },
+            Type::Tuple { ref lead, ref splat, ref post, .. } => {
+                let mut print_comma = false;
+
+                write!(buffer, "[");
+
+                for lead_ty in lead {
+                    if print_comma { write!(buffer, ", "); }
+                    self.describe_rec(lead_ty, buffer);
+                    print_comma = true;
+                }
+
+                if let Some(splat_ty) = *splat {
+                    if print_comma { write!(buffer, ", "); }
+                    self.describe_rec(splat_ty, buffer);
+                    print_comma = true;
+                }
+
+                for post_ty in lead {
+                    if print_comma { write!(buffer, ", "); }
+                    self.describe_rec(post_ty, buffer);
+                    print_comma = true;
+                }
+
+                write!(buffer, "]");
+            },
+            Type::Union { ref types, .. } => {
+                let mut print_pipe = false;
+
+                for union_ty in types {
+                    if print_pipe { write!(buffer, "|"); }
+                    self.describe_rec(union_ty, buffer);
+                    print_pipe = false;
+                }
+            },
+            Type::Any { .. } => {
+                write!(buffer, ":any");
+            },
+            Type::TypeParameter { ref name, .. } => {
+                write!(buffer, "{}", name);
+            },
+            Type::KeywordHash { ref keywords, .. } => {
+                let mut print_comma = false;
+
+                write!(buffer, "{{");
+
+                for &(ref kw_name, ref kw_ty) in keywords {
+                    if print_comma { write!(buffer, ", "); }
+                    write!(buffer, "{}: ", kw_name);
+                    self.describe_rec(kw_ty, buffer);
+                    print_comma = true;
+                }
+
+                write!(buffer, "}}");
+            },
+            Type::Proc { ref args, ref retn, .. } => {
+                // TOOD
+                write!(buffer, "Proc(todo)");
+            },
+            Type::Var { ref id, .. } => {
+                write!(buffer, "t{}", id);
+            },
+        }
+    }
+
+    pub fn describe(&self, ty: &'ty Type<'ty, 'object>) -> String {
+        let mut buffer = String::new();
+        self.describe_rec(ty, &mut buffer);
+        buffer
+    }
 }
 
 #[derive(Debug)]
@@ -215,6 +304,21 @@ pub enum Type<'ty, 'object: 'ty> {
     Var {
         loc: Loc,
         id: TypeVarId,
+    }
+}
+
+impl<'ty, 'object> Type<'ty, 'object> {
+    pub fn loc(&self) -> &Loc {
+        match *self {
+            Type::Instance { ref loc, .. } => loc,
+            Type::Tuple { ref loc, .. } => loc,
+            Type::Union { ref loc, .. } => loc,
+            Type::Any { ref loc, .. } => loc,
+            Type::TypeParameter { ref loc, .. } => loc,
+            Type::KeywordHash { ref loc, .. } => loc,
+            Type::Proc { ref loc, .. } => loc,
+            Type::Var { ref loc, .. } => loc,
+        }
     }
 }
 
