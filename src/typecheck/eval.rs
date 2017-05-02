@@ -89,7 +89,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
-            self.process_node(body_node, locals).term(&|ty, l|
+            self.process_node(body_node, locals).terminate(&|ty|
                 if let Some(retn) = return_type {
                     self.unify(retn, ty, None)
                 }
@@ -375,7 +375,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 let comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
 
                 nodes.iter().fold(comp, |comp, node|
-                    comp.seq(&|ty, l| self.process_node(node, l)).converge()
+                    comp.seq(&|ty, l| self.process_node(node, l)).converge_results(&self.tyenv)
                 )
             },
             Node::Kwbegin(ref loc, ref node) => {
@@ -384,6 +384,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     None => Computation::result(self.tyenv.nil(loc.clone()), locals),
                 }
             },
+            Node::Lvasgn(ref loc, Id(ref lvloc, ref lvname), ref expr) => {
+                self.process_node(expr, locals).seq(&|ty, l|
+                    Computation::result(ty, Locals::assign(l, lvname.to_owned(), ty))
+                )
+            }
             Node::Integer(ref loc, _) => {
                 let integer_class = self.env.object.get_const(self.env.object.Object, "Integer").expect("Integer is defined");
                 Computation::result(self.tyenv.instance(loc.clone(), integer_class, Vec::new()), locals)
