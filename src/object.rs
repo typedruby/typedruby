@@ -69,6 +69,8 @@ pub struct ObjectGraph<'a> {
     pub TrueClass: &'a RubyObject<'a>,
     pub FalseClass: &'a RubyObject<'a>,
     pub NilClass: &'a RubyObject<'a>,
+    pub Symbol: &'a RubyObject<'a>,
+    pub String: &'a RubyObject<'a>,
 
     constants: ClassTable<'a, ConstantEntry<'a>>,
     methods: ClassTable<'a, MethodEntry<'a>>,
@@ -156,6 +158,8 @@ impl<'a> ObjectGraph<'a> {
             TrueClass: object,
             FalseClass: object,
             NilClass: object,
+            Symbol: object,
+            String: object,
 
             constants: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
@@ -173,6 +177,8 @@ impl<'a> ObjectGraph<'a> {
         o.TrueClass = o.define_class(None, o.Object, "TrueClass", o.Boolean, Vec::new());
         o.FalseClass = o.define_class(None, o.Object, "FalseClass", o.Boolean, Vec::new());
         o.NilClass = o.define_class(None, o.Object, "NilClass", o.Object, Vec::new());
+        o.Symbol = o.define_class(None, o.Object, "Symbol", o.Object, Vec::new());
+        o.String = o.define_class(None, o.Object, "String", o.Object, Vec::new());
 
         o
     }
