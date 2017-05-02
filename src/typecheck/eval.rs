@@ -5,6 +5,8 @@ use typecheck::types::{Arg, TypeEnv, Type};
 use object::{Scope, RubyObject};
 use ast::{Node, Loc, Id};
 use environment::Environment;
+use errors::Detail;
+use typed_arena::Arena;
 
 pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     env: &'env Environment<'object>,
@@ -43,11 +45,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         Eval { env: env, tyenv: tyenv, scope: scope, class: class }
     }
 
-    fn error(&self, message: &str, details: &[(&str, &Loc)]) {
+    fn error(&self, message: &str, details: &[Detail]) {
         self.env.error_sink.borrow_mut().error(message, details)
     }
 
-    fn warning(&self, message: &str, details: &[(&str, &Loc)]) {
+    fn warning(&self, message: &str, details: &[Detail]) {
         self.env.error_sink.borrow_mut().warning(message, details)
     }
 
@@ -106,7 +108,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         } else {
             if supplied_params == 0 {
                 self.error("Type referenced is generic but no type parameters were supplied", &[
-                    ("here", loc),
+                    Detail::Loc("here", loc),
                 ]);
             } else if supplied_params < expected_params {
                 let mut message = format!("{} also expects ", class.name());
@@ -120,7 +122,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
 
                 self.error("Too few type parameters supplied in instantiation of generic type", &[
-                    (&message, loc),
+                    Detail::Loc(&message, loc),
                 ]);
             }
 
@@ -133,7 +135,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             if let Some(ty) = context.type_names.get(name) {
                 if !type_parameters.is_empty() {
                     self.error("Type parameters were supplied but type mentioned does not take any", &[
-                        ("here", name_loc),
+                        Detail::Loc("here", name_loc),
                     ]);
                 }
 
@@ -145,7 +147,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Ok(class) => match *class {
                 RubyObject::Object { .. } => {
                     self.error("Constant mentioned in type name does not reference class/module", &[
-                        ("here", cpath.loc()),
+                        Detail::Loc("here", cpath.loc()),
                     ]);
 
                     self.tyenv.any(cpath.loc().clone())
@@ -158,7 +160,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             },
             Err((err_node, message)) => {
                 self.error(message, &[
-                    ("here", err_node.loc()),
+                    Detail::Loc("here", err_node.loc()),
                 ]);
 
                 self.tyenv.any(cpath.loc().clone())
@@ -220,7 +222,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         // special case to allow the Class#allocate definition in the stdlib:
                         if self_class != self.env.object.Class {
                             self.error("Cannot instatiate instance type", &[
-                                (&format!("Self here is {}, which is not a Class", self_class.name()), loc),
+                                Detail::Loc(&format!("Self here is {}, which is not a Class", self_class.name()), loc),
                             ]);
                         }
 
@@ -332,16 +334,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
     fn unify(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, node: Option<&Node>) {
         if let Err((err_a, err_b)) = self.tyenv.unify(a, b) {
-            let message_a = self.tyenv.describe(err_a) + ", with:";
-            let message_b = self.tyenv.describe(err_b);
+            let strs = Arena::new();
 
-            let mut details: Vec<(&str, &Loc)> = vec![
-                (&message_a, err_a.loc()),
-                (&message_b, err_b.loc()),
+            let mut details: Vec<Detail> = vec![
+                Detail::Loc(strs.alloc(self.tyenv.describe(err_a) + ", with:"), err_a.loc()),
+                Detail::Loc(strs.alloc(self.tyenv.describe(err_b)), err_b.loc()),
             ];
 
             if let Some(node) = node {
-                details.push(("in this expression", node.loc()));
+                details.push(Detail::Loc("in this expression", node.loc()));
             }
 
             self.error("Could not match types:", &details);
