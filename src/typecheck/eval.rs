@@ -102,7 +102,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let expected_params = class.type_parameters().len();
 
         if supplied_params == expected_params {
-            self.tyenv.alloc(Type::Instance { loc: loc.clone(), class: class, type_parameters: type_parameters })
+            self.tyenv.instance(loc.clone(), class, type_parameters)
         } else {
             if supplied_params == 0 {
                 self.error("Type referenced is generic but no type parameters were supplied", &[
@@ -168,7 +168,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
     fn create_array_type(&self, loc: &Loc, element_type: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
         let array_class = self.env.object.get_const(self.env.object.Object, "Array").expect("expected Array to be defined");
-        self.create_instance_type(loc, array_class, vec![element_type])
+        self.tyenv.instance(loc.clone(), array_class, vec![element_type])
     }
 
     fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
@@ -386,7 +386,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             },
             Node::Integer(ref loc, _) => {
                 let integer_class = self.env.object.get_const(self.env.object.Object, "Integer").expect("Integer is defined");
-                Computation::result(self.create_instance_type(loc, integer_class, Vec::new()), locals)
+                Computation::result(self.tyenv.instance(loc.clone(), integer_class, Vec::new()), locals)
             },
             _ => panic!("node: {:?}", node),
         }

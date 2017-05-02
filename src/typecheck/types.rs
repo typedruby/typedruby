@@ -48,12 +48,24 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         self.alloc(Type::Any { loc: loc })
     }
 
-    pub fn nil(&self, loc: Loc) -> &'ty Type<'ty, 'object> {
+    pub fn instance(&self, loc: Loc, class: &'object RubyObject<'object>, type_parameters: Vec<&'ty Type<'ty, 'object>>)
+        -> &'ty Type<'ty, 'object>
+    {
+        assert!(class.type_parameters().len() == type_parameters.len());
+
         self.alloc(Type::Instance {
             loc: loc,
-            class: self.object.NilClass,
-            type_parameters: Vec::new(),
+            class: class,
+            type_parameters: type_parameters,
         })
+    }
+
+    pub fn nil(&self, loc: Loc) -> &'ty Type<'ty, 'object> {
+        self.instance(loc, self.object.NilClass, Vec::new())
+    }
+
+    pub fn union(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+        panic!("not implemented!")
     }
 
     fn set_var(&self, id: TypeVarId, ty: &'ty Type<'ty, 'object>) {
