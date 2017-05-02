@@ -78,13 +78,87 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     }
 
     pub fn prune(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
-        if let Type::Var { ref loc, ref id } = *ty {
-            if let Some(instance) = { self.instance_map.borrow().get(id) } {
-                return self.prune(instance)
-            }
+        match *ty {
+            Type::Var { ref id, .. } |
+            Type::KeywordHash { ref id, .. } => {
+                if let Some(instance) = { self.instance_map.borrow().get(id) } {
+                    return self.prune(instance)
+                }
+            },
+            _ => {},
         }
 
         ty.clone()
+    }
+
+    pub fn compatible(&self, to: &'ty Type<'ty, 'object>, from: &'ty Type<'ty, 'object>) -> UnificationResult<'ty, 'object> {
+        let to = self.prune(to);
+        let from = self.prune(from);
+
+        match (to, from) {
+            (&Type::Var { .. }, _) =>
+                self.unify(to, from),
+            (_, &Type::Var { .. }) =>
+                self.unify(to, from),
+            (&Type::Instance { class: to_class, type_parameters: ref to_tp, .. }, &Type::Instance { class: from_class, type_parameters: ref from_tp, .. }) => {
+                if from_class.ancestors().find(|c| c.delegate() == to_class).is_none() {
+                    return Err((to, from));
+                }
+
+                if to_tp.len() > 0 {
+                    // typedruby has no covariance, so we simply unify here
+                    // rather than checking compatibility:
+                    match self.unify_slice(to_tp, from_tp) {
+                        None => Err((to, from)),
+                        Some(e@Err(..)) => e,
+                        Some(Ok(())) => Ok(())
+                    }
+                } else {
+                    Ok(())
+                }
+            },
+            (_, &Type::Union { types: ref from_types, .. }) => {
+                for from_type in from_types {
+                    if let e@Err(..) = self.compatible(to, from_type) {
+                        return e;
+                    }
+                }
+
+                Ok(())
+            },
+            (&Type::Union { types: ref to_types, .. }, _) => {
+                for to_type in to_types {
+                    if let Ok(()) = self.compatible(to_type, from) {
+                        return Ok(());
+                    }
+                }
+
+                Err((to, from))
+            },
+            (&Type::Any { .. }, _) => Ok(()),
+            (_, &Type::Any { .. }) => Ok(()),
+            (&Type::Instance { class: to_class, type_parameters: ref to_tp, .. }, &Type::KeywordHash { ref loc, ref keywords, id, .. }) => {
+                let hash_class = self.object.get_const(self.object.Object, "Hash").expect("Hash to be defined");
+
+                if to_class == hash_class {
+                    // degrade keyword hash to instance type:
+                    let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
+                    let value_ty = self.new_var(loc.clone());
+
+                    for &(_, kwty) in keywords {
+                        try!(self.unify(value_ty, value_ty));
+                    }
+
+                    self.set_var(id, self.instance(loc.clone(), hash_class, vec![key_ty, value_ty]));
+
+                    self.compatible(to, from)
+                } else {
+                    Err((to, from))
+                }
+            },
+            (_, _) =>
+                self.unify(to, from),
+        }
     }
 
     pub fn unify(&self, t1: &'ty Type<'ty, 'object>, t2: &'ty Type<'ty, 'object>) -> UnificationResult<'ty, 'object> {
@@ -107,7 +181,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (_, &Type::Var { .. }) =>
                 self.unify(&t2, &t1),
 
-            (&Type::Instance { class: ref class1, type_parameters: ref tp1, .. }, &Type::Instance { class: ref class2, type_parameters: ref tp2, .. }) => {
+            (&Type::Instance { class: class1, type_parameters: ref tp1, .. }, &Type::Instance { class: class2, type_parameters: ref tp2, .. }) => {
                 if class1 != class2 {
                     return Err((t1.clone(), t2.clone()));
                 }
@@ -315,6 +389,10 @@ pub enum Type<'ty, 'object: 'ty> {
     KeywordHash {
         loc: Loc,
         keywords: Vec<(String, &'ty Type<'ty, 'object>)>,
+        // keyword hash types can degrade to normal hash instances
+        // when they do, there will be an entry in the instance_map for this
+        // id:
+        id: TypeVarId,
     },
     Proc {
         loc: Loc,

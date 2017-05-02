@@ -93,7 +93,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         if let Some(ref body_node) = *body {
             self.process_node(body_node, locals).terminate(&|ty|
                 if let Some(retn) = return_type {
-                    self.unify(retn, ty, None)
+                    self.compatible(retn, ty, None)
                 }
             );
         }
@@ -332,26 +332,36 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         (proc_type, locals)
     }
 
+    fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, node: Option<&Node>) {
+        let strs = Arena::new();
+
+        let mut details = vec![
+            Detail::Loc(strs.alloc(self.tyenv.describe(err_a) + ", with:"), err_a.loc()),
+            Detail::Loc(strs.alloc(self.tyenv.describe(err_b)), err_b.loc()),
+        ];
+
+        if !err_a.ref_eq(a) || !err_b.ref_eq(b) {
+            details.push(Detail::Message("arising from an attempt to match:"));
+            details.push(Detail::Loc(strs.alloc(self.tyenv.describe(a) + ", with:"), a.loc()));
+            details.push(Detail::Loc(strs.alloc(self.tyenv.describe(b)), b.loc()));
+        }
+
+        if let Some(node) = node {
+            details.push(Detail::Loc("in this expression", node.loc()));
+        }
+
+        self.error("Could not match types:", &details);
+    }
+
     fn unify(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, node: Option<&Node>) {
         if let Err((err_a, err_b)) = self.tyenv.unify(a, b) {
-            let strs = Arena::new();
+            self.type_error(a, b, err_a, err_b, node);
+        }
+    }
 
-            let mut details: Vec<Detail> = vec![
-                Detail::Loc(strs.alloc(self.tyenv.describe(err_a) + ", with:"), err_a.loc()),
-                Detail::Loc(strs.alloc(self.tyenv.describe(err_b)), err_b.loc()),
-            ];
-
-            if !err_a.ref_eq(a) || !err_b.ref_eq(b) {
-                details.push(Detail::Message("arising from an attempt to match:"));
-                details.push(Detail::Loc(strs.alloc(self.tyenv.describe(a) + ", with:"), a.loc()));
-                details.push(Detail::Loc(strs.alloc(self.tyenv.describe(b)), b.loc()));
-            }
-
-            if let Some(node) = node {
-                details.push(Detail::Loc("in this expression", node.loc()));
-            }
-
-            self.error("Could not match types:", &details);
+    fn compatible(&self, to: &'ty Type<'ty, 'object>, from: &'ty Type<'ty, 'object>, node: Option<&Node>) {
+        if let Err((err_to, err_from)) = self.tyenv.compatible(to, from) {
+            self.type_error(to, from, err_to, err_from, node);
         }
     }
 
