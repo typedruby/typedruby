@@ -340,6 +340,10 @@ impl<'ty, 'object> Type<'ty, 'object> {
             Type::Var { ref loc, .. } => loc,
         }
     }
+
+    pub fn ref_eq(&self, other: &'ty Type<'ty, 'object>) -> bool {
+        (self as *const _) == (other as *const _)
+    }
 }
 
 #[derive(Debug)]

@@ -341,6 +341,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Detail::Loc(strs.alloc(self.tyenv.describe(err_b)), err_b.loc()),
             ];
 
+            if !err_a.ref_eq(a) || !err_b.ref_eq(b) {
+                details.push(Detail::Message("arising from an attempt to match:"));
+                details.push(Detail::Loc(strs.alloc(self.tyenv.describe(a) + ", with:"), a.loc()));
+                details.push(Detail::Loc(strs.alloc(self.tyenv.describe(b)), b.loc()));
+            }
+
             if let Some(node) = node {
                 details.push(Detail::Loc("in this expression", node.loc()));
             }
