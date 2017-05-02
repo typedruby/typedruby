@@ -89,11 +89,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
-            let comp = self.process_node(body_node, locals);
-            Computation::term(comp, &|ty, l|
+            self.process_node(body_node, locals).term(&|ty, l|
                 if let Some(retn) = return_type {
                     self.unify(retn, ty, None)
-                });
+                }
+            );
         }
     }
 
@@ -348,47 +348,45 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_node(&self, node: &Node, locals: Rc<Locals<'ty, 'object>>) -> Rc<Computation<'ty, 'object>> {
+    fn process_node(&self, node: &Node, locals: Rc<Locals<'ty, 'object>>) -> Computation<'ty, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
                 let element_ty = self.tyenv.new_var(loc.clone());
                 let array_ty = self.create_array_type(loc, element_ty);
 
                 if elements.is_empty() {
-                    return Computation::new_result(array_ty, locals);
+                    return Computation::result(array_ty, locals);
                 }
 
                 let first_elem = elements.first().unwrap();
                 let first_comp = self.process_node(first_elem, locals);
 
-                let comp = elements.iter().skip(1).fold(first_comp, |comp, element_node| Computation::seq(comp, &|ty, l| {
+                let comp = elements.iter().skip(1).fold(first_comp, |comp, element_node| comp.seq(&|ty, l| {
                     self.tyenv.unify(element_ty, ty);
                     self.process_node(element_node, l)
                 }));
 
-                Computation::seq(comp, &|ty, l| {
+                comp.seq(&|ty, l| {
                     self.tyenv.unify(element_ty, ty);
-                    Computation::new_result(array_ty, l)
+                    Computation::result(array_ty, l)
                 })
             },
             Node::Begin(ref loc, ref nodes) => {
-                let comp = Computation::new_result(self.tyenv.nil(loc.clone()), locals);
+                let comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
 
                 nodes.iter().fold(comp, |comp, node|
-                    Computation::converge(Computation::seq(comp, &|ty, l|
-                        self.process_node(node, l)
-                    ))
+                    comp.seq(&|ty, l| self.process_node(node, l)).converge()
                 )
             },
             Node::Kwbegin(ref loc, ref node) => {
                 match *node {
                     Some(ref n) => self.process_node(n, locals),
-                    None => Computation::new_result(self.tyenv.nil(loc.clone()), locals),
+                    None => Computation::result(self.tyenv.nil(loc.clone()), locals),
                 }
             },
             Node::Integer(ref loc, _) => {
                 let integer_class = self.env.object.get_const(self.env.object.Object, "Integer").expect("Integer is defined");
-                Computation::new_result(self.create_instance_type(loc, integer_class, Vec::new()), locals)
+                Computation::result(self.create_instance_type(loc, integer_class, Vec::new()), locals)
             },
             _ => panic!("node: {:?}", node),
         }
