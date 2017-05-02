@@ -232,7 +232,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.tyenv.alloc(Type::Union {
                     loc: loc.clone(),
                     types: vec![
-                        self.create_instance_type(loc, self.env.object.NilClass, Vec::new()),
+                        self.tyenv.nil(loc.clone()),
                         self.resolve_type(type_node, context, scope),
                     ],
                 })
@@ -370,6 +370,21 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     self.tyenv.unify(element_ty, ty);
                     Computation::new_result(array_ty, l)
                 })
+            },
+            Node::Begin(ref loc, ref nodes) => {
+                let comp = Computation::new_result(self.tyenv.nil(loc.clone()), locals);
+
+                nodes.iter().fold(comp, |comp, node|
+                    Computation::converge(Computation::seq(comp, &|ty, l|
+                        self.process_node(node, l)
+                    ))
+                )
+            },
+            Node::Kwbegin(ref loc, ref node) => {
+                match *node {
+                    Some(ref n) => self.process_node(n, locals),
+                    None => Computation::new_result(self.tyenv.nil(loc.clone()), locals),
+                }
             },
             Node::Integer(ref loc, _) => {
                 let integer_class = self.env.object.get_const(self.env.object.Object, "Integer").expect("Integer is defined");

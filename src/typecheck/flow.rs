@@ -39,11 +39,10 @@ impl<'ty, 'object> Computation<'ty, 'object> {
         match *comp {
             Computation::Result(ref ty, ref locals) => f(ty.clone(), locals.clone()),
             Computation::Return(ref ty, ref locals) => { f(ty.clone(), locals.clone()); comp.clone() },
-            Computation::Divergent(ref a, ref b) => {
+            Computation::Divergent(ref a, ref b) =>
                 Rc::new(Computation::Divergent(
                     Computation::seq(a.clone(), f),
-                    Computation::seq(b.clone(), f)))
-            },
+                    Computation::seq(b.clone(), f))),
         }
     }
 

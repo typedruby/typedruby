@@ -48,6 +48,14 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         self.alloc(Type::Any { loc: loc })
     }
 
+    pub fn nil(&self, loc: Loc) -> &'ty Type<'ty, 'object> {
+        self.alloc(Type::Instance {
+            loc: loc,
+            class: self.object.NilClass,
+            type_parameters: Vec::new(),
+        })
+    }
+
     fn set_var(&self, id: TypeVarId, ty: &'ty Type<'ty, 'object>) {
         let mut instance_map_ref = self.instance_map.borrow_mut();
 
