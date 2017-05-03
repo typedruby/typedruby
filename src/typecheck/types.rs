@@ -279,80 +279,80 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
         match *self.prune(ty) {
             Type::Instance { ref class, ref type_parameters, .. } => {
-                write!(buffer, "{}", class.name());
+                write!(buffer, "{}", class.name()).unwrap();
 
                 if !type_parameters.is_empty() {
-                    write!(buffer, "::[");
+                    write!(buffer, "::[").unwrap();
 
                     self.describe_rec(type_parameters.first().unwrap(), buffer);
 
                     for param in type_parameters.iter().skip(1) {
-                        write!(buffer, ", ");
+                        write!(buffer, ", ").unwrap();
                     }
 
-                    write!(buffer, "]");
+                    write!(buffer, "]").unwrap();
                 }
             },
             Type::Tuple { ref lead, ref splat, ref post, .. } => {
                 let mut print_comma = false;
 
-                write!(buffer, "[");
+                write!(buffer, "[").unwrap();
 
                 for lead_ty in lead {
-                    if print_comma { write!(buffer, ", "); }
+                    if print_comma { write!(buffer, ", ").unwrap(); }
                     self.describe_rec(lead_ty, buffer);
                     print_comma = true;
                 }
 
                 if let Some(splat_ty) = *splat {
-                    if print_comma { write!(buffer, ", "); }
+                    if print_comma { write!(buffer, ", ").unwrap(); }
                     self.describe_rec(splat_ty, buffer);
                     print_comma = true;
                 }
 
                 for post_ty in lead {
-                    if print_comma { write!(buffer, ", "); }
+                    if print_comma { write!(buffer, ", ").unwrap(); }
                     self.describe_rec(post_ty, buffer);
                     print_comma = true;
                 }
 
-                write!(buffer, "]");
+                write!(buffer, "]").unwrap();
             },
             Type::Union { ref types, .. } => {
                 let mut print_pipe = false;
 
                 for union_ty in types {
-                    if print_pipe { write!(buffer, " | "); }
+                    if print_pipe { write!(buffer, " | ").unwrap(); }
                     self.describe_rec(union_ty, buffer);
                     print_pipe = true;
                 }
             },
             Type::Any { .. } => {
-                write!(buffer, ":any");
+                write!(buffer, ":any").unwrap();
             },
             Type::TypeParameter { ref name, .. } => {
-                write!(buffer, "type parameter {}", name);
+                write!(buffer, "type parameter {}", name).unwrap();
             },
             Type::KeywordHash { ref keywords, .. } => {
                 let mut print_comma = false;
 
-                write!(buffer, "{{");
+                write!(buffer, "{{").unwrap();
 
                 for &(ref kw_name, ref kw_ty) in keywords {
-                    if print_comma { write!(buffer, ", "); }
-                    write!(buffer, "{}: ", kw_name);
+                    if print_comma { write!(buffer, ", ").unwrap(); }
+                    write!(buffer, "{}: ", kw_name).unwrap();
                     self.describe_rec(kw_ty, buffer);
                     print_comma = true;
                 }
 
-                write!(buffer, "}}");
+                write!(buffer, "}}").unwrap();
             },
             Type::Proc { ref args, ref retn, .. } => {
                 // TOOD
-                write!(buffer, "Proc(todo)");
+                write!(buffer, "Proc(todo)").unwrap();
             },
             Type::Var { ref id, .. } => {
-                write!(buffer, "t{}", id);
+                write!(buffer, "t{}", id).unwrap();
             },
         }
     }
