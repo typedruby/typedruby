@@ -282,12 +282,13 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 write!(buffer, "{}", class.name()).unwrap();
 
                 if !type_parameters.is_empty() {
+                    let mut print_comma = false;
                     write!(buffer, "::[").unwrap();
 
-                    self.describe_rec(type_parameters.first().unwrap(), buffer);
-
-                    for param in type_parameters.iter().skip(1) {
-                        write!(buffer, ", ").unwrap();
+                    for param in type_parameters.iter() {
+                        if print_comma { write!(buffer, ", ").unwrap(); }
+                        self.describe_rec(param, buffer);
+                        print_comma = true;
                     }
 
                     write!(buffer, "]").unwrap();
