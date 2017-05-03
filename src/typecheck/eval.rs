@@ -81,7 +81,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let mut context = TypeContext::new(self_type);
 
-        let (prototype, locals) = self.resolve_prototype(prototype_node, Rc::new(Locals::None), &mut context, self.scope.clone());
+        let (prototype, locals) = self.resolve_prototype(prototype_node, Locals::new(), &mut context, self.scope.clone());
 
         let return_type = if let Type::Proc { retn, .. } = *prototype {
             retn
@@ -191,7 +191,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.create_array_type(loc, self.resolve_type(element, context, scope))
             },
             Node::TyProc(ref loc, ref prototype) => {
-                self.resolve_prototype(prototype, Rc::new(Locals::None), context, scope).0
+                self.resolve_prototype(prototype, Locals::new(), context, scope).0
             },
             Node::TyClass(ref loc) => {
                 let self_class = match *context.self_type {
@@ -252,8 +252,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn resolve_arg(&self, arg_node: &Node, locals: Rc<Locals<'ty, 'object>>, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
-        -> (Arg<'ty, 'object>, Rc<Locals<'ty, 'object>>)
+    fn resolve_arg(&self, arg_node: &Node, locals: Locals<'ty, 'object>, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
+        -> (Arg<'ty, 'object>, Locals<'ty, 'object>)
     {
         let (ty, arg_node) = match *arg_node {
             Node::TypedArg(_, ref type_node, ref arg) => {
@@ -267,17 +267,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         match *arg_node {
             Node::Arg(ref loc, ref name) =>
-                (Arg::Required { loc: loc.clone(), ty: ty }, Locals::assign(locals, name.to_owned(), ty_or_any)),
+                (Arg::Required { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty_or_any)),
             Node::Blockarg(ref loc, None) =>
                 (Arg::Block { loc: loc.clone(), ty: ty }, locals),
             Node::Blockarg(ref loc, Some(Id(_, ref name))) =>
-                (Arg::Block { loc: loc.clone(), ty: ty }, Locals::assign(locals, name.to_owned(), ty_or_any)),
+                (Arg::Block { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty_or_any)),
             Node::Optarg(_, Id(ref loc, ref name), ref expr) =>
-                (Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, Locals::assign(locals, name.to_owned(), ty_or_any)),
+                (Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty_or_any)),
             Node::Restarg(ref loc, None) =>
                 (Arg::Rest { loc: loc.clone(), ty: ty }, locals),
             Node::Restarg(ref loc, Some(Id(_, ref name))) =>
-                (Arg::Rest { loc: loc.clone(), ty: ty }, Locals::assign(locals, name.to_owned(), self.create_array_type(loc, ty_or_any))),
+                (Arg::Rest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), self.create_array_type(loc, ty_or_any))),
             Node::Procarg0(ref loc, ref inner_arg_node) => {
                 let (inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
                 (Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
@@ -286,8 +286,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn resolve_prototype(&self, node: &Node, locals: Rc<Locals<'ty, 'object>>, context_: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
-        -> (&'ty Type<'ty, 'object>, Rc<Locals<'ty, 'object>>)
+    fn resolve_prototype(&self, node: &Node, locals: Locals<'ty, 'object>, context_: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
+        -> (&'ty Type<'ty, 'object>, Locals<'ty, 'object>)
     {
         let mut context = context_.clone();
 
@@ -369,7 +369,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         comp.seq(&|_, locals| self.process_node(node, locals))
     }
 
-    fn process_node(&self, node: &Node, locals: Rc<Locals<'ty, 'object>>) -> Computation<'ty, 'object> {
+    fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
                 let element_ty = self.tyenv.new_var(loc.clone());
@@ -396,14 +396,30 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     None => Computation::result(self.tyenv.nil(loc.clone()), locals),
                 }
             },
-            Node::Lvasgn(ref loc, Id(ref lvloc, ref lvname), ref expr) => {
-                self.process_node(expr, locals).seq(&|ty, l|
-                    Computation::result(ty, Locals::assign(l, lvname.to_owned(), ty))
-                )
-            }
+            Node::Lvasgn(ref asgn_loc, Id(ref lvar_loc, ref lvar_name), ref expr) => {
+                self.process_node(expr, locals).seq(&|expr_ty, l| {
+                    let l = match l.assign(lvar_name.to_owned(), expr_ty) {
+                        // in the none case, the assignment happened
+                        // successfully and the local variable entry is now set
+                        // to the type we passed in:
+                        (None, l) => l,
+                        // in the some case, the local variable is already
+                        // pinned to a type and we must check type compatibility:
+                        (Some(lvar_ty), l) => {
+                            self.compatible(lvar_ty, expr_ty, Some(asgn_loc));
+                            l
+                        }
+                    };
+
+                    Computation::result(expr_ty, l)
+                })
+            },
             Node::Integer(ref loc, _) => {
                 let integer_class = self.env.object.get_const(self.env.object.Object, "Integer").expect("Integer is defined");
                 Computation::result(self.tyenv.instance(loc.clone(), integer_class, Vec::new()), locals)
+            },
+            Node::String(ref loc, _) => {
+                Computation::result(self.tyenv.instance(loc.clone(), self.env.object.String, Vec::new()), locals)
             },
             _ => panic!("node: {:?}", node),
         }
