@@ -503,6 +503,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 // x should be (Integer|String) at the beginning of the tap block
                 Computation::redo()
             }
+            Node::Retry(ref loc) => {
+                // TODO also needs to ensure soundness of locals (see above)
+                Computation::retry()
+            }
             _ => panic!("node: {:?}", node),
         }
     }
