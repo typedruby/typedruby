@@ -1,8 +1,8 @@
 use std::rc::Rc;
 use std::collections::HashMap;
 use typecheck::flow::{Computation, Locals};
-use typecheck::types::{Arg, TypeEnv, Type};
-use object::{Scope, RubyObject};
+use typecheck::types::{Arg, TypeEnv, Type, Prototype};
+use object::{Scope, RubyObject, MethodEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
@@ -81,16 +81,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let (prototype, locals) = self.resolve_prototype(prototype_node, Locals::new(), &self.type_context, self.scope.clone());
 
-        let return_type = if let Type::Proc { retn, .. } = *prototype {
-            retn
-        } else {
-            panic!()
-        };
-
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
             self.process_node(body_node, locals).terminate(&|ty|
-                if let Some(retn) = return_type {
+                if let Some(retn) = prototype.retn {
                     self.compatible(retn, ty, None)
                 }
             );
@@ -189,7 +183,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.create_array_type(loc, self.resolve_type(element, context, scope))
             },
             Node::TyProc(ref loc, ref prototype) => {
-                self.resolve_prototype(prototype, Locals::new(), context, scope).0
+                self.tyenv.alloc(Type::Proc {
+                    loc: loc.clone(),
+                    proto: self.resolve_prototype(prototype, Locals::new(), context, scope).0,
+                })
             },
             Node::TyClass(ref loc) => {
                 // metaclasses never have type parameters:
@@ -275,7 +272,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn resolve_prototype(&self, node: &Node, locals: Locals<'ty, 'object>, context_: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
-        -> (&'ty Type<'ty, 'object>, Locals<'ty, 'object>)
+        -> (Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
     {
         let mut context = context_.clone();
 
@@ -311,13 +308,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             locals = locals_;
         }
 
-        let proc_type = self.tyenv.alloc(Type::Proc {
-            loc: node.loc().clone(),
-            args: args,
-            retn: return_type,
-        });
+        let prototype = Prototype { args: args, retn: return_type };
 
-        (proc_type, locals)
+        (Rc::new(prototype), locals)
     }
 
     fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
@@ -357,6 +350,73 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         panic!("unimplemented")
     }
 
+    fn prototype_from_method_entry(&self, loc: &Loc, method: &MethodEntry<'object>, type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
+        match *method {
+            MethodEntry::Ruby { ref node, ref scope, .. } => {
+                let prototype_node = match **node {
+                    Node::Def(ref loc, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
+                    Node::Defs(ref loc, _, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
+                    Node::Def(ref loc, _, Some(ref proto), _) => proto,
+                    Node::Defs(ref loc, _, _, Some(ref proto), _) => proto,
+                    _ => panic!("unexpected node in MethodEntry::Ruby: {:?}", node),
+                };
+
+                self.resolve_prototype(&prototype_node, Locals::new(), &type_context, scope.clone()).0
+            }
+            MethodEntry::Untyped => self.tyenv.any_prototype(loc.clone()),
+        }
+    }
+
+    fn prototypes_for_invocation(&self, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Rc<Prototype<'ty, 'object>>> {
+        let degraded_recv_type = self.tyenv.degrade_to_instance(recv_type);
+
+        match *degraded_recv_type {
+            Type::Instance { class, type_parameters: ref tp, .. } => {
+                match self.env.object.lookup_method(class, &id.1) {
+                    Some(method) => vec![self.prototype_from_method_entry(&id.0, &method, TypeContext::new(class, tp.clone()))],
+                    None => Vec::new(),
+                }
+            }
+            Type::Proc { .. } => {
+                match self.env.object.lookup_method(self.env.object.Proc, &id.1) {
+                    Some(method) => vec![self.prototype_from_method_entry(&id.0, &method, TypeContext::new(&self.env.object.Proc, Vec::new()))],
+                    None => Vec::new(),
+                }
+            }
+            Type::Union { ref types, .. } => {
+                types.iter().flat_map(|ty| {
+                    let prototypes = self.prototypes_for_invocation(ty, id);
+
+                    if prototypes.is_empty() {
+                        let message = format!("Union member type {} does not respond to #{}", self.tyenv.describe(ty), &id.1);
+                        self.error(&message, &[
+                            Detail::Loc(&self.tyenv.describe(recv_type), recv_type.loc()),
+                        ]);
+                    }
+
+                    prototypes
+                }).collect()
+            }
+            Type::Any { .. } => vec![self.tyenv.any_prototype(id.0.clone())],
+            Type::TypeParameter { ref name, .. } => {
+                self.error(&format!("Type parameter {} is of unknown type", name), &[
+                    Detail::Loc("in invocation", recv_type.loc()),
+                ]);
+
+                vec![]
+            }
+            Type::Var { id, .. } => {
+                self.error(&format!("Type of receiver is not known at this point"), &[
+                    Detail::Loc(&format!("t{}", id), recv_type.loc()),
+                ]);
+
+                vec![]
+            }
+            Type::KeywordHash { .. } => panic!("should have degraded to instance"),
+            Type::Tuple { .. } => panic!("should have degraded to instance"),
+        }
+    }
+
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, args: &[Rc<Node>], block: Option<(&Node, &Option<Rc<Node>>)>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         fn merge_maybe_comps<'ty, 'object: 'ty>(a: Option<Computation<'ty, 'object>>, b: Option<Computation<'ty, 'object>>) -> Option<Computation<'ty, 'object>> {
             match (a, b) {
@@ -367,7 +427,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
         }
 
-        let (recv_ty, locals, non_result_comp) = match *recv {
+        let (recv_type, locals, non_result_comp) = match *recv {
             Some(ref recv_node) => match self.process_node(recv_node, locals).extract_results(&self.tyenv) {
                 (Some((recv_ty, locals)), comp) => (recv_ty, locals, comp),
                 (None, Some(comp)) => {
@@ -404,7 +464,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
         }
 
-        panic!("unimplemented");
+        let prototypes = self.prototypes_for_invocation(recv_type, id);
+
+        panic!("unimplemented")
     }
 
     fn seq_process(&self, comp: Computation<'ty, 'object>, node: &Node) -> Computation<'ty, 'object> {

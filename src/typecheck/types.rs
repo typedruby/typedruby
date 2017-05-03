@@ -45,6 +45,13 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         self.alloc(Type::Any { loc: loc })
     }
 
+    pub fn any_prototype(&self, loc: Loc) -> Rc<Prototype<'ty, 'object>> {
+        Rc::new(Prototype {
+            args: vec![Arg::Rest { loc: loc, ty: None }],
+            retn: None,
+        })
+    }
+
     pub fn instance(&self, loc: Loc, class: &'object RubyObject<'object>, type_parameters: Vec<&'ty Type<'ty, 'object>>)
         -> &'ty Type<'ty, 'object>
     {
@@ -138,20 +145,8 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             },
             (&Type::Any { .. }, _) => Ok(()),
             (_, &Type::Any { .. }) => Ok(()),
-            (&Type::Instance { .. }, &Type::KeywordHash { ref loc, ref keywords, id, .. }) => {
-                let hash_class = self.object.get_const(self.object.Object, "Hash").expect("Hash to be defined");
-
-                // degrade keyword hash to instance type:
-                let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
-                let value_ty = self.new_var(loc.clone());
-
-                for &(_, keyword_ty) in keywords {
-                    try!(self.unify(value_ty, keyword_ty));
-                }
-
-                self.set_var(id, self.instance(loc.clone(), hash_class, vec![key_ty, value_ty]));
-
-                self.compatible(to, from)
+            (&Type::Instance { .. }, &Type::KeywordHash { .. }) => {
+                self.compatible(to, self.degrade_to_instance(from))
             },
             (_, _) =>
                 self.unify(to, from),
@@ -335,13 +330,32 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
                 write!(buffer, "}}").unwrap();
             },
-            Type::Proc { ref args, ref retn, .. } => {
+            Type::Proc { .. } => {
                 // TOOD
                 write!(buffer, "Proc(todo)").unwrap();
             },
             Type::Var { ref id, .. } => {
                 write!(buffer, "t{}", id).unwrap();
             },
+        }
+    }
+
+    pub fn degrade_to_instance(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+        match self.prune(ty) {
+            &Type::KeywordHash { id, ref loc, ref keywords } => {
+                let hash_class = self.object.get_const(self.object.Object, "Hash").expect("Hash to be defined");
+
+                // degrade keyword hash to instance type:
+                let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
+                let value_ty = keywords.iter().fold(self.new_var(loc.clone()), |tyvar, &(_, keyword_ty)|
+                    self.union(tyvar, keyword_ty)
+                );
+
+                let instance_ty = self.instance(loc.clone(), hash_class, vec![key_ty, value_ty]);
+                self.set_var(id, instance_ty);
+                instance_ty
+            },
+            pruned => pruned,
         }
     }
 
@@ -386,8 +400,7 @@ pub enum Type<'ty, 'object: 'ty> {
     },
     Proc {
         loc: Loc,
-        args: Vec<Arg<'ty, 'object>>,
-        retn: Option<&'ty Type<'ty, 'object>>,
+        proto: Rc<Prototype<'ty, 'object>>,
     },
     Var {
         loc: Loc,
@@ -412,6 +425,12 @@ impl<'ty, 'object> Type<'ty, 'object> {
     pub fn ref_eq(&self, other: &'ty Type<'ty, 'object>) -> bool {
         (self as *const _) == (other as *const _)
     }
+}
+
+#[derive(Debug)]
+pub struct Prototype<'ty, 'object: 'ty> {
+    pub args: Vec<Arg<'ty, 'object>>,
+    pub retn: Option<&'ty Type<'ty, 'object>>,
 }
 
 #[derive(Debug)]
