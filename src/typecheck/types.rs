@@ -58,6 +58,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         })
     }
 
+    pub fn instance0(&self, loc: Loc, class: &'object RubyObject<'object>) -> &'ty Type<'ty, 'object> {
+        self.instance(loc, class, Vec::new())
+    }
+
     pub fn nil(&self, loc: Loc) -> &'ty Type<'ty, 'object> {
         self.instance(loc, self.object.NilClass, Vec::new())
     }

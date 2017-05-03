@@ -454,26 +454,28 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 })
             }
             Node::Integer(ref loc, _) => {
-                let integer_class = self.env.object.get_const(self.env.object.Object, "Integer").expect("Integer is defined");
-                Computation::result(self.tyenv.instance(loc.clone(), integer_class, Vec::new()), locals)
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Integer), locals)
             }
             Node::String(ref loc, _) => {
-                Computation::result(self.tyenv.instance(loc.clone(), self.env.object.String, Vec::new()), locals)
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.String), locals)
             }
             Node::Nil(ref loc) => {
                 Computation::result(self.tyenv.nil(loc.clone()), locals)
             }
             Node::True(ref loc) => {
-                Computation::result(self.tyenv.instance(loc.clone(), self.env.object.TrueClass, Vec::new()), locals)
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.TrueClass), locals)
             }
             Node::False(ref loc) => {
-                Computation::result(self.tyenv.instance(loc.clone(), self.env.object.FalseClass, Vec::new()), locals)
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.FalseClass), locals)
             }
             Node::Self_(ref loc) => {
                 Computation::result(self.tyenv.update_loc(self.type_context.self_type(&self.tyenv, loc.clone()), loc.clone()), locals)
             }
             Node::Symbol(ref loc, _) => {
-                Computation::result(self.tyenv.instance(loc.clone(), self.env.object.Symbol, Vec::new()), locals)
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Symbol), locals)
+            }
+            Node::Float(ref loc, _) => {
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Float), locals)
             }
             _ => panic!("node: {:?}", node),
         }
