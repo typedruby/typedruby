@@ -493,6 +493,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Self_(ref loc) => {
                 Computation::result(self.tyenv.update_loc(self.type_context.self_type, loc.clone()), locals)
             }
+            Node::Symbol(ref loc, _) => {
+                Computation::result(self.tyenv.instance(loc.clone(), self.env.object.Symbol, Vec::new()), locals)
+            }
             _ => panic!("node: {:?}", node),
         }
     }
