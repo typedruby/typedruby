@@ -318,16 +318,16 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 let mut print_pipe = false;
 
                 for union_ty in types {
-                    if print_pipe { write!(buffer, "|"); }
+                    if print_pipe { write!(buffer, " | "); }
                     self.describe_rec(union_ty, buffer);
-                    print_pipe = false;
+                    print_pipe = true;
                 }
             },
             Type::Any { .. } => {
                 write!(buffer, ":any");
             },
             Type::TypeParameter { ref name, .. } => {
-                write!(buffer, "{}", name);
+                write!(buffer, "type parameter {}", name);
             },
             Type::KeywordHash { ref keywords, .. } => {
                 let mut print_comma = false;
