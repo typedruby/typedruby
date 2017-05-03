@@ -366,7 +366,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 elements.iter().fold(comp, |comp, element_node|
                     self.seq_process(comp, element_node).seq(&|ty, l| {
-                        self.tyenv.unify(element_ty, ty);
+                        self.unify(element_ty, ty, Some(loc));
                         Computation::result(array_ty, l)
                     })
                 )
