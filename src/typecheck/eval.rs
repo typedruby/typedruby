@@ -332,7 +332,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         (proc_type, locals)
     }
 
-    fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, node: Option<&Node>) {
+    fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
         let strs = Arena::new();
 
         let mut details = vec![
@@ -346,22 +346,22 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             details.push(Detail::Loc(strs.alloc(self.tyenv.describe(b)), b.loc()));
         }
 
-        if let Some(node) = node {
-            details.push(Detail::Loc("in this expression", node.loc()));
+        if let Some(loc) = loc {
+            details.push(Detail::Loc("in this expression", loc));
         }
 
         self.error("Could not match types:", &details);
     }
 
-    fn unify(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, node: Option<&Node>) {
+    fn unify(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
         if let Err((err_a, err_b)) = self.tyenv.unify(a, b) {
-            self.type_error(a, b, err_a, err_b, node);
+            self.type_error(a, b, err_a, err_b, loc);
         }
     }
 
-    fn compatible(&self, to: &'ty Type<'ty, 'object>, from: &'ty Type<'ty, 'object>, node: Option<&Node>) {
+    fn compatible(&self, to: &'ty Type<'ty, 'object>, from: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
         if let Err((err_to, err_from)) = self.tyenv.compatible(to, from) {
-            self.type_error(to, from, err_to, err_from, node);
+            self.type_error(to, from, err_to, err_from, loc);
         }
     }
 
