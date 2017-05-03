@@ -258,14 +258,6 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         Some(Ok(()))
     }
 
-    fn unify_option(&self, opt1: &Option<&'ty Type<'ty, 'object>>, opt2: &Option<&'ty Type<'ty, 'object>>) -> Option<UnificationResult<'ty, 'object>> {
-        match (*opt1, *opt2) {
-            (Some(ref t1), Some(ref t2)) => Some(self.unify(t1, t2)),
-            (None, None) => Some(Ok(())),
-            _ => None,
-        }
-    }
-
     pub fn update_loc(&self, ty: &'ty Type<'ty, 'object>, loc: Loc) -> &'ty Type<'ty, 'object> {
         let tyvar = self.new_var(loc);
 
