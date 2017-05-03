@@ -121,6 +121,7 @@ enum Computation_<'ty, 'object: 'ty> {
     Result(&'ty Type<'ty, 'object>, Locals<'ty, 'object>),
     Return(&'ty Type<'ty, 'object>),
     Redo,
+    Retry,
     Divergent(Computation<'ty, 'object>, Computation<'ty, 'object>),
 }
 
@@ -146,6 +147,10 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Redo))
     }
 
+    pub fn retry() -> Computation<'ty, 'object> {
+        Computation(Rc::new(Computation_::Retry))
+    }
+
     pub fn divergent(a: Computation<'ty, 'object>, b: Computation<'ty, 'object>) -> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Divergent(a, b)))
     }
@@ -156,7 +161,8 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(ref ty, ref locals) => f(ty.clone(), locals.clone()),
             Computation_::Return(_) => self.clone(),
-            Computation_::Redo => self.clone(),
+            Computation_::Redo |
+            Computation_::Retry => self.clone(),
             Computation_::Divergent(ref a, ref b) => Self::divergent(a.seq(f), b.seq(f)),
         }
     }
@@ -167,7 +173,8 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(ref ty, _) |
             Computation_::Return(ref ty) => f(ty.clone()),
-            Computation_::Redo => {},
+            Computation_::Redo |
+            Computation_::Retry => {},
             Computation_::Divergent(ref a, ref b) => {
                 a.terminate(f);
                 b.terminate(f);
@@ -177,9 +184,11 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
 
     pub fn converge_results<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>) -> Computation<'ty, 'object> {
         match *self.0 {
-            Computation_::Result(..) => self.clone(),
-            Computation_::Return(..) => self.clone(),
-            Computation_::Redo => self.clone(),
+            Computation_::Result(..) |
+            Computation_::Return(..) |
+            Computation_::Redo |
+            Computation_::Retry => self.clone(),
+
             Computation_::Divergent(ref a, ref b) => {
                 let a = a.converge_results(tyenv);
                 let b = b.converge_results(tyenv);
