@@ -496,6 +496,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Computation::result(ty, l)
                 })
             }
+            Node::Redo(ref loc) => {
+                // TODO this needs to ensure soundness of assignments when the block is repeated
+                // for example in:
+                //   x = 123; tap { x; x = "foo"; redo }
+                // x should be (Integer|String) at the beginning of the tap block
+                Computation::redo()
+            }
             _ => panic!("node: {:?}", node),
         }
     }
