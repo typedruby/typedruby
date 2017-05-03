@@ -12,7 +12,8 @@ pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     env: &'env Environment<'object>,
     tyenv: TypeEnv<'ty, 'env, 'object>,
     scope: Rc<Scope<'object>>,
-    class: &'object RubyObject<'object>,
+    type_context: TypeContext<'ty, 'object>,
+    node: Rc<Node>,
 }
 
 #[derive(Clone)]
@@ -38,11 +39,33 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
             type_names: type_names,
         }
     }
+
+    pub fn self_class(&self) -> &'object RubyObject<'object> {
+        if let Type::Instance { class, .. } = *self.self_type {
+            return class;
+        }
+
+        panic!("self_type not instance type");
+    }
 }
 
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
-    pub fn new(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>) -> Eval<'ty, 'env, 'object> {
-        Eval { env: env, tyenv: tyenv, scope: scope, class: class }
+    pub fn new(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) -> Eval<'ty, 'env, 'object> {
+        let self_type = tyenv.alloc(Type::Instance {
+            // TODO - this just takes the entire method as the location of the self type. make this a bit less bruteforce.
+            loc: node.loc().clone(),
+            class: class,
+            type_parameters: class.type_parameters().iter().map(|&Id(ref loc, ref name)|
+                tyenv.alloc(Type::TypeParameter {
+                    loc: loc.clone(),
+                    name: name.clone(),
+                })
+            ).collect(),
+        });
+
+        let type_context = TypeContext::new(self_type);
+
+        Eval { env: env, tyenv: tyenv, scope: scope, type_context: type_context, node: node }
     }
 
     fn error(&self, message: &str, details: &[Detail]) {
@@ -53,8 +76,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         self.env.error_sink.borrow_mut().warning(message, details)
     }
 
-    pub fn process_def(&self, node: &Node) {
-        let (prototype_node, body) = match *node {
+    pub fn process(&self) {
+        let (prototype_node, body) = match *self.node {
             // just ignore method definitions that have no args or prototype:
             Node::Def(_, _, None, _) => return,
             Node::Defs(_, _, _, None, _) => return,
@@ -64,24 +87,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Defs(_, _, _, Some(ref proto), ref body) =>
                 (proto, body),
             _ =>
-                panic!("unknown node: {:?}", node),
+                panic!("unknown node: {:?}", self.node),
         };
 
-        let self_type = self.tyenv.alloc(Type::Instance {
-            // TODO - this just takes the entire method as the location of the self type. make this a bit less bruteforce.
-            loc: node.loc().clone(),
-            class: self.class,
-            type_parameters: self.class.type_parameters().iter().map(|&Id(ref loc, ref name)|
-                self.tyenv.alloc(Type::TypeParameter {
-                    loc: loc.clone(),
-                    name: name.clone(),
-                })
-            ).collect(),
-        });
-
-        let mut context = TypeContext::new(self_type);
-
-        let (prototype, locals) = self.resolve_prototype(prototype_node, Locals::new(), &mut context, self.scope.clone());
+        let (prototype, locals) = self.resolve_prototype(prototype_node, Locals::new(), &self.type_context, self.scope.clone());
 
         let return_type = if let Type::Proc { retn, .. } = *prototype {
             retn
