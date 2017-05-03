@@ -357,6 +357,56 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         panic!("unimplemented")
     }
 
+    fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, args: &[Rc<Node>], block: Option<(&Node, &Option<Rc<Node>>)>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        fn merge_maybe_comps<'ty, 'object: 'ty>(a: Option<Computation<'ty, 'object>>, b: Option<Computation<'ty, 'object>>) -> Option<Computation<'ty, 'object>> {
+            match (a, b) {
+                (Some(a), Some(b)) => Some(Computation::divergent(a, b)),
+                (Some(a), None) => Some(a),
+                (None, Some(b)) => Some(b),
+                (None, None) => None,
+            }
+        }
+
+        let (recv_ty, locals, non_result_comp) = match *recv {
+            Some(ref recv_node) => match self.process_node(recv_node, locals).extract_results(&self.tyenv) {
+                (Some((recv_ty, locals)), comp) => (recv_ty, locals, comp),
+                (None, Some(comp)) => {
+                    self.warning("Useless method call", &[
+                        Detail::Loc("here", &id.0),
+                        Detail::Loc("receiver never evaluates to a result", recv_node.loc()),
+                    ]);
+                    return comp;
+                }
+                (None, None) => panic!("should never happen"),
+            },
+            None => (self.type_context.self_type(&self.tyenv, id.0.clone()), locals, None),
+        };
+
+        let mut arg_types = Vec::new();
+        let mut locals = locals;
+        let mut non_result_comp = non_result_comp;
+
+        for arg_node in args {
+            match self.process_node(arg_node, locals).extract_results(&self.tyenv) {
+                (Some((arg_ty, l)), comp) => {
+                    arg_types.push(arg_ty);
+                    locals = l;
+                    non_result_comp = merge_maybe_comps(non_result_comp, comp);
+                },
+                (None, Some(comp)) => {
+                    self.warning("Useless method call", &[
+                        Detail::Loc("here", &id.0),
+                        Detail::Loc("argument never evaluates to a result", arg_node.loc()),
+                    ]);
+                    return merge_maybe_comps(non_result_comp, Some(comp)).expect("never None");
+                },
+                (None, None) => panic!("should never happen"),
+            }
+        }
+
+        panic!("unimplemented");
+    }
+
     fn seq_process(&self, comp: Computation<'ty, 'object>, node: &Node) -> Computation<'ty, 'object> {
         comp.seq(&|_, locals| self.process_node(node, locals))
     }
@@ -506,6 +556,16 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Retry(ref loc) => {
                 // TODO also needs to ensure soundness of locals (see above)
                 Computation::retry()
+            }
+            Node::Send(ref loc, ref recv, ref mid, ref args) => {
+                self.process_send(loc, recv, mid, args, None, locals)
+            }
+            Node::Block(_, ref send, ref block_args, ref block_body) => {
+                if let Node::Send(ref send_loc, ref recv, ref mid, ref args) = **send {
+                    self.process_send(send_loc, recv, mid, args, Some((block_args, block_body)), locals)
+                } else {
+                    panic!("expected Node::Send inside Node::Block")
+                }
             }
             _ => panic!("node: {:?}", node),
         }

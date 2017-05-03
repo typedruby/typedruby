@@ -213,4 +213,29 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             }
         }
     }
+
+    pub fn extract_results<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>)
+        -> (Option<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>)>, Option<Computation<'ty, 'object>>)
+    {
+        let converged = self.converge_results(tyenv);
+
+        match *converged.0 {
+            Computation_::Result(ty, ref locals) => (Some((ty, locals.clone())), None),
+
+            Computation_::Return(..) |
+            Computation_::Redo |
+            Computation_::Retry => (None, Some(converged.clone())),
+
+            Computation_::Divergent(ref a, ref b) => {
+                // if there were any result computations, converge_results
+                // guarantees that they will have been collapsed into the
+                // left hand side of the divergent computation it returns.
+                if let Computation_::Result(ty, ref locals) = *a.0 {
+                    (Some((ty, locals.clone())), Some(b.clone()))
+                } else {
+                    (None, Some(converged.clone()))
+                }
+            }
+        }
+    }
 }
