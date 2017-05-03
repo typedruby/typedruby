@@ -481,6 +481,18 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::String(ref loc, _) => {
                 Computation::result(self.tyenv.instance(loc.clone(), self.env.object.String, Vec::new()), locals)
             }
+            Node::Nil(ref loc) => {
+                Computation::result(self.tyenv.nil(loc.clone()), locals)
+            }
+            Node::True(ref loc) => {
+                Computation::result(self.tyenv.instance(loc.clone(), self.env.object.TrueClass, Vec::new()), locals)
+            }
+            Node::False(ref loc) => {
+                Computation::result(self.tyenv.instance(loc.clone(), self.env.object.FalseClass, Vec::new()), locals)
+            }
+            Node::Self_(ref loc) => {
+                Computation::result(self.tyenv.update_loc(self.type_context.self_type, loc.clone()), locals)
+            }
             _ => panic!("node: {:?}", node),
         }
     }
