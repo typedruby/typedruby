@@ -391,20 +391,20 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         Computation::result(array_ty, l)
                     })
                 )
-            },
+            }
             Node::Begin(ref loc, ref nodes) => {
                 let comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
 
                 nodes.iter().fold(comp, |comp, node|
                     self.seq_process(comp, node).converge_results(&self.tyenv)
                 )
-            },
+            }
             Node::Kwbegin(ref loc, ref node) => {
                 match *node {
                     Some(ref n) => self.process_node(n, locals),
                     None => Computation::result(self.tyenv.nil(loc.clone()), locals),
                 }
-            },
+            }
             Node::Lvasgn(ref asgn_loc, Id(ref lvar_loc, ref lvar_name), ref expr) => {
                 self.process_node(expr, locals).seq(&|expr_ty, l| {
                     let l = match l.assign(lvar_name.to_owned(), expr_ty) {
@@ -422,7 +422,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                     Computation::result(expr_ty, l)
                 })
-            },
+            }
             Node::Lvar(ref loc, ref name) => {
                 let (ty, locals) = locals.lookup(name);
 
@@ -438,7 +438,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 };
 
                 Computation::result(ty, locals)
-            },
+            }
             Node::Ivar(ref loc, ref name) => {
                 let ty = match self.env.object.lookup_ivar(self.type_context.self_class(), name) {
                     Some(ivar) => {
@@ -455,13 +455,32 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Computation::result(ty, locals)
             }
+            Node::Ivasgn(ref loc, Id(ref iv_loc, ref iv_name), ref expr) => {
+                let ivar_ty = match self.env.object.lookup_ivar(self.type_context.self_class(), iv_name) {
+                    Some(ivar) => {
+                        self.resolve_type(&ivar.type_node, &self.type_context, ivar.scope.clone())
+                    },
+                    None => {
+                        self.error("Use of undeclared instance variable", &[
+                            Detail::Loc("here", loc),
+                        ]);
+
+                        self.tyenv.any(loc.clone())
+                    },
+                };
+
+                self.process_node(expr, locals).seq(&|ty, l| {
+                    self.compatible(ivar_ty, ty, Some(loc));
+                    Computation::result(ty, l)
+                })
+            }
             Node::Integer(ref loc, _) => {
                 let integer_class = self.env.object.get_const(self.env.object.Object, "Integer").expect("Integer is defined");
                 Computation::result(self.tyenv.instance(loc.clone(), integer_class, Vec::new()), locals)
-            },
+            }
             Node::String(ref loc, _) => {
                 Computation::result(self.tyenv.instance(loc.clone(), self.env.object.String, Vec::new()), locals)
-            },
+            }
             _ => panic!("node: {:?}", node),
         }
     }
