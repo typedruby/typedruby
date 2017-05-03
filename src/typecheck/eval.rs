@@ -490,6 +490,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 comp.seq(&|ty, _| Computation::return_(ty))
             }
+            Node::TyCast(ref loc, ref expr, ref type_node) => {
+                self.process_node(expr, locals).seq(&|_, l| {
+                    let ty = self.resolve_type(type_node, &self.type_context, self.scope.clone());
+                    Computation::result(ty, l)
+                })
+            }
             _ => panic!("node: {:?}", node),
         }
     }
