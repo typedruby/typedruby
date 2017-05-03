@@ -353,6 +353,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
+    fn process_array_tuple(&self, exprs: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        panic!("unimplemented")
+    }
+
     fn seq_process(&self, comp: Computation<'ty, 'object>, node: &Node) -> Computation<'ty, 'object> {
         comp.seq(&|_, locals| self.process_node(node, locals))
     }
@@ -476,6 +480,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Node::Float(ref loc, _) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Float), locals)
+            }
+            Node::Return(ref loc, ref exprs) => {
+                let comp = match exprs.len() {
+                    0 => Computation::result(self.tyenv.nil(loc.clone()), locals),
+                    1 => self.process_node(exprs.first().unwrap(), locals),
+                    _ => self.process_array_tuple(exprs, locals),
+                };
+
+                comp.seq(&|ty, _| Computation::return_(ty))
             }
             _ => panic!("node: {:?}", node),
         }

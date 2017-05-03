@@ -137,6 +137,10 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Result(ty, locals)))
     }
 
+    pub fn return_(ty: &'ty Type<'ty, 'object>) -> Computation<'ty, 'object> {
+        Computation(Rc::new(Computation_::Return(ty)))
+    }
+
     pub fn divergent(a: Computation<'ty, 'object>, b: Computation<'ty, 'object>) -> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Divergent(a, b)))
     }
