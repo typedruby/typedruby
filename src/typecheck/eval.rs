@@ -18,52 +18,41 @@ pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
 
 #[derive(Clone)]
 pub struct TypeContext<'ty, 'object: 'ty> {
-    self_type: &'ty Type<'ty, 'object>,
+    class: &'object RubyObject<'object>,
+    type_parameters: Vec<&'ty Type<'ty, 'object>>,
     type_names: HashMap<String, &'ty Type<'ty, 'object>>,
 }
 
 impl<'ty, 'object> TypeContext<'ty, 'object> {
-    fn new(self_type: &'ty Type<'ty, 'object>) -> TypeContext<'ty, 'object> {
-        let type_names = match *self_type {
-            Type::Instance { class, ref type_parameters, .. } => {
-                class.type_parameters().iter()
-                    .map(|&Id(_, ref name)| name.clone())
-                    .zip(type_parameters.iter().cloned())
-                    .collect()
-            },
-            _ => HashMap::new(),
-        };
+    fn new(class: &'object RubyObject<'object>, type_parameters: Vec<&'ty Type<'ty, 'object>>) -> TypeContext<'ty, 'object> {
+        let type_names =
+            class.type_parameters().iter()
+                .map(|&Id(_, ref name)| name.clone())
+                .zip(type_parameters.iter().cloned())
+                .collect();
 
         TypeContext {
-            self_type: self_type,
+            class: class,
+            type_parameters: type_parameters,
             type_names: type_names,
         }
     }
 
-    pub fn self_class(&self) -> &'object RubyObject<'object> {
-        if let Type::Instance { class, .. } = *self.self_type {
-            return class;
-        }
-
-        panic!("self_type not instance type");
+    pub fn self_type<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, loc: Loc) -> &'ty Type<'ty, 'object> {
+        tyenv.instance(loc, self.class, self.type_parameters.clone())
     }
 }
 
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     pub fn new(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) -> Eval<'ty, 'env, 'object> {
-        let self_type = tyenv.alloc(Type::Instance {
-            // TODO - this just takes the entire method as the location of the self type. make this a bit less bruteforce.
-            loc: node.loc().clone(),
-            class: class,
-            type_parameters: class.type_parameters().iter().map(|&Id(ref loc, ref name)|
-                tyenv.alloc(Type::TypeParameter {
-                    loc: loc.clone(),
-                    name: name.clone(),
-                })
-            ).collect(),
-        });
+        let type_parameters = class.type_parameters().iter().map(|&Id(ref loc, ref name)|
+            tyenv.alloc(Type::TypeParameter {
+                loc: loc.clone(),
+                name: name.clone(),
+            })
+        ).collect();
 
-        let type_context = TypeContext::new(self_type);
+        let type_context = TypeContext::new(class, type_parameters);
 
         Eval { env: env, tyenv: tyenv, scope: scope, type_context: type_context, node: node }
     }
@@ -203,24 +192,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.resolve_prototype(prototype, Locals::new(), context, scope).0
             },
             Node::TyClass(ref loc) => {
-                let self_class = match *context.self_type {
-                    Type::Instance { ref class, .. } => class,
-                    _ => panic!("unknown self_type in TyClass resolution: {:?}", context.self_type),
-                };
-
                 // metaclasses never have type parameters:
-                self.create_instance_type(loc, self.env.object.metaclass(self_class), Vec::new())
+                self.create_instance_type(loc, self.env.object.metaclass(context.class), Vec::new())
             },
             Node::TySelf(ref loc) => {
-                self.tyenv.update_loc(context.self_type, loc.clone())
+                context.self_type(&self.tyenv, loc.clone())
             },
             Node::TyInstance(ref loc) => {
-                let self_class = match *context.self_type {
-                    Type::Instance { class, .. } => class,
-                    _ => panic!("unknown self_type in TyInstance resolution: {:?}", context.self_type),
-                };
-
-                match *self_class {
+                match *context.class {
                     RubyObject::Metaclass { of, .. } => {
                         // if the class we're trying to instantiate has type parameters just fill them with new
                         // type variables. TODO revisit this logic and see if there's something better we could do?
@@ -229,9 +208,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     },
                     _ => {
                         // special case to allow the Class#allocate definition in the stdlib:
-                        if self_class != self.env.object.Class {
+                        if context.class != self.env.object.Class {
                             self.error("Cannot instatiate instance type", &[
-                                Detail::Loc(&format!("Self here is {}, which is not a Class", self_class.name()), loc),
+                                Detail::Loc(&format!("Self here is {}, which is not a Class", context.class.name()), loc),
                             ]);
                         }
 
@@ -440,7 +419,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Computation::result(ty, locals)
             }
             Node::Ivar(ref loc, ref name) => {
-                let ty = match self.env.object.lookup_ivar(self.type_context.self_class(), name) {
+                let ty = match self.env.object.lookup_ivar(self.type_context.class, name) {
                     Some(ivar) => {
                         self.resolve_type(&ivar.type_node, &self.type_context, ivar.scope.clone())
                     },
@@ -456,7 +435,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Computation::result(ty, locals)
             }
             Node::Ivasgn(ref loc, Id(ref iv_loc, ref iv_name), ref expr) => {
-                let ivar_ty = match self.env.object.lookup_ivar(self.type_context.self_class(), iv_name) {
+                let ivar_ty = match self.env.object.lookup_ivar(self.type_context.class, iv_name) {
                     Some(ivar) => {
                         self.resolve_type(&ivar.type_node, &self.type_context, ivar.scope.clone())
                     },
@@ -491,7 +470,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Computation::result(self.tyenv.instance(loc.clone(), self.env.object.FalseClass, Vec::new()), locals)
             }
             Node::Self_(ref loc) => {
-                Computation::result(self.tyenv.update_loc(self.type_context.self_type, loc.clone()), locals)
+                Computation::result(self.tyenv.update_loc(self.type_context.self_type(&self.tyenv, loc.clone()), loc.clone()), locals)
             }
             Node::Symbol(ref loc, _) => {
                 Computation::result(self.tyenv.instance(loc.clone(), self.env.object.Symbol, Vec::new()), locals)
