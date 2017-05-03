@@ -303,7 +303,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                     print_comma = true;
                 }
 
-                for post_ty in lead {
+                for post_ty in post {
                     if print_comma { write!(buffer, ", ").unwrap(); }
                     self.describe_rec(post_ty, buffer);
                     print_comma = true;
