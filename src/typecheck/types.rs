@@ -1,12 +1,10 @@
-extern crate immutable_map;
-
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
 use ast::{Loc, Node};
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
-use self::immutable_map::TreeMap;
+use immutable_map::TreeMap;
 
 pub type TypeVarId = usize;
 

@@ -1,5 +1,6 @@
 extern crate clap;
 extern crate typed_arena;
+extern crate immutable_map;
 
 use std::io;
 use std::path::PathBuf;
