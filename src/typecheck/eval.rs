@@ -384,7 +384,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     None => Computation::result(self.tyenv.nil(loc.clone()), locals),
                 }
             }
-            Node::Lvasgn(ref asgn_loc, Id(ref lvar_loc, ref lvar_name), ref expr) => {
+            Node::Lvasgn(ref asgn_loc, Id(_, ref lvar_name), ref expr) => {
                 self.process_node(expr, locals).seq(&|expr_ty, l| {
                     let l = match l.assign(lvar_name.to_owned(), expr_ty) {
                         // in the none case, the assignment happened
@@ -434,7 +434,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Computation::result(ty, locals)
             }
-            Node::Ivasgn(ref loc, Id(ref iv_loc, ref iv_name), ref expr) => {
+            Node::Ivasgn(ref loc, Id(_, ref iv_name), ref expr) => {
                 let ivar_ty = match self.env.object.lookup_ivar(self.type_context.class, iv_name) {
                     Some(ivar) => {
                         self.resolve_type(&ivar.type_node, &self.type_context, ivar.scope.clone())
