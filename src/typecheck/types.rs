@@ -147,8 +147,8 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                     let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
                     let value_ty = self.new_var(loc.clone());
 
-                    for &(_, kwty) in keywords {
-                        try!(self.unify(value_ty, value_ty));
+                    for &(_, keyword_ty) in keywords {
+                        try!(self.unify(value_ty, keyword_ty));
                     }
 
                     self.set_var(id, self.instance(loc.clone(), hash_class, vec![key_ty, value_ty]));
