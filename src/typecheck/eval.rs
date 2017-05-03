@@ -414,6 +414,22 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Computation::result(expr_ty, l)
                 })
             },
+            Node::Lvar(ref loc, ref name) => {
+                let (ty, locals) = locals.lookup(name);
+
+                let ty = match ty {
+                    Some(ty) => self.tyenv.update_loc(ty, loc.clone()),
+                    None => {
+                        self.error("Use of uninitialised local variable", &[
+                            Detail::Loc("here", loc),
+                        ]);
+
+                        self.tyenv.any(loc.clone())
+                    },
+                };
+
+                Computation::result(ty, locals)
+            },
             Node::Integer(ref loc, _) => {
                 let integer_class = self.env.object.get_const(self.env.object.Object, "Integer").expect("Integer is defined");
                 Computation::result(self.tyenv.instance(loc.clone(), integer_class, Vec::new()), locals)
