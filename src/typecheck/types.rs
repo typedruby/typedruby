@@ -139,24 +139,20 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             },
             (&Type::Any { .. }, _) => Ok(()),
             (_, &Type::Any { .. }) => Ok(()),
-            (&Type::Instance { class: to_class, type_parameters: ref to_tp, .. }, &Type::KeywordHash { ref loc, ref keywords, id, .. }) => {
+            (&Type::Instance { .. }, &Type::KeywordHash { ref loc, ref keywords, id, .. }) => {
                 let hash_class = self.object.get_const(self.object.Object, "Hash").expect("Hash to be defined");
 
-                if to_class == hash_class {
-                    // degrade keyword hash to instance type:
-                    let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
-                    let value_ty = self.new_var(loc.clone());
+                // degrade keyword hash to instance type:
+                let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
+                let value_ty = self.new_var(loc.clone());
 
-                    for &(_, keyword_ty) in keywords {
-                        try!(self.unify(value_ty, keyword_ty));
-                    }
-
-                    self.set_var(id, self.instance(loc.clone(), hash_class, vec![key_ty, value_ty]));
-
-                    self.compatible(to, from)
-                } else {
-                    Err((to, from))
+                for &(_, keyword_ty) in keywords {
+                    try!(self.unify(value_ty, keyword_ty));
                 }
+
+                self.set_var(id, self.instance(loc.clone(), hash_class, vec![key_ty, value_ty]));
+
+                self.compatible(to, from)
             },
             (_, _) =>
                 self.unify(to, from),
