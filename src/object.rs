@@ -71,6 +71,9 @@ pub struct ObjectGraph<'a> {
     pub NilClass: &'a RubyObject<'a>,
     pub Symbol: &'a RubyObject<'a>,
     pub String: &'a RubyObject<'a>,
+    pub Numeric: &'a RubyObject<'a>,
+    pub Integer: &'a RubyObject<'a>,
+    pub Float: &'a RubyObject<'a>,
 
     constants: ClassTable<'a, ConstantEntry<'a>>,
     methods: ClassTable<'a, MethodEntry<'a>>,
@@ -160,6 +163,9 @@ impl<'a> ObjectGraph<'a> {
             NilClass: object,
             Symbol: object,
             String: object,
+            Numeric: object,
+            Integer: object,
+            Float: object,
 
             constants: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
@@ -179,6 +185,9 @@ impl<'a> ObjectGraph<'a> {
         o.NilClass = o.define_class(None, o.Object, "NilClass", o.Object, Vec::new());
         o.Symbol = o.define_class(None, o.Object, "Symbol", o.Object, Vec::new());
         o.String = o.define_class(None, o.Object, "String", o.Object, Vec::new());
+        o.Numeric = o.define_class(None, o.Object, "Numeric", o.Object, Vec::new());
+        o.Integer = o.define_class(None, o.Object, "Integer", o.Numeric, Vec::new());
+        o.Float = o.define_class(None, o.Object, "Float", o.Numeric, Vec::new());
 
         o
     }
