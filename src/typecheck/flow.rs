@@ -1,6 +1,7 @@
 use std::fmt;
 use std::rc::Rc;
 use typecheck::types::{TypeEnv, Type};
+use ast::Loc;
 use immutable_map::TreeMap;
 
 #[derive(Debug,Clone)]
@@ -182,7 +183,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         }
     }
 
-    pub fn converge_results<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>) -> Computation<'ty, 'object> {
+    pub fn converge_results<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>) -> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(..) |
             Computation_::Return(..) |
@@ -190,18 +191,18 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             Computation_::Retry => self.clone(),
 
             Computation_::Divergent(ref a, ref b) => {
-                let a = a.converge_results(tyenv);
-                let b = b.converge_results(tyenv);
+                let a = a.converge_results(loc, tyenv);
+                let b = b.converge_results(loc, tyenv);
 
                 if let Computation_::Result(a_ty, ref a_l) = *a.0 {
                     if let Computation_::Result(b_ty, ref b_l) = *b.0 {
-                        return Computation::result(tyenv.union(a_ty, b_ty), a_l.merge(b_l.clone()));
+                        return Computation::result(tyenv.union(loc, a_ty, b_ty), a_l.merge(b_l.clone()));
                     }
 
                     if let Computation_::Divergent(ref ba, ref bb) = *b.0 {
                         if let Computation_::Result(ba_ty, ref ba_l) = *ba.0 {
                             return Computation::divergent(
-                                Computation::result(tyenv.union(a_ty, ba_ty), a_l.merge(ba_l.clone())),
+                                Computation::result(tyenv.union(loc, a_ty, ba_ty), a_l.merge(ba_l.clone())),
                                 bb.clone());
                         }
                     }
@@ -214,10 +215,10 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         }
     }
 
-    pub fn extract_results<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>)
+    pub fn extract_results<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>)
         -> (Option<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>)>, Option<Computation<'ty, 'object>>)
     {
-        let converged = self.converge_results(tyenv);
+        let converged = self.converge_results(loc, tyenv);
 
         match *converged.0 {
             Computation_::Result(ty, ref locals) => (Some((ty, locals.clone())), None),

@@ -428,7 +428,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
 
         let (recv_type, locals, non_result_comp) = match *recv {
-            Some(ref recv_node) => match self.process_node(recv_node, locals).extract_results(&self.tyenv) {
+            Some(ref recv_node) => match self.process_node(recv_node, locals).extract_results(recv_node.loc(), &self.tyenv) {
                 (Some((recv_ty, locals)), comp) => (recv_ty, locals, comp),
                 (None, Some(comp)) => {
                     self.warning("Useless method call", &[
@@ -447,7 +447,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let mut non_result_comp = non_result_comp;
 
         for arg_node in args {
-            match self.process_node(arg_node, locals).extract_results(&self.tyenv) {
+            match self.process_node(arg_node, locals).extract_results(arg_node.loc(), &self.tyenv) {
                 (Some((arg_ty, l)), comp) => {
                     arg_types.push(arg_ty);
                     locals = l;
@@ -491,7 +491,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 let comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
 
                 nodes.iter().fold(comp, |comp, node|
-                    self.seq_process(comp, node).converge_results(&self.tyenv)
+                    self.seq_process(comp, node).converge_results(node.loc(), &self.tyenv)
                 )
             }
             Node::Kwbegin(ref loc, ref node) => {
