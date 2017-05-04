@@ -380,7 +380,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let prototypes = self.prototypes_for_invocation(ty, id);
 
                     if prototypes.is_empty() {
-                        let message = format!("Union member type {} does not respond to #{}", self.tyenv.describe(ty), &id.1);
+                        let message = format!("Union member {} does not respond to #{}", self.tyenv.describe(ty), &id.1);
                         self.error(&message, &[
                             Detail::Loc(&self.tyenv.describe(recv_type), recv_type.loc()),
                         ]);
