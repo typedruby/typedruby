@@ -459,7 +459,7 @@ pub struct Prototype<'ty, 'object: 'ty> {
     pub retn: Option<&'ty Type<'ty, 'object>>,
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum Arg<'ty, 'object: 'ty> {
     Required {
         loc: Loc,
