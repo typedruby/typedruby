@@ -216,22 +216,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
             },
             Node::TyNillable(ref loc, ref type_node) => {
-                self.tyenv.alloc(Type::Union {
-                    loc: loc.clone(),
-                    types: vec![
-                        self.tyenv.nil(loc.clone()),
-                        self.resolve_type(type_node, context, scope),
-                    ],
-                })
+                self.tyenv.union(loc,
+                    self.tyenv.nil(loc.clone()),
+                    self.resolve_type(type_node, context, scope))
             },
             Node::TyOr(ref loc, ref a, ref b) => {
-                self.tyenv.alloc(Type::Union {
-                    loc: loc.clone(),
-                    types: vec![
-                        self.resolve_type(a, context, scope.clone()),
-                        self.resolve_type(b, context, scope),
-                    ],
-                })
+                self.tyenv.union(loc,
+                    self.resolve_type(a, context, scope.clone()),
+                    self.resolve_type(b, context, scope))
             }
             _ => panic!("unknown type node: {:?}", node),
         }
