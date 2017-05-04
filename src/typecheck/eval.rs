@@ -298,6 +298,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         for arg_node in arg_nodes {
             let (arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
+            args.push(arg);
             locals = locals_;
         }
 
