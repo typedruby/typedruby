@@ -3,6 +3,7 @@ use std::rc::Rc;
 use typecheck::types::{TypeEnv, Type};
 use ast::Loc;
 use immutable_map::TreeMap;
+use or::Or;
 
 #[derive(Debug,Clone)]
 pub struct LocalEntry<'ty, 'object: 'ty> {
@@ -216,25 +217,25 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
     }
 
     pub fn extract_results<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>)
-        -> (Option<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>)>, Option<Computation<'ty, 'object>>)
+        -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>>
     {
         let converged = self.converge_results(loc, tyenv);
 
         match *converged.0 {
-            Computation_::Result(ty, ref locals) => (Some((ty, locals.clone())), None),
+            Computation_::Result(ty, ref locals) => Or::Left((ty, locals.clone())),
 
             Computation_::Return(..) |
             Computation_::Redo |
-            Computation_::Retry => (None, Some(converged.clone())),
+            Computation_::Retry => Or::Right(converged.clone()),
 
             Computation_::Divergent(ref a, ref b) => {
                 // if there were any result computations, converge_results
                 // guarantees that they will have been collapsed into the
                 // left hand side of the divergent computation it returns.
                 if let Computation_::Result(ty, ref locals) = *a.0 {
-                    (Some((ty, locals.clone())), Some(b.clone()))
+                    Or::Both((ty, locals.clone()), b.clone())
                 } else {
-                    (None, Some(converged.clone()))
+                    Or::Right(converged.clone())
                 }
             }
         }

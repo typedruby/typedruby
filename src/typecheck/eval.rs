@@ -7,6 +7,7 @@ use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
 use typed_arena::Arena;
+use or::Or;
 
 pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     env: &'env Environment<'object>,
@@ -421,15 +422,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let (recv_type, locals, non_result_comp) = match *recv {
             Some(ref recv_node) => match self.process_node(recv_node, locals).extract_results(recv_node.loc(), &self.tyenv) {
-                (Some((recv_ty, locals)), comp) => (recv_ty, locals, comp),
-                (None, Some(comp)) => {
+                Or::Left((recv_ty, locals)) => (recv_ty, locals, None),
+                Or::Both((recv_ty, locals), comp) => (recv_ty, locals, Some(comp)),
+                Or::Right(comp) => {
                     self.warning("Useless method call", &[
                         Detail::Loc("here", &id.0),
                         Detail::Loc("receiver never evaluates to a result", recv_node.loc()),
                     ]);
                     return comp;
                 }
-                (None, None) => panic!("should never happen"),
             },
             None => (self.type_context.self_type(&self.tyenv, id.0.clone()), locals, None),
         };
@@ -440,19 +441,22 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         for arg_node in args {
             match self.process_node(arg_node, locals).extract_results(arg_node.loc(), &self.tyenv) {
-                (Some((arg_ty, l)), comp) => {
+                Or::Left((arg_ty, l)) => {
                     arg_types.push(arg_ty);
                     locals = l;
-                    non_result_comp = merge_maybe_comps(non_result_comp, comp);
-                },
-                (None, Some(comp)) => {
+                }
+                Or::Both((arg_ty, l), comp) => {
+                    arg_types.push(arg_ty);
+                    locals = l;
+                    non_result_comp = merge_maybe_comps(non_result_comp, Some(comp));
+                }
+                Or::Right(comp) => {
                     self.warning("Useless method call", &[
                         Detail::Loc("here", &id.0),
                         Detail::Loc("argument never evaluates to a result", arg_node.loc()),
                     ]);
                     return merge_maybe_comps(non_result_comp, Some(comp)).expect("never None");
-                },
-                (None, None) => panic!("should never happen"),
+                }
             }
         }
 
