@@ -72,8 +72,27 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         self.instance(loc, self.object.NilClass, Vec::new())
     }
 
-    pub fn union(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
-        panic!("not implemented!")
+    pub fn union(&self, loc: &Loc, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+        let mut reduced_types: Vec<&_> = Vec::new();
+
+        let mut types = a.types();
+        types.extend(b.types());
+
+        for ty in types.iter() {
+            if reduced_types.iter().any(|rty| self.compatible(rty, ty).is_ok()) {
+                continue;
+            }
+
+            reduced_types.push(ty);
+        }
+
+        assert!(!reduced_types.is_empty());
+
+        if reduced_types.len() == 1 {
+            reduced_types[0]
+        } else {
+            self.alloc(Type::Union { loc: loc.clone(), types: reduced_types })
+        }
     }
 
     fn set_var(&self, id: TypeVarId, ty: &'ty Type<'ty, 'object>) {
@@ -348,7 +367,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 // degrade keyword hash to instance type:
                 let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
                 let value_ty = keywords.iter().fold(self.new_var(loc.clone()), |tyvar, &(_, keyword_ty)|
-                    self.union(tyvar, keyword_ty)
+                    self.union(loc, tyvar, keyword_ty)
                 );
 
                 let instance_ty = self.instance(loc.clone(), hash_class, vec![key_ty, value_ty]);
@@ -424,6 +443,13 @@ impl<'ty, 'object> Type<'ty, 'object> {
 
     pub fn ref_eq(&self, other: &'ty Type<'ty, 'object>) -> bool {
         (self as *const _) == (other as *const _)
+    }
+
+    pub fn types(&'ty self) -> Vec<&'ty Type<'ty, 'object>> {
+        match *self {
+            Type::Union { ref types, .. } => types.clone(),
+            _ => vec![self],
+        }
     }
 }
 
