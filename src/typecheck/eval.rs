@@ -359,7 +359,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn prototypes_for_invocation(&self, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Rc<Prototype<'ty, 'object>>> {
+    fn prototypes_for_invocation(&self, recv_loc: &Loc, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Rc<Prototype<'ty, 'object>>> {
         let degraded_recv_type = self.tyenv.degrade_to_instance(recv_type);
 
         match *degraded_recv_type {
@@ -377,12 +377,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Type::Union { ref types, .. } => {
                 types.iter().flat_map(|ty| {
-                    let prototypes = self.prototypes_for_invocation(ty, id);
+                    let prototypes = self.prototypes_for_invocation(recv_loc, ty, id);
 
                     if prototypes.is_empty() {
                         let message = format!("Union member {} does not respond to #{}", self.tyenv.describe(ty), &id.1);
                         self.error(&message, &[
-                            Detail::Loc(&self.tyenv.describe(recv_type), recv_type.loc()),
+                            Detail::Loc(&self.tyenv.describe(recv_type), recv_loc),
                         ]);
                     }
 
@@ -392,14 +392,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Type::Any { .. } => vec![self.tyenv.any_prototype(id.0.clone())],
             Type::TypeParameter { ref name, .. } => {
                 self.error(&format!("Type parameter {} is of unknown type", name), &[
-                    Detail::Loc("in invocation", recv_type.loc()),
+                    Detail::Loc("in invocation", recv_loc),
                 ]);
 
                 vec![]
             }
             Type::Var { id, .. } => {
                 self.error(&format!("Type of receiver is not known at this point"), &[
-                    Detail::Loc(&format!("t{}", id), recv_type.loc()),
+                    Detail::Loc(&format!("t{}", id), recv_loc),
                 ]);
 
                 vec![]
@@ -456,7 +456,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
         }
 
-        let prototypes = self.prototypes_for_invocation(recv_type, id);
+        let prototypes = self.prototypes_for_invocation(recv_type.loc(), recv_type, id);
 
         panic!("unimplemented")
     }
