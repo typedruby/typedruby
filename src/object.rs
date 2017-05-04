@@ -529,6 +529,7 @@ impl<'object> Iterator for ScopeIter<'object> {
     }
 }
 
+#[derive(Debug)]
 pub struct Scope<'object> {
     pub parent: Option<Rc<Scope<'object>>>,
     pub module: &'object RubyObject<'object>,
@@ -551,6 +552,7 @@ impl<'object> Scope<'object> {
     }
 }
 
+#[derive(Debug)]
 pub enum MethodEntry<'object> {
     Ruby {
         owner: &'object RubyObject<'object>,
