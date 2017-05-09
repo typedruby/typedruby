@@ -96,7 +96,7 @@ impl<'v, 'a, T> Consumer<'a, T> for ReverseConsumer<'v, 'a, T> {
     }
 }
 
-fn match_argument<'ty, 'env, 'object: 'ty + 'env>(
+fn match_argument<'ty, 'object: 'ty>(
     prototype_arg_type: Option<&'ty Type<'ty, 'object>>,
     passed_arg_type: &'ty Type<'ty, 'object>,
     result: &mut MatchResult<'ty, 'object>)
@@ -106,7 +106,7 @@ fn match_argument<'ty, 'env, 'object: 'ty + 'env>(
     }
 }
 
-fn match_prototype_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env, PrototypeConsumer, PassedConsumer>(
+fn match_prototype_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
     prototype_arg_type: Option<&'ty Type<'ty, 'object>>,
     prototype_args: &mut PrototypeConsumer,
     args: &mut PassedConsumer,
@@ -137,7 +137,7 @@ fn match_prototype_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env, PrototypeCon
     }
 }
 
-fn match_required_arguments<'a, 'ty: 'a, 'env, 'object: 'ty + 'env, PrototypeConsumer, PassedConsumer>(
+fn match_required_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
     prototype_args: &mut PrototypeConsumer,
     args: &mut PassedConsumer,
     mut result: &mut MatchResult<'ty, 'object>
@@ -153,7 +153,7 @@ fn match_required_arguments<'a, 'ty: 'a, 'env, 'object: 'ty + 'env, PrototypeCon
     }
 }
 
-fn match_optional_arguments<'a, 'ty: 'a, 'env, 'object: 'ty + 'env, PrototypeConsumer, PassedConsumer>(
+fn match_optional_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
     prototype_args: &mut PrototypeConsumer,
     args: &mut PassedConsumer,
     mut result: &mut MatchResult<'ty, 'object>
@@ -198,7 +198,7 @@ fn match_rest_argument<'a, 'ty: 'a, 'object, PrototypeConsumer, PassedConsumer>(
     }
 }
 
-pub fn match_prototype_with_invocation<'ty, 'env, 'object: 'ty + 'env>(
+pub fn match_prototype_with_invocation<'ty, 'object: 'ty>(
     prototype: &Prototype<'ty, 'object>,
     args: &[CallArg<'ty, 'object>],
 ) -> MatchResult<'ty, 'object>
