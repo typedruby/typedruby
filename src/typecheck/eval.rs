@@ -61,15 +61,6 @@ fn merge_maybe_comps<'ty, 'object: 'ty>(a: Option<Computation<'ty, 'object>>, b:
     }
 }
 
-fn validate_static_cpath<'a>(node: &'a Node) -> Result<(), &'a Node> {
-    match *node {
-        Node::Const(_, Some(ref base), _) => validate_static_cpath(base),
-        Node::Const(_, None, _) |
-        Node::Cbase(_) => Ok(()),
-        _ => Err(node),
-    }
-}
-
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     pub fn new(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) -> Eval<'ty, 'env, 'object> {
         let type_parameters = class.type_parameters().iter().map(|&Id(ref loc, ref name)|
@@ -881,7 +872,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                                 self.compatible(key_ty, key, Some(loc));
                                 self.compatible(value_ty, value, Some(loc));
                             }
-                            HashEntry::Kwsplat(kw_ty) => {
+                            HashEntry::Kwsplat(_) => {
                                 panic!("unimplemented")
                             }
                         }
