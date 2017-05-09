@@ -241,4 +241,12 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             }
         }
     }
+
+    pub fn result_type<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>) -> Option<&'ty Type<'ty, 'object>> {
+        match self.extract_results(loc, tyenv) {
+            Or::Left((ty, _)) => Some(ty),
+            Or::Both((ty, _), _) => Some(ty),
+            Or::Right(_) => None,
+        }
+    }
 }

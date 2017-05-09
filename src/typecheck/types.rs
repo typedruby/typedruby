@@ -96,6 +96,14 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
+    pub fn keyword_hash(&self, loc: Loc, keywords: Vec<(String, &'ty Type<'ty, 'object>)>) -> &'ty Type<'ty, 'object> {
+        self.alloc(Type::KeywordHash {
+            loc: loc,
+            keywords: keywords,
+            id: self.new_id(),
+        })
+    }
+
     fn set_var(&self, id: TypeVarId, ty: &'ty Type<'ty, 'object>) {
         let mut instance_map_ref = self.instance_map.borrow_mut();
 
