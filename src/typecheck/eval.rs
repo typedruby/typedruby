@@ -46,6 +46,21 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
     }
 }
 
+enum HashEntry<'ty, 'object: 'ty> {
+    Symbol(Id, &'ty Type<'ty, 'object>),
+    Pair(&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>),
+    Kwsplat(&'ty Type<'ty, 'object>),
+}
+
+fn merge_maybe_comps<'ty, 'object: 'ty>(a: Option<Computation<'ty, 'object>>, b: Option<Computation<'ty, 'object>>) -> Option<Computation<'ty, 'object>> {
+    match (a, b) {
+        (Some(a), Some(b)) => Some(Computation::divergent(a, b)),
+        (Some(a), None) => Some(a),
+        (None, Some(b)) => Some(b),
+        (None, None) => None,
+    }
+}
+
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     pub fn new(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) -> Eval<'ty, 'env, 'object> {
         let type_parameters = class.type_parameters().iter().map(|&Id(ref loc, ref name)|
@@ -444,17 +459,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<(Rc<Node>, Option<Rc<Node>>)>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
-        fn merge_maybe_comps<'ty, 'object: 'ty>(a: Option<Computation<'ty, 'object>>, b: Option<Computation<'ty, 'object>>) -> Option<Computation<'ty, 'object>> {
-            match (a, b) {
-                (Some(a), Some(b)) => Some(Computation::divergent(a, b)),
-                (Some(a), None) => Some(a),
-                (None, Some(b)) => Some(b),
-                (None, None) => None,
-            }
-        }
-
         let (recv_type, locals, non_result_comp) = match *recv {
             Some(ref recv_node) => match self.process_node(recv_node, locals).extract_results(recv_node.loc(), &self.tyenv) {
                 Or::Left((recv_ty, locals)) => (recv_ty, locals, None),
@@ -706,6 +711,119 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     self.process_send(send_loc, recv, mid, args, Some((block_args.clone(), block_body.clone())), locals)
                 } else {
                     panic!("expected Node::Send inside Node::Block")
+                }
+            }
+            Node::Hash(ref loc, ref pairs) => {
+                let mut comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
+                let mut entries = Vec::new();
+
+                for pair in pairs {
+                    match **pair {
+                        Node::Pair(_, ref key, ref value) => {
+                            comp = self.seq_process(comp, key);
+
+                            let key_ty = if let Some(ty) = comp.result_type(loc, &self.tyenv) {
+                                ty
+                            } else {
+                                self.warning("Expression never evalutes to a result", &[
+                                    Detail::Loc("here", key.loc()),
+                                ]);
+                                return comp;
+                            };
+
+                            comp = self.seq_process(comp, value);
+
+                            let value_ty = if let Some(ty) = comp.result_type(loc, &self.tyenv) {
+                                ty
+                            } else {
+                                self.warning("Expression never evalutes to a result", &[
+                                    Detail::Loc("here", value.loc()),
+                                ]);
+                                return comp;
+                            };
+
+                            if let Node::Symbol(ref sym_loc, ref sym) = **key {
+                                entries.push(HashEntry::Symbol(Id(sym_loc.clone(), sym.clone()), value_ty));
+                            } else {
+                                entries.push(HashEntry::Pair(key_ty, value_ty));
+                            }
+                        },
+                        Node::Kwsplat(_, ref splat) => {
+                            comp = self.seq_process(comp, splat);
+
+                            if let Some(ty) = comp.result_type(loc, &self.tyenv) {
+                                entries.push(HashEntry::Kwsplat(ty));
+                            } else {
+                                self.warning("Expression never evalutes to a result", &[
+                                    Detail::Loc("here", splat.loc()),
+                                ]);
+                                return comp;
+                            }
+                        },
+                        _ => panic!("unexpected node type in hash literal: {:?}", *pair),
+                    }
+                }
+
+                let is_keyword_hash = entries.len() > 0 && entries.iter().all(|entry| {
+                    match *entry {
+                        HashEntry::Symbol(..) => true,
+                        HashEntry::Kwsplat(ty) => {
+                            if let Type::KeywordHash { .. } = *self.tyenv.prune(ty) {
+                                true
+                            } else {
+                                false
+                            }
+                        },
+                        HashEntry::Pair(..) => false,
+                    }
+                });
+
+                if is_keyword_hash {
+                    let mut keywords = Vec::new();
+
+                    for entry in entries {
+                        match entry {
+                            HashEntry::Symbol(Id(_, key), value) => keywords.push((key, value)),
+                            HashEntry::Kwsplat(kw_ty) => {
+                                if let Type::KeywordHash { keywords: ref splat_keywords, .. } = *self.tyenv.prune(kw_ty) {
+                                    for &(ref key, value) in splat_keywords {
+                                        keywords.push((key.clone(), value));
+                                    }
+                                } else {
+                                    panic!()
+                                }
+                            },
+                            _ => panic!(),
+                        }
+                    }
+
+                    let hash_ty = self.tyenv.keyword_hash(loc.clone(), keywords);
+
+                    comp.seq(&|_, locals| Computation::result(hash_ty, locals))
+                } else {
+                    let key_ty = self.tyenv.new_var(loc.clone());
+                    let value_ty = self.tyenv.new_var(loc.clone());
+
+                    for entry in entries {
+                        match entry {
+                            HashEntry::Symbol(Id(sym_loc, _), value) => {
+                                self.compatible(key_ty, self.tyenv.instance0(sym_loc, self.env.object.Symbol), Some(loc));
+                                self.compatible(value_ty, value, Some(loc));
+                            }
+                            HashEntry::Pair(key, value) => {
+                                self.compatible(key_ty, key, Some(loc));
+                                self.compatible(value_ty, value, Some(loc));
+                            }
+                            HashEntry::Kwsplat(kw_ty) => {
+                                panic!("unimplemented")
+                            }
+                        }
+                    }
+
+                    let hash_class = self.env.object.get_const(self.env.object.Object, "Hash").unwrap();
+                    let hash_ty = self.tyenv.instance(loc.clone(), hash_class, vec![key_ty, value_ty]);
+
+                    comp.seq(&|_, locals| Computation::result(hash_ty, locals))
                 }
             }
             _ => panic!("node: {:?}", node),
