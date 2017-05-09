@@ -61,6 +61,15 @@ fn merge_maybe_comps<'ty, 'object: 'ty>(a: Option<Computation<'ty, 'object>>, b:
     }
 }
 
+fn validate_static_cpath<'a>(node: &'a Node) -> Result<(), &'a Node> {
+    match *node {
+        Node::Const(_, Some(ref base), _) => validate_static_cpath(base),
+        Node::Const(_, None, _) |
+        Node::Cbase(_) => Ok(()),
+        _ => Err(node),
+    }
+}
+
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     pub fn new(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) -> Eval<'ty, 'env, 'object> {
         let type_parameters = class.type_parameters().iter().map(|&Id(ref loc, ref name)|
@@ -893,6 +902,20 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
 
                 comp.seq(&|_, l| Computation::result(string_ty, l))
+            }
+            Node::Const(..) => {
+                match self.env.resolve_cpath(node, self.scope.clone()) {
+                    Ok(object) => {
+                        let ty = self.tyenv.instance0(node.loc().clone(), self.env.object.metaclass(object));
+                        Computation::result(ty, locals)
+                    }
+                    Err((err_node, message)) => {
+                        self.error(message, &[
+                            Detail::Loc("here", err_node.loc()),
+                        ]);
+                        Computation::result(self.tyenv.any(node.loc().clone()), locals)
+                    }
+                }
             }
             _ => panic!("node: {:?}", node),
         }
