@@ -152,6 +152,7 @@ impl<'object> Environment<'object> {
                 }
 
                 for scope in Scope::ancestors(&scope) {
+                    let _ = scope;
                     // TODO autoload
                 }
 

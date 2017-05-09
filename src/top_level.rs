@@ -288,7 +288,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                 match *args[0] {
                     Node::String(ref loc, ref string) => {
                         if let Some(path) = self.env.search_require_path(string) {
-                            self.env.require(&path);
+                            match self.env.require(&path) {
+                                Ok(()) => {},
+                                Err(e) => panic!("TODO: implement error handling for require errors: {:?}", e),
+                            }
                         } else {
                             self.error("Could not resolve require", &[
                                 Detail::Loc("here", loc),
