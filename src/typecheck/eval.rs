@@ -883,6 +883,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     comp.seq(&|_, locals| Computation::result(hash_ty, locals))
                 }
             }
+            Node::DString(ref loc, ref parts) => {
+                let string_ty = self.tyenv.instance0(loc.clone(), self.env.object.String);
+                let mut comp = Computation::result(string_ty, locals);
+
+                for part in parts {
+                    // TODO - verify that each string element responds to #to_s
+                    comp = self.seq_process(comp, part);
+                }
+
+                comp.seq(&|_, l| Computation::result(string_ty, l))
+            }
             _ => panic!("node: {:?}", node),
         }
     }
