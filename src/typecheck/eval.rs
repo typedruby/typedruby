@@ -602,7 +602,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::TyCast(ref loc, ref expr, ref type_node) => {
                 self.process_node(expr, locals).seq(&|_, l| {
                     let ty = self.resolve_type(type_node, &self.type_context, self.scope.clone());
-                    Computation::result(ty, l)
+                    Computation::result(self.tyenv.update_loc(ty, loc.clone()), l)
                 })
             }
             Node::Redo(ref loc) => {
