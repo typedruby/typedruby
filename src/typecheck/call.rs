@@ -211,8 +211,6 @@ pub fn match_prototype_with_invocation<'ty, 'object: 'ty>(
     let mut args = View(args);
     let mut prototype_args = View(prototype.args.as_slice());
 
-    let supplied_argc = args.len();
-
     let required_argc = prototype_args.iter().filter(|arg|
         match **arg {
             Arg::Required { .. } => true,
