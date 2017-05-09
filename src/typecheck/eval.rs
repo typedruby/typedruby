@@ -605,14 +605,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Computation::result(self.tyenv.update_loc(ty, loc.clone()), l)
                 })
             }
-            Node::Redo(ref loc) => {
+            Node::Redo(_) => {
                 // TODO this needs to ensure soundness of assignments when the block is repeated
                 // for example in:
                 //   x = 123; tap { x; x = "foo"; redo }
                 // x should be (Integer|String) at the beginning of the tap block
                 Computation::redo()
             }
-            Node::Retry(ref loc) => {
+            Node::Retry(_) => {
                 // TODO also needs to ensure soundness of locals (see above)
                 Computation::retry()
             }
