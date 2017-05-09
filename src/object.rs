@@ -192,6 +192,8 @@ impl<'a> ObjectGraph<'a> {
         o.Float = o.define_class(None, o.Object, "Float", o.Numeric, Vec::new());
         o.Proc = o.define_class(None, o.Object, "Proc", o.Object, Vec::new());
 
+        o.define_method(o.Class, "new".to_owned(), Rc::new(MethodEntry::IntrinsicClassNew));
+
         o
     }
 
@@ -561,6 +563,7 @@ pub enum MethodEntry<'object> {
         scope: Rc<Scope<'object>>,
     },
     Untyped,
+    IntrinsicClassNew,
 }
 
 pub struct ConstantEntry<'object> {
