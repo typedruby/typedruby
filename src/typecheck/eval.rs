@@ -341,6 +341,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn process_array_tuple(&self, exprs: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        let _ = exprs;
+        let _ = locals;
         panic!("unimplemented")
     }
 
@@ -348,10 +350,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         match *method {
             MethodEntry::Ruby { ref node, ref scope, .. } => {
                 let prototype_node = match **node {
-                    Node::Def(ref loc, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
-                    Node::Defs(ref loc, _, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
-                    Node::Def(ref loc, _, Some(ref proto), _) => proto,
-                    Node::Defs(ref loc, _, _, Some(ref proto), _) => proto,
+                    Node::Def(_, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
+                    Node::Defs(_, _, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
+                    Node::Def(_, _, Some(ref proto), _) => proto,
+                    Node::Defs(_, _, _, Some(ref proto), _) => proto,
                     _ => panic!("unexpected node in MethodEntry::Ruby: {:?}", node),
                 };
 
