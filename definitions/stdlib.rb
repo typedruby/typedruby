@@ -1,4 +1,12 @@
 class BasicObject
+  def initialize => :any; end
+
+  def __id__ => Integer; end
+
+  def ==(:any other) => Boolean; end
+  def !=(:any other) => Boolean; end
+
+  def ! => Boolean; end
 end
 
 module Kernel
@@ -56,22 +64,15 @@ class Object < BasicObject
   TOPLEVEL_BINDING = nil
   ARGV = nil
 
-  def initialize => :any; end
-
   def class => :class; end
 
   def dup => :self; end
 
   def freeze => :self; end
 
-  def ==(:any other) => Boolean; end
-  def !=(:any other) => Boolean; end
-
   def send(Symbol method_name, :any *args) => :any; end
 
   def is_a?(Module mod) => Boolean; end
-
-  def ! => Boolean; end
 end
 
 module Enumerable
