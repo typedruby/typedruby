@@ -183,6 +183,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         self.tyenv.instance(loc.clone(), array_class, vec![element_type])
     }
 
+    fn create_hash_type(&self, loc: &Loc, key_type: &'ty Type<'ty, 'object>, value_type: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+        let hash_class = self.env.object.get_const(self.env.object.Object, "Hash").expect("expected Hash to be defined");
+        self.tyenv.instance(loc.clone(), hash_class, vec![key_type, value_type])
+    }
+
     fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
         match *node {
             Node::TyCpath(ref loc, ref cpath) =>
@@ -199,6 +204,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             },
             Node::TyArray(ref loc, ref element) => {
                 self.create_array_type(loc, self.resolve_type(element, context, scope))
+            },
+            Node::TyHash(ref loc, ref key, ref value) => {
+                self.create_hash_type(loc,
+                    self.resolve_type(key, context, scope.clone()),
+                    self.resolve_type(value, context, scope))
             },
             Node::TyProc(ref loc, ref prototype) => {
                 self.tyenv.alloc(Type::Proc {
@@ -865,8 +875,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         }
                     }
 
-                    let hash_class = self.env.object.get_const(self.env.object.Object, "Hash").unwrap();
-                    let hash_ty = self.tyenv.instance(loc.clone(), hash_class, vec![key_ty, value_ty]);
+                    let hash_ty = self.create_hash_type(loc, key_ty, value_ty);
 
                     comp.seq(&|_, locals| Computation::result(hash_ty, locals))
                 }
