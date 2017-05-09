@@ -7,7 +7,8 @@ use immutable_map::TreeMap;
 
 pub type TypeVarId = usize;
 
-pub type UnificationResult<'ty, 'object> = Result<(), (&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>)>;
+pub type UnificationError<'ty, 'object> = (&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>);
+pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
 
 #[derive(Clone)]
 pub struct TypeEnv<'ty, 'env, 'object: 'ty + 'env> {
