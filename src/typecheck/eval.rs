@@ -373,12 +373,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         panic!("unimplemented")
     }
 
-    fn prototype_from_method_entry(&self, recv_loc: &Loc, id_loc: &Loc, method: &MethodEntry<'object>, type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
+    fn prototype_from_method_entry(&self, loc: &Loc, method: &MethodEntry<'object>, type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
         match *method {
             MethodEntry::Ruby { ref node, ref scope, .. } => {
                 let prototype_node = match **node {
-                    Node::Def(_, _, None, _) => return self.tyenv.any_prototype(recv_loc.join(id_loc)),
-                    Node::Defs(_, _, _, None, _) => return self.tyenv.any_prototype(recv_loc.join(id_loc)),
+                    Node::Def(_, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
+                    Node::Defs(_, _, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
                     Node::Def(_, _, Some(ref proto), _) => proto,
                     Node::Defs(_, _, _, Some(ref proto), _) => proto,
                     _ => panic!("unexpected node in MethodEntry::Ruby: {:?}", node),
@@ -386,32 +386,30 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 self.resolve_prototype(&prototype_node, Locals::new(), &type_context, scope.clone()).0
             }
-            MethodEntry::Untyped => self.tyenv.any_prototype(recv_loc.join(id_loc)),
+            MethodEntry::Untyped => self.tyenv.any_prototype(loc.clone()),
             MethodEntry::IntrinsicClassNew => {
                 match *type_context.class {
                     RubyObject::Metaclass { of, .. } => {
-                        let call_loc = recv_loc.join(id_loc);
-
                         let initialize_method = match self.env.object.lookup_method(of, "initialize") {
                             Some(method) => method,
                             None => {
                                 self.error("Can't call #new on class with undefined #initialize method", &[
-                                    Detail::Loc("here", &call_loc),
+                                    Detail::Loc("here", loc),
                                 ]);
 
-                                return self.tyenv.any_prototype(call_loc);
+                                return self.tyenv.any_prototype(loc.clone());
                             }
                         };
 
                         let initialize_type_context = TypeContext::new(of,
                             of.type_parameters().iter().map(|_|
-                                self.tyenv.new_var(call_loc.clone())
+                                self.tyenv.new_var(loc.clone())
                             ).collect()
                         );
 
-                        let instance_type = initialize_type_context.self_type(&self.tyenv, call_loc);
+                        let instance_type = initialize_type_context.self_type(&self.tyenv, loc.clone());
 
-                        let proto = self.prototype_from_method_entry(recv_loc, id_loc, &initialize_method, initialize_type_context);
+                        let proto = self.prototype_from_method_entry(loc, &initialize_method, initialize_type_context);
 
                         Rc::new(Prototype {
                             args: proto.args.clone(),
@@ -424,10 +422,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         // def foo(Class x); x.new; end
                         // TODO - consider disallowing use of Class without type parameters
                         self.error("Unknown class instance in call to #new, can't determine #initialize signature", &[
-                            Detail::Loc("here", recv_loc),
+                            Detail::Loc("here", loc),
                         ]);
 
-                        self.tyenv.any_prototype(recv_loc.join(id_loc))
+                        self.tyenv.any_prototype(loc.clone())
                     },
                     _ => panic!("should never happen"),
                 }
@@ -435,21 +433,26 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn prototypes_for_invocation(&self, recv_loc: &Loc, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Rc<Prototype<'ty, 'object>>> {
+    fn prototypes_for_invocation(&self, recv_loc: Option<&Loc>, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Rc<Prototype<'ty, 'object>>> {
         let degraded_recv_type = self.tyenv.degrade_to_instance(recv_type);
+
+        let loc = match recv_loc {
+            Some(recv_loc) => recv_loc.join(&id.0),
+            None => id.0.clone(),
+        };
 
         match *degraded_recv_type {
             Type::Instance { class, type_parameters: ref tp, .. } => {
                 match self.env.object.lookup_method(class, &id.1) {
                     Some(method) => {
-                        vec![self.prototype_from_method_entry(recv_loc, &id.0, &method, TypeContext::new(class, tp.clone()))]
+                        vec![self.prototype_from_method_entry(&loc, &method, TypeContext::new(class, tp.clone()))]
                     }
                     None => Vec::new(),
                 }
             }
             Type::Proc { .. } => {
                 match self.env.object.lookup_method(self.env.object.Proc, &id.1) {
-                    Some(method) => vec![self.prototype_from_method_entry(recv_loc, &id.0, &method, TypeContext::new(&self.env.object.Proc, Vec::new()))],
+                    Some(method) => vec![self.prototype_from_method_entry(&loc, &method, TypeContext::new(&self.env.object.Proc, Vec::new()))],
                     None => Vec::new(),
                 }
             }
@@ -460,7 +463,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     if prototypes.is_empty() {
                         let message = format!("Union member {} does not respond to #{}", self.tyenv.describe(ty), &id.1);
                         self.error(&message, &[
-                            Detail::Loc(&self.tyenv.describe(recv_type), recv_loc),
+                            Detail::Loc(&self.tyenv.describe(recv_type), recv_type.loc()),
                         ]);
                     }
 
@@ -470,14 +473,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Type::Any { .. } => vec![self.tyenv.any_prototype(id.0.clone())],
             Type::TypeParameter { ref name, .. } => {
                 self.error(&format!("Type parameter {} is of unknown type", name), &[
-                    Detail::Loc("in invocation", recv_loc),
+                    Detail::Loc("in receiver of this invocation", &loc),
                 ]);
 
                 vec![]
             }
             Type::Var { id, .. } => {
                 self.error(&format!("Type of receiver is not known at this point"), &[
-                    Detail::Loc(&format!("t{}", id), recv_loc),
+                    Detail::Loc(&format!("t{}", id), &loc),
                 ]);
 
                 vec![]
@@ -563,7 +566,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             args.push(CallArg::BlockLiteral(block_loc, block_args, block_body));
         }
 
-        let prototypes = self.prototypes_for_invocation(recv_type.loc(), recv_type, id);
+        let prototypes = self.prototypes_for_invocation(recv.as_ref().map(|r| r.loc()), recv_type, id);
 
         if prototypes.is_empty() {
             self.error(&format!("Could not resolve method #{}", &id.1), &[
