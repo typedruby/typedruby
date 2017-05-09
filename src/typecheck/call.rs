@@ -211,16 +211,14 @@ pub fn match_prototype_with_invocation<'ty, 'object: 'ty>(
     let mut args = View(args);
     let mut prototype_args = View(prototype.args.as_slice());
 
+    let supplied_argc = args.len();
+
     let required_argc = prototype_args.iter().filter(|arg|
         match **arg {
             Arg::Required { .. } => true,
             _ => false,
         }
     ).count();
-
-    if args.len() < required_argc {
-        result.errors.push(ArgError::TooFewArguments);
-    }
 
     if args.len() > required_argc {
         // handle popping keyword args off the end
@@ -246,7 +244,9 @@ pub fn match_prototype_with_invocation<'ty, 'object: 'ty>(
         &mut ForwardConsumer(&mut args),
         &mut result);
 
-    assert!(prototype_args.is_empty());
+    if !prototype_args.is_empty() {
+        result.errors.push(ArgError::TooFewArguments);
+    }
 
     if let Some(arg) = args.first() {
         result.errors.push(ArgError::TooManyArguments(arg.loc().clone()));
