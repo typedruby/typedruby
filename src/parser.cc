@@ -7,6 +7,7 @@ parser::base::base(ruby_version version, const std::string& source, const struct
     : lexer_(std::make_unique<class lexer>(*this, version, source))
     , def_level(0)
     , builder(builder)
+    , ast(0)
 {
 }
 
