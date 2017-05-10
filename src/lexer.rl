@@ -2371,7 +2371,7 @@ void lexer::set_state_expr_value() {
           emit(token_type::tFID);
         } else {
           // Suffix was not consumed, e.g. foo!=
-          /* emit(token_type::tIDENTIFIER, tok(@ts, tm), @ts, tm) */
+          emit(token_type::tIDENTIFIER, tok(ts, tm), ts, tm);
           p = tm - 1;
         }
         fnext expr_arg; fbreak;
