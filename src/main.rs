@@ -32,6 +32,9 @@ fn config() -> (Config, Vec<PathBuf>) {
             .value_name("directory")
             .help("Adds a directory to the load path")
             .takes_value(true))
+        .arg(Arg::with_name("warning")
+            .short("w")
+            .help("Turns on additional warnings, like Ruby's -w"))
         .arg(Arg::with_name("source")
             .index(1)
             .multiple(true)
@@ -46,6 +49,8 @@ fn config() -> (Config, Vec<PathBuf>) {
     if let Some(files_iter) = matches.values_of("source") {
         files.extend(files_iter.map(PathBuf::from));
     }
+
+    config.warning = matches.is_present("warning");
 
     (config, files)
 }
