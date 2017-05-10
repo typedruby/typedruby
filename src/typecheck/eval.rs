@@ -168,7 +168,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         Detail::Loc("here", cpath.loc()),
                     ]);
 
-                    self.tyenv.any(cpath.loc().clone())
+                    self.tyenv.new_var(cpath.loc().clone())
                 },
                 RubyObject::Module { .. } |
                 RubyObject::Metaclass { .. } |
@@ -181,7 +181,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Detail::Loc("here", err_node.loc()),
                 ]);
 
-                self.tyenv.any(cpath.loc().clone())
+                self.tyenv.new_var(cpath.loc().clone())
             }
         }
     }
@@ -247,7 +247,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             ]);
                         }
 
-                        self.tyenv.any(loc.clone())
+                        self.tyenv.new_var(loc.clone())
                     },
                 }
             },
@@ -678,7 +678,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             Detail::Loc("here", loc),
                         ]);
 
-                        self.tyenv.any(loc.clone())
+                        self.tyenv.nil(loc.clone())
                     },
                 };
 
