@@ -1,14 +1,14 @@
 use std::rc::Rc;
 use ast::{Node, Loc};
-use typecheck::types::{Arg, Type, Prototype};
+use typecheck::types::{Arg, Type, TypeEnv, Prototype};
 use std::marker::Sized;
 use std::ops::Deref;
+use std::collections::HashMap;
 
 #[derive(Debug,Clone)]
 pub enum CallArg<'ty, 'object: 'ty> {
     Pass(Loc, &'ty Type<'ty, 'object>),
     Splat(Loc, &'ty Type<'ty, 'object>),
-    Kwsplat(Loc, &'ty Type<'ty, 'object>),
     BlockPass(Loc, &'ty Type<'ty, 'object>),
     BlockLiteral(Loc, Rc<Node>, Option<Rc<Node>>),
 }
@@ -18,7 +18,6 @@ impl<'ty, 'object> CallArg<'ty, 'object> {
         match *self {
             CallArg::Pass(ref loc, _) => loc,
             CallArg::Splat(ref loc, _) => loc,
-            CallArg::Kwsplat(ref loc, _) => loc,
             CallArg::BlockPass(ref loc, _) => loc,
             CallArg::BlockLiteral(ref loc, _, _) => loc,
         }
@@ -29,6 +28,7 @@ impl<'ty, 'object> CallArg<'ty, 'object> {
 pub enum ArgError {
     TooFewArguments,
     TooManyArguments(Loc),
+    MissingKeyword(String),
 }
 
 #[derive(Debug)]
@@ -106,11 +106,120 @@ fn match_argument<'ty, 'object: 'ty>(
     }
 }
 
+fn match_block_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
+    prototype_args: &mut PrototypeConsumer,
+    args: &mut PassedConsumer,
+    result: &mut MatchResult<'ty, 'object>
+) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
+        PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
+{
+    // TODO
+    let _ = prototype_args;
+    let _ = args;
+    let _ = result;
+}
+
+fn consume_remaining_keywords<'a, 'ty: 'a, 'object: 'ty>(
+    prototype_args: &mut View<'a, Arg<'ty, 'object>>,
+    result: &mut MatchResult<'ty, 'object>
+) {
+    loop {
+        match prototype_args.last() {
+            Some(&Arg::Kwarg { ref name, .. }) => {
+                prototype_args.consume_back();
+                result.errors.push(ArgError::MissingKeyword(name.clone()));
+            }
+            Some(&Arg::Kwoptarg { .. }) => {
+                prototype_args.consume_back();
+            }
+            _ => break
+        }
+    }
+}
+
+fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
+    tyenv: &TypeEnv<'ty, 'env, 'object>,
+    prototype_args: &mut View<'a, Arg<'ty, 'object>>,
+    args: &mut View<'a, CallArg<'ty, 'object>>,
+    result: &mut MatchResult<'ty, 'object>
+) {
+    let kw_loc = match prototype_args.last() {
+        Some(&Arg::Kwarg { ref loc, .. }) |
+        Some(&Arg::Kwoptarg { ref loc, .. }) => loc,
+        _ => return,
+    };
+
+    if let Some(&CallArg::Pass(_, ty)) = args.last() {
+        match *tyenv.prune(ty) {
+            Type::KeywordHash { ref keywords, .. } => {
+                args.consume_back();
+
+                let mut keywords = keywords.iter().cloned().collect::<HashMap<_,_>>();
+
+                loop {
+                    match prototype_args.last() {
+                        Some(&Arg::Kwarg { ref name, ty: proto_ty, .. }) => {
+                            prototype_args.consume_back();
+
+                            match keywords.remove(name) {
+                                Some(passed_ty) => match_argument(proto_ty, passed_ty, result),
+                                None => { result.errors.push(ArgError::MissingKeyword(name.clone())) }
+                            }
+                        }
+                        Some(&Arg::Kwoptarg { ref name, ty: proto_ty, .. }) => {
+                            prototype_args.consume_back();
+
+                            match keywords.remove(name) {
+                                Some(passed_ty) => match_argument(proto_ty, passed_ty, result),
+                                None => { /* pass */ }
+                            }
+                        }
+                        _ => break
+                    }
+                }
+            }
+            Type::Instance { ref class, .. } => {
+                let hash_class = tyenv.object.get_const(tyenv.object.Object, "Hash").expect("expected Hash to be defined");
+
+                if class.is_a(hash_class) {
+                    args.consume_back();
+
+                    let mut potential_keywords = Vec::new();
+                    let mut keyword_hash_loc = kw_loc.clone();
+
+                    loop {
+                        match prototype_args.last() {
+                            Some(&Arg::Kwarg { ref loc, ref name, ty: proto_ty }) |
+                            Some(&Arg::Kwoptarg { ref loc, ref name, ty: proto_ty, .. }) => {
+                                prototype_args.consume_back();
+
+                                keyword_hash_loc = keyword_hash_loc.join(loc);
+
+                                potential_keywords.push((name.clone(), proto_ty.unwrap_or_else(|| tyenv.any(loc.clone()))));
+                            }
+                            _ => break
+                        }
+                    }
+
+                    let proto_hash_ty = tyenv.keyword_hash(keyword_hash_loc, potential_keywords);
+
+                    result.matches.push((proto_hash_ty, ty));
+                } else {
+                    consume_remaining_keywords(prototype_args, result);
+                }
+            }
+            _ => consume_remaining_keywords(prototype_args, result),
+        }
+    } else {
+        consume_remaining_keywords(prototype_args, result);
+    }
+}
+
 fn match_prototype_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
     prototype_arg_type: Option<&'ty Type<'ty, 'object>>,
     prototype_args: &mut PrototypeConsumer,
     args: &mut PassedConsumer,
-    mut result: &mut MatchResult<'ty, 'object>
+    result: &mut MatchResult<'ty, 'object>
 ) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
         PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
 {
@@ -130,9 +239,8 @@ fn match_prototype_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
 
             match_argument(prototype_arg_type, pass_ty, result);
         }
-        Some(&CallArg::Kwsplat(..)) |
         Some(&CallArg::BlockPass(..)) |
-        Some(&CallArg::BlockLiteral(..)) => panic!("unimplemented"),
+        Some(&CallArg::BlockLiteral(..)) => panic!("should not happen"),
         None => {},
     }
 }
@@ -140,7 +248,7 @@ fn match_prototype_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
 fn match_required_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
     prototype_args: &mut PrototypeConsumer,
     args: &mut PassedConsumer,
-    mut result: &mut MatchResult<'ty, 'object>
+    result: &mut MatchResult<'ty, 'object>
 ) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
         PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
 {
@@ -156,7 +264,7 @@ fn match_required_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
 fn match_optional_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
     prototype_args: &mut PrototypeConsumer,
     args: &mut PassedConsumer,
-    mut result: &mut MatchResult<'ty, 'object>
+    result: &mut MatchResult<'ty, 'object>
 ) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
         PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
 {
@@ -172,7 +280,7 @@ fn match_optional_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
 fn match_rest_argument<'a, 'ty: 'a, 'object, PrototypeConsumer, PassedConsumer>(
     prototype_args: &mut PrototypeConsumer,
     args: &mut PassedConsumer,
-    mut result: &mut MatchResult<'ty, 'object>
+    result: &mut MatchResult<'ty, 'object>
 ) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
         PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
 {
@@ -189,16 +297,16 @@ fn match_rest_argument<'a, 'ty: 'a, 'object, PrototypeConsumer, PassedConsumer>(
                     args.consume();
                     match_argument(proto_ty, splat_ty, result);
                 },
-                Some(&CallArg::Kwsplat(..)) |
                 Some(&CallArg::BlockPass(..)) |
-                Some(&CallArg::BlockLiteral(..)) => panic!("unimplemented"),
+                Some(&CallArg::BlockLiteral(..)) => panic!("should not happen"),
                 None => break,
             }
         }
     }
 }
 
-pub fn match_prototype_with_invocation<'ty, 'object: 'ty>(
+pub fn match_prototype_with_invocation<'ty, 'env, 'object: 'ty + 'env>(
+    tyenv: &TypeEnv<'ty, 'env, 'object>,
     prototype: &Prototype<'ty, 'object>,
     args: &[CallArg<'ty, 'object>],
 ) -> MatchResult<'ty, 'object>
@@ -218,8 +326,16 @@ pub fn match_prototype_with_invocation<'ty, 'object: 'ty>(
         }
     ).count();
 
+    match_block_argument(
+        &mut ReverseConsumer(&mut prototype_args),
+        &mut ReverseConsumer(&mut args),
+        &mut result);
+
     if args.len() > required_argc {
-        // handle popping keyword args off the end
+        match_keyword_hash_argument(tyenv,
+            &mut prototype_args,
+            &mut args,
+            &mut result);
     }
 
     match_required_arguments(

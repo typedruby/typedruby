@@ -115,7 +115,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
 
     pub fn merge(&self, other: Locals<'ty, 'object>) -> Locals<'ty, 'object> {
         let _ = other;
-        panic!("unimplemented");
+        panic!("TODO");
     }
 }
 

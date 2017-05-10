@@ -15,7 +15,7 @@ pub struct TypeEnv<'ty, 'env, 'object: 'ty + 'env> {
     arena: &'ty Arena<Type<'ty, 'object>>,
     next_id: Rc<Cell<TypeVarId>>,
     instance_map: RefCell<TreeMap<TypeVarId, &'ty Type<'ty, 'object>>>,
-    object: &'env ObjectGraph<'object>,
+    pub object: &'env ObjectGraph<'object>,
 }
 
 impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
@@ -486,6 +486,17 @@ pub enum Arg<'ty, 'object: 'ty> {
     Rest {
         loc: Loc,
         ty: Option<&'ty Type<'ty, 'object>>,
+    },
+    Kwarg {
+        loc: Loc,
+        name: String,
+        ty: Option<&'ty Type<'ty, 'object>>,
+    },
+    Kwoptarg {
+        loc: Loc,
+        name: String,
+        ty: Option<&'ty Type<'ty, 'object>>,
+        expr: Rc<Node>,
     },
     Block {
         loc: Loc,
