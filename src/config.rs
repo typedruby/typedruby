@@ -3,6 +3,7 @@ use std::vec::Vec;
 
 pub struct Config {
     pub require_paths: Vec<PathBuf>,
+    pub warning: bool,
 }
 
 impl Config {
@@ -10,6 +11,7 @@ impl Config {
     pub fn new() -> Config {
         Config {
             require_paths: Vec::new(),
+            warning: false,
         }
     }
 }

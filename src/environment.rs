@@ -6,8 +6,8 @@ use std::collections::{HashMap, VecDeque};
 
 use typed_arena::Arena;
 
-use ast::{parse, SourceFile, Node, Id};
-use errors::ErrorSink;
+use ast::{parse, SourceFile, Node, Id, DiagnosticLevel};
+use errors::{ErrorSink, Detail};
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope};
 use top_level;
 use config::Config;
@@ -60,6 +60,25 @@ impl<'object> Environment<'object> {
 
     fn load_source_file(&self, source_file: SourceFile) {
         let ast = parse(Rc::new(source_file));
+
+        for diag in ast.diagnostics {
+            match diag.level {
+                DiagnosticLevel::Note => {},
+                DiagnosticLevel::Warning => {
+                    if self.config.warning {
+                        self.error_sink.borrow_mut().warning(&diag.message, &[
+                            Detail::Loc("here", &diag.loc),
+                        ]);
+                    }
+                },
+                DiagnosticLevel::Error |
+                DiagnosticLevel::Fatal => {
+                    self.error_sink.borrow_mut().error(&diag.message, &[
+                        Detail::Loc("here", &diag.loc),
+                    ]);
+                }
+            }
+        }
 
         if let Some(ref node) = ast.node {
             top_level::evaluate(self, node.clone());
