@@ -109,35 +109,43 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn create_instance_type(&self, loc: &Loc, class: &'object RubyObject<'object>, type_parameters: Vec<&'ty Type<'ty, 'object>>) -> &'ty Type<'ty, 'object> {
+    fn create_instance_type(&self, loc: &Loc, class: &'object RubyObject<'object>, mut type_parameters: Vec<&'ty Type<'ty, 'object>>) -> &'ty Type<'ty, 'object> {
         let supplied_params = type_parameters.len();
         let expected_params = class.type_parameters().len();
 
-        if supplied_params == expected_params {
-            self.tyenv.instance(loc.clone(), class, type_parameters)
-        } else {
-            if supplied_params == 0 {
-                self.error("Type referenced is generic but no type parameters were supplied", &[
-                    Detail::Loc("here", loc),
-                ]);
-            } else if supplied_params < expected_params {
-                let mut message = format!("{} also expects ", class.name());
+        if supplied_params == 0 && expected_params > 0 {
+            self.error("Type referenced is generic but no type parameters were supplied", &[
+                Detail::Loc("here", loc),
+            ]);
+        } else if supplied_params < expected_params {
+            let mut message = format!("{} also expects ", class.name());
 
-                for (i, &Id(_, ref name)) in class.type_parameters().iter().skip(supplied_params).enumerate() {
-                    if i > 0 {
-                        message += ", ";
-                    }
-
-                    message += name;
+            for (i, &Id(_, ref name)) in class.type_parameters().iter().skip(supplied_params).enumerate() {
+                if i > 0 {
+                    message += ", ";
                 }
 
-                self.error("Too few type parameters supplied in instantiation of generic type", &[
-                    Detail::Loc(&message, loc),
-                ]);
+                message += name;
             }
 
-            self.tyenv.any(loc.clone())
+            self.error("Too few type parameters supplied in instantiation of generic type", &[
+                Detail::Loc(&message, loc),
+            ]);
+
+            for _ in 0..(expected_params - supplied_params) {
+                type_parameters.push(self.tyenv.new_var(loc.clone()))
+            }
+        } else if supplied_params > expected_params {
+            self.error("Too many type parameters supplied in instantiation of generic type", &[
+                Detail::Loc("from here", type_parameters[expected_params].loc()),
+            ]);
+
+            for _ in 0..(supplied_params - expected_params) {
+                type_parameters.pop();
+            }
         }
+
+        self.tyenv.instance(loc.clone(), class, type_parameters)
     }
 
     fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: Vec<&'ty Type<'ty, 'object>>, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
