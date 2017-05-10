@@ -285,6 +285,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 (Arg::Block { loc: loc.clone(), ty: ty }, locals),
             Node::Blockarg(ref loc, Some(Id(_, ref name))) =>
                 (Arg::Block { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty_or_any)),
+            Node::Kwarg(ref loc, ref name) =>
+                (Arg::Kwarg { loc: loc.clone(), name: name.to_owned(), ty: ty }, locals.assign_shadow(name.to_owned(), ty_or_any)),
+            Node::Kwoptarg(ref loc, Id(_, ref name), ref expr) =>
+                (Arg::Kwoptarg { loc: loc.clone(), name: name.to_owned(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty_or_any)),
             Node::Optarg(_, Id(ref loc, ref name), ref expr) =>
                 (Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty_or_any)),
             Node::Restarg(ref loc, None) =>
@@ -378,7 +382,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     fn process_array_tuple(&self, exprs: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         let _ = exprs;
         let _ = locals;
-        panic!("unimplemented")
+        panic!("TODO")
     }
 
     fn prototype_from_method_entry(&self, loc: &Loc, method: &MethodEntry<'object>, type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
@@ -510,10 +514,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.process_and_extract(n.as_ref().expect("splat in call arg must have node"), locals).map_left(|(ty, locals)|
                     (CallArg::Splat(node.loc().clone(), ty), locals)
                 ),
-            Node::Kwsplat(_, ref n) =>
-                self.process_and_extract(n, locals).map_left(|(ty, locals)|
-                    (CallArg::Kwsplat(node.loc().clone(), ty), locals)
-                ),
             Node::BlockPass(_, ref n) =>
                 self.process_and_extract(n, locals).map_left(|(ty, locals)|
                     (CallArg::BlockPass(node.loc().clone(), ty), locals)
@@ -588,7 +588,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let mut result_comp = None;
 
         for proto in prototypes {
-            let match_result = call::match_prototype_with_invocation(&proto, &args);
+            let match_result = call::match_prototype_with_invocation(&self.tyenv, &proto, &args);
 
             for match_error in match_result.errors {
                 match match_error {
@@ -603,6 +603,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             Detail::Loc("in this invocation", &id.0),
                         ])
                     },
+                    ArgError::MissingKeyword(ref name) => {
+                        self.error(&format!("Missing keyword argument :{}", name), &[
+                            Detail::Loc("in this invocation", &id.0),
+                        ])
+                    }
                 }
             }
 
@@ -881,7 +886,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                                 self.compatible(value_ty, value, Some(loc));
                             }
                             HashEntry::Kwsplat(_) => {
-                                panic!("unimplemented")
+                                panic!("TODO")
                             }
                         }
                     }

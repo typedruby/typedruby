@@ -650,6 +650,16 @@ impl<'a> RubyObject<'a> {
         AncestorIterator { object: Some(self) }
     }
 
+    pub fn is_a(&'a self, other: &'a RubyObject<'a>) -> bool {
+        for k in self.ancestors() {
+            if k.delegate() == other {
+                return true
+            }
+        }
+
+        false
+    }
+
     // returns the next module, class, or metaclass in the ancestry chain.
     // skips iclasses.
     pub fn superclass(&'a self) -> Option<&'a RubyObject<'a>> {
