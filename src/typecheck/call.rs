@@ -1,6 +1,5 @@
-use std::rc::Rc;
-use ast::{Node, Loc};
-use typecheck::types::{Arg, Type, TypeEnv, Prototype};
+use ast::{Loc};
+use typecheck::types::{Arg, Type, TypeEnv};
 use std::marker::Sized;
 use std::ops::Deref;
 use std::collections::HashMap;

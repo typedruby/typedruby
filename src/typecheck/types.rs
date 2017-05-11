@@ -540,15 +540,3 @@ pub enum Arg<'ty, 'object: 'ty> {
         ty: &'ty Type<'ty, 'object>,
     },
 }
-
-fn is_procarg0<'ty, 'object: 'ty>(args: &[Arg<'ty, 'object>]) -> bool {
-    if args.len() != 1 {
-        return false;
-    }
-
-    if let Arg::Procarg0 { .. } = args[0] {
-        true
-    } else {
-        false
-    }
-}

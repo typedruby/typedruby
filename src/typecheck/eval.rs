@@ -385,7 +385,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         (status.append(AnnotationStatus::Untyped), &**args, self.tyenv.new_var(node.loc().clone())),
                 }
             },
-            Node::Args(ref args_loc, ref args) => {
+            Node::Args(..) => {
                 (AnnotationStatus::Untyped, node, self.tyenv.new_var(node.loc().clone()))
             },
             _ => panic!("unexpected {:?}", node),
@@ -599,6 +599,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Or::Left(locals)
             }
             (Some(proto_block_ty), Some(&BlockArg::Pass { ref node, .. })) => {
+                let _ = proto_block_ty;
+                let _ = node;
                 panic!("TODO")
             }
             (Some(proto_block_ty), Some(&BlockArg::Literal { ref loc, ref args, ref body })) => {
@@ -738,11 +740,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         self.compatible(proto_ty, pass_ty, Some(loc));
                     }
 
+                    let retn_ty = self.tyenv.update_loc(retn, loc.clone());
+
                     match self.process_block(&id.0, block.as_ref(), locals.clone(), proto_block) {
-                        Or::Left(locals) => Computation::result(retn, locals),
+                        Or::Left(locals) => Computation::result(retn_ty, locals),
                         Or::Right(comp) => comp,
                         Or::Both(locals, comp) => Computation::divergent(
-                            Computation::result(retn, locals),
+                            Computation::result(retn_ty, locals),
                             comp),
                     }
                 },
@@ -917,8 +921,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 self.process_send(loc, recv, mid, args, block, locals)
             }
-            Node::Block(_, ref send, ref block_args, ref block_body) => {
-                if let Node::Send(ref send_loc, ref recv, ref mid, ref args) = **send {
+            Node::Block(ref loc, ref send, ref block_args, ref block_body) => {
+                if let Node::Send(_, ref recv, ref mid, ref args) = **send {
                     let mut block_loc = block_args.loc().clone();
 
                     if let Some(ref block_body) = *block_body {
@@ -927,7 +931,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                     let block = BlockArg::Literal { loc: block_loc, args: block_args.clone(), body: block_body.clone() };
 
-                    self.process_send(send_loc, recv, mid, args, Some(block), locals)
+                    self.process_send(loc, recv, mid, args, Some(block), locals)
                 } else {
                     panic!("expected Node::Send inside Node::Block")
                 }
