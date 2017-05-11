@@ -47,10 +47,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     }
 
     pub fn any_prototype(&self, loc: Loc) -> Rc<Prototype<'ty, 'object>> {
-        Rc::new(Prototype {
-            args: vec![Arg::Rest { loc: loc, ty: None }],
-            retn: None,
-        })
+        Rc::new(Prototype::Untyped)
     }
 
     pub fn instance(&self, loc: Loc, class: &'object RubyObject<'object>, type_parameters: Vec<&'ty Type<'ty, 'object>>)
@@ -463,16 +460,19 @@ impl<'ty, 'object> Type<'ty, 'object> {
 }
 
 #[derive(Debug)]
-pub struct Prototype<'ty, 'object: 'ty> {
-    pub args: Vec<Arg<'ty, 'object>>,
-    pub retn: Option<&'ty Type<'ty, 'object>>,
+pub enum Prototype<'ty, 'object: 'ty> {
+    Untyped,
+    Typed {
+        args: Vec<Arg<'ty, 'object>>,
+        retn: &'ty Type<'ty, 'object>,
+    },
 }
 
 #[derive(Debug,Clone)]
 pub enum Arg<'ty, 'object: 'ty> {
     Required {
         loc: Loc,
-        ty: Option<&'ty Type<'ty, 'object>>,
+        ty: &'ty Type<'ty, 'object>,
     },
     Procarg0 {
         loc: Loc,
@@ -480,26 +480,26 @@ pub enum Arg<'ty, 'object: 'ty> {
     },
     Optional {
         loc: Loc,
-        ty: Option<&'ty Type<'ty, 'object>>,
+        ty: &'ty Type<'ty, 'object>,
         expr: Rc<Node>,
     },
     Rest {
         loc: Loc,
-        ty: Option<&'ty Type<'ty, 'object>>,
+        ty: &'ty Type<'ty, 'object>,
     },
     Kwarg {
         loc: Loc,
         name: String,
-        ty: Option<&'ty Type<'ty, 'object>>,
+        ty: &'ty Type<'ty, 'object>,
     },
     Kwoptarg {
         loc: Loc,
         name: String,
-        ty: Option<&'ty Type<'ty, 'object>>,
+        ty: &'ty Type<'ty, 'object>,
         expr: Rc<Node>,
     },
     Block {
         loc: Loc,
-        ty: Option<&'ty Type<'ty, 'object>>,
+        ty: &'ty Type<'ty, 'object>,
     },
 }

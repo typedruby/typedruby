@@ -97,13 +97,11 @@ impl<'v, 'a, T> Consumer<'a, T> for ReverseConsumer<'v, 'a, T> {
 }
 
 fn match_argument<'ty, 'object: 'ty>(
-    prototype_arg_type: Option<&'ty Type<'ty, 'object>>,
+    prototype_arg_type: &'ty Type<'ty, 'object>,
     passed_arg_type: &'ty Type<'ty, 'object>,
     result: &mut MatchResult<'ty, 'object>)
 {
-    if let Some(proto_ty) = prototype_arg_type {
-        result.matches.push((proto_ty, passed_arg_type));
-    }
+    result.matches.push((prototype_arg_type, passed_arg_type));
 }
 
 fn match_block_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
@@ -195,7 +193,7 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
 
                                 keyword_hash_loc = keyword_hash_loc.join(loc);
 
-                                potential_keywords.push((name.clone(), proto_ty.unwrap_or_else(|| tyenv.any(loc.clone()))));
+                                potential_keywords.push((name.clone(), proto_ty));
                             }
                             _ => break
                         }
@@ -216,7 +214,7 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
 }
 
 fn match_prototype_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
-    prototype_arg_type: Option<&'ty Type<'ty, 'object>>,
+    prototype_arg_type: &'ty Type<'ty, 'object>,
     prototype_args: &mut PrototypeConsumer,
     args: &mut PassedConsumer,
     result: &mut MatchResult<'ty, 'object>
@@ -307,8 +305,8 @@ fn match_rest_argument<'a, 'ty: 'a, 'object, PrototypeConsumer, PassedConsumer>(
 
 pub fn match_prototype_with_invocation<'ty, 'env, 'object: 'ty + 'env>(
     tyenv: &TypeEnv<'ty, 'env, 'object>,
-    prototype: &Prototype<'ty, 'object>,
-    args: &[CallArg<'ty, 'object>],
+    prototype_args: &[Arg<'ty, 'object>],
+    call_args: &[CallArg<'ty, 'object>],
 ) -> MatchResult<'ty, 'object>
 {
     let mut result = MatchResult {
@@ -316,8 +314,8 @@ pub fn match_prototype_with_invocation<'ty, 'env, 'object: 'ty + 'env>(
         errors: Vec::new(),
     };
 
-    let mut args = View(args);
-    let mut prototype_args = View(prototype.args.as_slice());
+    let mut prototype_args = View(prototype_args);
+    let mut call_args = View(call_args);
 
     let required_argc = prototype_args.iter().filter(|arg|
         match **arg {
@@ -328,41 +326,41 @@ pub fn match_prototype_with_invocation<'ty, 'env, 'object: 'ty + 'env>(
 
     match_block_argument(
         &mut ReverseConsumer(&mut prototype_args),
-        &mut ReverseConsumer(&mut args),
+        &mut ReverseConsumer(&mut call_args),
         &mut result);
 
-    if args.len() > required_argc {
+    if call_args.len() > required_argc {
         match_keyword_hash_argument(tyenv,
             &mut prototype_args,
-            &mut args,
+            &mut call_args,
             &mut result);
     }
 
     match_required_arguments(
         &mut ForwardConsumer(&mut prototype_args),
-        &mut ForwardConsumer(&mut args),
+        &mut ForwardConsumer(&mut call_args),
         &mut result);
 
     match_required_arguments(
         &mut ReverseConsumer(&mut prototype_args),
-        &mut ReverseConsumer(&mut args),
+        &mut ReverseConsumer(&mut call_args),
         &mut result);
 
     match_optional_arguments(
         &mut ForwardConsumer(&mut prototype_args),
-        &mut ForwardConsumer(&mut args),
+        &mut ForwardConsumer(&mut call_args),
         &mut result);
 
     match_rest_argument(
         &mut ForwardConsumer(&mut prototype_args),
-        &mut ForwardConsumer(&mut args),
+        &mut ForwardConsumer(&mut call_args),
         &mut result);
 
     if !prototype_args.is_empty() {
         result.errors.push(ArgError::TooFewArguments);
     }
 
-    if let Some(arg) = args.first() {
+    if let Some(arg) = call_args.first() {
         result.errors.push(ArgError::TooManyArguments(arg.loc().clone()));
     }
 
