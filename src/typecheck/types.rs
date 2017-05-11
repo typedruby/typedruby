@@ -173,8 +173,45 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (&Type::Instance { .. }, &Type::KeywordHash { .. }) => {
                 self.compatible(to, self.degrade_to_instance(from))
             },
+            (&Type::Proc { proto: ref proto1, .. }, &Type::Proc { proto: ref proto2, .. }) => {
+                match (&**proto1, &**proto2) {
+                    (&Prototype::Untyped, _) => Ok(()),
+                    (_, &Prototype::Untyped) => Ok(()),
+                    (&Prototype::Typed { args: ref args1, retn: ref retn1, .. }, &Prototype::Typed { args: ref args2, retn: ref retn2 }) => {
+                        if args1.len() != args2.len() {
+                            return Err((to, from));
+                        }
+
+                        for (arg1, arg2) in args1.iter().zip(args2.iter()) {
+                            match self.compatible_arg(arg1, arg2) {
+                                None => return Err((to, from)),
+                                Some(e@Err(..)) => return e,
+                                Some(Ok(())) => continue,
+                            }
+                        }
+
+                        self.compatible(retn1, retn2)
+                    }
+                }
+            }
             (_, _) =>
                 self.unify(to, from),
+        }
+    }
+
+    pub fn compatible_arg(&self, to: &Arg<'ty, 'object>, from: &Arg<'ty, 'object>) -> Option<UnificationResult<'ty, 'object>> {
+        match (to, from) {
+            (&Arg::Procarg0 { arg: ref arg1, .. }, &Arg::Procarg0 { arg: ref arg2, .. }) =>
+                self.compatible_arg(arg2, arg1),
+            (&Arg::Required { ty: ref ty1, .. }, &Arg::Required { ty: ref ty2, .. }) |
+            (&Arg::Optional { ty: ref ty1, .. }, &Arg::Required { ty: ref ty2, .. }) |
+            (&Arg::Rest { ty: ref ty1, .. }, &Arg::Rest { ty: ref ty2, .. }) |
+            (&Arg::Block { ty: ref ty1, .. }, &Arg::Block { ty: ref ty2, .. }) =>
+                Some(self.compatible(ty2, ty1)),
+            (&Arg::Kwarg { .. }, _) |
+            (&Arg::Kwoptarg { .. }, _) =>
+                panic!("TODO"),
+            _ => None,
         }
     }
 
@@ -502,4 +539,16 @@ pub enum Arg<'ty, 'object: 'ty> {
         loc: Loc,
         ty: &'ty Type<'ty, 'object>,
     },
+}
+
+fn is_procarg0<'ty, 'object: 'ty>(args: &[Arg<'ty, 'object>]) -> bool {
+    if args.len() != 1 {
+        return false;
+    }
+
+    if let Arg::Procarg0 { .. } = args[0] {
+        true
+    } else {
+        false
+    }
 }

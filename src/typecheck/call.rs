@@ -9,8 +9,6 @@ use std::collections::HashMap;
 pub enum CallArg<'ty, 'object: 'ty> {
     Pass(Loc, &'ty Type<'ty, 'object>),
     Splat(Loc, &'ty Type<'ty, 'object>),
-    BlockPass(Loc, &'ty Type<'ty, 'object>),
-    BlockLiteral(Loc, Rc<Node>, Option<Rc<Node>>),
 }
 
 impl<'ty, 'object> CallArg<'ty, 'object> {
@@ -18,8 +16,6 @@ impl<'ty, 'object> CallArg<'ty, 'object> {
         match *self {
             CallArg::Pass(ref loc, _) => loc,
             CallArg::Splat(ref loc, _) => loc,
-            CallArg::BlockPass(ref loc, _) => loc,
-            CallArg::BlockLiteral(ref loc, _, _) => loc,
         }
     }
 }
@@ -102,19 +98,6 @@ fn match_argument<'ty, 'object: 'ty>(
     result: &mut MatchResult<'ty, 'object>)
 {
     result.matches.push((prototype_arg_type, passed_arg_type));
-}
-
-fn match_block_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
-    prototype_args: &mut PrototypeConsumer,
-    args: &mut PassedConsumer,
-    result: &mut MatchResult<'ty, 'object>
-) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
-        PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
-{
-    // TODO
-    let _ = prototype_args;
-    let _ = args;
-    let _ = result;
 }
 
 fn consume_remaining_keywords<'a, 'ty: 'a, 'object: 'ty>(
@@ -237,9 +220,7 @@ fn match_prototype_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
 
             match_argument(prototype_arg_type, pass_ty, result);
         }
-        Some(&CallArg::BlockPass(..)) |
-        Some(&CallArg::BlockLiteral(..)) => panic!("should not happen"),
-        None => {},
+        None => {}
     }
 }
 
@@ -290,14 +271,12 @@ fn match_rest_argument<'a, 'ty: 'a, 'object, PrototypeConsumer, PassedConsumer>(
                 Some(&CallArg::Pass(_, pass_ty)) => {
                     args.consume();
                     match_argument(proto_ty, pass_ty, result);
-                },
+                }
                 Some(&CallArg::Splat(_, splat_ty)) => {
                     args.consume();
                     match_argument(proto_ty, splat_ty, result);
-                },
-                Some(&CallArg::BlockPass(..)) |
-                Some(&CallArg::BlockLiteral(..)) => panic!("should not happen"),
-                None => break,
+                }
+                None => break
             }
         }
     }
@@ -323,11 +302,6 @@ pub fn match_prototype_with_invocation<'ty, 'env, 'object: 'ty + 'env>(
             _ => false,
         }
     ).count();
-
-    match_block_argument(
-        &mut ReverseConsumer(&mut prototype_args),
-        &mut ReverseConsumer(&mut call_args),
-        &mut result);
 
     if call_args.len() > required_argc {
         match_keyword_hash_argument(tyenv,
