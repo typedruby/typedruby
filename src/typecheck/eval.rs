@@ -52,6 +52,33 @@ enum HashEntry<'ty, 'object: 'ty> {
     Kwsplat(&'ty Type<'ty, 'object>),
 }
 
+#[derive(Clone,Copy)]
+enum AnnotationStatus {
+    Empty,
+    Typed,
+    Partial,
+    Untyped,
+}
+
+impl AnnotationStatus {
+    pub fn empty() -> AnnotationStatus {
+        AnnotationStatus::Empty
+    }
+
+    pub fn append(self, other: AnnotationStatus) -> AnnotationStatus {
+        match (self, other) {
+            (AnnotationStatus::Typed, AnnotationStatus::Typed) => AnnotationStatus::Typed,
+            (AnnotationStatus::Untyped, AnnotationStatus::Untyped) => AnnotationStatus::Untyped,
+            (AnnotationStatus::Empty, _) => other,
+            _ => AnnotationStatus::Partial,
+        }
+    }
+
+    pub fn append_into(&mut self, other: AnnotationStatus) {
+        *self = self.append(other);
+    }
+}
+
 fn merge_maybe_comps<'ty, 'object: 'ty>(a: Option<Computation<'ty, 'object>>, b: Option<Computation<'ty, 'object>>) -> Option<Computation<'ty, 'object>> {
     match (a, b) {
         (Some(a), Some(b)) => Some(Computation::divergent(a, b)),
@@ -97,12 +124,25 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 panic!("unknown node: {:?}", self.node),
         };
 
-        let (prototype, locals) = self.resolve_prototype(prototype_node, Locals::new(), &self.type_context, self.scope.clone());
+        let (annotation_status, prototype, locals) = self.resolve_prototype(prototype_node, Locals::new(), &self.type_context, self.scope.clone());
+
+        match annotation_status {
+            AnnotationStatus::Empty |
+            AnnotationStatus::Untyped =>
+                return,
+            AnnotationStatus::Partial => {
+                self.error("Partial type signatures are not permitted in method definitions", &[
+                    Detail::Loc("all arguments and return value must be annotated", prototype_node.loc()),
+                ]);
+                return;
+            },
+            AnnotationStatus::Typed => {},
+        };
 
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
             self.process_node(body_node, locals).terminate(&|ty|
-                if let Some(retn) = prototype.retn {
+                if let Prototype::Typed { retn, .. } = *prototype {
                     self.compatible(retn, ty, None)
                 }
             );
@@ -221,7 +261,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::TyProc(ref loc, ref prototype) => {
                 self.tyenv.alloc(Type::Proc {
                     loc: loc.clone(),
-                    proto: self.resolve_prototype(prototype, Locals::new(), context, scope).0,
+                    proto: self.resolve_prototype(prototype, Locals::new(), context, scope).1,
                 })
             },
             Node::TyClass(ref loc) => {
@@ -266,50 +306,52 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn resolve_arg(&self, arg_node: &Node, locals: Locals<'ty, 'object>, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
-        -> (Arg<'ty, 'object>, Locals<'ty, 'object>)
+        -> (AnnotationStatus, Arg<'ty, 'object>, Locals<'ty, 'object>)
     {
-        let (ty, arg_node) = match *arg_node {
+        let (status, ty, arg_node) = match *arg_node {
             Node::TypedArg(_, ref type_node, ref arg) => {
                 let ty = self.resolve_type(type_node, context, scope.clone());
-                (Some(ty), &**arg)
+                (AnnotationStatus::Typed, ty, &**arg)
             },
-            _ => (None, arg_node),
+            _ => {
+                (AnnotationStatus::Untyped, self.tyenv.new_var(arg_node.loc().clone()), arg_node)
+            },
         };
-
-        let ty_or_any = ty.unwrap_or_else(|| self.tyenv.any(arg_node.loc().clone()));
 
         match *arg_node {
             Node::Arg(ref loc, ref name) =>
-                (Arg::Required { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty_or_any)),
+                (status, Arg::Required { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Blockarg(ref loc, None) =>
-                (Arg::Block { loc: loc.clone(), ty: ty }, locals),
+                (status, Arg::Block { loc: loc.clone(), ty: ty }, locals),
             Node::Blockarg(ref loc, Some(Id(_, ref name))) =>
-                (Arg::Block { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty_or_any)),
+                (status, Arg::Block { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Kwarg(ref loc, ref name) =>
-                (Arg::Kwarg { loc: loc.clone(), name: name.to_owned(), ty: ty }, locals.assign_shadow(name.to_owned(), ty_or_any)),
+                (status, Arg::Kwarg { loc: loc.clone(), name: name.to_owned(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Kwoptarg(ref loc, Id(_, ref name), ref expr) =>
-                (Arg::Kwoptarg { loc: loc.clone(), name: name.to_owned(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty_or_any)),
+                (status, Arg::Kwoptarg { loc: loc.clone(), name: name.to_owned(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Optarg(_, Id(ref loc, ref name), ref expr) =>
-                (Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty_or_any)),
+                (status, Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Restarg(ref loc, None) =>
-                (Arg::Rest { loc: loc.clone(), ty: ty }, locals),
+                (status, Arg::Rest { loc: loc.clone(), ty: ty }, locals),
             Node::Restarg(ref loc, Some(Id(_, ref name))) =>
-                (Arg::Rest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), self.create_array_type(loc, ty_or_any))),
+                (status, Arg::Rest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), self.create_array_type(loc, ty))),
             Node::Procarg0(ref loc, ref inner_arg_node) => {
-                let (inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
-                (Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
+                let (status, inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
+                (status, Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
             },
             _ => panic!("arg_node: {:?}", arg_node),
         }
     }
 
     fn resolve_prototype(&self, node: &Node, locals: Locals<'ty, 'object>, context_: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
-        -> (Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
+        -> (AnnotationStatus, Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
     {
         let mut context = context_.clone();
 
-        let (args_node, return_type) = match *node {
+        let (mut status, args_node, return_type) = match *node {
             Node::Prototype(_, ref genargs, ref args, ref ret) => {
+                let mut status = AnnotationStatus::empty();
+
                 if let Some(ref genargs_) = *genargs {
                     if let Node::TyGenargs(_, ref gendeclargs) = **genargs_ {
                         for gendeclarg in gendeclargs {
@@ -318,11 +360,20 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             }
                         }
                     }
+
+                    status.append_into(AnnotationStatus::Typed);
                 }
 
-                (&**args, ret.as_ref().map(|ret_node| self.resolve_type(ret_node, &context, scope.clone())))
+                match *ret {
+                    Some(ref type_node) =>
+                        (status.append(AnnotationStatus::Typed), &**args, self.resolve_type(type_node, &context, scope.clone())),
+                    None =>
+                        (status.append(AnnotationStatus::Untyped), &**args, self.tyenv.new_var(node.loc().clone())),
+                }
             },
-            Node::Args(..) => (node, None),
+            Node::Args(ref args_loc, ref args) => {
+                (AnnotationStatus::Untyped, node, self.tyenv.new_var(node.loc().clone()))
+            },
             _ => panic!("unexpected {:?}", node),
         };
 
@@ -336,14 +387,20 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let mut locals = locals;
 
         for arg_node in arg_nodes {
-            let (arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
+            let (arg_status, arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
+            status.append_into(arg_status);
             args.push(arg);
             locals = locals_;
         }
 
-        let prototype = Prototype { args: args, retn: return_type };
+        let prototype = match status {
+            AnnotationStatus::Empty |
+            AnnotationStatus::Untyped => Prototype::Untyped,
+            AnnotationStatus::Partial |
+            AnnotationStatus::Typed => Prototype::Typed { args: args, retn: return_type },
+        };
 
-        (Rc::new(prototype), locals)
+        (status, Rc::new(prototype), locals)
     }
 
     fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
@@ -396,7 +453,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     _ => panic!("unexpected node in MethodEntry::Ruby: {:?}", node),
                 };
 
-                self.resolve_prototype(&prototype_node, Locals::new(), &type_context, scope.clone()).0
+                self.resolve_prototype(&prototype_node, Locals::new(), &type_context, scope.clone()).1
             }
             MethodEntry::Untyped => self.tyenv.any_prototype(loc.clone()),
             MethodEntry::IntrinsicClassNew => {
@@ -423,9 +480,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                         let proto = self.prototype_from_method_entry(loc, &initialize_method, initialize_type_context);
 
-                        Rc::new(Prototype {
-                            args: proto.args.clone(),
-                            retn: Some(instance_type),
+                        Rc::new(match *proto {
+                            Prototype::Untyped => Prototype::Untyped,
+                            Prototype::Typed { ref args, .. } => Prototype::Typed { args: args.clone(), retn: instance_type },
                         })
                     },
                     RubyObject::Class { .. } => {
@@ -588,34 +645,40 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let mut result_comp = None;
 
         for proto in prototypes {
-            let match_result = call::match_prototype_with_invocation(&self.tyenv, &proto, &args);
+            let retn_ty = match *proto {
+                Prototype::Typed { args: ref proto_args, ref retn } => {
+                    let match_result = call::match_prototype_with_invocation(&self.tyenv, proto_args, &args);
 
-            for match_error in match_result.errors {
-                match match_error {
-                    ArgError::TooFewArguments => {
-                        self.error("Too few arguments supplied", &[
-                            Detail::Loc("in this invocation", &id.0),
-                        ])
-                    },
-                    ArgError::TooManyArguments(ref loc) => {
-                        self.error("Too many arguments supplied", &[
-                            Detail::Loc("from here", loc),
-                            Detail::Loc("in this invocation", &id.0),
-                        ])
-                    },
-                    ArgError::MissingKeyword(ref name) => {
-                        self.error(&format!("Missing keyword argument :{}", name), &[
-                            Detail::Loc("in this invocation", &id.0),
-                        ])
+                    for match_error in match_result.errors {
+                        match match_error {
+                            ArgError::TooFewArguments => {
+                                self.error("Too few arguments supplied", &[
+                                    Detail::Loc("in this invocation", &id.0),
+                                ])
+                            },
+                            ArgError::TooManyArguments(ref loc) => {
+                                self.error("Too many arguments supplied", &[
+                                    Detail::Loc("from here", loc),
+                                    Detail::Loc("in this invocation", &id.0),
+                                ])
+                            },
+                            ArgError::MissingKeyword(ref name) => {
+                                self.error(&format!("Missing keyword argument :{}", name), &[
+                                    Detail::Loc("in this invocation", &id.0),
+                                ])
+                            }
+                        }
                     }
-                }
-            }
 
-            for (proto_ty, pass_ty) in match_result.matches {
-                self.compatible(proto_ty, pass_ty, None);
-            }
+                    for (proto_ty, pass_ty) in match_result.matches {
+                        self.compatible(proto_ty, pass_ty, None);
+                    }
 
-            let retn_ty = proto.retn.unwrap_or_else(|| self.tyenv.any(loc.clone()));
+                    retn
+                },
+                Prototype::Untyped =>
+                    self.tyenv.any(loc.clone()),
+            };
 
             result_comp = merge_maybe_comps(result_comp,
                 Some(Computation::result(retn_ty, locals.clone())));
