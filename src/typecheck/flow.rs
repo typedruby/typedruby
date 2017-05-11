@@ -185,6 +185,12 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         }
     }
 
+    pub fn capture_next(&self) -> Computation<'ty, 'object> {
+        // TODO when Computation_::Next is implemented this needs to turn
+        // Next computations into Result computations:
+        self.clone()
+    }
+
     pub fn converge_results<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>) -> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(..) |

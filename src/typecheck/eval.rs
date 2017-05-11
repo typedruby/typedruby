@@ -79,6 +79,20 @@ impl AnnotationStatus {
     }
 }
 
+enum BlockArg {
+    Pass { loc: Loc, node: Rc<Node> },
+    Literal { loc: Loc, args: Rc<Node>, body: Option<Rc<Node>> },
+}
+
+impl BlockArg {
+    pub fn loc(&self) -> &Loc {
+        match *self {
+            BlockArg::Pass { ref loc, .. } => loc,
+            BlockArg::Literal { ref loc, .. } => loc,
+        }
+    }
+}
+
 fn merge_maybe_comps<'ty, 'object: 'ty>(a: Option<Computation<'ty, 'object>>, b: Option<Computation<'ty, 'object>>) -> Option<Computation<'ty, 'object>> {
     match (a, b) {
         (Some(a), Some(b)) => Some(Computation::divergent(a, b)),
@@ -393,14 +407,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             locals = locals_;
         }
 
-        let prototype = match status {
-            AnnotationStatus::Empty |
-            AnnotationStatus::Untyped => Prototype::Untyped,
-            AnnotationStatus::Partial |
-            AnnotationStatus::Typed => Prototype::Typed { args: args, retn: return_type },
-        };
-
-        (status, Rc::new(prototype), locals)
+        (status, Rc::new(Prototype::Typed { args: args, retn: return_type }), locals)
     }
 
     fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
@@ -571,10 +578,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.process_and_extract(n.as_ref().expect("splat in call arg must have node"), locals).map_left(|(ty, locals)|
                     (CallArg::Splat(node.loc().clone(), ty), locals)
                 ),
-            Node::BlockPass(_, ref n) =>
-                self.process_and_extract(n, locals).map_left(|(ty, locals)|
-                    (CallArg::BlockPass(node.loc().clone(), ty), locals)
-                ),
             _ =>
                 self.process_and_extract(node, locals).map_left(|(ty, locals)|
                     (CallArg::Pass(node.loc().clone(), ty), locals)
@@ -582,7 +585,71 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<(Rc<Node>, Option<Rc<Node>>)>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+    fn process_block(&self, send_loc: &Loc, block: Option<&BlockArg>, locals: Locals<'ty, 'object>, prototype_block: Option<&'ty Type<'ty, 'object>>) -> Or<Locals<'ty, 'object>, Computation<'ty, 'object>> {
+        match (prototype_block, block) {
+            (None, None) => {
+                Or::Left(locals)
+            }
+            (None, Some(block)) => {
+                self.error("Block passed in method invocation", &[
+                    Detail::Loc("here", block.loc()),
+                    Detail::Loc("but this method does not take a block", send_loc),
+                ]);
+
+                Or::Left(locals)
+            }
+            (Some(proto_block_ty), Some(&BlockArg::Pass { ref node, .. })) => {
+                panic!("TODO")
+            }
+            (Some(proto_block_ty), Some(&BlockArg::Literal { ref loc, ref args, ref body })) => {
+                let block_locals = locals.extend();
+
+                let (_, block_prototype, block_locals) = self.resolve_prototype(args, block_locals, &self.type_context, self.scope.clone());
+
+                let block_return_type = if let Prototype::Typed { ref retn, .. } = *block_prototype {
+                    retn
+                } else {
+                    self.tyenv.new_var(loc.clone())
+                };
+
+                let block_proc_type = self.tyenv.alloc(Type::Proc {
+                    loc: loc.clone(),
+                    proto: block_prototype,
+                });
+
+                self.compatible(proto_block_ty, block_proc_type, None);
+
+                let block_comp = match *body {
+                    None => Computation::result(self.tyenv.nil(loc.clone()), locals),
+                    Some(ref body_node) => self.process_node(body_node, block_locals),
+                };
+
+                block_comp
+                    .capture_next()
+                    .extract_results(loc, &self.tyenv)
+                    .map_left(|(ty, locals)| {
+                        self.compatible(block_return_type, ty, None);
+                        locals.unextend()
+                    })
+            }
+            (Some(proto_block_ty), None) => {
+                // intentionally calling tyenv.compatible so this
+                // does not emit an error if types are incompatible:
+                let nil_block = self.tyenv.nil(send_loc.clone() /* just need a dummy location */);
+
+                if let Err(..) = self.tyenv.compatible(proto_block_ty, nil_block) {
+                    self.error("Expected block of type", &[
+                        Detail::Loc(&self.tyenv.describe(proto_block_ty), proto_block_ty.loc()),
+                        Detail::Loc("in this method invocation", send_loc),
+                    ]);
+                }
+
+                Or::Left(locals)
+            }
+        }
+    }
+
+    fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         let (recv_type, locals, non_result_comp) = match *recv {
             Some(ref recv_node) => match self.process_node(recv_node, locals).extract_results(recv_node.loc(), &self.tyenv) {
                 Or::Left((recv_ty, locals)) => (recv_ty, locals, None),
@@ -623,14 +690,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
         }
 
-        if let Some((block_args, block_body)) = block {
-            let mut block_loc = block_args.loc().clone();
-            if let Some(ref block_body) = block_body {
-                block_loc = block_loc.join(block_body.loc());
-            }
-            args.push(CallArg::BlockLiteral(block_loc, block_args, block_body));
-        }
-
         let prototypes = self.prototypes_for_invocation(recv.as_ref().map(|r| r.loc()), recv_type, id);
 
         if prototypes.is_empty() {
@@ -645,8 +704,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let mut result_comp = None;
 
         for proto in prototypes {
-            let retn_ty = match *proto {
+            let comp = match *proto {
                 Prototype::Typed { args: ref proto_args, ref retn } => {
+                    let (proto_block, proto_args) = match proto_args.last() {
+                        Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
+                        Some(_) | None => (None, proto_args.as_slice()),
+                    };
+
                     let match_result = call::match_prototype_with_invocation(&self.tyenv, proto_args, &args);
 
                     for match_error in match_result.errors {
@@ -671,17 +735,22 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     }
 
                     for (proto_ty, pass_ty) in match_result.matches {
-                        self.compatible(proto_ty, pass_ty, None);
+                        self.compatible(proto_ty, pass_ty, Some(loc));
                     }
 
-                    retn
+                    match self.process_block(&id.0, block.as_ref(), locals.clone(), proto_block) {
+                        Or::Left(locals) => Computation::result(retn, locals),
+                        Or::Right(comp) => comp,
+                        Or::Both(locals, comp) => Computation::divergent(
+                            Computation::result(retn, locals),
+                            comp),
+                    }
                 },
                 Prototype::Untyped =>
-                    self.tyenv.any(loc.clone()),
+                    Computation::result(self.tyenv.any(loc.clone()), locals.clone()),
             };
 
-            result_comp = merge_maybe_comps(result_comp,
-                Some(Computation::result(retn_ty, locals.clone())));
+            result_comp = merge_maybe_comps(result_comp, Some(comp));
         }
 
         result_comp.unwrap_or_else(|| Computation::result(self.tyenv.any(loc.clone()), locals))
@@ -838,11 +907,27 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Computation::retry()
             }
             Node::Send(ref loc, ref recv, ref mid, ref args) => {
-                self.process_send(loc, recv, mid, args, None, locals)
+                let (block, args) = match args.last().map(|x| &**x) {
+                    Some(&Node::BlockPass(ref block_pass_loc, ref block_node)) =>
+                        (Some(BlockArg::Pass { loc: block_pass_loc.clone(), node: block_node.clone() }),
+                            &args[..args.len() - 1]),
+                    Some(_) => (None, args.as_slice()),
+                    None => (None, args.as_slice()),
+                };
+
+                self.process_send(loc, recv, mid, args, block, locals)
             }
             Node::Block(_, ref send, ref block_args, ref block_body) => {
                 if let Node::Send(ref send_loc, ref recv, ref mid, ref args) = **send {
-                    self.process_send(send_loc, recv, mid, args, Some((block_args.clone(), block_body.clone())), locals)
+                    let mut block_loc = block_args.loc().clone();
+
+                    if let Some(ref block_body) = *block_body {
+                        block_loc = block_loc.join(block_body.loc());
+                    }
+
+                    let block = BlockArg::Literal { loc: block_loc, args: block_args.clone(), body: block_body.clone() };
+
+                    self.process_send(send_loc, recv, mid, args, Some(block), locals)
                 } else {
                     panic!("expected Node::Send inside Node::Block")
                 }
