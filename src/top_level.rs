@@ -11,6 +11,29 @@ struct Eval<'env, 'object: 'env> {
     pub scope: Rc<Scope<'object>>,
 }
 
+#[derive(Copy,Clone)]
+enum AttrType {
+    Reader,
+    Writer,
+    Accessor,
+}
+
+impl AttrType {
+    fn reader(self) -> bool {
+        match self {
+            AttrType::Reader | AttrType::Accessor => true,
+            AttrType::Writer => false,
+        }
+    }
+
+    fn writer(self) -> bool {
+        match self {
+            AttrType::Writer | AttrType::Accessor => true,
+            AttrType::Reader => false,
+        }
+    }
+}
+
 impl<'env, 'object> Eval<'env, 'object> {
     fn error(&self, message: &str, details: &[Detail]) {
         self.env.error_sink.borrow_mut().error(message, details)
@@ -244,12 +267,41 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
-    fn process_self_send(&self, id_loc: &Loc, id: &str, args: &[Rc<Node>]) {
-        match id {
+    fn process_attr(&self, attr_type: AttrType, args: &[Rc<Node>]) {
+        // TODO need to decouple self from the current module in scope so we
+        // can ignore errant attr_* calls at the top level.
+
+        let class = self.scope.module;
+
+        for arg in args {
+            if let Some(sym) = self.symbol_name(arg) {
+                let ivar = format!("@{}", sym);
+
+                if attr_type.reader() {
+                    let method = MethodEntry::AttrReader {
+                        ivar: ivar.clone(),
+                        node: arg.clone(),
+                    };
+                    self.env.object.define_method(class, sym.to_owned(), Rc::new(method));
+                }
+
+                if attr_type.writer() {
+                    let method = MethodEntry::AttrWriter {
+                        ivar: ivar.clone(),
+                        node: arg.clone(),
+                    };
+                    self.env.object.define_method(class, sym.to_owned() + "=", Rc::new(method));
+                }
+            }
+        }
+    }
+
+    fn process_self_send(&self, id: &Id, args: &[Rc<Node>]) {
+        match id.1.as_str() {
             "include" => {
                 if args.is_empty() {
                     self.error("Wrong number of arguments to include", &[
-                        Detail::Loc("here", id_loc),
+                        Detail::Loc("here", &id.0),
                     ]);
                 }
 
@@ -273,7 +325,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             "require" => {
                 if args.len() == 0 {
                     self.error("Missing argument to require", &[
-                        Detail::Loc("here", id_loc),
+                        Detail::Loc("here", &id.0),
                     ]);
                     return;
                 }
@@ -305,6 +357,9 @@ impl<'env, 'object> Eval<'env, 'object> {
                     }
                 }
             },
+            "attr_reader" => self.process_attr(AttrType::Reader, args),
+            "attr_writer" => self.process_attr(AttrType::Writer, args),
+            "attr_accessor" => self.process_attr(AttrType::Accessor, args),
             _ => {},
         }
     }
@@ -358,8 +413,8 @@ impl<'env, 'object> Eval<'env, 'object> {
                     },
                 }
             },
-            Node::Send(_, None, Id(ref id_loc, ref id), ref args) => {
-                self.process_self_send(id_loc, id, args.as_slice());
+            Node::Send(_, None, ref id@Id(..), ref args) => {
+                self.process_self_send(id, args.as_slice());
             },
             Node::Send(_, Some(ref recv), _, ref args) => {
                 self.eval_node(recv);

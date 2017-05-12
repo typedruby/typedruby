@@ -17,6 +17,8 @@ pub fn check<'env, 'object: 'env>(env: &'env Environment<'object>, method: Rc<Me
     match *method {
         MethodEntry::Ruby { ref scope, ref node, ref owner, .. } =>
             Eval::new(env, types, scope.clone(), owner, node.clone()).process(),
+        MethodEntry::AttrReader { .. } |
+        MethodEntry::AttrWriter { .. } |
         MethodEntry::Untyped |
         MethodEntry::IntrinsicClassNew =>
             { /* pass */ }
