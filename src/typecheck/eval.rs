@@ -252,13 +252,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn create_array_type(&self, loc: &Loc, element_type: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
-        let array_class = self.env.object.get_const(self.env.object.Object, "Array").expect("expected Array to be defined");
-        self.tyenv.instance(loc.clone(), array_class, vec![element_type])
+        self.tyenv.instance(loc.clone(), self.env.object.array_class(), vec![element_type])
     }
 
     fn create_hash_type(&self, loc: &Loc, key_type: &'ty Type<'ty, 'object>, value_type: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
-        let hash_class = self.env.object.get_const(self.env.object.Object, "Hash").expect("expected Hash to be defined");
-        self.tyenv.instance(loc.clone(), hash_class, vec![key_type, value_type])
+        self.tyenv.instance(loc.clone(), self.env.object.hash_class(), vec![key_type, value_type])
     }
 
     fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {

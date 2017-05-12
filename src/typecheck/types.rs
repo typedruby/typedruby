@@ -527,7 +527,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     pub fn degrade_to_instance(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
         match self.prune(ty) {
             &Type::KeywordHash { id, ref loc, ref keywords } => {
-                let hash_class = self.object.get_const(self.object.Object, "Hash").expect("Hash to be defined");
+                let hash_class = self.object.hash_class();
 
                 // degrade keyword hash to instance type:
                 let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);

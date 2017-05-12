@@ -147,9 +147,7 @@ fn keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
                 KeywordHashArgument::Keywords(keywords)
             }
             Type::Instance { ref class, .. } => {
-                let hash_class = tyenv.object.get_const(tyenv.object.Object, "Hash").expect("expected Hash to be defined");
-
-                if class.is_a(hash_class) {
+                if class.is_a(tyenv.object.hash_class()) {
                     args.consume_back();
                     KeywordHashArgument::Hash(ty)
                 } else {

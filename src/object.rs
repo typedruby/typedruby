@@ -200,6 +200,18 @@ impl<'a> ObjectGraph<'a> {
         o
     }
 
+    fn expect_class(&self, name: &str) -> &'a RubyObject<'a> {
+        self.get_const(self.Object, name).unwrap()
+    }
+
+    pub fn array_class(&self) -> &'a RubyObject<'a> {
+        self.expect_class("Array")
+    }
+
+    pub fn hash_class(&self) -> &'a RubyObject<'a> {
+        self.expect_class("Hash")
+    }
+
     fn alloc(&self, obj: RubyObject<'a>) -> &'a RubyObject<'a> {
         self.arena.alloc(obj)
     }
