@@ -315,6 +315,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     self.resolve_type(a, context, scope.clone()),
                     self.resolve_type(b, context, scope))
             }
+            Node::TyTuple(ref loc, ref ty_nodes) => {
+                let tys = ty_nodes.iter().map(|ty_node| self.resolve_type(ty_node, context, scope.clone())).collect();
+
+                self.tyenv.tuple(loc.clone(), tys)
+            }
             _ => panic!("unknown type node: {:?}", node),
         }
     }

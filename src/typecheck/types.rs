@@ -93,6 +93,15 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
+    pub fn tuple(&self, loc: Loc, types: Vec<&'ty Type<'ty, 'object>>) -> &'ty Type<'ty, 'object> {
+        self.alloc(Type::Tuple {
+            loc: loc,
+            lead: types,
+            splat: None,
+            post: Vec::new(),
+        })
+    }
+
     pub fn keyword_hash(&self, loc: Loc, keywords: Vec<(String, &'ty Type<'ty, 'object>)>) -> &'ty Type<'ty, 'object> {
         self.alloc(Type::KeywordHash {
             loc: loc,
