@@ -439,7 +439,7 @@
 
   static void concat_node_list(node_list_ptr& a, node_list_ptr&& b) {
     a->nodes.insert(
-      a->nodes.begin(),
+      a->nodes.end(),
       std::make_move_iterator(b->nodes.begin()),
       std::make_move_iterator(b->nodes.end())
     );
