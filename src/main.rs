@@ -62,7 +62,7 @@ fn main() {
     let env = Environment::new(&arena, Box::new(errors), config);
 
     for file in files {
-        match env.load_file(&file) {
+        match env.require(&file) {
             Ok(()) => (),
             Err(e) => println!("{}: {:?}", file.display(), e),
         }
