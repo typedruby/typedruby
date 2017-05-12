@@ -74,6 +74,7 @@ pub struct ObjectGraph<'a> {
     pub Numeric: &'a RubyObject<'a>,
     pub Integer: &'a RubyObject<'a>,
     pub Float: &'a RubyObject<'a>,
+    pub Regexp: &'a RubyObject<'a>,
     pub Proc: &'a RubyObject<'a>,
 
     constants: ClassTable<'a, ConstantEntry<'a>>,
@@ -167,6 +168,7 @@ impl<'a> ObjectGraph<'a> {
             Numeric: object,
             Integer: object,
             Float: object,
+            Regexp: object,
             Proc: object,
 
             constants: RefCell::new(HashMap::new()),
@@ -190,6 +192,7 @@ impl<'a> ObjectGraph<'a> {
         o.Numeric = o.define_class(None, o.Object, "Numeric", o.Object, Vec::new());
         o.Integer = o.define_class(None, o.Object, "Integer", o.Numeric, Vec::new());
         o.Float = o.define_class(None, o.Object, "Float", o.Numeric, Vec::new());
+        o.Regexp = o.define_class(None, o.Object, "Regexp", o.Object, Vec::new());
         o.Proc = o.define_class(None, o.Object, "Proc", o.Object, Vec::new());
 
         o.define_method(o.Class, "new".to_owned(), Rc::new(MethodEntry::IntrinsicClassNew));
