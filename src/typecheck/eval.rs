@@ -1093,6 +1093,16 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     }
                 }
             }
+            Node::Regexp(ref loc, ref parts, _) => {
+                let regexp_ty = self.tyenv.instance0(loc.clone(), self.env.object.Regexp);
+                let mut comp = Computation::result(regexp_ty, locals);
+
+                for part in parts {
+                    comp = self.seq_process(comp, part);
+                }
+
+                comp.seq(&|_, l| Computation::result(regexp_ty, l))
+            }
             _ => panic!("node: {:?}", node),
         }
     }
