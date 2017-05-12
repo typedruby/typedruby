@@ -100,7 +100,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                         // open the object's metaclass instead as error recovery:
                         self.env.object.metaclass(object_ref)
-                    },
+                    }
                     Some(module_ref@&RubyObject::Module { .. }) => {
                         self.error(&format!("{} is not a class", id), &[
                             Detail::Loc("here", name.loc()),
@@ -109,7 +109,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                         // open the module instead:
                         module_ref
-                    },
+                    }
                     Some(class_ref@&RubyObject::Class { .. }) |
                     Some(class_ref@&RubyObject::Metaclass { .. }) => {
                         // check superclass matches
@@ -130,7 +130,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         }
 
                         class_ref
-                    },
+                    }
                     Some(&RubyObject::IClass { .. }) => panic!(),
                     None => {
                         let superclass = match superclass {
@@ -169,13 +169,13 @@ impl<'env, 'object> Eval<'env, 'object> {
                         }
 
                         class
-                    },
+                    }
                 }
-            },
+            }
             Err((node, message)) => {
                 self.error(&message, &[Detail::Loc("here", node.loc())]);
                 return;
-            },
+            }
         };
 
         self.enter_scope(class, body);
@@ -196,7 +196,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         ]);
 
                         const_value.clone()
-                    },
+                    }
                     Some(&RubyObject::IClass { .. }) => panic!(),
                     Some(const_value@&RubyObject::Module { .. }) =>
                         const_value.clone(),
@@ -211,7 +211,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         module
                     }
                 }
-            },
+            }
             e@Err(..) => panic!("{:?}", e) /* TODO handle error */,
         };
 
@@ -313,7 +313,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                                     Detail::Loc("here", arg.loc()),
                                 ])
                             }
-                        },
+                        }
                         Err((node, message)) => {
                             self.warning("Could not statically resolve module reference in include", &[
                                 Detail::Loc(message, node.loc()),
@@ -321,7 +321,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         }
                     }
                 }
-            },
+            }
             "require" => {
                 if args.len() == 0 {
                     self.error("Missing argument to require", &[
@@ -341,7 +341,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     Node::String(ref loc, ref string) => {
                         if let Some(path) = self.env.search_require_path(string) {
                             match self.env.require(&path) {
-                                Ok(()) => {},
+                                Ok(()) => {}
                                 Err(e) => panic!("TODO: implement error handling for require errors: {:?}", e),
                             }
                         } else {
@@ -349,18 +349,18 @@ impl<'env, 'object> Eval<'env, 'object> {
                                 Detail::Loc("here", loc),
                             ]);
                         }
-                    },
+                    }
                     _ => {
                         self.error("Could not resolve dynamic path in require", &[
                             Detail::Loc("here", args[0].loc()),
                         ]);
                     }
                 }
-            },
+            }
             "attr_reader" => self.process_attr(AttrType::Reader, args),
             "attr_writer" => self.process_attr(AttrType::Writer, args),
             "attr_accessor" => self.process_attr(AttrType::Accessor, args),
-            _ => {},
+            _ => {}
         }
     }
 
@@ -370,7 +370,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 for stmt in stmts {
                     self.eval_node(stmt);
                 }
-            },
+            }
             Node::Class(_, ref declname, ref superclass, ref body) => {
                 match **declname {
                     Node::TyGendecl(_, ref name, ref genargs) =>
@@ -380,10 +380,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                     _ =>
                         panic!("bad node type in class declname position"),
                 }
-            },
+            }
             Node::Module(_, ref name, ref body) => {
                 self.decl_module(name, body);
-            },
+            }
             Node::SClass(_, ref expr, ref body) => {
                 let singleton = match self.resolve_static(expr) {
                     Ok(singleton) => singleton,
@@ -398,30 +398,30 @@ impl<'env, 'object> Eval<'env, 'object> {
                 let metaclass = self.env.object.metaclass(&singleton);
 
                 self.enter_scope(metaclass, body);
-            },
+            }
             Node::Def(_, Id(_, ref name), ..) => {
                 self.decl_method(&self.scope.module, name, node);
-            },
+            }
             Node::Defs(_, ref singleton, Id(_, ref name), ..) => {
                 match self.resolve_static(singleton) {
                     Ok(metaclass) => {
                         let metaclass = self.env.object.metaclass(&metaclass);
                         self.decl_method(&metaclass, name, node);
-                    },
+                    }
                     Err((node, message)) => {
                         self.error(message, &[Detail::Loc("here", node.loc())]);
-                    },
+                    }
                 }
-            },
+            }
             Node::Send(_, None, ref id@Id(..), ref args) => {
                 self.process_self_send(id, args.as_slice());
-            },
+            }
             Node::Send(_, Some(ref recv), _, ref args) => {
                 self.eval_node(recv);
                 for arg in args {
                     self.eval_node(arg);
                 }
-            },
+            }
             Node::Casgn(_, ref base, Id(ref name_loc, ref name), ref expr) => {
                 let loc = match *base {
                     Some(ref base_node) => base_node.loc().join(name_loc),
@@ -438,26 +438,27 @@ impl<'env, 'object> Eval<'env, 'object> {
                             return;
                         }
                         match **expr {
-                            Node::Const { .. } =>
+                            Node::Const { .. } => {
                                 if let Ok(value) = self.resolve_cpath(expr) {
                                     self.env.object.set_const(&cbase, name, Some(loc), &value);
-                                },
+                                }
+                            }
                             // TODO handle send
                             // TODO handle tr_cast
                             // TODO handle unresolved expressions
-                            _ => {},
+                            _ => {}
                         }
-                    },
+                    }
                     Err((node, message)) => {
                         self.warning("Could not statically resolve constant in assignment", &[
                             Detail::Loc(message, node.loc()),
                         ]);
                     }
                 }
-            },
+            }
             Node::Alias(_, ref to, ref from) => {
                 self.alias_method(self.scope.module, from, to);
-            },
+            }
             Node::TyIvardecl(_, Id(ref ivar_loc, ref ivar), ref type_node) => {
                 if let Some(ivar_decl) = self.env.object.lookup_ivar(&self.scope.module, ivar) {
                     self.error("Duplicate instance variable type declaration", &[
