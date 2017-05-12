@@ -231,22 +231,22 @@ impl<'env, 'object> Eval<'env, 'object> {
         self.env.enqueue_method_for_type_check(method);
     }
 
-    fn symbol_name<'node>(&self, node: &'node Rc<Node>) -> Option<&'node str> {
+    fn symbol_name<'node>(&self, node: &'node Rc<Node>, msg: &str) -> Option<&'node str> {
         match **node {
             Node::Symbol(_, ref sym) => Some(sym),
             _ => {
-                self.error("Dynamic symbol", &[
+                self.warning(&format!("Dynamic symbol {}", msg), &[
                     Detail::Loc("here", node.loc()),
                 ]);
 
                 None
-            },
+            }
         }
     }
 
     fn alias_method(&self, klass: &'object RubyObject<'object>, from: &Rc<Node>, to: &Rc<Node>) {
-        let from_name = self.symbol_name(from);
-        let to_name = self.symbol_name(to);
+        let from_name = self.symbol_name(from, "in alias");
+        let to_name = self.symbol_name(to, "in alias");
 
         if let Some(method) = from_name.and_then(|name| self.env.object.lookup_method(klass, name)) {
             if let Some(name) = to_name {
@@ -274,7 +274,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         let class = self.scope.module;
 
         for arg in args {
-            if let Some(sym) = self.symbol_name(arg) {
+            if let Some(sym) = self.symbol_name(arg, "in attribute name") {
                 let ivar = format!("@{}", sym);
 
                 if attr_type.reader() {
