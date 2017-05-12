@@ -364,6 +364,12 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
+    fn eval_maybe_node(&self, node: &Option<Rc<Node>>) {
+        if let Some(ref node) = *node {
+            self.eval_node(node);
+        }
+    }
+
     fn eval_node(&self, node: &Rc<Node>) {
         match **node {
             Node::Begin(_, ref stmts) => {
@@ -472,7 +478,33 @@ impl<'env, 'object> Eval<'env, 'object> {
                         scope: self.scope.clone(),
                     }));
                 }
-            },
+            }
+            Node::Block(_, ref send_node, ref block_args, ref block_body) => {
+                self.eval_node(send_node);
+                self.eval_node(block_args);
+                self.eval_maybe_node(block_body);
+            }
+            Node::Const(..) => {
+                // try to autoload this const, but ignore any errors
+                let _ = self.resolve_cpath(node);
+            }
+            Node::Args(_, ref args) => {
+                for arg in args {
+                    self.eval_node(arg);
+                }
+            }
+            Node::Procarg0(_, ref arg) => {
+                self.eval_node(arg);
+            }
+            Node::Arg(..) => {}
+            Node::If(_, ref cond, ref then, ref else_) => {
+                self.eval_node(cond);
+                self.eval_maybe_node(then);
+                self.eval_maybe_node(else_);
+            }
+            Node::Lvar(..) => {}
+            Node::Symbol(..) => {}
+            Node::Defined(..) => {}
             _ => panic!("unknown node: {:?}", node),
         }
     }
