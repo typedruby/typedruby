@@ -2392,10 +2392,11 @@
  block_args_tail: f_block_kwarg tCOMMA f_kwrest opt_f_block_arg
                     {
                       auto _3 = take(p, $3);
+                      auto _4 = take(p, $4);
                       auto args = take(p, $1);
 
                       concat_node_list(args, std::move(_3));
-                      concat_node_list(args, std::move(_3));
+                      concat_node_list(args, std::move(_4));
 
                       $$ = put(p, std::move(args));
                     }
