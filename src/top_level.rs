@@ -1,4 +1,4 @@
-use ast::{Id, Node, Loc};
+use ast::{Id, Node};
 use environment::Environment;
 use object::{RubyObject, Scope, MethodEntry, IvarEntry};
 use std::rc::Rc;
