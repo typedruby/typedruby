@@ -462,6 +462,26 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 self.resolve_prototype(&prototype_node, Locals::new(), &type_context, scope.clone()).1
             }
+            MethodEntry::AttrReader { ref ivar, .. } => {
+                match self.env.object.lookup_ivar(type_context.class, ivar) {
+                    Some(ivar) => {
+                        let ivar_type = self.resolve_type(&ivar.type_node, &type_context, ivar.scope.clone());
+
+                        Rc::new(Prototype::Typed { args: vec![], retn: ivar_type })
+                    }
+                    None => Rc::new(Prototype::Untyped)
+                }
+            }
+            MethodEntry::AttrWriter { ref ivar, ref node } => {
+                match self.env.object.lookup_ivar(type_context.class, ivar) {
+                    Some(ivar) => {
+                        let ivar_type = self.resolve_type(&ivar.type_node, &type_context, ivar.scope.clone());
+
+                        Rc::new(Prototype::Typed { args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }], retn: ivar_type })
+                    }
+                    None => Rc::new(Prototype::Untyped)
+                }
+            }
             MethodEntry::Untyped => self.tyenv.any_prototype(loc.clone()),
             MethodEntry::IntrinsicClassNew => {
                 match *type_context.class {

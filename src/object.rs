@@ -562,6 +562,14 @@ pub enum MethodEntry<'object> {
         node: Rc<Node>,
         scope: Rc<Scope<'object>>,
     },
+    AttrReader {
+        ivar: String,
+        node: Rc<Node>,
+    },
+    AttrWriter {
+        ivar: String,
+        node: Rc<Node>,
+    },
     Untyped,
     IntrinsicClassNew,
 }
