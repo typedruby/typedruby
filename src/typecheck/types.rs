@@ -281,6 +281,14 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
+    fn is_unresolved_var(&self, ty: &'ty Type<'ty, 'object>) -> bool {
+        if let Type::Var { .. } = *self.prune(ty) {
+            true
+        } else {
+            false
+        }
+    }
+
     pub fn unify(&self, t1: &'ty Type<'ty, 'object>, t2: &'ty Type<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let t1 = self.prune(t1);
         let t2 = self.prune(t2);
@@ -335,8 +343,56 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (&Type::Tuple { .. }, _) =>
                 Err((t1.clone(), t2.clone())),
 
-            (&Type::Union { .. }, &Type::Union { .. }) =>
-                panic!("TODO unify union"),
+            (&Type::Union { types: ref types1, .. }, &Type::Union { types: ref types2, .. }) => {
+                if types1.len() != types2.len() {
+                    return Err((t1, t2));
+                }
+
+                let mut marked = Vec::new();
+                marked.resize(types1.len(), false);
+
+                // attempt to unify all concrete types first:
+                for ty2 in types2 {
+                    if self.is_unresolved_var(ty2) { continue }
+
+                    for (index, ty1) in types1.iter().enumerate() {
+                        if marked[index] { continue }
+                        if self.is_unresolved_var(ty1) { continue }
+
+                        match self.unify(ty1, ty2) {
+                            Ok(()) => {
+                                marked[index] = true;
+                                break
+                            }
+                            Err(..) => {
+                                continue
+                            }
+                        }
+                    }
+                }
+
+                // unify all unresolved type variables:
+                for ty2 in types2 {
+                    if !self.is_unresolved_var(ty2) { continue }
+
+                    for (index, ty1) in types1.iter().enumerate() {
+                        if marked[index] { continue }
+                        if !self.is_unresolved_var(ty1) { continue }
+
+                        self.unify(ty1, ty2).expect("unifying two unresolved type variables should never fail");
+                        marked[index] = true;
+                    }
+                }
+
+                // if by this point not all types are marked, there was a mismatch
+                for m in marked {
+                    if !m {
+                        return Err((t1, t2));
+                    }
+                }
+
+                Ok(())
+            },
 
             (&Type::Union { .. }, _) =>
                 Err((t1.clone(), t2.clone())),
