@@ -48,13 +48,13 @@ impl<T: Write> ErrorReporter<T> {
                     let begin = loc.file.line_for_pos(loc.begin_pos);
                     let end = loc.file.line_for_pos(loc.end_pos);
 
+                    write!(self.io, "        \x1b[34;1m@ {}:{}\x1b[0m\n", loc.file.filename().display(), begin.number).unwrap();
+
                     if begin.number == end.number {
                         // same line
                         let line_info = begin;
 
-                        write!(self.io, "        \x1b[34;1m@ {}\x1b[0m\n", loc.file.filename().display()).unwrap();
-
-                        write!(self.io, "\x1b[34;1m{number:>7} |\x1b[0m {line_prefix}\x1b[3{diagnostic_color};1m{highlight}\x1b[0m{line_suffix}\n",
+                        write!(self.io, "\x1b[34;1m{number:>7} | \x1b[0m {line_prefix}\x1b[3{diagnostic_color};1m{highlight}\x1b[0m{line_suffix}\n",
                             diagnostic_color = diagnostic_color,
                             number = line_info.number,
                             line_prefix = &loc.file.source()[line_info.begin_pos..loc.begin_pos],
@@ -63,11 +63,29 @@ impl<T: Write> ErrorReporter<T> {
 
                         write!(self.io, "{pad:pad_len$}\x1b[3{diagnostic_color};1m{marker}\x1b[0;1m {message}\x1b[0m\n",
                             diagnostic_color = diagnostic_color,
-                            pad = "", pad_len = 10 + loc.begin_pos - line_info.begin_pos,
+                            pad = "", pad_len = 11 + loc.begin_pos - line_info.begin_pos,
                             marker = "^".repeat(loc.end_pos - loc.begin_pos),
                             message = message).unwrap();
                     } else {
-                        panic!("unimplemented: loc spanning multiple lines!")
+                        let source = loc.file.source()[begin.begin_pos..end.end_pos].split("\n");
+
+                        write!(self.io, "{pad:pad_len$}\x1b[3{diagnostic_color};1m{marker}v\x1b[0m\n",
+                            diagnostic_color = diagnostic_color,
+                            pad = "", pad_len = 10,
+                            marker = "-".repeat(loc.begin_pos - begin.begin_pos + 1)).unwrap();
+
+                        for (line_no, line) in (begin.number..(end.number + 1)).zip(source) {
+                            write!(self.io, "\x1b[34;1m{number:>7} | \x1b[3{diagnostic_color};1m|\x1b[0m{line}\n",
+                                diagnostic_color = diagnostic_color,
+                                number = line_no,
+                                line = line.trim_right()).unwrap();
+                        }
+
+                        write!(self.io, "{pad:pad_len$}\x1b[3{diagnostic_color};1m{marker}^\x1b[0;1m {message}\x1b[0m\n",
+                            diagnostic_color = diagnostic_color,
+                            pad = "", pad_len = 10,
+                            marker = "-".repeat(loc.end_pos - end.begin_pos),
+                            message = message).unwrap();
                     }
                 },
                 Detail::Message(ref message) => {
