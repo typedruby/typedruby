@@ -556,7 +556,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Type::Var { id, .. } => {
                 self.error(&format!("Type of receiver is not known at this point"), &[
-                    Detail::Loc(&format!("t{}", id), &loc),
+                    Detail::Loc(&format!("t{}", id), recv_loc.expect("self type should never be an unresolved type variable")),
                 ]);
 
                 vec![]
