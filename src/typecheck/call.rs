@@ -117,6 +117,52 @@ fn consume_remaining_keywords<'a, 'ty: 'a, 'object: 'ty>(
     }
 }
 
+enum KeywordHashArgument<'a, 'ty: 'a, 'object: 'ty> {
+    Keywords(&'a [(String, &'ty Type<'ty, 'object>)]),
+    Hash(&'ty Type<'ty, 'object>),
+    None
+}
+
+fn keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
+    tyenv: &TypeEnv<'ty, 'env, 'object>,
+    prototype_args: &mut View<'a, Arg<'ty, 'object>>,
+    args: &mut View<'a, CallArg<'ty, 'object>>,
+) -> KeywordHashArgument<'a, 'ty, 'object>
+{
+    let required_argc = prototype_args.iter().filter(|arg|
+        match **arg {
+            Arg::Required { .. } => true,
+            _ => false,
+        }
+    ).count();
+
+    if args.len() <= required_argc {
+        return KeywordHashArgument::None;
+    }
+
+    if let Some(&CallArg::Pass(_, ty)) = args.last() {
+        match *tyenv.prune(ty) {
+            Type::KeywordHash { ref keywords, .. } => {
+                args.consume_back();
+                KeywordHashArgument::Keywords(keywords)
+            }
+            Type::Instance { ref class, .. } => {
+                let hash_class = tyenv.object.get_const(tyenv.object.Object, "Hash").expect("expected Hash to be defined");
+
+                if class.is_a(hash_class) {
+                    args.consume_back();
+                    KeywordHashArgument::Hash(ty)
+                } else {
+                    KeywordHashArgument::None
+                }
+            }
+            _ => KeywordHashArgument::None
+        }
+    } else {
+        KeywordHashArgument::None
+    }
+}
+
 fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
     tyenv: &TypeEnv<'ty, 'env, 'object>,
     prototype_args: &mut View<'a, Arg<'ty, 'object>>,
@@ -129,69 +175,55 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
         _ => return,
     };
 
-    if let Some(&CallArg::Pass(_, ty)) = args.last() {
-        match *tyenv.prune(ty) {
-            Type::KeywordHash { ref keywords, .. } => {
-                args.consume_back();
+    match keyword_hash_argument(tyenv, prototype_args, args) {
+        KeywordHashArgument::Keywords(ref keywords) => {
+            let mut keywords = keywords.iter().cloned().collect::<HashMap<_,_>>();
 
-                let mut keywords = keywords.iter().cloned().collect::<HashMap<_,_>>();
+            loop {
+                match prototype_args.last() {
+                    Some(&Arg::Kwarg { ref name, ty: proto_ty, .. }) => {
+                        prototype_args.consume_back();
 
-                loop {
-                    match prototype_args.last() {
-                        Some(&Arg::Kwarg { ref name, ty: proto_ty, .. }) => {
-                            prototype_args.consume_back();
-
-                            match keywords.remove(name) {
-                                Some(passed_ty) => match_argument(proto_ty, passed_ty, result),
-                                None => { result.errors.push(ArgError::MissingKeyword(name.clone())) }
-                            }
-                        }
-                        Some(&Arg::Kwoptarg { ref name, ty: proto_ty, .. }) => {
-                            prototype_args.consume_back();
-
-                            match keywords.remove(name) {
-                                Some(passed_ty) => match_argument(proto_ty, passed_ty, result),
-                                None => { /* pass */ }
-                            }
-                        }
-                        _ => break
-                    }
-                }
-            }
-            Type::Instance { ref class, .. } => {
-                let hash_class = tyenv.object.get_const(tyenv.object.Object, "Hash").expect("expected Hash to be defined");
-
-                if class.is_a(hash_class) {
-                    args.consume_back();
-
-                    let mut potential_keywords = Vec::new();
-                    let mut keyword_hash_loc = kw_loc.clone();
-
-                    loop {
-                        match prototype_args.last() {
-                            Some(&Arg::Kwarg { ref loc, ref name, ty: proto_ty }) |
-                            Some(&Arg::Kwoptarg { ref loc, ref name, ty: proto_ty, .. }) => {
-                                prototype_args.consume_back();
-
-                                keyword_hash_loc = keyword_hash_loc.join(loc);
-
-                                potential_keywords.push((name.clone(), proto_ty));
-                            }
-                            _ => break
+                        match keywords.remove(name) {
+                            Some(passed_ty) => match_argument(proto_ty, passed_ty, result),
+                            None => { result.errors.push(ArgError::MissingKeyword(name.clone())) }
                         }
                     }
+                    Some(&Arg::Kwoptarg { ref name, ty: proto_ty, .. }) => {
+                        prototype_args.consume_back();
 
-                    let proto_hash_ty = tyenv.keyword_hash(keyword_hash_loc, potential_keywords);
-
-                    result.matches.push((proto_hash_ty, ty));
-                } else {
-                    consume_remaining_keywords(prototype_args, result);
+                        match keywords.remove(name) {
+                            Some(passed_ty) => match_argument(proto_ty, passed_ty, result),
+                            None => { /* pass */ }
+                        }
+                    }
+                    _ => break
                 }
             }
-            _ => consume_remaining_keywords(prototype_args, result),
         }
-    } else {
-        consume_remaining_keywords(prototype_args, result);
+        KeywordHashArgument::Hash(ref hash_ty) => {
+            let mut potential_keywords = Vec::new();
+            let mut keyword_hash_loc = kw_loc.clone();
+
+            loop {
+                match prototype_args.last() {
+                    Some(&Arg::Kwarg { ref loc, ref name, ty: proto_ty }) |
+                    Some(&Arg::Kwoptarg { ref loc, ref name, ty: proto_ty, .. }) => {
+                        prototype_args.consume_back();
+
+                        keyword_hash_loc = keyword_hash_loc.join(loc);
+
+                        potential_keywords.push((name.clone(), proto_ty));
+                    }
+                    _ => break
+                }
+            }
+
+            let proto_hash_ty = tyenv.keyword_hash(keyword_hash_loc, potential_keywords);
+
+            result.matches.push((proto_hash_ty, hash_ty));
+        }
+        KeywordHashArgument::None => consume_remaining_keywords(prototype_args, result),
     }
 }
 
@@ -253,6 +285,11 @@ fn match_optional_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
             break
         }
     }
+
+    // consume remaining optional arguments:
+    while let Some(&Arg::Optional { .. }) = prototype_args.peek() {
+        prototype_args.consume();
+    }
 }
 
 fn match_rest_argument<'a, 'ty: 'a, 'object, PrototypeConsumer, PassedConsumer>(
@@ -295,19 +332,10 @@ pub fn match_prototype_with_invocation<'ty, 'env, 'object: 'ty + 'env>(
     let mut prototype_args = View(prototype_args);
     let mut call_args = View(call_args);
 
-    let required_argc = prototype_args.iter().filter(|arg|
-        match **arg {
-            Arg::Required { .. } => true,
-            _ => false,
-        }
-    ).count();
-
-    if call_args.len() > required_argc {
-        match_keyword_hash_argument(tyenv,
-            &mut prototype_args,
-            &mut call_args,
-            &mut result);
-    }
+    match_keyword_hash_argument(tyenv,
+        &mut prototype_args,
+        &mut call_args,
+        &mut result);
 
     match_required_arguments(
         &mut ForwardConsumer(&mut prototype_args),
