@@ -77,6 +77,17 @@ impl AnnotationStatus {
     pub fn append_into(&mut self, other: AnnotationStatus) {
         *self = self.append(other);
     }
+
+    pub fn or(self, other: AnnotationStatus) -> AnnotationStatus {
+        match (self, other) {
+            (AnnotationStatus::Empty, _) => other,
+            (_, AnnotationStatus::Empty) => self,
+            (AnnotationStatus::Partial, _) => AnnotationStatus::Partial,
+            (_, AnnotationStatus::Partial) => AnnotationStatus::Partial,
+            (AnnotationStatus::Typed, _) => AnnotationStatus::Typed,
+            (AnnotationStatus::Untyped, _) => other,
+        }
+    }
 }
 
 enum BlockArg {
@@ -348,6 +359,32 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 (status, Arg::Kwarg { loc: loc.clone(), name: name.to_owned(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Kwoptarg(ref loc, Id(_, ref name), ref expr) =>
                 (status, Arg::Kwoptarg { loc: loc.clone(), name: name.to_owned(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
+            Node::Mlhs(ref loc, ref nodes) => {
+                let mut mlhs_status = AnnotationStatus::empty();
+                let mut mlhs_types = Vec::new();
+                let mut locals = locals;
+
+                for node in nodes {
+                    let (st, arg, l) = self.resolve_arg(node, locals.clone(), context, scope.clone());
+                    let arg_ty = if let Arg::Required { ty, .. } = arg {
+                        ty
+                    } else {
+                        self.error("Only required arguments are currently supported in destructuring arguments", &[
+                            Detail::Loc("here", arg.loc()),
+                        ]);
+                        break;
+                    };
+                    mlhs_status.append_into(st);
+                    mlhs_types.push(arg_ty);
+                    locals = l;
+                }
+
+                let tuple_ty = self.tyenv.tuple(loc.clone(), mlhs_types);
+
+                let arg = Arg::Required { loc: loc.clone(), ty: tuple_ty };
+
+                (status.or(mlhs_status), arg, locals)
+            }
             Node::Optarg(_, Id(ref loc, ref name), ref expr) =>
                 (status, Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Restarg(ref loc, None) =>

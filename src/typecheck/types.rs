@@ -187,19 +187,11 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                     (&Prototype::Untyped, _) => Ok(()),
                     (_, &Prototype::Untyped) => Ok(()),
                     (&Prototype::Typed { args: ref args1, retn: ref retn1, .. }, &Prototype::Typed { args: ref args2, retn: ref retn2 }) => {
-                        if args1.len() != args2.len() {
-                            return Err((to, from));
+                        match self.compatible_args(args1, args2) {
+                            Some(Ok(())) => self.compatible(retn1, retn2),
+                            Some(e@Err(..)) => e,
+                            None => Err((to, from)),
                         }
-
-                        for (arg1, arg2) in args1.iter().zip(args2.iter()) {
-                            match self.compatible_arg(arg1, arg2) {
-                                None => return Err((to, from)),
-                                Some(e@Err(..)) => return e,
-                                Some(Ok(())) => continue,
-                            }
-                        }
-
-                        self.compatible(retn1, retn2)
                     }
                 }
             }
@@ -208,10 +200,75 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
+    fn args_to_tuple_arg(&self, args: &[Arg<'ty, 'object>]) -> Option<Arg<'ty, 'object>> {
+        if args.len() == 0 {
+            return None;
+        }
+
+        if args.len() == 1 {
+            return Some(args[0].clone());
+        }
+
+        let mut arg_types = Vec::new();
+
+        for arg in args {
+            match *arg {
+                Arg::Required { ty, .. } => arg_types.push(ty),
+                _ => return None,
+            }
+        }
+
+        let args_loc = args[0].loc().join(args[args.len() - 1].loc());
+
+        Some(Arg::Required { loc: args_loc.clone(), ty: self.tuple(args_loc, arg_types) })
+    }
+
+    pub fn compatible_args(&self, to: &[Arg<'ty, 'object>], from: &[Arg<'ty, 'object>]) -> Option<UnificationResult<'ty, 'object>> {
+        if to.len() == 1 {
+            if let Arg::Procarg0 { arg: ref arg1, .. } = to[0] {
+                if from.len() == 1 {
+                    if let Arg::Procarg0 { arg: ref arg2, .. } = from[0] {
+                        return self.compatible_arg(arg1, arg2);
+                    }
+                }
+
+                return self.args_to_tuple_arg(from).and_then(|from_arg|
+                    self.compatible_arg(arg1, &from_arg)
+                );
+            }
+        }
+
+        if from.len() == 1 {
+            if let Arg::Procarg0 { arg: ref arg2, .. } = from[0] {
+                return self.args_to_tuple_arg(to).and_then(|to_arg|
+                    self.compatible_arg(&to_arg, arg2)
+                );
+            }
+        }
+
+        if to.len() != from.len() {
+            return None;
+        }
+
+        for (to_arg, from_arg) in to.iter().zip(from.iter()) {
+            match self.compatible_arg(to_arg, from_arg) {
+                None => return None,
+                e@Some(Err(..)) => return e,
+                Some(Ok(())) => continue,
+            }
+        }
+
+        Some(Ok(()))
+    }
+
     pub fn compatible_arg(&self, to: &Arg<'ty, 'object>, from: &Arg<'ty, 'object>) -> Option<UnificationResult<'ty, 'object>> {
         match (to, from) {
             (&Arg::Procarg0 { arg: ref arg1, .. }, &Arg::Procarg0 { arg: ref arg2, .. }) =>
                 self.compatible_arg(arg2, arg1),
+            (&Arg::Procarg0 { arg: ref arg1, .. }, _) =>
+                self.compatible_arg(arg1, from),
+            (_, &Arg::Procarg0 { arg: ref arg2, .. }) =>
+                self.compatible_arg(to, arg2),
             (&Arg::Required { ty: ref ty1, .. }, &Arg::Required { ty: ref ty2, .. }) |
             (&Arg::Optional { ty: ref ty1, .. }, &Arg::Required { ty: ref ty2, .. }) |
             (&Arg::Rest { ty: ref ty1, .. }, &Arg::Rest { ty: ref ty2, .. }) |
@@ -548,4 +605,18 @@ pub enum Arg<'ty, 'object: 'ty> {
         loc: Loc,
         ty: &'ty Type<'ty, 'object>,
     },
+}
+
+impl<'ty, 'object> Arg<'ty, 'object> {
+    pub fn loc(&self) -> &Loc {
+        match *self {
+            Arg::Required { ref loc, .. } => loc,
+            Arg::Procarg0 { ref loc, .. } => loc,
+            Arg::Optional { ref loc, .. } => loc,
+            Arg::Rest { ref loc, .. } => loc,
+            Arg::Kwarg { ref loc, .. } => loc,
+            Arg::Kwoptarg { ref loc, .. } => loc,
+            Arg::Block { ref loc, .. } => loc,
+        }
+    }
 }
