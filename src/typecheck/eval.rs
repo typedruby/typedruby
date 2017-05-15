@@ -104,15 +104,6 @@ impl BlockArg {
     }
 }
 
-fn merge_maybe_comps<'ty, 'object: 'ty>(a: Option<Computation<'ty, 'object>>, b: Option<Computation<'ty, 'object>>) -> Option<Computation<'ty, 'object>> {
-    match (a, b) {
-        (Some(a), Some(b)) => Some(Computation::divergent(a, b)),
-        (Some(a), None) => Some(a),
-        (None, Some(b)) => Some(b),
-        (None, None) => None,
-    }
-}
-
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     pub fn new(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) -> Eval<'ty, 'env, 'object> {
         let type_parameters = class.type_parameters().iter().map(|&Id(ref loc, ref name)|
@@ -740,14 +731,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Or::Both((arg, l), comp) => {
                     args.push(arg);
                     locals = l;
-                    non_result_comp = merge_maybe_comps(non_result_comp, Some(comp));
+                    non_result_comp = Computation::divergent_option(non_result_comp, Some(comp));
                 }
                 Or::Right(comp) => {
                     self.warning("Useless method call", &[
                         Detail::Loc("here", &id.0),
                         Detail::Loc("argument never evaluates to a result", arg_node.loc()),
                     ]);
-                    return merge_maybe_comps(non_result_comp, Some(comp)).expect("never None");
+                    return Computation::divergent_option(non_result_comp, Some(comp)).expect("never None");
                 }
             }
         }
@@ -814,7 +805,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Computation::result(self.tyenv.any(loc.clone()), locals.clone()),
             };
 
-            result_comp = merge_maybe_comps(result_comp, Some(comp));
+            result_comp = Computation::divergent_option(result_comp, Some(comp));
         }
 
         result_comp.unwrap_or_else(|| Computation::result(self.tyenv.any(loc.clone()), locals))
