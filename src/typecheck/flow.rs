@@ -158,6 +158,15 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Divergent(a, b)))
     }
 
+    pub fn divergent_option(a: Option<Computation<'ty, 'object>>, b: Option<Computation<'ty, 'object>>) -> Option<Computation<'ty, 'object>> {
+        match (a, b) {
+            (Some(a), Some(b)) => Some(Computation::divergent(a, b)),
+            (Some(a), None) => Some(a),
+            (None, Some(b)) => Some(b),
+            (None, None) => None,
+        }
+    }
+
     pub fn seq<F>(&self, f: &F) -> Computation<'ty, 'object>
         where F: Fn(&'ty Type<'ty, 'object>, Locals<'ty, 'object>) -> Computation<'ty, 'object>
     {
