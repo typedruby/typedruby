@@ -4,6 +4,7 @@ use ast::{Loc, Node};
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
 use immutable_map::TreeMap;
+use util::Or;
 
 pub type TypeVarId = usize;
 
@@ -547,6 +548,37 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         let mut buffer = String::new();
         self.describe_rec(ty, &mut buffer);
         buffer
+    }
+
+    pub fn predicate(&self, ty: &'ty Type<'ty, 'object>) -> Or<&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>> {
+        match *self.prune(ty) {
+            Type::Instance { class, .. } => {
+                if class.is_a(self.object.FalseClass) || class.is_a(self.object.NilClass) {
+                    Or::Right(ty)
+                } else if self.object.FalseClass.is_a(class) || self.object.NilClass.is_a(class) {
+                    Or::Both(ty, ty)
+                } else {
+                    Or::Left(ty)
+                }
+            }
+            Type::Union { ref types, ref loc } => {
+                let mut preds = types.iter().map(|t| self.predicate(t));
+
+                let first_pred = preds.next().expect("types is non-empty");
+
+                preds.fold(first_pred, |a, b| {
+                    a.append(b,
+                        |a, b| self.union(loc, a, b),
+                        |a, b| self.union(loc, a, b))
+                })
+            }
+            Type::Tuple { .. } |
+            Type::KeywordHash { .. } |
+            Type::Proc { .. } => Or::Left(ty),
+            Type::Any { .. } |
+            Type::TypeParameter { .. } |
+            Type::Var { .. } => Or::Both(ty, ty),
+        }
     }
 }
 
