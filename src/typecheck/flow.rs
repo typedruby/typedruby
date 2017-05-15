@@ -3,7 +3,7 @@ use std::rc::Rc;
 use typecheck::types::{TypeEnv, Type};
 use ast::Loc;
 use immutable_map::TreeMap;
-use or::Or;
+use util::Or;
 
 #[derive(Debug,Clone)]
 pub struct LocalEntry<'ty, 'object: 'ty> {
