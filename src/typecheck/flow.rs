@@ -17,6 +17,47 @@ pub struct Locals_<'ty, 'object: 'ty> {
     vars: TreeMap<String, LocalEntry<'ty, 'object>>,
 }
 
+#[derive(Debug)]
+pub struct ComputationPredicate<'ty, 'object: 'ty> {
+    pub truthy: Option<Computation<'ty, 'object>>,
+    pub falsy: Option<Computation<'ty, 'object>>,
+    pub non_result: Option<Computation<'ty, 'object>>,
+}
+
+impl<'ty, 'object> ComputationPredicate<'ty, 'object> {
+    pub fn empty() -> ComputationPredicate<'ty, 'object> {
+        ComputationPredicate {
+            truthy: None,
+            falsy: None,
+            non_result: None,
+        }
+    }
+
+    pub fn result(truthy: Option<Computation<'ty, 'object>>, falsy: Option<Computation<'ty, 'object>>) -> ComputationPredicate<'ty, 'object> {
+        ComputationPredicate {
+            truthy: truthy,
+            falsy: falsy,
+            non_result: None,
+        }
+    }
+
+    pub fn non_result(comp: Computation<'ty, 'object>) -> ComputationPredicate<'ty, 'object> {
+        ComputationPredicate {
+            truthy: None,
+            falsy: None,
+            non_result: Some(comp),
+        }
+    }
+
+    pub fn append(self, other: ComputationPredicate<'ty, 'object>) -> ComputationPredicate<'ty, 'object> {
+        ComputationPredicate {
+            truthy: Computation::divergent_option(self.truthy, other.truthy),
+            falsy: Computation::divergent_option(self.falsy, other.falsy),
+            non_result: Computation::divergent_option(self.non_result, other.non_result),
+        }
+    }
+}
+
 #[derive(Debug,Clone)]
 pub struct Locals<'ty, 'object: 'ty>(Rc<Locals_<'ty, 'object>>);
 
@@ -262,6 +303,30 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             Or::Left((ty, _)) => Some(ty),
             Or::Both((ty, _), _) => Some(ty),
             Or::Right(_) => None,
+        }
+    }
+
+    pub fn predicate<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>) -> ComputationPredicate<'ty, 'object> {
+        match *self.0 {
+            Computation_::Result(ty, ref locals) => {
+                match tyenv.predicate(ty) {
+                    Or::Left(ty) => ComputationPredicate::result(Some(Computation::result(ty, locals.clone())), None),
+                    Or::Right(ty) => ComputationPredicate::result(None, Some(Computation::result(ty, locals.clone()))),
+                    Or::Both(tya, tyb) => {
+                        let compa = Computation::result(tya, locals.clone());
+                        let compb = Computation::result(tyb, locals.clone());
+                        ComputationPredicate::result(Some(compa), Some(compb))
+                    }
+                }
+            },
+            Computation_::Divergent(ref a, ref b) => {
+                a.predicate(loc, tyenv).append(b.predicate(loc, tyenv))
+            }
+            Computation_::Return(..) |
+            Computation_::Redo |
+            Computation_::Retry => {
+                ComputationPredicate::non_result(self.clone())
+            }
         }
     }
 }

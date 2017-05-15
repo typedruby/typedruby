@@ -815,6 +815,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         comp.seq(&|_, locals| self.process_node(node, locals))
     }
 
+    fn seq_process_option(&self, comp: Computation<'ty, 'object>, node: &Option<Rc<Node>>, loc: &Loc) -> Computation<'ty, 'object> {
+        comp.seq(&|_, locals|
+            match *node {
+                Some(ref node) => self.process_node(node, locals),
+                None => Computation::result(self.tyenv.nil(loc.clone()), locals),
+            }
+        )
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
@@ -1133,6 +1142,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
 
                 comp.seq(&|_, l| Computation::result(regexp_ty, l))
+            }
+            Node::If(ref loc, ref cond, ref then, ref else_) => {
+                let predicate = self.process_node(cond, locals).predicate(cond.loc(), &self.tyenv);
+
+                let then_comp = predicate.truthy.map(|comp| self.seq_process_option(comp, then, loc));
+                let else_comp = predicate.falsy.map(|comp| self.seq_process_option(comp, else_, loc));
+
+                Computation::divergent_option(
+                    Computation::divergent_option(then_comp, else_comp),
+                    predicate.non_result,
+                ).expect("at least one of the computations must be Some")
             }
             _ => panic!("node: {:?}", node),
         }
