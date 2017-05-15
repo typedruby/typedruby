@@ -12,9 +12,9 @@ mod config;
 mod environment;
 mod errors;
 mod object;
-mod or;
 mod top_level;
 mod typecheck;
+mod util;
 
 use environment::Environment;
 use errors::ErrorReporter;

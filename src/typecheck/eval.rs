@@ -7,7 +7,7 @@ use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
 use typed_arena::Arena;
-use or::Or;
+use util::Or;
 use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
 
