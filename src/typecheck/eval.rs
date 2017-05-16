@@ -616,7 +616,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_local_merges(&self, mut merges: Vec<LocalEntryMerge<'ty, 'object>>) {
+    fn process_local_merges(&self, merges: Vec<LocalEntryMerge<'ty, 'object>>) {
         for merge in merges {
             match merge {
                 LocalEntryMerge::Ok(_) => {},
