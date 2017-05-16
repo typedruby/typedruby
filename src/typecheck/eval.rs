@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::collections::HashMap;
-use typecheck::flow::{Computation, Locals};
+use typecheck::flow::{Computation, Locals, LocalEntry, LocalEntryMerge};
 use typecheck::types::{Arg, TypeEnv, Type, Prototype};
 use object::{Scope, RubyObject, MethodEntry};
 use ast::{Node, Loc, Id};
@@ -614,13 +614,31 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Type::KeywordHash { .. } => panic!("should have degraded to instance"),
             Type::Tuple { .. } => panic!("should have degraded to instance"),
+            Type::LocalVariable { .. } => panic!("should never remain after prune"),
+        }
+    }
+
+    fn process_local_merges(&self, mut merges: Vec<LocalEntryMerge<'ty, 'object>>) {
+        for merge in merges {
+            match merge {
+                LocalEntryMerge::Ok(_) => {},
+                LocalEntryMerge::MustMatch(_, to, from) => self.compatible(to, from, None),
+            }
         }
     }
 
     fn process_and_extract(&self, node: &Node, locals: Locals<'ty, 'object>)
         -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>>
     {
-        self.process_node(node, locals).extract_results(node.loc(), &self.tyenv)
+        let comp = self.process_node(node, locals);
+        self.extract_results(comp, node.loc())
+    }
+
+    fn extract_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>> {
+        let mut merges = Vec::new();
+        let result = comp.extract_results(loc, &self.tyenv, &mut merges);
+        self.process_local_merges(merges);
+        result
     }
 
     fn process_call_arg(&self, node: &Node, locals: Locals<'ty, 'object>) -> Or<(CallArg<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>> {
@@ -673,13 +691,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.compatible(proto_block_ty, block_proc_type, None);
 
                 let block_comp = match *body {
-                    None => Computation::result(self.tyenv.nil(loc.clone()), locals),
+                    None => Computation::result(self.tyenv.nil(loc.clone()), block_locals),
                     Some(ref body_node) => self.process_node(body_node, block_locals),
                 };
 
-                block_comp
-                    .capture_next()
-                    .extract_results(loc, &self.tyenv)
+                self.extract_results(block_comp
+                    .capture_next(), loc)
                     .map_left(|(ty, locals)| {
                         self.compatible(block_return_type, ty, None);
                         locals.unextend()
@@ -704,7 +721,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         let (recv_type, locals, non_result_comp) = match *recv {
-            Some(ref recv_node) => match self.process_node(recv_node, locals).extract_results(recv_node.loc(), &self.tyenv) {
+            Some(ref recv_node) => match self.extract_results(self.process_node(recv_node, locals), recv_node.loc()) {
                 Or::Left((recv_ty, locals)) => (recv_ty, locals, None),
                 Or::Both((recv_ty, locals), comp) => (recv_ty, locals, Some(comp)),
                 Or::Right(comp) => {
@@ -841,9 +858,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Begin(ref loc, ref nodes) => {
                 let comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
 
-                nodes.iter().fold(comp, |comp, node|
-                    self.seq_process(comp, node).converge_results(node.loc(), &self.tyenv)
-                )
+                nodes.iter().fold(comp, |comp, node| {
+                    let mut merges = Vec::new();
+                    let comp = self.seq_process(comp, node).converge_results(node.loc(), &self.tyenv, &mut merges);
+                    self.process_local_merges(merges);
+                    comp
+                })
             }
             Node::Kwbegin(ref loc, ref node) => {
                 match *node {
@@ -866,21 +886,29 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         }
                     };
 
-                    Computation::result(expr_ty, l)
+                    let lvar_ty = self.tyenv.local_variable(asgn_loc.clone(), lvar_name.clone(), expr_ty);
+
+                    Computation::result(lvar_ty, l)
                 })
             }
             Node::Lvar(ref loc, ref name) => {
                 let (ty, locals) = locals.lookup(name);
 
                 let ty = match ty {
-                    Some(ty) => self.tyenv.update_loc(ty, loc.clone()),
-                    None => {
+                    LocalEntry::Bound(ty) |
+                    LocalEntry::Pinned(ty) => self.tyenv.local_variable(loc.clone(), name.clone(), ty),
+                    LocalEntry::ConditionallyPinned(ty) => {
+                        self.tyenv.union(loc,
+                            self.tyenv.local_variable(loc.clone(), name.clone(), ty),
+                            self.tyenv.nil(loc.clone()))
+                    }
+                    LocalEntry::Unbound => {
                         self.error("Use of uninitialised local variable", &[
                             Detail::Loc("here", loc),
                         ]);
 
                         self.tyenv.nil(loc.clone())
-                    },
+                    }
                 };
 
                 Computation::result(ty, locals)
@@ -1005,24 +1033,26 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         Node::Pair(_, ref key, ref value) => {
                             comp = self.seq_process(comp, key);
 
-                            let key_ty = if let Some(ty) = comp.result_type(loc, &self.tyenv) {
-                                ty
-                            } else {
-                                self.warning("Expression never evalutes to a result", &[
-                                    Detail::Loc("here", key.loc()),
-                                ]);
-                                return comp;
+                            let key_ty = match self.extract_results(comp.clone(), loc) {
+                                Or::Left((ty, _)) | Or::Both((ty, _), _) => ty,
+                                _ => {
+                                    self.warning("Expression never evalutes to a result", &[
+                                        Detail::Loc("here", key.loc()),
+                                    ]);
+                                    return comp;
+                                }
                             };
 
                             comp = self.seq_process(comp, value);
 
-                            let value_ty = if let Some(ty) = comp.result_type(loc, &self.tyenv) {
-                                ty
-                            } else {
-                                self.warning("Expression never evalutes to a result", &[
-                                    Detail::Loc("here", value.loc()),
-                                ]);
-                                return comp;
+                            let value_ty = match self.extract_results(comp.clone(), loc) {
+                                Or::Left((ty, _)) | Or::Both((ty, _), _) => ty,
+                                _ => {
+                                    self.warning("Expression never evalutes to a result", &[
+                                        Detail::Loc("here", value.loc()),
+                                    ]);
+                                    return comp;
+                                }
                             };
 
                             if let Node::Symbol(ref sym_loc, ref sym) = **key {
@@ -1034,14 +1064,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         Node::Kwsplat(_, ref splat) => {
                             comp = self.seq_process(comp, splat);
 
-                            if let Some(ty) = comp.result_type(loc, &self.tyenv) {
-                                entries.push(HashEntry::Kwsplat(ty));
-                            } else {
-                                self.warning("Expression never evalutes to a result", &[
-                                    Detail::Loc("here", splat.loc()),
-                                ]);
-                                return comp;
-                            }
+                            match self.extract_results(comp.clone(), loc) {
+                                Or::Left((ty, _)) | Or::Both((ty, _), _) => {
+                                    entries.push(HashEntry::Kwsplat(ty));
+                                }
+                                _ => {
+                                    self.warning("Expression never evalutes to a result", &[
+                                        Detail::Loc("here", splat.loc()),
+                                    ]);
+                                    return comp;
+                                }
+                            };
                         },
                         _ => panic!("unexpected node type in hash literal: {:?}", *pair),
                     }

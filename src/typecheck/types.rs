@@ -71,6 +71,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         self.instance(loc, self.object.NilClass, Vec::new())
     }
 
+    pub fn nillable(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+        self.union(ty.loc(), self.nil(ty.loc().clone()), ty)
+    }
+
     pub fn union(&self, loc: &Loc, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
         let mut reduced_types: Vec<&_> = Vec::new();
 
@@ -111,6 +115,18 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         })
     }
 
+    pub fn local_variable(&self, loc: Loc, name: String, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+        let id = self.new_id();
+
+        self.set_var(id, ty);
+
+        self.alloc(Type::LocalVariable {
+            loc: loc,
+            name: name,
+            id: id,
+        })
+    }
+
     fn set_var(&self, id: TypeVarId, ty: &'ty Type<'ty, 'object>) {
         let mut instance_map_ref = self.instance_map.borrow_mut();
 
@@ -123,6 +139,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     pub fn prune(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
         match *ty {
             Type::Var { ref id, .. } |
+            Type::LocalVariable { ref id, .. } |
             Type::KeywordHash { ref id, .. } => {
                 if let Some(instance) = { self.instance_map.borrow().get(id) } {
                     return self.prune(instance)
@@ -522,6 +539,9 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             Type::Var { ref id, .. } => {
                 write!(buffer, "t{}", id).unwrap();
             },
+            Type::LocalVariable { .. } => {
+                panic!("should never remain after prune")
+            },
         }
     }
 
@@ -578,6 +598,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             Type::Any { .. } |
             Type::TypeParameter { .. } |
             Type::Var { .. } => Or::Both(ty, ty),
+            Type::LocalVariable { .. } => panic!("should never remain after prune"),
         }
     }
 }
@@ -621,6 +642,11 @@ pub enum Type<'ty, 'object: 'ty> {
     Var {
         loc: Loc,
         id: TypeVarId,
+    },
+    LocalVariable {
+        loc: Loc,
+        name: String,
+        id: TypeVarId,
     }
 }
 
@@ -635,6 +661,7 @@ impl<'ty, 'object> Type<'ty, 'object> {
             Type::KeywordHash { ref loc, .. } => loc,
             Type::Proc { ref loc, .. } => loc,
             Type::Var { ref loc, .. } => loc,
+            Type::LocalVariable { ref loc, .. } => loc,
         }
     }
 
