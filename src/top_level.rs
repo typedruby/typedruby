@@ -385,6 +385,9 @@ impl<'env, 'object> Eval<'env, 'object> {
                     self.eval_node(stmt);
                 }
             }
+            Node::Kwbegin(_, ref node) => {
+                self.eval_maybe_node(node);
+            }
             Node::Class(_, ref declname, ref superclass, ref body) => {
                 match **declname {
                     Node::TyGendecl(_, ref name, ref genargs) =>
@@ -426,6 +429,9 @@ impl<'env, 'object> Eval<'env, 'object> {
                         self.error(message, &[Detail::Loc("here", node.loc())]);
                     }
                 }
+            }
+            Node::Undef(_, ref names) => {
+                // TODO
             }
             Node::Send(_, None, ref id@Id(..), ref args) => {
                 self.process_self_send(id, args.as_slice());
@@ -513,6 +519,29 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Lvar(..) => {}
             Node::Symbol(..) => {}
             Node::Defined(..) => {}
+            Node::Rescue(_, ref body, ref rescues, ref else_) => {
+                self.eval_maybe_node(body);
+                for rescue in rescues {
+                    self.eval_node(rescue);
+                }
+                self.eval_maybe_node(else_);
+            }
+            Node::Resbody(_, ref class, ref lvar, ref body) => {
+                self.eval_maybe_node(class);
+                self.eval_maybe_node(lvar);
+                self.eval_maybe_node(body);
+            }
+            Node::Array(_, ref elements) => {
+                for element in elements {
+                    self.eval_node(element);
+                }
+            }
+            Node::String(..) => {}
+            Node::Or(_, ref left, ref right) |
+            Node::And(_, ref left, ref right) => {
+                self.eval_node(left);
+                self.eval_node(right);
+            }
             _ => panic!("unknown node: {:?}", node),
         }
     }
