@@ -306,9 +306,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
             },
             Node::TyNillable(ref loc, ref type_node) => {
-                self.tyenv.union(loc,
-                    self.tyenv.nil(loc.clone()),
-                    self.resolve_type(type_node, context, scope))
+                self.tyenv.nillable(self.resolve_type(type_node, context, scope))
             },
             Node::TyOr(ref loc, ref a, ref b) => {
                 self.tyenv.union(loc,
@@ -898,9 +896,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     LocalEntry::Bound(ty) |
                     LocalEntry::Pinned(ty) => self.tyenv.local_variable(loc.clone(), name.clone(), ty),
                     LocalEntry::ConditionallyPinned(ty) => {
-                        self.tyenv.union(loc,
-                            self.tyenv.local_variable(loc.clone(), name.clone(), ty),
-                            self.tyenv.nil(loc.clone()))
+                        self.tyenv.nillable(self.tyenv.local_variable(loc.clone(), name.clone(), ty))
                     }
                     LocalEntry::Unbound => {
                         self.error("Use of uninitialised local variable", &[
