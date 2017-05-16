@@ -6,12 +6,6 @@ use immutable_map::TreeMap;
 use util::Or;
 use std::collections::HashSet;
 
-pub enum LocalStatus {
-    Bound,
-    Pinned,
-    PinnedConditionally,
-}
-
 #[derive(Debug,Clone)]
 pub enum LocalEntry<'ty, 'object: 'ty> {
     Unbound,
@@ -27,10 +21,6 @@ pub enum LocalEntryMerge<'ty, 'object: 'ty> {
 }
 
 impl<'ty, 'object> LocalEntry<'ty, 'object> {
-    pub fn empty() -> LocalEntry<'ty, 'object> {
-        LocalEntry::Unbound
-    }
-
     pub fn merge<'env>(self, other: LocalEntry<'ty, 'object>, tyenv: &TypeEnv<'ty, 'env, 'object>) -> LocalEntryMerge<'ty, 'object> {
         match (self, other) {
             (LocalEntry::Unbound, LocalEntry::Unbound) =>
@@ -86,14 +76,6 @@ pub struct ComputationPredicate<'ty, 'object: 'ty> {
 }
 
 impl<'ty, 'object> ComputationPredicate<'ty, 'object> {
-    pub fn empty() -> ComputationPredicate<'ty, 'object> {
-        ComputationPredicate {
-            truthy: None,
-            falsy: None,
-            non_result: None,
-        }
-    }
-
     pub fn result(truthy: Option<Computation<'ty, 'object>>, falsy: Option<Computation<'ty, 'object>>) -> ComputationPredicate<'ty, 'object> {
         ComputationPredicate {
             truthy: truthy,
