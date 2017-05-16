@@ -87,7 +87,15 @@ impl<'env, 'object> Eval<'env, 'object> {
     fn decl_class(&self, name: &Node, type_parameters: &[Rc<Node>], superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
         // TODO need to autoload
 
-        let superclass = superclass.as_ref().map(|node| (node, self.resolve_cpath(node).unwrap() /* TODO handle error */));
+        let superclass = superclass.as_ref().and_then(|node| {
+            match self.resolve_cpath(node) {
+                Ok(value) => Some((node, value)),
+                Err((node, message)) => {
+                    self.error(&message, &[Detail::Loc("here", node.loc())]);
+                    None
+                }
+            }
+        });
 
         let class = match self.resolve_decl_ref(name) {
             Ok((base, id)) => {
