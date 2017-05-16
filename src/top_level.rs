@@ -91,7 +91,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             match self.resolve_cpath(node) {
                 Ok(value) => Some((node, value)),
                 Err((node, message)) => {
-                    self.error(&message, &[Detail::Loc("here", node.loc())]);
+                    self.warning(&message, &[Detail::Loc("here", node.loc())]);
                     None
                 }
             }
@@ -181,7 +181,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 }
             }
             Err((node, message)) => {
-                self.error(&message, &[Detail::Loc("here", node.loc())]);
+                self.warning(&message, &[Detail::Loc("here", node.loc())]);
                 return;
             }
         };
@@ -263,7 +263,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         } else {
             if let Some(name) = from_name {
                 // no need to check None case, symbol_name would have already emitted an error
-                self.error("Could not resolve source method in alias", &[
+                self.warning("Could not resolve source method in alias", &[
                     Detail::Loc(&format!("{}#{}", klass.name(), name), from.loc()),
                 ]);
             }
@@ -353,13 +353,13 @@ impl<'env, 'object> Eval<'env, 'object> {
                                 Err(e) => panic!("TODO: implement error handling for require errors: {:?}", e),
                             }
                         } else {
-                            self.error("Could not resolve require", &[
+                            self.warning("Could not resolve require", &[
                                 Detail::Loc("here", loc),
                             ]);
                         }
                     }
                     _ => {
-                        self.error("Could not resolve dynamic path in require", &[
+                        self.warning("Could not resolve dynamic path in require", &[
                             Detail::Loc("here", args[0].loc()),
                         ]);
                     }
@@ -426,7 +426,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         self.decl_method(&metaclass, name, node);
                     }
                     Err((node, message)) => {
-                        self.error(message, &[Detail::Loc("here", node.loc())]);
+                        self.warning(message, &[Detail::Loc("here", node.loc())]);
                     }
                 }
             }
