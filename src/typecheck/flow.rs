@@ -26,14 +26,14 @@ impl<'ty, 'object> LocalEntry<'ty, 'object> {
             (LocalEntry::Unbound, LocalEntry::Unbound) =>
                 LocalEntryMerge::Ok(LocalEntry::Unbound),
             (LocalEntry::Unbound, LocalEntry::Bound(ty)) =>
-                LocalEntryMerge::Ok(LocalEntry::Bound(tyenv.nillable(ty))),
+                LocalEntryMerge::Ok(LocalEntry::Bound(tyenv.nillable(ty.loc(), ty))),
             (LocalEntry::Unbound, LocalEntry::Pinned(ty)) =>
                 LocalEntryMerge::Ok(LocalEntry::ConditionallyPinned(ty)),
             (LocalEntry::Unbound, LocalEntry::ConditionallyPinned(ty)) =>
                 LocalEntryMerge::Ok(LocalEntry::ConditionallyPinned(ty)),
 
             (LocalEntry::Bound(ty), LocalEntry::Unbound) =>
-                LocalEntryMerge::Ok(LocalEntry::Bound(tyenv.nillable(ty))),
+                LocalEntryMerge::Ok(LocalEntry::Bound(tyenv.nillable(ty.loc(), ty))),
             (LocalEntry::Bound(tya), LocalEntry::Bound(tyb)) =>
                 LocalEntryMerge::Ok(LocalEntry::Bound(tyenv.union(tya.loc() /* TODO incorporate tyb too */, tya, tyb))),
             (LocalEntry::Bound(bound_ty), LocalEntry::Pinned(pinned_ty)) =>

@@ -71,8 +71,8 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         self.instance(loc, self.object.NilClass, Vec::new())
     }
 
-    pub fn nillable(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
-        self.union(ty.loc(), self.nil(ty.loc().clone()), ty)
+    pub fn nillable(&self, loc: &Loc, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+        self.union(loc, self.nil(ty.loc().clone()), ty)
     }
 
     pub fn union(&self, loc: &Loc, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
