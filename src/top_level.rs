@@ -433,7 +433,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Undef(_, ref names) => {
                 // TODO
             }
-            Node::Send(_, None, ref id@Id(..), ref args) => {
+            Node::Send(_, None, ref id, ref args) => {
                 self.process_self_send(id, args.as_slice());
             }
             Node::Send(_, Some(ref recv), _, ref args) => {
