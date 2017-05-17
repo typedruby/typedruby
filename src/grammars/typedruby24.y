@@ -402,7 +402,7 @@
     return ptr;
   }
 
-  static foreign_ptr take(parser::base& _, foreign_ptr raw_ptr) {
+  static foreign_ptr take(parser::base&, foreign_ptr raw_ptr) {
     return raw_ptr;
   }
 
@@ -413,7 +413,7 @@
     return raw_ptr;
   }
 
-  static foreign_ptr put(parser::base& _, foreign_ptr ptr) {
+  static foreign_ptr put(parser::base&, foreign_ptr ptr) {
     return ptr;
   }
 
