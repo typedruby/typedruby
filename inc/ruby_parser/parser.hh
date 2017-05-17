@@ -67,12 +67,12 @@ namespace ruby_parser {
   namespace parser {
     class base {
     public:
-      foreign_ptr ast;
       std::unique_ptr<lexer> lexer_;
       std::vector<diagnostic> diagnostics;
       size_t def_level;
       const struct builder& builder;
       std::set<void*> saved_pointers;
+      foreign_ptr ast;
 
       base(ruby_version version, const std::string& source, const struct builder& builder);
       virtual ~base();
