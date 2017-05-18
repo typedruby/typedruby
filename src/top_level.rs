@@ -1,4 +1,4 @@
-use ast::{Id, Node};
+use ast::{Id, Node, Loc};
 use environment::Environment;
 use object::{RubyObject, Scope, MethodEntry, IvarEntry, ConstantEntry};
 use std::rc::Rc;
@@ -84,6 +84,18 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
+    fn constant_definition_error(&self, message: &str, loc: &Loc, definition: &Option<Loc>) {
+        let mut details = vec![
+            Detail::Loc("here", loc),
+        ];
+
+        if let Some(ref loc) = *definition {
+            details.push(Detail::Loc("previously defined here", loc));
+        }
+
+        self.error(message, details.as_slice());
+    }
+
     fn decl_class(&self, name: &Node, type_parameters: &[Rc<Node>], superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
         // TODO need to autoload
 
@@ -103,19 +115,13 @@ impl<'env, 'object> Eval<'env, 'object> {
                     let value = constant_entry.value;
                     match *value {
                         RubyObject::Object { .. } => {
-                            self.error(&format!("{} is not a class", id), &[
-                                Detail::Loc("here", name.loc()),
-                                // TODO - show location of previous definition
-                            ]);
+                            self.constant_definition_error(&format!("{} is not a class", id), name.loc(), &constant_entry.loc);
 
                             // open the object's metaclass instead as error recovery:
                             self.env.object.metaclass(value)
                         }
                         RubyObject::Module { .. } => {
-                            self.error(&format!("{} is not a class", id), &[
-                                Detail::Loc("here", name.loc()),
-                                // TODO - show location of previous definition
-                            ]);
+                            self.constant_definition_error(&format!("{} is not a class", id), name.loc(), &constant_entry.loc);
 
                             // open the module instead:
                             value
@@ -206,10 +212,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         value@&RubyObject::Object { .. } |
                         value@&RubyObject::Class { .. } |
                         value@&RubyObject::Metaclass { .. } => {
-                            self.error(&format!("{} is not a module", id), &[
-                                Detail::Loc("here", name.loc()),
-                                // TODO show location of previous definition
-                            ]);
+                            self.constant_definition_error(&format!("{} is not a module", id), name.loc(), &constant_entry.loc);
 
                             value
                         }
@@ -462,11 +465,8 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                 match self.resolve_cbase(base) {
                     Ok(cbase) => {
-                        if self.env.object.has_own_const(&cbase, name) {
-                            self.error("Constant reassignment", &[
-                                Detail::Loc("here", &loc),
-                                // TODO show where constant was previously set
-                            ]);
+                        if let Some(constant_entry) = self.env.object.get_own_const(&cbase, name) {
+                            self.constant_definition_error("Duplicate constant definition", &loc, &constant_entry.loc);
                             return;
                         }
                         match **expr {

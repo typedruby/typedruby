@@ -363,23 +363,20 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn has_own_const(&self, object: &'a RubyObject<'a>, name: &str) -> bool {
+    pub fn get_own_const(&self, object: &'a RubyObject<'a>, name: &str) -> Option<Rc<ConstantEntry<'a>>> {
         match *object {
-            RubyObject::Object { .. } => panic!("called has_own_const with RubyObject::Object!"),
+            RubyObject::Object { .. } => panic!("called get_own_const with RubyObject::Object!"),
             RubyObject::Module { .. } |
             RubyObject::Class { .. } |
             RubyObject::Metaclass { .. } => {},
-            RubyObject::IClass { .. } => panic!("called has_own_const with RubyObject::IClass!"),
+            RubyObject::IClass { .. } => panic!("called get_own_const with RubyObject::IClass!"),
         };
 
         let constants_ref = self.constants.borrow();
 
         let constants = constants_ref.get(object);
 
-        match constants.and_then(|c| c.get(name)) {
-            Some(_) => true,
-            None => false,
-        }
+        constants.and_then(|c| c.get(name)).map(|entry| entry.clone())
     }
 
     pub fn get_const_for_definition(&self, object: &'a RubyObject<'a>, name: &str) -> Option<Rc<ConstantEntry<'a>>> {
