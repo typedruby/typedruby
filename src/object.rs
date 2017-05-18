@@ -176,10 +176,10 @@ impl<'a> ObjectGraph<'a> {
             ivars: RefCell::new(HashMap::new()),
         };
 
-        o.set_const(o.BasicObject, "BasicObject", None, o.BasicObject);
-        o.set_const(o.Object, "Object", None, o.Object);
-        o.set_const(o.Object, "Module", None, o.Module);
-        o.set_const(o.Object, "Class", None, o.Class);
+        o.set_const(o.BasicObject, "BasicObject", Rc::new(ConstantEntry { loc: None, value: o.BasicObject }));
+        o.set_const(o.Object, "Object", Rc::new(ConstantEntry { loc: None, value: o.Object }));
+        o.set_const(o.Object, "Module", Rc::new(ConstantEntry { loc: None, value: o.Module }));
+        o.set_const(o.Object, "Class", Rc::new(ConstantEntry { loc: None, value: o.Class }));
 
         o.Kernel = o.define_module(None, o.Object, "Kernel");
         o.include_module(o.Object, o.Kernel);
@@ -201,7 +201,7 @@ impl<'a> ObjectGraph<'a> {
     }
 
     fn expect_class(&self, name: &str) -> &'a RubyObject<'a> {
-        self.get_const(self.Object, name).unwrap()
+        self.get_const(self.Object, name).unwrap().value
     }
 
     pub fn array_class(&self) -> &'a RubyObject<'a> {
@@ -269,7 +269,7 @@ impl<'a> ObjectGraph<'a> {
     pub fn define_class(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
         let class = self.new_class(self.constant_path(owner, name), superclass, type_parameters);
 
-        self.set_const(owner, name, loc, class);
+        self.set_const(owner, name, Rc::new(ConstantEntry { loc: loc, value: class }));
 
         class
     }
@@ -277,7 +277,7 @@ impl<'a> ObjectGraph<'a> {
     pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str) -> &'a RubyObject<'a> {
         let module = self.new_module(self.constant_path(owner, name));
 
-        self.set_const(owner, name, loc, module);
+        self.set_const(owner, name, Rc::new(ConstantEntry { loc: loc, value: module }));
 
         module
     }
@@ -330,7 +330,7 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn get_const(&self, object: &'a RubyObject<'a>, name: &str) -> Option<&'a RubyObject<'a>> {
+    pub fn get_const(&self, object: &'a RubyObject<'a>, name: &str) -> Option<Rc<ConstantEntry<'a>>> {
         let constants_ref = self.constants.borrow();
 
         let (superclass, constants) =
@@ -345,7 +345,7 @@ impl<'a> ObjectGraph<'a> {
             };
 
         match constants.and_then(|c| c.get(name)) {
-            Some(ce) => Some(ce.value),
+            Some(ce) => Some(ce.clone()),
             None => match superclass.get() {
                 None => None,
                 Some(c) => self.get_const(c, name),
@@ -353,14 +353,11 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, loc: Option<Loc>, value: &'a RubyObject<'a>) -> bool {
+    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, entry: Rc<ConstantEntry<'a>>) -> bool {
         match Self::class_table_lookup(&self.constants, object, name) {
             Some(_) => false,
             None => {
-                Self::class_table_insert(&self.constants, object, name.to_owned(), Rc::new(ConstantEntry {
-                    loc: loc,
-                    value: value,
-                }));
+                Self::class_table_insert(&self.constants, object, name.to_owned(), entry);
                 true
             },
         }
@@ -385,13 +382,13 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn get_const_for_definition(&self, object: &'a RubyObject<'a>, name: &str) -> Option<&'a RubyObject<'a>> {
+    pub fn get_const_for_definition(&self, object: &'a RubyObject<'a>, name: &str) -> Option<Rc<ConstantEntry<'a>>> {
         let constants_ref = self.constants.borrow();
 
         let constants = constants_ref.get(object);
 
         match constants.and_then(|c| c.get(name)) {
-            Some(ce) => Some(ce.value),
+            Some(ce) => Some(ce.clone()),
             None => {
                 // vm_search_const_defined_class special cases constant lookups against
                 // Object when used in a class/module definition context:

@@ -156,7 +156,7 @@ impl<'object> Environment<'object> {
                     Ok(&RubyObject::Object { .. }) => Err((base, "Not a class or module")),
                     Ok(&RubyObject::IClass { .. }) => panic!(),
                     Ok(base_ref) => match self.object.get_const(&base_ref, name) {
-                        Some(const_ref) => Ok(const_ref),
+                        Some(ce) => Ok(ce.value),
                         None => /* TODO autoload */ Err((node, "No such constant")),
                     },
                     error => error,
@@ -165,8 +165,8 @@ impl<'object> Environment<'object> {
 
             Node::Const(_, None, Id(_, ref name)) => {
                 for scope in Scope::ancestors(&scope) {
-                    if let Some(obj) = self.object.get_const(&scope.module, name) {
-                        return Ok(obj);
+                    if let Some(ce) = self.object.get_const(&scope.module, name) {
+                        return Ok(ce.value);
                     }
                 }
 
