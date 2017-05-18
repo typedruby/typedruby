@@ -1,6 +1,6 @@
 use ast::{Id, Node};
 use environment::Environment;
-use object::{RubyObject, Scope, MethodEntry, IvarEntry};
+use object::{RubyObject, Scope, MethodEntry, IvarEntry, ConstantEntry};
 use std::rc::Rc;
 use errors::Detail;
 
@@ -99,85 +99,92 @@ impl<'env, 'object> Eval<'env, 'object> {
 
         let class = match self.resolve_decl_ref(name) {
             Ok((base, id)) => {
-                match self.env.object.get_const_for_definition(&base, id) {
-                    Some(object_ref@&RubyObject::Object { .. }) => {
-                        self.error(&format!("{} is not a class", id), &[
-                            Detail::Loc("here", name.loc()),
-                            // TODO - show location of previous definition
-                        ]);
+                if let Some(constant_entry) = self.env.object.get_const_for_definition(&base, id) {
+                    let value = constant_entry.value;
+                    match *value {
+                        RubyObject::Object { .. } => {
+                            self.error(&format!("{} is not a class", id), &[
+                                Detail::Loc("here", name.loc()),
+                                // TODO - show location of previous definition
+                            ]);
 
-                        // open the object's metaclass instead as error recovery:
-                        self.env.object.metaclass(object_ref)
-                    }
-                    Some(module_ref@&RubyObject::Module { .. }) => {
-                        self.error(&format!("{} is not a class", id), &[
-                            Detail::Loc("here", name.loc()),
-                            // TODO - show location of previous definition
-                        ]);
-
-                        // open the module instead:
-                        module_ref
-                    }
-                    Some(class_ref@&RubyObject::Class { .. }) |
-                    Some(class_ref@&RubyObject::Metaclass { .. }) => {
-                        // check superclass matches
-                        if let Some((ref superclass_node, ref superclass)) = superclass {
-                            let existing_superclass = class_ref.superclass();
-                            if Some(superclass.clone()) != existing_superclass {
-                                let existing_superclass_name =
-                                    match existing_superclass {
-                                        Some(existing_superclass) => existing_superclass.name(),
-                                        None => "nil".to_owned(),
-                                    };
-
-                                self.error(&format!("Superclass does not match existing superclass {}", existing_superclass_name), &[
-                                    Detail::Loc("here", superclass_node.loc()),
-                                    // TODO - show location of previous definition
-                                ]);
-                            }
+                            // open the object's metaclass instead as error recovery:
+                            self.env.object.metaclass(value)
                         }
+                        RubyObject::Module { .. } => {
+                            self.error(&format!("{} is not a class", id), &[
+                                Detail::Loc("here", name.loc()),
+                                // TODO - show location of previous definition
+                            ]);
 
-                        class_ref
+                            // open the module instead:
+                            value
+                        }
+                        RubyObject::Class { .. } |
+                        RubyObject::Metaclass { .. } => {
+                            // check superclass matches
+                            if let Some((ref superclass_node, ref superclass)) = superclass {
+                                let existing_superclass = value.superclass();
+                                if Some(superclass.clone()) != existing_superclass {
+                                    let existing_superclass_name =
+                                        match existing_superclass {
+                                            Some(existing_superclass) => existing_superclass.name(),
+                                            None => "nil".to_owned(),
+                                        };
+
+                                    self.error(&format!("Superclass does not match existing superclass {}", existing_superclass_name), &[
+                                        Detail::Loc("here", superclass_node.loc()),
+                                        // TODO - show location of previous definition
+                                    ]);
+                                }
+                            }
+
+                            value
+                        }
+                        RubyObject::IClass { .. } => panic!(),
                     }
-                    Some(&RubyObject::IClass { .. }) => panic!(),
-                    None => {
-                        let superclass = match superclass {
-                            Some((_, ref superclass)) => superclass,
-                            None => &self.env.object.Object,
+                } else {
+                    let superclass = match superclass {
+                        Some((_, ref superclass)) => superclass,
+                        None => &self.env.object.Object,
+                    };
+
+                    let type_parameters =
+                        if superclass.type_parameters().is_empty() {
+                            type_parameters.iter().map(|param|
+                                if let Node::TyGendeclarg(ref loc, ref name) = **param {
+                                    Id(loc.clone(), name.to_owned())
+                                } else {
+                                    panic!("expected TyGendeclarg in TyGendecl");
+                                }
+                            ).collect()
+                        } else if type_parameters.is_empty() {
+                            Vec::new()
+                        } else {
+                            let loc = type_parameters.first().unwrap().loc().join(
+                                        type_parameters.last().unwrap().loc());
+
+                            self.error("Subclasses of generic classes may not specify type parameters", &[
+                                Detail::Loc("here", &loc),
+                            ]);
+
+                            Vec::new()
                         };
 
-                        let type_parameters =
-                            if superclass.type_parameters().is_empty() {
-                                type_parameters.iter().map(|param|
-                                    if let Node::TyGendeclarg(ref loc, ref name) = **param {
-                                        Id(loc.clone(), name.to_owned())
-                                    } else {
-                                        panic!("expected TyGendeclarg in TyGendecl");
-                                    }
-                                ).collect()
-                            } else if type_parameters.is_empty() {
-                                Vec::new()
-                            } else {
-                                let loc = type_parameters.first().unwrap().loc().join(
-                                            type_parameters.last().unwrap().loc());
+                    let class = self.env.object.new_class(
+                        self.env.object.constant_path(&base, id),
+                        superclass, type_parameters);
 
-                                self.error("Subclasses of generic classes may not specify type parameters", &[
-                                    Detail::Loc("here", &loc),
-                                ]);
+                    let constant = Rc::new(ConstantEntry {
+                        loc: Some(name.loc().clone()),
+                        value: class,
+                    });
 
-                                Vec::new()
-                            };
-
-                        let class = self.env.object.new_class(
-                            self.env.object.constant_path(&base, id),
-                            superclass, type_parameters);
-
-                        if !self.env.object.set_const(&base, id, Some(name.loc().clone()), &class) {
-                            panic!("internal error: would overwrite existing constant");
-                        }
-
-                        class
+                    if !self.env.object.set_const(&base, id, constant) {
+                        panic!("internal error: would overwrite existing constant");
                     }
+
+                    class
                 }
             }
             Err((node, message)) => {
@@ -194,30 +201,35 @@ impl<'env, 'object> Eval<'env, 'object> {
 
         let module = match self.resolve_decl_ref(name) {
             Ok((base, id)) => {
-                match self.env.object.get_const_for_definition(&base, id) {
-                    Some(const_value@&RubyObject::Object { .. }) |
-                    Some(const_value@&RubyObject::Class { .. }) |
-                    Some(const_value@&RubyObject::Metaclass { .. }) => {
-                        self.error(&format!("{} is not a module", id), &[
-                            Detail::Loc("here", name.loc()),
-                            // TODO show location of previous definition
-                        ]);
+                if let Some(constant_entry) = self.env.object.get_const_for_definition(&base, id) {
+                    match constant_entry.value {
+                        value@&RubyObject::Object { .. } |
+                        value@&RubyObject::Class { .. } |
+                        value@&RubyObject::Metaclass { .. } => {
+                            self.error(&format!("{} is not a module", id), &[
+                                Detail::Loc("here", name.loc()),
+                                // TODO show location of previous definition
+                            ]);
 
-                        const_value.clone()
-                    }
-                    Some(&RubyObject::IClass { .. }) => panic!(),
-                    Some(const_value@&RubyObject::Module { .. }) =>
-                        const_value.clone(),
-                    None => {
-                        let module = self.env.object.new_module(
-                            self.env.object.constant_path(&base, id));
-
-                        if !self.env.object.set_const(&base, id, Some(name.loc().clone()), &module) {
-                            panic!("internal error: would overwrite existing constant");
+                            value
                         }
-
-                        module
+                        &RubyObject::IClass { .. } => panic!(),
+                        value@&RubyObject::Module { .. } => value,
                     }
+                } else {
+                    let module = self.env.object.new_module(
+                        self.env.object.constant_path(&base, id));
+
+                    let constant = Rc::new(ConstantEntry {
+                        loc: Some(name.loc().clone()),
+                        value: module,
+                    });
+
+                    if !self.env.object.set_const(&base, id, constant) {
+                        panic!("internal error: would overwrite existing constant");
+                    }
+
+                    module
                 }
             }
             e@Err(..) => panic!("{:?}", e) /* TODO handle error */,
@@ -460,7 +472,12 @@ impl<'env, 'object> Eval<'env, 'object> {
                         match **expr {
                             Node::Const { .. } => {
                                 if let Ok(value) = self.resolve_cpath(expr) {
-                                    self.env.object.set_const(&cbase, name, Some(loc), &value);
+                                    let constant = Rc::new(ConstantEntry {
+                                        loc: Some(loc),
+                                        value: value,
+                                    });
+
+                                    self.env.object.set_const(&cbase, name, constant);
                                 }
                             }
                             // TODO handle send
