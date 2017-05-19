@@ -132,7 +132,7 @@ module File::Constants
   WRONLY = nil
   RDWR = (nil : Integer)
   APPEND = nil
-  CREAT = nil
+  CREAT = (nil : Integer)
   EXCL = nil
   NONBLOCK = nil
   TRUNC = nil
