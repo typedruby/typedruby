@@ -135,10 +135,10 @@ impl<'a> ObjectGraph<'a> {
 
         fn set_class<'a>(object: &'a RubyObject<'a>, class: &'a RubyObject<'a>) {
             match *object {
-                RubyObject::Object { class: ref class_, .. } |
                 RubyObject::Class { class: ref class_, .. } |
                 RubyObject::Module { class: ref class_, .. } |
                 RubyObject::Metaclass { class: ref class_, .. } => class_.set(class),
+                RubyObject::Object { .. } |
                 RubyObject::IClass { .. } => panic!(),
             }
         }
@@ -247,6 +247,14 @@ impl<'a> ObjectGraph<'a> {
             .insert(key, value);
     }
 
+    pub fn new_typed_object(&self, type_node: Rc<Node>, type_scope: Rc<Scope<'a>>) -> &'a RubyObject<'a> {
+        self.alloc(RubyObject::Object {
+            id: self.new_object_id(),
+            type_node: type_node,
+            type_scope: type_scope,
+        })
+    }
+
     pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
         self.alloc(RubyObject::Class {
             id: self.new_object_id(),
@@ -284,7 +292,7 @@ impl<'a> ObjectGraph<'a> {
 
     pub fn metaclass(&self, object_ref: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
         match *object_ref {
-            RubyObject::Object { ref class, .. } |
+            RubyObject::Object { .. } => panic!(),
             RubyObject::Module { ref class, .. } => {
                 match class.get() {
                     metaclass_ref@&RubyObject::Metaclass { .. } =>
@@ -597,7 +605,8 @@ pub struct IvarEntry<'object> {
 pub enum RubyObject<'a> {
     Object {
         id: ObjectId,
-        class: Cell<&'a RubyObject<'a>>,
+        type_node: Rc<Node>,
+        type_scope: Rc<Scope<'a>>,
     },
     Module {
         id: ObjectId,
@@ -638,8 +647,8 @@ impl<'a> RubyObject<'a> {
 
     pub fn name(&self) -> String {
         match *self {
-            RubyObject::Object { ref class, .. } =>
-                format!("#<{}>", class.get().name()),
+            RubyObject::Object { ref type_node, .. } =>
+                format!("#<@ {:?}>", type_node.loc()),
             RubyObject::Module { ref name, .. } =>
                 name.clone(),
             RubyObject::Class { ref name, .. } =>
@@ -706,8 +715,9 @@ impl<'a> RubyObject<'a> {
 
     pub fn type_parameters(&'a self) -> &'a [Id] {
         match *self {
-            RubyObject::Object { .. } =>
-                panic!("called type_parameters on RubyObject::Object!"),
+            RubyObject::Object { .. } => {
+                panic!("called type_parameters on RubyObject::Object!");
+            },
             RubyObject::Module { .. } |
             RubyObject::Metaclass { .. } => {
                 &[]

@@ -101,7 +101,15 @@ impl<'env, 'object> Eval<'env, 'object> {
 
         let superclass = superclass.as_ref().and_then(|node| {
             match self.resolve_cpath(node) {
-                Ok(value) => Some((node, value)),
+                Ok(value) => match *value {
+                    RubyObject::Class { .. } |
+                    RubyObject::Metaclass { .. } =>
+                        Some((node, value)),
+                    _ => {
+                        self.error("Superclass is not a class", &[Detail::Loc("here", node.loc())]);
+                        None
+                    }
+                },
                 Err((node, message)) => {
                     self.warning(&message, &[Detail::Loc("here", node.loc())]);
                     None
@@ -469,21 +477,31 @@ impl<'env, 'object> Eval<'env, 'object> {
                             self.constant_definition_error("Duplicate constant definition", &loc, &constant_entry.loc);
                             return;
                         }
-                        match **expr {
-                            Node::Const { .. } => {
-                                if let Ok(value) = self.resolve_cpath(expr) {
-                                    let constant = Rc::new(ConstantEntry {
-                                        loc: Some(loc),
-                                        value: value,
-                                    });
 
-                                    self.env.object.set_const(&cbase, name, constant);
-                                }
+                        let value = match **expr {
+                            Node::Const(..) => Some(self.resolve_cpath(expr)),
+                            Node::TyCast(_, _, ref ty) => {
+                                Some(Ok(self.env.object.new_typed_object(ty.clone(), self.scope.clone())))
+                            },
+                            // TODO special case things like Struct.new and Class.new here
+                            _ => None
+                        };
+
+                        match value {
+                            Some(Ok(value)) => {
+                                let constant = Rc::new(ConstantEntry {
+                                    loc: Some(loc),
+                                    value: value,
+                                });
+
+                                self.env.object.set_const(&cbase, name, constant);
                             }
-                            // TODO handle send
-                            // TODO handle tr_cast
-                            // TODO handle unresolved expressions
-                            _ => {}
+                            Some(Err((node, message))) => {
+                                self.warning("Could not statically resolve expression in constant assignment", &[
+                                    Detail::Loc(message, node.loc()),
+                                ]);
+                            }
+                            None => { /* ignore */ }
                         }
                     }
                     Err((node, message)) => {
