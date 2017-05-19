@@ -42,6 +42,14 @@ module Kernel
   def loop({ || => :any } &) => nil; end
 end
 
+class ENVClass
+  def [](String name) => ~String; end
+
+  def fetch(String name) => String; end
+
+  def []=(String name, String value) => String; end
+end
+
 class Object < BasicObject
   include Kernel
   STDOUT = nil
@@ -51,7 +59,7 @@ class Object < BasicObject
   ARGF = nil
   TRUE = nil
   FALSE = nil
-  ENV = nil
+  ENV = (nil : ENVClass)
   RUBY_RELEASE_DATE = nil
   RUBY_PATCHLEVEL = nil
   RUBY_VERSION = nil
