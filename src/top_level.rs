@@ -479,16 +479,19 @@ impl<'env, 'object> Eval<'env, 'object> {
                         }
 
                         let value = match **expr {
-                            Node::Const(..) => Some(self.resolve_cpath(expr)),
-                            Node::TyCast(_, _, ref ty) => {
-                                Some(Ok(self.env.object.new_typed_object(ty.clone(), self.scope.clone())))
-                            },
+                            Node::Const(..) => self.resolve_cpath(expr),
+                            Node::TyCast(_, _, ref tynode) => {
+                                Ok(self.env.object.new_typed_object(tynode.clone(), self.scope.clone()))
+                            }
                             // TODO special case things like Struct.new and Class.new here
-                            _ => None
+                            _ => {
+                                let tynode = Rc::new(Node::TyAny(expr.loc().clone()));
+                                Ok(self.env.object.new_typed_object(tynode, self.scope.clone()))
+                            }
                         };
 
                         match value {
-                            Some(Ok(value)) => {
+                            Ok(value) => {
                                 let constant = Rc::new(ConstantEntry {
                                     loc: Some(loc),
                                     value: value,
@@ -496,12 +499,11 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                                 self.env.object.set_const(&cbase, name, constant);
                             }
-                            Some(Err((node, message))) => {
+                            Err((node, message)) => {
                                 self.warning("Could not statically resolve expression in constant assignment", &[
                                     Detail::Loc(message, node.loc()),
                                 ]);
                             }
-                            None => { /* ignore */ }
                         }
                     }
                     Err((node, message)) => {
