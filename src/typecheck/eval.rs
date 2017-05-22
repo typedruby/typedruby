@@ -1242,6 +1242,26 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     ..pred
                 })
             }
+            Node::Or(_, ref lhs, ref rhs) => {
+                let lhs_pred = self.process_node(lhs, locals).predicate(lhs.loc(), &self.tyenv);
+
+                let falsy = lhs_pred.falsy.map(|comp| self.seq_process(comp, rhs));
+
+                Computation::divergent_option(
+                    Computation::divergent_option(lhs_pred.truthy, falsy),
+                    lhs_pred.non_result
+                ).expect("at least one of the computations must be Some")
+            }
+            Node::And(_, ref lhs, ref rhs) => {
+                let lhs_pred = self.process_node(lhs, locals).predicate(lhs.loc(), &self.tyenv);
+
+                let truthy = lhs_pred.truthy.map(|comp| self.seq_process(comp, rhs));
+
+                Computation::divergent_option(
+                    Computation::divergent_option(lhs_pred.falsy, truthy),
+                    lhs_pred.non_result
+                ).expect("at least one of the computations must be Some")
+            }
             _ => panic!("node: {:?}", node),
         }
     }
