@@ -909,6 +909,22 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Computation::result(ty, locals)
             }
+            // same as Lvar but does not error on use of uninitialised local
+            // variable since we'll be assigning it straight away anyway:
+            Node::Lvassignable(ref loc, ref name) => {
+                let (ty, locals) = locals.lookup(name);
+
+                let ty = match ty {
+                    LocalEntry::Bound(ty) |
+                    LocalEntry::Pinned(ty) => self.tyenv.local_variable(loc.clone(), name.clone(), ty),
+                    LocalEntry::ConditionallyPinned(ty) => {
+                        self.tyenv.nillable(loc, self.tyenv.local_variable(loc.clone(), name.clone(), ty))
+                    }
+                    LocalEntry::Unbound => self.tyenv.nil(loc.clone())
+                };
+
+                Computation::result(ty, locals)
+            }
             Node::Ivar(ref loc, ref name) => {
                 let ty = match self.env.object.lookup_ivar(self.type_context.class, name) {
                     Some(ivar) => {
@@ -1190,6 +1206,25 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Computation::divergent_option(
                     Computation::divergent_option(then_comp, else_comp),
                     predicate.non_result,
+                ).expect("at least one of the computations must be Some")
+            }
+            Node::OrAsgn(ref loc, ref lhs, ref rhs) => {
+                let asgn_node = match **lhs {
+                    Node::Lvassignable(ref loc, ref name) =>
+                        Node::Lvasgn(loc.join(rhs.loc()), Id(loc.clone(), name.clone()), rhs.clone()),
+                    Node::Ivar(ref loc, ref name) =>
+                        Node::Ivasgn(loc.join(rhs.loc()), Id(loc.clone(), name.clone()), rhs.clone()),
+                    _ =>
+                        panic!("unknown lhs in orasgn: {:?}", lhs),
+                };
+
+                let lhs_pred = self.process_node(lhs, locals).predicate(lhs.loc(), &self.tyenv);
+
+                let asgn_comp = lhs_pred.falsy.map(|comp| self.seq_process(comp, &asgn_node));
+
+                Computation::divergent_option(
+                    Computation::divergent_option(lhs_pred.truthy, asgn_comp),
+                    lhs_pred.non_result,
                 ).expect("at least one of the computations must be Some")
             }
             _ => panic!("node: {:?}", node),
