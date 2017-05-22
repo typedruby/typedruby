@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::collections::HashMap;
-use typecheck::flow::{Computation, Locals, LocalEntry, LocalEntryMerge};
+use typecheck::flow::{Computation, Locals, LocalEntry, LocalEntryMerge, ComputationPredicate};
 use typecheck::types::{Arg, TypeEnv, Type, Prototype};
 use object::{Scope, RubyObject, MethodEntry};
 use ast::{Node, Loc, Id};
@@ -839,6 +839,28 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         )
     }
 
+    fn cond_asgn<T>(&self, lhs: &Rc<Node>, rhs: &Rc<Node>, locals: Locals<'ty, 'object>, f: T) -> Computation<'ty, 'object>
+        where T : Fn(ComputationPredicate<'ty, 'object>, &Node) -> ComputationPredicate<'ty, 'object>
+    {
+        let asgn_node = match **lhs {
+            Node::Lvassignable(ref loc, ref name) =>
+                Node::Lvasgn(loc.join(rhs.loc()), Id(loc.clone(), name.clone()), rhs.clone()),
+            Node::Ivar(ref loc, ref name) =>
+                Node::Ivasgn(loc.join(rhs.loc()), Id(loc.clone(), name.clone()), rhs.clone()),
+            _ =>
+                panic!("unknown lhs in cond_asgn: {:?}", lhs),
+        };
+
+        let lhs_pred = self.process_node(lhs, locals).predicate(lhs.loc(), &self.tyenv);
+
+        let asgn_pred = f(lhs_pred, &asgn_node);
+
+        Computation::divergent_option(
+            Computation::divergent_option(asgn_pred.truthy, asgn_pred.falsy),
+            asgn_pred.non_result,
+        ).expect("at least one of the computations must be Some")
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
@@ -1208,24 +1230,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     predicate.non_result,
                 ).expect("at least one of the computations must be Some")
             }
-            Node::OrAsgn(ref loc, ref lhs, ref rhs) => {
-                let asgn_node = match **lhs {
-                    Node::Lvassignable(ref loc, ref name) =>
-                        Node::Lvasgn(loc.join(rhs.loc()), Id(loc.clone(), name.clone()), rhs.clone()),
-                    Node::Ivar(ref loc, ref name) =>
-                        Node::Ivasgn(loc.join(rhs.loc()), Id(loc.clone(), name.clone()), rhs.clone()),
-                    _ =>
-                        panic!("unknown lhs in orasgn: {:?}", lhs),
-                };
-
-                let lhs_pred = self.process_node(lhs, locals).predicate(lhs.loc(), &self.tyenv);
-
-                let asgn_comp = lhs_pred.falsy.map(|comp| self.seq_process(comp, &asgn_node));
-
-                Computation::divergent_option(
-                    Computation::divergent_option(lhs_pred.truthy, asgn_comp),
-                    lhs_pred.non_result,
-                ).expect("at least one of the computations must be Some")
+            Node::OrAsgn(_, ref lhs, ref rhs) => {
+                self.cond_asgn(lhs, rhs, locals, |pred, asgn_node| ComputationPredicate {
+                    falsy: pred.falsy.map(|comp| self.seq_process(comp, asgn_node)),
+                    ..pred
+                })
+            }
+            Node::AndAsgn(_, ref lhs, ref rhs) => {
+                self.cond_asgn(lhs, rhs, locals, |pred, asgn_node| ComputationPredicate {
+                    truthy: pred.truthy.map(|comp| self.seq_process(comp, asgn_node)),
+                    ..pred
+                })
             }
             _ => panic!("node: {:?}", node),
         }
