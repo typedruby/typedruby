@@ -46,3 +46,5 @@ $(LIB_PATH): $(OBJECTS)
 
 %.o: %.cc inc/ruby_parser/*.hh
 	$(CXX) -o $@ $(CXXFLAGS) -c $<
+
+.PRECIOUS: %.cc

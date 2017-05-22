@@ -18,10 +18,11 @@ parser::typedruby24::typedruby24(const std::string& source, const struct builder
     : base(ruby_version::RUBY_24, source, builder)
 {}
 
-void parser::base::check_kwarg_name(const token_ptr& name) {
+void parser::base::check_kwarg_name(const token *name) {
   char c = name->string().at(0);
 
   if (c >= 'A' && c <= 'Z') {
+	  // XXX: todo
     // diagnostic :error, :argument_const, nil, name_t
   }
 }
