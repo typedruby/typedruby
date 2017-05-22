@@ -38,10 +38,10 @@ namespace ruby_parser {
       , location_(location)
     {}
 
-    diagnostic(diagnostic_level level, std::string&& message, token& token)
+    diagnostic(diagnostic_level level, std::string&& message, const token *token)
       : level_(level)
       , message_(message)
-      , location_(token.start(), token.end())
+      , location_(token->start(), token->end())
     {}
 
     diagnostic_level level() const {

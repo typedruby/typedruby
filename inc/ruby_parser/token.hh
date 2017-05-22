@@ -182,8 +182,6 @@ namespace ruby_parser {
 
     friend std::ostream& operator<<(std::ostream& os, const token& tok);
   };
-
-  using token_ptr = std::unique_ptr<token>;
 }
 
 #endif

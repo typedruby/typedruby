@@ -51,7 +51,7 @@ namespace ruby_parser {
 
     std::stack<environment> static_env;
     std::stack<literal> literal_stack;
-    std::queue<token_ptr> token_queue;
+    std::queue<token *> token_queue;
 
     int cs;
     const char* _p;
@@ -114,7 +114,7 @@ namespace ruby_parser {
     literal& literal_();
     int pop_literal();
 
-    token_ptr advance_();
+    token *advance_();
 
     // literal needs to call emit:
     friend class literal;
@@ -130,7 +130,7 @@ namespace ruby_parser {
 
     lexer(parser::base& parser, ruby_version version, const std::string& source_buffer_);
 
-    token_ptr advance();
+    token *advance();
 
     void set_state_expr_beg();
     void set_state_expr_endarg();
