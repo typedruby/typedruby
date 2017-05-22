@@ -716,6 +716,10 @@ pub enum Arg<'ty, 'object: 'ty> {
         ty: &'ty Type<'ty, 'object>,
         expr: Rc<Node>,
     },
+    Kwrest {
+        loc: Loc,
+        ty: &'ty Type<'ty, 'object>,
+    },
     Block {
         loc: Loc,
         ty: &'ty Type<'ty, 'object>,
@@ -732,6 +736,7 @@ impl<'ty, 'object> Arg<'ty, 'object> {
             Arg::Kwarg { ref loc, .. } => loc,
             Arg::Kwoptarg { ref loc, .. } => loc,
             Arg::Block { ref loc, .. } => loc,
+            Arg::Kwrest { ref loc, .. } => loc,
         }
     }
 }

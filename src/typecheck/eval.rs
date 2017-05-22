@@ -381,7 +381,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Procarg0(ref loc, ref inner_arg_node) => {
                 let (status, inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
                 (status, Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
-            },
+            }
+            Node::Kwrestarg(ref loc, None) =>
+                (status, Arg::Kwrest { loc: loc.clone(), ty: ty }, locals),
+            Node::Kwrestarg(ref loc, Some(Id(_, ref name))) => {
+                let hash_ty = self.create_hash_type(loc, self.tyenv.instance0(loc.clone(), self.env.object.Symbol), ty);
+                (status, Arg::Kwrest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), hash_ty))
+            }
             _ => panic!("arg_node: {:?}", arg_node),
         }
     }
