@@ -553,8 +553,17 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_maybe_node(then);
                 self.eval_maybe_node(else_);
             }
-            Node::Lvar(..) => {}
-            Node::Symbol(..) => {}
+            Node::Nil(..) |
+            Node::Self_(..) |
+            Node::Lvar(..) |
+            Node::Lvassignable(..) |
+            Node::Ivar(..) |
+            Node::Cvar(..) |
+            Node::Gvar(..) |
+            Node::Integer(..) |
+            Node::String(..) |
+            Node::Symbol(..) |
+            Node::Regexp(..) |
             Node::Defined(..) => {}
             Node::Rescue(_, ref body, ref rescues, ref else_) => {
                 self.eval_maybe_node(body);
@@ -568,16 +577,43 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_maybe_node(lvar);
                 self.eval_maybe_node(body);
             }
+            Node::Ensure(_, ref body, ref ensure) => {
+                self.eval_maybe_node(body);
+                self.eval_node(ensure);
+            }
+            Node::DString(_, ref elements) |
             Node::Array(_, ref elements) => {
                 for element in elements {
                     self.eval_node(element);
                 }
             }
-            Node::String(..) => {}
             Node::Or(_, ref left, ref right) |
             Node::And(_, ref left, ref right) => {
                 self.eval_node(left);
                 self.eval_node(right);
+            }
+            Node::Lvasgn(_, _, ref expr) |
+            Node::Ivasgn(_, _, ref expr) |
+            Node::Cvasgn(_, _, ref expr) |
+            Node::Gvasgn(_, _, ref expr) => {
+                self.eval_node(expr);
+            }
+            Node::Hash(_, ref pairs) => {
+                for pair in pairs {
+                    self.eval_node(pair);
+                }
+            }
+            Node::Pair(_, ref key, ref value) => {
+                self.eval_node(key);
+                self.eval_node(value);
+            }
+            Node::Next(_, ref exprs) => {
+                for expr in exprs {
+                    self.eval_node(expr);
+                }
+            }
+            Node::BlockPass(_, ref expr) => {
+                self.eval_node(expr);
             }
             _ => panic!("unknown node: {:?}", node),
         }
