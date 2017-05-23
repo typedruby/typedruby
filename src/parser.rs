@@ -379,7 +379,16 @@ unsafe extern "C" fn begin_body(body: *mut Rc<Node>, rescue_bodies: *mut NodeLis
 
 unsafe extern "C" fn begin_keyword(begin: *const Token, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let body = from_maybe_raw(body);
-    Node::Kwbegin(join_tokens(begin, end), body).to_raw()
+    let tokens = join_tokens(begin, end);
+    match body {
+        Some(node) => {
+            match *node {
+                Node::Begin(_, ref beg) => Node::Kwbegin(tokens, beg.clone()),
+                _ => Node::Kwbegin(tokens, vec![node.clone()]),
+            }
+        },
+        None => Node::Kwbegin(tokens, vec![])
+    }.to_raw()
 }
 
 unsafe extern "C" fn binary_op(recv: *mut Rc<Node>, oper: *const Token, arg: *mut Rc<Node>) -> *mut Rc<Node> {

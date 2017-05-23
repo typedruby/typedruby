@@ -95,7 +95,7 @@ pub enum Node {
     Ivar            (Loc,   String),
     Ivasgn          (Loc,   Id, Rc<Node>),
     Kwarg           (Loc,   String),
-    Kwbegin         (Loc,   Option<Rc<Node>>),
+    Kwbegin         (Loc,   Vec<Rc<Node>>),
     Kwoptarg        (Loc,   Id, Rc<Node>),
     Kwrestarg       (Loc,   Option<Id>),
     Kwsplat         (Loc,   Rc<Node>),
