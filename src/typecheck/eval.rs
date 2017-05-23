@@ -658,7 +658,138 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_block(&self, send_loc: &Loc, block: Option<&BlockArg>, locals: Locals<'ty, 'object>, prototype_block: Option<&'ty Type<'ty, 'object>>) -> Or<Locals<'ty, 'object>, Computation<'ty, 'object>> {
+    fn prototype_from_procish_type(&self, procish_ty: &'ty Type<'ty, 'object>)
+        -> Result<Rc<Prototype<'ty, 'object>>, Option<&'static str>>
+    {
+        match *procish_ty {
+            Type::Union { ref types, .. } => {
+                let non_nil_types = types.iter().filter(|ty|
+                    if let Type::Instance { class, .. } = ***ty {
+                        !class.is_a(self.env.object.NilClass)
+                    } else {
+                        true
+                    }
+                ).collect::<Vec<_>>();
+
+                if non_nil_types.len() == 1 {
+                    self.prototype_from_procish_type(*non_nil_types[0])
+                } else {
+                    return Err(Some("because the block type defined in the method prototype is too complex"));
+                }
+            }
+            Type::Proc { ref proto, .. } => Ok(proto.clone()),
+            Type::Any { .. } => Err(None),
+            _ => {
+                return Err(Some("because the block type defined in the method prototype is not a proc type"));
+            },
+        }
+    }
+
+    fn infer_symbol_as_proc_type(&self, proto_block_ty: &'ty Type<'ty, 'object>, mid: &str, loc: &Loc)
+        -> &'ty Type<'ty, 'object>
+    {
+        let proto = match self.prototype_from_procish_type(proto_block_ty) {
+            Ok(proto) => proto,
+            Err(None) => return self.tyenv.any(loc.clone()),
+            Err(Some(msg)) => {
+                self.error("Can't infer type for symbol-as-proc", &[
+                    Detail::Loc("passed here", loc),
+                    Detail::Loc(msg, proto_block_ty.loc())
+                ]);
+
+                return self.tyenv.new_var(loc.clone());
+            }
+        };
+
+        let (proto_args, proto_retn, proto_loc) = if let Prototype::Typed { ref args, ref retn, ref loc } = *proto {
+            (args, retn, loc)
+        } else {
+            self.error("Can't infer type for symbol-as-proc", &[
+                Detail::Loc("passed here", loc),
+                Detail::Loc("because the block defined in the method prototype is untyped", proto_block_ty.loc()),
+            ]);
+
+            return self.tyenv.new_var(loc.clone());
+        };
+
+        fn recv_ty_from_arg<'ty, 'object: 'ty>(arg: Option<&Arg<'ty, 'object>>) -> Option<&'ty Type<'ty, 'object>> {
+            match arg {
+                Some(&Arg::Required { ty, .. }) => Some(ty),
+                Some(&Arg::Procarg0 { ref arg, .. }) => recv_ty_from_arg(Some(arg)),
+                _ => None,
+            }
+        }
+
+        if let Some(ty) = recv_ty_from_arg(proto_args.first()) {
+            let invokee_proc_ty = self.tyenv.alloc(Type::Proc {
+                loc: proto_block_ty.loc().clone(),
+                proto: Rc::new(Prototype::Typed {
+                    loc: proto_loc.clone(),
+                    args: proto_args[1..].iter().cloned().collect(),
+                    retn: proto_retn,
+                })
+            });
+
+            let prototypes = self.prototypes_for_invocation(None, ty, &Id(loc.clone(), mid.to_owned()));
+
+            if prototypes.is_empty() {
+                self.error(&format!("Could not resolve method #{}", mid), &[
+                    Detail::Loc(&format!("on {}", &self.tyenv.describe(ty)), ty.loc()),
+                    Detail::Loc("in symbol-as-proc", loc),
+                ]);
+
+                return self.tyenv.any(loc.clone());
+            }
+
+            if prototypes.len() > 0 {
+                for prototype in prototypes {
+                    let prototype_ty = self.tyenv.alloc(Type::Proc {
+                        loc: prototype.loc().clone(),
+                        proto: prototype.clone(),
+                    });
+
+                    self.compatible(invokee_proc_ty, prototype_ty, Some(loc));
+                }
+            }
+
+            self.tyenv.alloc(Type::Proc {
+                loc: loc.clone(),
+                proto: proto.clone(),
+            })
+        } else {
+            self.error("Can't infer type for symbol-as-proc", &[
+                Detail::Loc("passed here", loc),
+                Detail::Loc("because the block type defined in the method prototype has no required arguments", proto_block_ty.loc()),
+            ]);
+
+            return self.tyenv.new_var(loc.clone());
+        }
+    }
+
+    fn block_type_from_block_pass(&self, proto_block_ty: &'ty Type<'ty, 'object>, node: &Node, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        self.process_node(node, locals).seq(&|ty, l| {
+            match *ty {
+                Type::Instance { class, .. } if class == self.env.object.Symbol => {
+                    if let Node::Symbol(_, ref sym) = *node {
+                        let proc_ty = self.infer_symbol_as_proc_type(proto_block_ty, sym, node.loc());
+                        Computation::result(proc_ty, l)
+                    } else {
+                        self.error("Expected symbol literal in block pass", &[
+                            Detail::Loc("but an expression evaluating to a Symbol instance was passed instead", node.loc()),
+                        ]);
+                        Computation::result(self.tyenv.new_var(node.loc().clone()), l)
+                    }
+                }
+                _ => Computation::result(ty, l)
+            }
+        })
+    }
+
+    fn process_block(&self, send_loc: &Loc, block: Option<&BlockArg>, locals: Locals<'ty, 'object>, prototype_block: Option<&'ty Type<'ty, 'object>>)
+        -> Or<Locals<'ty, 'object>, Computation<'ty, 'object>>
+    {
         match (prototype_block, block) {
             (None, None) => {
                 Or::Left(locals)
@@ -671,10 +802,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Or::Left(locals)
             }
-            (Some(proto_block_ty), Some(&BlockArg::Pass { ref node, .. })) => {
-                let _ = proto_block_ty;
-                let _ = node;
-                panic!("TODO")
+            (Some(proto_block_ty), Some(&BlockArg::Pass { ref loc, ref node, .. })) => {
+                self.extract_results(self.block_type_from_block_pass(proto_block_ty, node, locals), loc).map_left(&|(ty, l)| {
+                    self.compatible(proto_block_ty, ty, Some(loc));
+                    l
+                })
             }
             (Some(proto_block_ty), Some(&BlockArg::Literal { ref loc, ref args, ref body })) => {
                 let block_locals = locals.extend();
@@ -1270,6 +1402,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Computation::divergent_option(lhs_pred.falsy, truthy),
                     lhs_pred.non_result
                 ).expect("at least one of the computations must be Some")
+            }
+            Node::Masgn(ref loc, ref mlhs, ref rhs) => {
+                self.error("Multiple assignment unimplemented", &[
+                    Detail::Loc("here", loc),
+                ]);
+
+                Computation::result(self.tyenv.nil(loc.clone()), locals)
             }
             _ => panic!("node: {:?}", node),
         }
