@@ -1410,6 +1410,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Computation::result(self.tyenv.nil(loc.clone()), locals)
             }
+            Node::FileLiteral(ref loc) => {
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.String), locals)
+            }
             _ => panic!("node: {:?}", node),
         }
     }
