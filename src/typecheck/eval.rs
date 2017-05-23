@@ -442,7 +442,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             locals = locals_;
         }
 
-        (status, Rc::new(Prototype::Typed { args: args, retn: return_type }), locals)
+        (status, Rc::new(Prototype::Typed { loc: node.loc().clone(), args: args, retn: return_type }), locals)
     }
 
     fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
@@ -502,9 +502,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Some(ivar) => {
                         let ivar_type = self.resolve_type(&ivar.type_node, &type_context, ivar.scope.clone());
 
-                        Rc::new(Prototype::Typed { args: vec![], retn: ivar_type })
+                        Rc::new(Prototype::Typed { loc: loc.clone(), args: vec![], retn: ivar_type })
                     }
-                    None => Rc::new(Prototype::Untyped)
+                    None => Rc::new(Prototype::Untyped { loc: loc.clone() })
                 }
             }
             MethodEntry::AttrWriter { ref ivar, ref node } => {
@@ -512,9 +512,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Some(ivar) => {
                         let ivar_type = self.resolve_type(&ivar.type_node, &type_context, ivar.scope.clone());
 
-                        Rc::new(Prototype::Typed { args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }], retn: ivar_type })
+                        Rc::new(Prototype::Typed { loc: loc.clone(), args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }], retn: ivar_type })
                     }
-                    None => Rc::new(Prototype::Untyped)
+                    None => Rc::new(Prototype::Untyped { loc: loc.clone() })
                 }
             }
             MethodEntry::Untyped => self.tyenv.any_prototype(loc.clone()),
@@ -542,10 +542,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                         let proto = self.prototype_from_method_entry(loc, &initialize_method, initialize_type_context);
 
-                        Rc::new(match *proto {
-                            Prototype::Untyped => Prototype::Untyped,
-                            Prototype::Typed { ref args, .. } => Prototype::Typed { args: args.clone(), retn: instance_type },
-                        })
+                        match *proto {
+                            Prototype::Untyped { .. } => proto.clone(),
+                            Prototype::Typed { ref loc, ref args, .. } => Rc::new(Prototype::Typed { loc: loc.clone(), args: args.clone(), retn: instance_type }),
+                        }
                     },
                     RubyObject::Class { .. } => {
                         // the only way this case can be triggered is calling
@@ -779,7 +779,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         for proto in prototypes {
             let comp = match *proto {
-                Prototype::Typed { args: ref proto_args, ref retn } => {
+                Prototype::Typed { args: ref proto_args, ref retn, loc: ref proto_loc } => {
                     let (proto_block, proto_args) = match proto_args.last() {
                         Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
                         Some(_) | None => (None, proto_args.as_slice()),
@@ -792,17 +792,20 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             ArgError::TooFewArguments => {
                                 self.error("Too few arguments supplied", &[
                                     Detail::Loc("in this invocation", &id.0),
+                                    Detail::Loc("for this prototype", proto_loc),
                                 ])
-                            },
+                            }
                             ArgError::TooManyArguments(ref loc) => {
                                 self.error("Too many arguments supplied", &[
                                     Detail::Loc("from here", loc),
                                     Detail::Loc("in this invocation", &id.0),
+                                    Detail::Loc("for this prototype", proto_loc),
                                 ])
-                            },
+                            }
                             ArgError::MissingKeyword(ref name) => {
                                 self.error(&format!("Missing keyword argument :{}", name), &[
                                     Detail::Loc("in this invocation", &id.0),
+                                    Detail::Loc("for this prototype", proto_loc),
                                 ])
                             }
                         }
@@ -822,7 +825,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             comp),
                     }
                 },
-                Prototype::Untyped =>
+                Prototype::Untyped { .. } =>
                     Computation::result(self.tyenv.any(loc.clone()), locals.clone()),
             };
 

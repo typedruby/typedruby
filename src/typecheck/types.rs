@@ -48,7 +48,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     }
 
     pub fn any_prototype(&self, loc: Loc) -> Rc<Prototype<'ty, 'object>> {
-        Rc::new(Prototype::Untyped)
+        Rc::new(Prototype::Untyped { loc: loc })
     }
 
     pub fn instance(&self, loc: Loc, class: &'object RubyObject<'object>, type_parameters: Vec<&'ty Type<'ty, 'object>>)
@@ -679,11 +679,23 @@ impl<'ty, 'object> Type<'ty, 'object> {
 
 #[derive(Debug)]
 pub enum Prototype<'ty, 'object: 'ty> {
-    Untyped,
+    Untyped {
+        loc: Loc,
+    },
     Typed {
+        loc: Loc,
         args: Vec<Arg<'ty, 'object>>,
         retn: &'ty Type<'ty, 'object>,
     },
+}
+
+impl<'ty, 'object> Prototype<'ty, 'object> {
+    pub fn loc(&self) -> &Loc {
+        match *self {
+            Prototype::Untyped { ref loc } => loc,
+            Prototype::Typed { ref loc, .. } => loc,
+        }
+    }
 }
 
 #[derive(Debug,Clone)]
