@@ -200,21 +200,21 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (&Type::Instance { .. }, &Type::KeywordHash { .. }) => {
                 self.compatible(to, self.degrade_to_instance(from))
             },
-            (&Type::Proc { proto: ref proto1, .. }, &Type::Proc { proto: ref proto2, .. }) => {
-                match (&**proto1, &**proto2) {
-                    (&Prototype::Untyped, _) => Ok(()),
-                    (_, &Prototype::Untyped) => Ok(()),
-                    (&Prototype::Typed { args: ref args1, retn: ref retn1, .. }, &Prototype::Typed { args: ref args2, retn: ref retn2 }) => {
-                        match self.compatible_args(args1, args2) {
-                            Some(Ok(())) => self.compatible(retn1, retn2),
-                            Some(e@Err(..)) => e,
-                            None => Err((to, from)),
-                        }
-                    }
-                }
+            (&Type::Proc { proto: ref to_proto, .. }, &Type::Proc { proto: ref from_proto, .. }) => {
+                self.compatible_prototype(to_proto, from_proto).unwrap_or(Err((to, from)))
             }
             (_, _) =>
                 self.unify(to, from),
+        }
+    }
+
+    pub fn compatible_prototype(&self, to: &Prototype<'ty, 'object>, from: &Prototype<'ty, 'object>) -> Option<UnificationResult<'ty, 'object>> {
+        match (to, from) {
+            (&Prototype::Untyped { .. }, _) => Some(Ok(())),
+            (_, &Prototype::Untyped { .. }) => Some(Ok(())),
+            (&Prototype::Typed { args: ref args1, retn: ref retn1, .. }, &Prototype::Typed { args: ref args2, retn: ref retn2, .. }) =>
+                self.compatible_args(args1, args2).map(|_|
+                    self.compatible(retn1, retn2)),
         }
     }
 
