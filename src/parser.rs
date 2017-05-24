@@ -1178,7 +1178,8 @@ unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, e
         match *parts[0] {
             Node::String(ref loc, ref val) =>
                 Node::String(loc.clone(), val.clone()),
-
+            Node::DString(ref loc, ref val) =>
+                Node::DString(loc.clone(), val.clone()),
             _ => Node::DString(loc.clone(), vec![parts[0].clone()]),
         }
     } else {
