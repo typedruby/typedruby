@@ -1078,6 +1078,35 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         result_comp.unwrap_or_else(|| Computation::result(self.tyenv.any(loc.clone()), locals))
     }
 
+    fn type_for_attr_asgn(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+        -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>>
+    {
+        let id = Id(id.0.clone(), id.1.clone() + "=");
+
+        let (recv_type, locals, non_result_comp) = match self.process_send_receiver(loc, recv, &id, locals) {
+            Or::Left((recv_type, locals)) => (recv_type, locals, None),
+            Or::Both((recv_type, locals), comp) => (recv_type, locals, Some(comp)),
+            Or::Right(comp) => return Or::Right(comp),
+        };
+
+        let (args, locals, non_result_comp) = match self.process_send_args(loc, &id, arg_nodes, locals) {
+            Or::Left((args, locals)) => (args, locals, non_result_comp),
+            Or::Both((args, locals), comp) => (args, locals, Computation::divergent_option(non_result_comp, Some(comp))),
+            Or::Right(comp) => return Or::Right(comp),
+        };
+
+        let attr_asgn_ty = self.tyenv.new_var(loc.clone());
+
+        let mut args = args;
+        args.push(CallArg::Pass(loc.clone(), attr_asgn_ty));
+
+        let dispatch_comp = self.process_send_dispatch(loc, recv, &id, recv_type, args, None, locals);
+
+        let comp = Computation::divergent_option(Some(dispatch_comp), non_result_comp).unwrap();
+
+        self.extract_results(comp, loc).map_left(|(_, l)| (attr_asgn_ty, l))
+    }
+
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1162,6 +1191,102 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.compatible(lvar_ty, ty, Some(loc));
                 l
             }
+        }
+    }
+
+    fn process_lhs(&self, lhs: &Node, locals: Locals<'ty, 'object>)
+        -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>>
+    {
+        match *lhs {
+            Node::Lvassignable(ref loc, ref name) => {
+                let lv_ty = self.tyenv.new_var(loc.clone());
+
+                match locals.assign(name.to_owned(), lv_ty) {
+                    (None, locals) =>
+                        Or::Left((lv_ty, locals)),
+                    (Some(existing_lv_ty), locals) =>
+                        Or::Left((existing_lv_ty, locals)),
+                }
+            }
+            Node::Ivar(ref loc, ref name) => {
+                let iv_ty = self.lookup_ivar_or_error(&Id(loc.clone(), name.clone()), &self.type_context);
+
+                Or::Left((iv_ty, locals))
+            }
+            Node::Const(..) => panic!("shouldn't happen"),
+            Node::Cvar(..) | Node::Gvar(..) => panic!("TODO"),
+            Node::Send(ref loc, ref recv, ref id, ref args) => {
+                self.type_for_attr_asgn(loc, recv, id, args, locals)
+            }
+            Node::Mlhs(ref loc, ref nodes) => {
+                let mut locals = locals;
+                let mut lead_types = Vec::new();
+                let mut post_types = Vec::new();
+                let mut splat_type = None;
+                let mut non_result_comp = None;
+
+                for node in nodes {
+                    let (splat, node) = match **node {
+                        Node::Splat(_, Some(ref node)) => (true, node),
+                        _ => (false, node),
+                    };
+
+                    let ty = match self.process_lhs(node, locals) {
+                        Or::Left((ty, l)) => {
+                            locals = l;
+                            ty
+                        }
+                        Or::Both((ty, l), comp) => {
+                            locals = l;
+                            non_result_comp = Computation::divergent_option(non_result_comp, Some(comp));
+                            ty
+                        }
+                        Or::Right(comp) => {
+                            return Or::Right(Computation::divergent_option(non_result_comp, Some(comp)).unwrap());
+                        }
+                    };
+
+                    if splat {
+                        splat_type = Some(ty);
+                    } else {
+                        if let Some(_) = splat_type {
+                            post_types.push(ty);
+                        } else {
+                            lead_types.push(ty);
+                        }
+                    }
+                }
+
+                let tuple = self.tyenv.alloc(Type::Tuple {
+                    loc: lhs.loc().clone(),
+                    lead: lead_types,
+                    splat: splat_type,
+                    post: post_types,
+                });
+
+                match non_result_comp {
+                    Some(comp) => Or::Both((tuple, locals), comp),
+                    None => Or::Left((tuple, locals)),
+                }
+            }
+            _ => panic!("unknown node type in lhs: {:?}", lhs),
+        }
+    }
+
+    fn process_masgn(&self, lhs: &Node, rty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
+        -> Or<Locals<'ty, 'object>, Computation<'ty, 'object>>
+    {
+        let (lhs_ty, locals, non_result_comp) = match self.process_lhs(lhs, locals) {
+            Or::Left((ty, l)) => (ty, l, None),
+            Or::Both((ty, l), comp) => (ty, l, Some(comp)),
+            Or::Right(comp) => return Or::Right(comp),
+        };
+
+        self.compatible(lhs_ty, rty, Some(loc));
+
+        match non_result_comp {
+            Some(comp) => Or::Both(locals, comp),
+            None => Or::Left(locals),
         }
     }
 
@@ -1536,11 +1661,19 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 ).expect("at least one of the computations must be Some")
             }
             Node::Masgn(ref loc, ref mlhs, ref rhs) => {
-                self.error("Multiple assignment unimplemented", &[
-                    Detail::Loc("here", loc),
-                ]);
+                let rhs_comp = match **rhs {
+                    Node::Array(ref loc, ref nodes) => self.process_array_tuple(loc, nodes, locals),
+                    _ => self.process_node(rhs, locals),
+                };
 
-                Computation::result(self.tyenv.nil(loc.clone()), locals)
+                rhs_comp.seq(&|ty, locals| {
+                    match self.process_masgn(mlhs, ty, locals, loc) {
+                        Or::Left(l) => Computation::result(ty, l),
+                        Or::Both(l, comp) => Computation::divergent(
+                            Computation::result(ty, l), comp),
+                        Or::Right(comp) => comp,
+                    }
+                })
             }
             Node::FileLiteral(ref loc) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.String), locals)
