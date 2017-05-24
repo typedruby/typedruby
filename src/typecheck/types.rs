@@ -491,6 +491,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
                 if let Some(splat_ty) = *splat {
                     if print_comma { write!(buffer, ", ").unwrap(); }
+                    write!(buffer, "*").unwrap();
                     self.describe_rec(splat_ty, buffer);
                     print_comma = true;
                 }
