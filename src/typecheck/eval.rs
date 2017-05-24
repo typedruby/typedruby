@@ -104,6 +104,65 @@ impl BlockArg {
     }
 }
 
+enum EvalResult<'ty, 'object: 'ty, T> {
+    Ok(T, Locals<'ty, 'object>),
+    Both(T, Locals<'ty, 'object>, Computation<'ty, 'object>),
+    NonResult(Computation<'ty, 'object>)
+}
+
+impl<'ty, 'object, T> EvalResult<'ty, 'object, T> {
+    fn map<F, U>(self, mut f: F) -> EvalResult<'ty, 'object, U>
+        where F : FnMut(T) -> U
+    {
+        match self {
+            EvalResult::Ok(val, locals) => EvalResult::Ok(f(val), locals),
+            EvalResult::Both(val, locals, non_result) => EvalResult::Both(f(val), locals, non_result),
+            EvalResult::NonResult(non_result) => EvalResult::NonResult(non_result),
+        }
+    }
+
+    fn and_then<F, U>(self, mut f: F) -> EvalResult<'ty, 'object, U>
+        where F : FnMut(T, Locals<'ty, 'object>) -> EvalResult<'ty, 'object, U>
+    {
+        match self {
+            EvalResult::Ok(val, locals) => f(val, locals),
+            EvalResult::Both(val, locals, non_result) => {
+                match f(val, locals) {
+                    EvalResult::Ok(val, locals) =>
+                        EvalResult::Both(val, locals, non_result),
+                    EvalResult::Both(val, locals, other_non_result) =>
+                        EvalResult::Both(val, locals,
+                            Computation::divergent(non_result, other_non_result)),
+                    EvalResult::NonResult(other_non_result) =>
+                        EvalResult::NonResult(
+                            Computation::divergent(non_result, other_non_result)),
+                }
+            }
+            EvalResult::NonResult(non_result) => EvalResult::NonResult(non_result),
+        }
+    }
+
+    fn if_not<F>(self, mut f: F) -> EvalResult<'ty, 'object, T>
+        where F : FnMut()
+    {
+        if let EvalResult::NonResult(_) = self {
+            f();
+        }
+
+        self
+    }
+}
+
+impl<'ty, 'object> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>> {
+    fn into_computation(self) -> Computation<'ty, 'object> {
+        match self {
+            EvalResult::Ok(ty, locals) => Computation::result(ty, locals),
+            EvalResult::Both(ty, locals, comp) => Computation::divergent(Computation::result(ty, locals), comp),
+            EvalResult::NonResult(comp) => comp,
+        }
+    }
+}
+
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     pub fn new(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) -> Eval<'ty, 'env, 'object> {
         let type_parameters = class.type_parameters().iter().map(|&Id(ref loc, ref name)|
@@ -720,10 +779,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn process_and_extract(&self, node: &Node, locals: Locals<'ty, 'object>)
-        -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>>
+        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
     {
         let comp = self.process_node(node, locals);
-        self.extract_results(comp, node.loc())
+        self.extract_results2(comp, node.loc())
     }
 
     fn extract_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>> {
@@ -733,6 +792,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         result
     }
 
+    fn extract_results2(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>> {
+        match self.extract_results(comp, loc) {
+            Or::Left((ty, locals)) => EvalResult::Ok(ty, locals),
+            Or::Both((ty, locals), comp) => EvalResult::Both(ty, locals, comp),
+            Or::Right(comp) => EvalResult::NonResult(comp),
+        }
+    }
+
     fn converge_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> Computation<'ty, 'object> {
         let mut merges = Vec::new();
         let comp = comp.converge_results(loc, &self.tyenv, &mut merges);
@@ -740,15 +807,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         comp
     }
 
-    fn process_call_arg(&self, node: &Node, locals: Locals<'ty, 'object>) -> Or<(CallArg<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>> {
+    fn process_call_arg(&self, node: &Node, locals: Locals<'ty, 'object>) -> EvalResult<'ty, 'object, CallArg<'ty, 'object>> {
         match *node {
             Node::Splat(_, ref n) =>
-                self.process_and_extract(n.as_ref().expect("splat in call arg must have node"), locals).map_left(|(ty, locals)|
-                    (CallArg::Splat(node.loc().clone(), ty), locals)
+                self.process_and_extract(n.as_ref().expect("splat in call arg must have node"), locals).map(|ty|
+                    CallArg::Splat(node.loc().clone(), ty)
                 ),
             _ =>
-                self.process_and_extract(node, locals).map_left(|(ty, locals)|
-                    (CallArg::Pass(node.loc().clone(), ty), locals)
+                self.process_and_extract(node, locals).map(|ty|
+                    CallArg::Pass(node.loc().clone(), ty)
                 ),
         }
     }
@@ -883,11 +950,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn process_block(&self, send_loc: &Loc, block: Option<&BlockArg>, locals: Locals<'ty, 'object>, prototype_block: Option<&'ty Type<'ty, 'object>>)
-        -> Or<Locals<'ty, 'object>, Computation<'ty, 'object>>
+        -> EvalResult<'ty, 'object, ()>
     {
         match (prototype_block, block) {
             (None, None) => {
-                Or::Left(locals)
+                EvalResult::Ok((), locals)
             }
             (None, Some(block)) => {
                 self.error("Block passed in method invocation", &[
@@ -895,12 +962,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Detail::Loc("but this method does not take a block", send_loc),
                 ]);
 
-                Or::Left(locals)
+                EvalResult::Ok((), locals)
             }
             (Some(proto_block_ty), Some(&BlockArg::Pass { ref loc, ref node, .. })) => {
-                self.extract_results(self.block_type_from_block_pass(proto_block_ty, node, locals), loc).map_left(&|(ty, l)| {
+                self.extract_results2(self.block_type_from_block_pass(proto_block_ty, node, locals), loc).map(|ty| {
                     self.compatible(proto_block_ty, ty, Some(loc));
-                    l
                 })
             }
             (Some(proto_block_ty), Some(&BlockArg::Literal { ref loc, ref args, ref body })) => {
@@ -926,11 +992,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Some(ref body_node) => self.process_node(body_node, block_locals),
                 };
 
-                self.extract_results(block_comp
+                self.extract_results2(block_comp
                     .capture_next(), loc)
-                    .map_left(|(ty, locals)| {
+                    .and_then(|ty, locals| {
                         self.compatible(block_return_type, ty, None);
-                        locals.unextend()
+                        EvalResult::Ok((), locals.unextend())
                     })
             }
             (Some(proto_block_ty), None) => {
@@ -945,13 +1011,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     ]);
                 }
 
-                Or::Left(locals)
+                EvalResult::Ok((), locals)
             }
         }
     }
 
     fn process_send_receiver(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, locals: Locals<'ty, 'object>)
-        -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>>
+        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
     {
         match *recv {
             Some(ref recv_node) => {
@@ -964,43 +1030,37 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     ]);
                 }
 
-                self.extract_results(comp, recv_node.loc())
+                self.extract_results2(comp, recv_node.loc())
             },
-            None => Or::Left((self.type_context.self_type(&self.tyenv, id.0.clone()), locals)),
+            None => EvalResult::Ok(self.type_context.self_type(&self.tyenv, id.0.clone()), locals),
         }
     }
 
     fn process_send_args(&self, loc: &Loc, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
-        -> Or<(Vec<CallArg<'ty, 'object>>, Locals<'ty, 'object>), Computation<'ty, 'object>>
+        -> EvalResult<'ty, 'object, Vec<CallArg<'ty, 'object>>>
     {
         let mut args = Vec::new();
-        let mut locals = locals;
-        let mut non_result_comp = None;
+
+        let mut result = EvalResult::Ok((), locals);
 
         for arg_node in arg_nodes {
-            match self.process_call_arg(arg_node, locals) {
-                Or::Left((arg, l)) => {
-                    args.push(arg);
-                    locals = l;
-                }
-                Or::Both((arg, l), comp) => {
-                    args.push(arg);
-                    locals = l;
-                    non_result_comp = Computation::divergent_option(non_result_comp, Some(comp));
-                }
-                Or::Right(comp) => {
+            result = result.and_then(|(), locals| {
+                self.process_call_arg(arg_node, locals).and_then(|call_arg, locals| {
+                    args.push(call_arg);
+                    EvalResult::Ok((), locals)
+                }).if_not(|| {
                     self.warning("Useless method call", &[
                         Detail::Loc("here", &id.0),
                         Detail::Loc("argument never evaluates to a result", arg_node.loc()),
                     ]);
-                    return Or::Right(Computation::divergent_option(non_result_comp, Some(comp)).expect("never None"));
-                }
-            }
+                })
+            })
         }
 
-        match non_result_comp {
-            None => Or::Left((args, locals)),
-            Some(comp) => Or::Both((args, locals), comp)
+        match result {
+            EvalResult::Ok((), l) => EvalResult::Ok(args, l),
+            EvalResult::Both((), l, comp) => EvalResult::Both(args, l, comp),
+            EvalResult::NonResult(comp) => EvalResult::NonResult(comp),
         }
     }
 
@@ -1060,13 +1120,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                     let retn_ty = self.tyenv.update_loc(retn, loc.clone());
 
-                    match self.process_block(&id.0, block.as_ref(), locals.clone(), proto_block) {
-                        Or::Left(locals) => Computation::result(retn_ty, locals),
-                        Or::Right(comp) => comp,
-                        Or::Both(locals, comp) => Computation::divergent(
-                            Computation::result(retn_ty, locals),
-                            comp),
-                    }
+                    self.process_block(&id.0, block.as_ref(), locals.clone(), proto_block).map(|()| retn_ty).into_computation()
                 },
                 Prototype::Untyped { .. } =>
                     Computation::result(self.tyenv.any(loc.clone()), locals.clone()),
@@ -1079,20 +1133,20 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn type_for_attr_asgn(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
-        -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>>
+        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
     {
         let id = Id(id.0.clone(), id.1.clone() + "=");
 
         let (recv_type, locals, non_result_comp) = match self.process_send_receiver(loc, recv, &id, locals) {
-            Or::Left((recv_type, locals)) => (recv_type, locals, None),
-            Or::Both((recv_type, locals), comp) => (recv_type, locals, Some(comp)),
-            Or::Right(comp) => return Or::Right(comp),
+            EvalResult::Ok(recv_type, locals) => (recv_type, locals, None),
+            EvalResult::Both(recv_type, locals, comp) => (recv_type, locals, Some(comp)),
+            EvalResult::NonResult(comp) => return EvalResult::NonResult(comp),
         };
 
         let (args, locals, non_result_comp) = match self.process_send_args(loc, &id, arg_nodes, locals) {
-            Or::Left((args, locals)) => (args, locals, non_result_comp),
-            Or::Both((args, locals), comp) => (args, locals, Computation::divergent_option(non_result_comp, Some(comp))),
-            Or::Right(comp) => return Or::Right(comp),
+            EvalResult::Ok(args, locals) => (args, locals, non_result_comp),
+            EvalResult::Both(args, locals, comp) => (args, locals, Computation::divergent_option(non_result_comp, Some(comp))),
+            EvalResult::NonResult(comp) => return EvalResult::NonResult(comp),
         };
 
         let attr_asgn_ty = self.tyenv.new_var(loc.clone());
@@ -1104,22 +1158,22 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let comp = Computation::divergent_option(Some(dispatch_comp), non_result_comp).unwrap();
 
-        self.extract_results(comp, loc).map_left(|(_, l)| (attr_asgn_ty, l))
+        self.extract_results2(comp, loc).map(|_| attr_asgn_ty)
     }
 
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         let (recv_type, locals, non_result_comp) = match self.process_send_receiver(loc, recv, id, locals) {
-            Or::Left((recv_type, locals)) => (recv_type, locals, None),
-            Or::Both((recv_type, locals), comp) => (recv_type, locals, Some(comp)),
-            Or::Right(comp) => return comp,
+            EvalResult::Ok(recv_type, locals) => (recv_type, locals, None),
+            EvalResult::Both(recv_type, locals, comp) => (recv_type, locals, Some(comp)),
+            EvalResult::NonResult(comp) => return comp,
         };
 
         let (args, locals, non_result_comp) = match self.process_send_args(loc, id, arg_nodes, locals) {
-            Or::Left((args, locals)) => (args, locals, non_result_comp),
-            Or::Both((args, locals), comp) => (args, locals, Computation::divergent_option(non_result_comp, Some(comp))),
-            Or::Right(comp) => return comp,
+            EvalResult::Ok(args, locals) => (args, locals, non_result_comp),
+            EvalResult::Both(args, locals, comp) => (args, locals, Computation::divergent_option(non_result_comp, Some(comp))),
+            EvalResult::NonResult(comp) => return comp,
         };
 
         let dispatch_comp = self.process_send_dispatch(loc, recv, id, recv_type, args, block, locals);
@@ -1195,7 +1249,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn process_lhs(&self, lhs: &Node, locals: Locals<'ty, 'object>)
-        -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>>
+        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
     {
         match *lhs {
             Node::Lvassignable(ref loc, ref name) => {
@@ -1203,15 +1257,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 match locals.assign(name.to_owned(), lv_ty) {
                     (None, locals) =>
-                        Or::Left((lv_ty, locals)),
+                        EvalResult::Ok(lv_ty, locals),
                     (Some(existing_lv_ty), locals) =>
-                        Or::Left((existing_lv_ty, locals)),
+                        EvalResult::Ok(existing_lv_ty, locals),
                 }
             }
             Node::Ivar(ref loc, ref name) => {
                 let iv_ty = self.lookup_ivar_or_error(&Id(loc.clone(), name.clone()), &self.type_context);
 
-                Or::Left((iv_ty, locals))
+                EvalResult::Ok(iv_ty, locals)
             }
             Node::Const(..) => panic!("shouldn't happen"),
             Node::Cvar(..) | Node::Gvar(..) => panic!("TODO"),
@@ -1232,17 +1286,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     };
 
                     let ty = match self.process_lhs(node, locals) {
-                        Or::Left((ty, l)) => {
+                        EvalResult::Ok(ty, l) => {
                             locals = l;
                             ty
                         }
-                        Or::Both((ty, l), comp) => {
+                        EvalResult::Both(ty, l, comp) => {
                             locals = l;
                             non_result_comp = Computation::divergent_option(non_result_comp, Some(comp));
                             ty
                         }
-                        Or::Right(comp) => {
-                            return Or::Right(Computation::divergent_option(non_result_comp, Some(comp)).unwrap());
+                        EvalResult::NonResult(comp) => {
+                            return EvalResult::NonResult(Computation::divergent_option(non_result_comp, Some(comp)).unwrap());
                         }
                     };
 
@@ -1265,8 +1319,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 });
 
                 match non_result_comp {
-                    Some(comp) => Or::Both((tuple, locals), comp),
-                    None => Or::Left((tuple, locals)),
+                    Some(comp) => EvalResult::Both(tuple, locals, comp),
+                    None => EvalResult::Ok(tuple, locals),
                 }
             }
             _ => panic!("unknown node type in lhs: {:?}", lhs),
@@ -1274,20 +1328,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn process_masgn(&self, lhs: &Node, rty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
-        -> Or<Locals<'ty, 'object>, Computation<'ty, 'object>>
+        -> EvalResult<'ty, 'object, ()>
     {
-        let (lhs_ty, locals, non_result_comp) = match self.process_lhs(lhs, locals) {
-            Or::Left((ty, l)) => (ty, l, None),
-            Or::Both((ty, l), comp) => (ty, l, Some(comp)),
-            Or::Right(comp) => return Or::Right(comp),
-        };
-
-        self.compatible(lhs_ty, rty, Some(loc));
-
-        match non_result_comp {
-            Some(comp) => Or::Both(locals, comp),
-            None => Or::Left(locals),
-        }
+        self.process_lhs(lhs, locals).map(|lhs_ty| {
+            self.compatible(lhs_ty, rty, Some(loc));
+        })
     }
 
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
@@ -1667,12 +1712,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 };
 
                 rhs_comp.seq(&|ty, locals| {
-                    match self.process_masgn(mlhs, ty, locals, loc) {
-                        Or::Left(l) => Computation::result(ty, l),
-                        Or::Both(l, comp) => Computation::divergent(
-                            Computation::result(ty, l), comp),
-                        Or::Right(comp) => comp,
-                    }
+                    self.process_masgn(mlhs, ty, locals, loc).map(|()| ty).into_computation()
                 })
             }
             Node::FileLiteral(ref loc) => {
