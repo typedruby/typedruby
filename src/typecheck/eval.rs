@@ -1499,56 +1499,44 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
             }
             Node::Hash(ref loc, ref pairs) => {
-                let mut comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
+                let mut result = EvalResult::Ok((), locals);
                 let mut entries = Vec::new();
 
                 for pair in pairs {
                     match **pair {
                         Node::Pair(_, ref key, ref value) => {
-                            comp = self.seq_process(comp, key);
-
-                            let key_ty = match self.extract_results(comp.clone(), loc) {
-                                Or::Left((ty, _)) | Or::Both((ty, _), _) => ty,
-                                _ => {
+                            result = result.and_then(|(), locals|
+                                self.extract_results2(self.process_node(key, locals), loc).if_not(|| {
                                     self.warning("Expression never evalutes to a result", &[
                                         Detail::Loc("here", key.loc()),
-                                    ]);
-                                    return comp;
-                                }
-                            };
-
-                            comp = self.seq_process(comp, value);
-
-                            let value_ty = match self.extract_results(comp.clone(), loc) {
-                                Or::Left((ty, _)) | Or::Both((ty, _), _) => ty,
-                                _ => {
+                                    ])
+                                })
+                            ).and_then(|key_ty, locals| {
+                                self.extract_results2(self.process_node(value, locals), loc).if_not(|| {
                                     self.warning("Expression never evalutes to a result", &[
                                         Detail::Loc("here", value.loc()),
-                                    ]);
-                                    return comp;
+                                    ])
+                                }).map(|value_ty| {
+                                    (value_ty, key_ty)
+                                })
+                            }).map(|(key_ty, value_ty)| {
+                                if let Node::Symbol(ref sym_loc, ref sym) = **key {
+                                    entries.push(HashEntry::Symbol(Id(sym_loc.clone(), sym.clone()), value_ty));
+                                } else {
+                                    entries.push(HashEntry::Pair(key_ty, value_ty));
                                 }
-                            };
-
-                            if let Node::Symbol(ref sym_loc, ref sym) = **key {
-                                entries.push(HashEntry::Symbol(Id(sym_loc.clone(), sym.clone()), value_ty));
-                            } else {
-                                entries.push(HashEntry::Pair(key_ty, value_ty));
-                            }
+                            });
                         },
                         Node::Kwsplat(_, ref splat) => {
-                            comp = self.seq_process(comp, splat);
-
-                            match self.extract_results(comp.clone(), loc) {
-                                Or::Left((ty, _)) | Or::Both((ty, _), _) => {
-                                    entries.push(HashEntry::Kwsplat(ty));
-                                }
-                                _ => {
+                            result = result.and_then(|(), locals|
+                                self.extract_results2(self.process_node(splat, locals), loc).if_not(|| {
                                     self.warning("Expression never evalutes to a result", &[
                                         Detail::Loc("here", splat.loc()),
                                     ]);
-                                    return comp;
-                                }
-                            };
+                                }).map(|ty| {
+                                    entries.push(HashEntry::Kwsplat(ty));
+                                })
+                            );
                         },
                         _ => panic!("unexpected node type in hash literal: {:?}", *pair),
                     }
@@ -1568,7 +1556,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     }
                 });
 
-                if is_keyword_hash {
+                let hash_ty = if is_keyword_hash {
                     let mut keywords = Vec::new();
 
                     for entry in entries {
@@ -1587,9 +1575,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         }
                     }
 
-                    let hash_ty = self.tyenv.keyword_hash(loc.clone(), keywords);
-
-                    comp.seq(&|_, locals| Computation::result(hash_ty, locals))
+                    self.tyenv.keyword_hash(loc.clone(), keywords)
                 } else {
                     let key_ty = self.tyenv.new_var(loc.clone());
                     let value_ty = self.tyenv.new_var(loc.clone());
@@ -1610,10 +1596,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         }
                     }
 
-                    let hash_ty = self.create_hash_type(loc, key_ty, value_ty);
+                    self.create_hash_type(loc, key_ty, value_ty)
+                };
 
-                    comp.seq(&|_, locals| Computation::result(hash_ty, locals))
-                }
+                result.map(|()| hash_ty).into_computation()
             }
             Node::DString(ref loc, ref parts) => {
                 let string_ty = self.tyenv.instance0(loc.clone(), self.env.object.String);
