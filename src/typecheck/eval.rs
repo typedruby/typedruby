@@ -547,8 +547,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         };
 
         let mut elements = Vec::new();
-        let mut locals = locals;
-        let mut non_result = None;
+        let mut result = EvalResult::Ok((), locals);
 
         for expr in exprs {
             let (splat, node) = match **expr {
@@ -556,86 +555,73 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 _ => (false, expr),
             };
 
-            let ty = match self.extract_results(self.process_node(node, locals), expr.loc()) {
-                Or::Left((ty, l)) => {
-                    locals = l;
-                    ty
+            result = result.and_then(|(), locals| {
+                self.extract_results2(self.process_node(node, locals), expr.loc())
+            }).map(|ty| {
+                if splat {
+                    match *ty {
+                        Type::Tuple { ref lead, ref splat, ref post, .. } => {
+                            for lead_ty in lead {
+                                elements.push(TupleElement::Value(lead_ty));
+                            }
+
+                            if let Some(splat_ty) = *splat {
+                                elements.push(TupleElement::Splat(splat_ty));
+                            }
+
+                            for post_ty in post {
+                                elements.push(TupleElement::Value(post_ty));
+                            }
+                        }
+                        Type::Instance { class, ref type_parameters, .. }
+                            if class == self.env.object.array_class()
+                        => {
+                            elements.push(TupleElement::Splat(type_parameters[0]));
+                        }
+                        _ => {
+                            self.error("Cannot splat non-array", &[
+                                Detail::Loc(&self.tyenv.describe(ty), node.loc()),
+                            ]);
+                        }
+                    }
+                } else {
+                    elements.push(TupleElement::Value(ty));
                 }
-                Or::Both((ty, l), comp) => {
-                    locals = l;
-                    non_result = Computation::divergent_option(non_result, Some(comp));
-                    ty
-                }
-                Or::Right(comp) => {
-                    non_result = Computation::divergent_option(non_result, Some(comp));
-                    // TODO: print error about this tuple being useless
-                    return non_result.unwrap();
-                }
+            });
+        }
+
+        result.map(|()| {
+            let mut v = View(elements.as_slice());
+
+            let mut lead_types = Vec::new();
+            let mut post_types = Vec::new();
+
+            while let Some(&TupleElement::Value(ty)) = v.first() {
+                lead_types.push(ty);
+                v.consume_front();
+            }
+
+            while let Some(&TupleElement::Value(ty)) = v.last() {
+                post_types.push(ty);
+                v.consume_back();
+            }
+
+            post_types.reverse();
+
+            let splat_type = if !v.is_empty() {
+                // first tuple remaining at this point must be a splat:
+                panic!("splats unsupported for now");
+            } else {
+                None
             };
 
-            if splat {
-                match *ty {
-                    Type::Tuple { ref lead, ref splat, ref post, .. } => {
-                        for lead_ty in lead {
-                            elements.push(TupleElement::Value(lead_ty));
-                        }
-
-                        if let Some(splat_ty) = *splat {
-                            elements.push(TupleElement::Splat(splat_ty));
-                        }
-
-                        for post_ty in post {
-                            elements.push(TupleElement::Value(post_ty));
-                        }
-                    }
-                    Type::Instance { class, ref type_parameters, .. }
-                        if class == self.env.object.array_class()
-                    => {
-                        elements.push(TupleElement::Splat(type_parameters[0]));
-                    }
-                    _ => {
-                        self.error("Cannot splat non-array", &[
-                            Detail::Loc(&self.tyenv.describe(ty), node.loc()),
-                        ]);
-                    }
-                }
-            } else {
-                elements.push(TupleElement::Value(ty));
-            }
-        }
-
-        let mut v = View(elements.as_slice());
-
-        let mut lead_types = Vec::new();
-        let mut post_types = Vec::new();
-
-        while let Some(&TupleElement::Value(ty)) = v.first() {
-            lead_types.push(ty);
-            v.consume_front();
-        }
-
-        while let Some(&TupleElement::Value(ty)) = v.last() {
-            post_types.push(ty);
-            v.consume_back();
-        }
-
-        post_types.reverse();
-
-        let splat_type = if !v.is_empty() {
-            // first tuple remaining at this point must be a splat:
-            panic!("splats unsupported for now");
-        } else {
-            None
-        };
-
-        let tuple = self.tyenv.alloc(Type::Tuple {
-            loc: loc.clone(),
-            lead: lead_types,
-            splat: splat_type,
-            post: post_types,
-        });
-
-        Computation::result(tuple, locals)
+            self.tyenv.alloc(Type::Tuple {
+                loc: loc.clone(),
+                lead: lead_types,
+                splat: splat_type,
+                post: post_types,
+            })
+        }).into_computation()
     }
 
     fn prototype_from_method_entry(&self, loc: &Loc, method: &MethodEntry<'object>, type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
