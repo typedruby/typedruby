@@ -1112,6 +1112,23 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
+    fn assign_lvar(&self, name: &str, ty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
+        -> Locals<'ty, 'object>
+    {
+        match locals.assign(name.to_owned(), ty) {
+            // in the none case, the assignment happened
+            // successfully and the local variable entry is now set
+            // to the type we passed in:
+            (None, l) => l,
+            // in the some case, the local variable is already
+            // pinned to a type and we must check type compatibility:
+            (Some(lvar_ty), l) => {
+                self.compatible(lvar_ty, ty, Some(loc));
+                l
+            }
+        }
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
@@ -1140,18 +1157,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Node::Lvasgn(ref asgn_loc, Id(_, ref lvar_name), ref expr) => {
                 self.process_node(expr, locals).seq(&|expr_ty, l| {
-                    let l = match l.assign(lvar_name.to_owned(), expr_ty) {
-                        // in the none case, the assignment happened
-                        // successfully and the local variable entry is now set
-                        // to the type we passed in:
-                        (None, l) => l,
-                        // in the some case, the local variable is already
-                        // pinned to a type and we must check type compatibility:
-                        (Some(lvar_ty), l) => {
-                            self.compatible(lvar_ty, expr_ty, Some(asgn_loc));
-                            l
-                        }
-                    };
+                    let l = self.assign_lvar(lvar_name, expr_ty, l, asgn_loc);
 
                     let lvar_ty = self.tyenv.local_variable(asgn_loc.clone(), lvar_name.clone(), expr_ty);
 
