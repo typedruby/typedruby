@@ -478,10 +478,105 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_array_tuple(&self, exprs: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
-        let _ = exprs;
-        let _ = locals;
-        panic!("TODO")
+    fn process_array_tuple(&self, loc: &Loc, exprs: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        use slice_util::View;
+
+        #[derive(Debug)]
+        enum TupleElement<'ty, 'object: 'ty> {
+            Value(&'ty Type<'ty, 'object>),
+            Splat(&'ty Type<'ty, 'object>),
+        };
+
+        let mut elements = Vec::new();
+        let mut locals = locals;
+        let mut non_result = None;
+
+        for expr in exprs {
+            let (splat, node) = match **expr {
+                Node::Splat(_, Some(ref node)) => (true, node),
+                _ => (false, expr),
+            };
+
+            let ty = match self.extract_results(self.process_node(node, locals), expr.loc()) {
+                Or::Left((ty, l)) => {
+                    locals = l;
+                    ty
+                }
+                Or::Both((ty, l), comp) => {
+                    locals = l;
+                    non_result = Computation::divergent_option(non_result, Some(comp));
+                    ty
+                }
+                Or::Right(comp) => {
+                    non_result = Computation::divergent_option(non_result, Some(comp));
+                    // TODO: print error about this tuple being useless
+                    return non_result.unwrap();
+                }
+            };
+
+            if splat {
+                match *ty {
+                    Type::Tuple { ref lead, ref splat, ref post, .. } => {
+                        for lead_ty in lead {
+                            elements.push(TupleElement::Value(lead_ty));
+                        }
+
+                        if let Some(splat_ty) = *splat {
+                            elements.push(TupleElement::Splat(splat_ty));
+                        }
+
+                        for post_ty in post {
+                            elements.push(TupleElement::Value(post_ty));
+                        }
+                    }
+                    Type::Instance { class, ref type_parameters, .. }
+                        if class == self.env.object.array_class()
+                    => {
+                        elements.push(TupleElement::Splat(type_parameters[0]));
+                    }
+                    _ => {
+                        self.error("Cannot splat non-array", &[
+                            Detail::Loc(&self.tyenv.describe(ty), node.loc()),
+                        ]);
+                    }
+                }
+            } else {
+                elements.push(TupleElement::Value(ty));
+            }
+        }
+
+        let mut v = View(elements.as_slice());
+
+        let mut lead_types = Vec::new();
+        let mut post_types = Vec::new();
+
+        while let Some(&TupleElement::Value(ty)) = v.first() {
+            lead_types.push(ty);
+            v.consume_front();
+        }
+
+        while let Some(&TupleElement::Value(ty)) = v.last() {
+            post_types.push(ty);
+            v.consume_back();
+        }
+
+        post_types.reverse();
+
+        let splat_type = if !v.is_empty() {
+            // first tuple remaining at this point must be a splat:
+            panic!("splats unsupported for now");
+        } else {
+            None
+        };
+
+        let tuple = self.tyenv.alloc(Type::Tuple {
+            loc: loc.clone(),
+            lead: lead_types,
+            splat: splat_type,
+            post: post_types,
+        });
+
+        Computation::result(tuple, locals)
     }
 
     fn prototype_from_method_entry(&self, loc: &Loc, method: &MethodEntry<'object>, type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
@@ -643,6 +738,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let result = comp.extract_results(loc, &self.tyenv, &mut merges);
         self.process_local_merges(merges);
         result
+    }
+
+    fn converge_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> Computation<'ty, 'object> {
+        let mut merges = Vec::new();
+        let comp = comp.converge_results(loc, &self.tyenv, &mut merges);
+        self.process_local_merges(merges);
+        comp
     }
 
     fn process_call_arg(&self, node: &Node, locals: Locals<'ty, 'object>) -> Or<(CallArg<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>> {
@@ -1019,12 +1121,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Begin(ref loc, ref nodes) => {
                 let comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
 
-                nodes.iter().fold(comp, |comp, node| {
-                    let mut merges = Vec::new();
-                    let comp = self.seq_process(comp, node).converge_results(node.loc(), &self.tyenv, &mut merges);
-                    self.process_local_merges(merges);
-                    comp
-                })
+                nodes.iter().fold(comp, |comp, node|
+                    self.converge_results(self.seq_process(comp, node), node.loc()))
             }
             Node::Kwbegin(ref loc, ref node) => {
                 match *node {
@@ -1151,7 +1249,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 let comp = match exprs.len() {
                     0 => Computation::result(self.tyenv.nil(loc.clone()), locals),
                     1 => self.process_node(exprs.first().unwrap(), locals),
-                    _ => self.process_array_tuple(exprs, locals),
+                    _ => {
+                        let loc = exprs[0].loc().join(exprs.last().unwrap().loc());
+                        self.process_array_tuple(&loc, exprs, locals)
+                    }
                 };
 
                 comp.seq(&|ty, _| Computation::return_(ty))
