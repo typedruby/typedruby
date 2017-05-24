@@ -950,25 +950,32 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
-        let (recv_type, locals, non_result_comp) = match *recv {
-            Some(ref recv_node) => match self.extract_results(self.process_node(recv_node, locals), recv_node.loc()) {
-                Or::Left((recv_ty, locals)) => (recv_ty, locals, None),
-                Or::Both((recv_ty, locals), comp) => (recv_ty, locals, Some(comp)),
-                Or::Right(comp) => {
+    fn process_send_receiver(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, locals: Locals<'ty, 'object>)
+        -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>>
+    {
+        match *recv {
+            Some(ref recv_node) => {
+                let comp = self.converge_results(self.process_node(recv_node, locals), recv_node.loc());
+
+                if !comp.has_results() {
                     self.warning("Useless method call", &[
                         Detail::Loc("here", &id.0),
                         Detail::Loc("receiver never evaluates to a result", recv_node.loc()),
                     ]);
-                    return comp;
                 }
-            },
-            None => (self.type_context.self_type(&self.tyenv, id.0.clone()), locals, None),
-        };
 
+                self.extract_results(comp, recv_node.loc())
+            },
+            None => Or::Left((self.type_context.self_type(&self.tyenv, id.0.clone()), locals)),
+        }
+    }
+
+    fn process_send_args(&self, loc: &Loc, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+        -> Or<(Vec<CallArg<'ty, 'object>>, Locals<'ty, 'object>), Computation<'ty, 'object>>
+    {
         let mut args = Vec::new();
         let mut locals = locals;
-        let mut non_result_comp = non_result_comp;
+        let mut non_result_comp = None;
 
         for arg_node in arg_nodes {
             match self.process_call_arg(arg_node, locals) {
@@ -986,11 +993,20 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         Detail::Loc("here", &id.0),
                         Detail::Loc("argument never evaluates to a result", arg_node.loc()),
                     ]);
-                    return Computation::divergent_option(non_result_comp, Some(comp)).expect("never None");
+                    return Or::Right(Computation::divergent_option(non_result_comp, Some(comp)).expect("never None"));
                 }
             }
         }
 
+        match non_result_comp {
+            None => Or::Left((args, locals)),
+            Some(comp) => Or::Both((args, locals), comp)
+        }
+    }
+
+    fn process_send_dispatch(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, recv_type: &'ty Type<'ty, 'object>, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
         let prototypes = self.prototypes_for_invocation(recv.as_ref().map(|r| r.loc()), recv_type, id);
 
         if prototypes.is_empty() {
@@ -1060,6 +1076,26 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
 
         result_comp.unwrap_or_else(|| Computation::result(self.tyenv.any(loc.clone()), locals))
+    }
+
+    fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        let (recv_type, locals, non_result_comp) = match self.process_send_receiver(loc, recv, id, locals) {
+            Or::Left((recv_type, locals)) => (recv_type, locals, None),
+            Or::Both((recv_type, locals), comp) => (recv_type, locals, Some(comp)),
+            Or::Right(comp) => return comp,
+        };
+
+        let (args, locals, non_result_comp) = match self.process_send_args(loc, id, arg_nodes, locals) {
+            Or::Left((args, locals)) => (args, locals, non_result_comp),
+            Or::Both((args, locals), comp) => (args, locals, Computation::divergent_option(non_result_comp, Some(comp))),
+            Or::Right(comp) => return comp,
+        };
+
+        let dispatch_comp = self.process_send_dispatch(loc, recv, id, recv_type, args, block, locals);
+
+        Computation::divergent_option(Some(dispatch_comp), non_result_comp).unwrap()
     }
 
     fn seq_process(&self, comp: Computation<'ty, 'object>, node: &Node) -> Computation<'ty, 'object> {
