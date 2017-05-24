@@ -1363,8 +1363,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::If(ref loc, ref cond, ref then, ref else_) => {
                 let predicate = self.process_node(cond, locals).predicate(cond.loc(), &self.tyenv);
 
-                let then_comp = predicate.truthy.map(|comp| self.seq_process_option(comp, then, loc));
-                let else_comp = predicate.falsy.map(|comp| self.seq_process_option(comp, else_, loc));
+                let then_comp = predicate.truthy.map(|comp|
+                    self.seq_process_option(self.converge_results(comp, cond.loc()), then, loc));
+
+                let else_comp = predicate.falsy.map(|comp|
+                    self.seq_process_option(self.converge_results(comp, cond.loc()), else_, loc));
 
                 Computation::divergent_option(
                     Computation::divergent_option(then_comp, else_comp),
