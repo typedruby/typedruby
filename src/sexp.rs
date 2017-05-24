@@ -445,7 +445,10 @@ impl Sexp for Node {
                 let mut builder = __arg_0.new_node("Ivasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
+                match *__self_2 {
+                    Some(ref x) => { let _ = builder.field(x); },
+                    None => {},
+                };
                 builder.finish()
             }
             (&Node::Kwarg(ref __self_0, ref __self_1),) => {
@@ -496,17 +499,17 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Lvasgn(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Lvasgn");
+                let mut builder = __arg_0.new_node("lvasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
+                match *__self_2 {
+                    Some(ref x) => { let _ = builder.field(x); },
+                    None => {},
+                };
                 builder.finish()
             }
             (&Node::Lvassignable(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Lvassignable");
-                let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
-                builder.finish()
+                panic!("Lvassignable should not be in the AST")
             }
             (&Node::MatchCurLine(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("MatchCurLine");
