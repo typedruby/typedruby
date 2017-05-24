@@ -12,6 +12,7 @@ mod config;
 mod environment;
 mod errors;
 mod object;
+mod slice_util;
 mod top_level;
 mod typecheck;
 mod util;
