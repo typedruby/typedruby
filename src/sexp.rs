@@ -606,7 +606,10 @@ impl Sexp for Node {
             (&Node::Procarg0(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("Procarg0");
                 let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
+                let _ = match **__self_1 {
+                    Node::Arg(_, ref arg) => builder.field(arg),
+                    _ => builder.field(__self_1),
+                };
                 builder.finish()
             }
             (&Node::Prototype(ref __self_0, ref __self_1, ref __self_2,
