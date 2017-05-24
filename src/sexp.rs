@@ -11,6 +11,7 @@ pub struct SexpFormatter<'a> {
     indent: usize,
     buf: &'a mut (fmt::Write+'a),
     print_loc: bool,
+    print_str: bool,
 }
 
 impl<'a> SexpFormatter<'a> {
@@ -55,7 +56,11 @@ impl<'a, 'b: 'a> SexpNode<'a, 'b> {
 
     pub fn string(&mut self, value: &String) -> &mut SexpNode<'a, 'b> {
         self.result = self.result.and_then(|_| {
-            write!(self.fmt, " {:?}", value)
+            if self.fmt.print_str {
+                write!(self.fmt, " {:?}", value)
+            } else {
+                write!(self.fmt, "[STRING {}]", value.len())
+            }
         });
         self
     }
@@ -911,6 +916,7 @@ impl Ast {
                     indent: 0,
                     buf: output,
                     print_loc: false,
+                    print_str: true,
                 };
                 node.sexp(&mut formatter)
             }

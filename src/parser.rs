@@ -311,14 +311,16 @@ unsafe extern "C" fn begin(begin: *const Token, body: *mut Rc<Node>, end: *const
         join_tokens(begin, end)
     };
 
-    // TODO not exactly the logic from parser gem's begin
-    // revisit when Node::Mlhs exists
-    Node::Begin(loc, match body {
-        // A nil expression: `()'.
-        None => vec![],
-
-        Some(boxed_body) => vec![boxed_body],
-    }).to_raw()
+    match body {
+        None => Rc::new(Node::Begin(loc, vec![])),
+        Some(boxed_body) => {
+            match *boxed_body {
+                Node::Begin(_, _) => boxed_body.clone(),
+                Node::Mlhs(_, _) => boxed_body.clone(),
+                _ => Rc::new(Node::Begin(loc, vec![boxed_body])),
+            }
+        },
+    }.to_raw()
 }
 
 unsafe extern "C" fn begin_body(body: *mut Rc<Node>, rescue_bodies: *mut NodeList, else_tok: *const Token, else_: *mut Rc<Node>, ensure_tok: *const Token, ensure: *mut Rc<Node>) -> *mut Rc<Node> {
