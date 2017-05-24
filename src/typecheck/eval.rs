@@ -593,24 +593,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.resolve_prototype(&prototype_node, Locals::new(), &type_context, scope.clone()).1
             }
             MethodEntry::AttrReader { ref ivar, .. } => {
-                match self.env.object.lookup_ivar(type_context.class, ivar) {
-                    Some(ivar) => {
-                        let ivar_type = self.resolve_type(&ivar.type_node, &type_context, ivar.scope.clone());
-
-                        Rc::new(Prototype::Typed { loc: loc.clone(), args: vec![], retn: ivar_type })
-                    }
-                    None => Rc::new(Prototype::Untyped { loc: loc.clone() })
-                }
+                Rc::new(match self.lookup_ivar(ivar, &type_context) {
+                    Some(ivar_type) => Prototype::Typed { loc: loc.clone(), args: vec![], retn: ivar_type },
+                    None => Prototype::Untyped { loc: loc.clone() },
+                })
             }
             MethodEntry::AttrWriter { ref ivar, ref node } => {
-                match self.env.object.lookup_ivar(type_context.class, ivar) {
-                    Some(ivar) => {
-                        let ivar_type = self.resolve_type(&ivar.type_node, &type_context, ivar.scope.clone());
-
-                        Rc::new(Prototype::Typed { loc: loc.clone(), args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }], retn: ivar_type })
-                    }
-                    None => Rc::new(Prototype::Untyped { loc: loc.clone() })
-                }
+                Rc::new(match self.lookup_ivar(ivar, &type_context) {
+                    Some(ivar_type) =>
+                        Prototype::Typed { loc: loc.clone(), args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }], retn: ivar_type },
+                    None => Prototype::Untyped { loc: loc.clone() },
+                })
             }
             MethodEntry::Untyped => self.tyenv.any_prototype(loc.clone()),
             MethodEntry::IntrinsicClassNew => {
@@ -1104,6 +1097,21 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         ).expect("at least one of the computations must be Some")
     }
 
+    fn lookup_ivar(&self, name: &str, type_context: &TypeContext<'ty, 'object>) -> Option<&'ty Type<'ty, 'object>> {
+        self.env.object.lookup_ivar(type_context.class, name).map(|ivar|
+            self.resolve_type(&ivar.type_node, type_context, ivar.scope.clone()))
+    }
+
+    fn lookup_ivar_or_error(&self, id: &Id, type_context: &TypeContext<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+        self.lookup_ivar(&id.1, type_context).unwrap_or_else(|| {
+            self.error("Use of undeclared instance variable", &[
+                Detail::Loc("here", &id.0),
+            ]);
+
+            self.tyenv.any(id.0.clone())
+        })
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
@@ -1187,34 +1195,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Computation::result(ty, locals)
             }
             Node::Ivar(ref loc, ref name) => {
-                let ty = match self.env.object.lookup_ivar(self.type_context.class, name) {
-                    Some(ivar) => {
-                        self.resolve_type(&ivar.type_node, &self.type_context, ivar.scope.clone())
-                    },
-                    None => {
-                        self.error("Use of undeclared instance variable", &[
-                            Detail::Loc("here", loc),
-                        ]);
-
-                        self.tyenv.any(loc.clone())
-                    },
-                };
+                let ty = self.lookup_ivar_or_error(&Id(loc.clone(), name.clone()), &self.type_context);
 
                 Computation::result(ty, locals)
             }
-            Node::Ivasgn(ref loc, Id(_, ref iv_name), ref expr) => {
-                let ivar_ty = match self.env.object.lookup_ivar(self.type_context.class, iv_name) {
-                    Some(ivar) => {
-                        self.resolve_type(&ivar.type_node, &self.type_context, ivar.scope.clone())
-                    },
-                    None => {
-                        self.error("Use of undeclared instance variable", &[
-                            Detail::Loc("here", loc),
-                        ]);
-
-                        self.tyenv.any(loc.clone())
-                    },
-                };
+            Node::Ivasgn(ref loc, ref ivar, ref expr) => {
+                let ivar_ty = self.lookup_ivar_or_error(ivar, &self.type_context);
 
                 self.process_node(expr, locals).seq(&|ty, l| {
                     self.compatible(ivar_ty, ty, Some(loc));
