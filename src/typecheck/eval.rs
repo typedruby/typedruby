@@ -556,7 +556,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             };
 
             result = result.and_then(|(), locals| {
-                self.extract_results2(self.process_node(node, locals), expr.loc())
+                self.extract_results(self.process_node(node, locals), expr.loc())
             }).map(|ty| {
                 if splat {
                     match *ty {
@@ -768,18 +768,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
     {
         let comp = self.process_node(node, locals);
-        self.extract_results2(comp, node.loc())
+        self.extract_results(comp, node.loc())
     }
 
-    fn extract_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> Or<(&'ty Type<'ty, 'object>, Locals<'ty, 'object>), Computation<'ty, 'object>> {
+    fn extract_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>> {
         let mut merges = Vec::new();
         let result = comp.extract_results(loc, &self.tyenv, &mut merges);
         self.process_local_merges(merges);
-        result
-    }
 
-    fn extract_results2(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>> {
-        match self.extract_results(comp, loc) {
+        match result {
             Or::Left((ty, locals)) => EvalResult::Ok(ty, locals),
             Or::Both((ty, locals), comp) => EvalResult::Both(ty, locals, comp),
             Or::Right(comp) => EvalResult::NonResult(comp),
@@ -951,7 +948,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 EvalResult::Ok((), locals)
             }
             (Some(proto_block_ty), Some(&BlockArg::Pass { ref loc, ref node, .. })) => {
-                self.extract_results2(self.block_type_from_block_pass(proto_block_ty, node, locals), loc).map(|ty| {
+                self.extract_results(self.block_type_from_block_pass(proto_block_ty, node, locals), loc).map(|ty| {
                     self.compatible(proto_block_ty, ty, Some(loc));
                 })
             }
@@ -978,7 +975,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Some(ref body_node) => self.process_node(body_node, block_locals),
                 };
 
-                self.extract_results2(block_comp
+                self.extract_results(block_comp
                     .capture_next(), loc)
                     .and_then(|ty, locals| {
                         self.compatible(block_return_type, ty, None);
@@ -1016,7 +1013,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     ]);
                 }
 
-                self.extract_results2(comp, recv_node.loc())
+                self.extract_results(comp, recv_node.loc())
             },
             None => EvalResult::Ok(self.type_context.self_type(&self.tyenv, id.0.clone()), locals),
         }
@@ -1144,7 +1141,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let comp = Computation::divergent_option(Some(dispatch_comp), non_result_comp).unwrap();
 
-        self.extract_results2(comp, loc).map(|_| attr_asgn_ty)
+        self.extract_results(comp, loc).map(|_| attr_asgn_ty)
     }
 
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
@@ -1492,13 +1489,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     match **pair {
                         Node::Pair(_, ref key, ref value) => {
                             result = result.and_then(|(), locals|
-                                self.extract_results2(self.process_node(key, locals), loc).if_not(|| {
+                                self.extract_results(self.process_node(key, locals), loc).if_not(|| {
                                     self.warning("Expression never evalutes to a result", &[
                                         Detail::Loc("here", key.loc()),
                                     ])
                                 })
                             ).and_then(|key_ty, locals| {
-                                self.extract_results2(self.process_node(value, locals), loc).if_not(|| {
+                                self.extract_results(self.process_node(value, locals), loc).if_not(|| {
                                     self.warning("Expression never evalutes to a result", &[
                                         Detail::Loc("here", value.loc()),
                                     ])
@@ -1515,7 +1512,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         },
                         Node::Kwsplat(_, ref splat) => {
                             result = result.and_then(|(), locals|
-                                self.extract_results2(self.process_node(splat, locals), loc).if_not(|| {
+                                self.extract_results(self.process_node(splat, locals), loc).if_not(|| {
                                     self.warning("Expression never evalutes to a result", &[
                                         Detail::Loc("here", splat.loc()),
                                     ]);
