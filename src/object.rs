@@ -195,7 +195,10 @@ impl<'a> ObjectGraph<'a> {
         o.Regexp = o.define_class(None, o.Object, "Regexp", o.Object, Vec::new());
         o.Proc = o.define_class(None, o.Object, "Proc", o.Object, Vec::new());
 
-        o.define_method(o.Class, "new".to_owned(), Rc::new(MethodEntry::IntrinsicClassNew));
+        o.define_method(o.Class, "new".to_owned(), Rc::new(MethodEntry {
+            visibility: MethodVisibility::Public,
+            implementation: MethodImpl::IntrinsicClassNew,
+        }));
 
         o
     }
@@ -571,8 +574,21 @@ impl<'object> Scope<'object> {
     }
 }
 
+#[derive(Copy,Clone,Debug)]
+pub enum MethodVisibility {
+    Public,
+    Protected,
+    Private,
+}
+
 #[derive(Debug)]
-pub enum MethodEntry<'object> {
+pub struct MethodEntry<'object> {
+    pub visibility: MethodVisibility,
+    pub implementation: MethodImpl<'object>,
+}
+
+#[derive(Debug)]
+pub enum MethodImpl<'object> {
     Ruby {
         owner: &'object RubyObject<'object>,
         name: String,
