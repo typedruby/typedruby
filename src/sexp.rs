@@ -59,7 +59,7 @@ impl<'a, 'b: 'a> SexpNode<'a, 'b> {
             if self.fmt.print_str {
                 write!(self.fmt, " {:?}", value)
             } else {
-                write!(self.fmt, "[STRING {}]", value.len())
+                write!(self.fmt, " [STRING]")
             }
         });
         self
@@ -888,7 +888,7 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::XString(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("XString");
+                let mut builder = __arg_0.new_node("xstr");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
@@ -916,7 +916,7 @@ impl Ast {
                     indent: 0,
                     buf: output,
                     print_loc: false,
-                    print_str: true,
+                    print_str: false,
                 };
                 node.sexp(&mut formatter)
             }
