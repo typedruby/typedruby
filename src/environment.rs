@@ -3,6 +3,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 use std::path::{Path, PathBuf};
 use std::collections::{HashMap, VecDeque};
+use std::fs;
 
 use typed_arena::Arena;
 
@@ -86,10 +87,12 @@ impl<'object> Environment<'object> {
     }
 
     pub fn require(&self, path: &Path) -> io::Result<()> {
+        let path = fs::canonicalize(path)?;
+
         {
             let loaded_features_ref = self.loaded_features.borrow();
 
-            match loaded_features_ref.get(path) {
+            match loaded_features_ref.get(&path) {
                 None => {},
                 Some(&LoadState::Loading) => {
                     // circular require, pass for now
@@ -103,20 +106,20 @@ impl<'object> Environment<'object> {
 
         {
             let mut loaded_features_ref = self.loaded_features.borrow_mut();
-            loaded_features_ref.insert(path.to_owned(), LoadState::Loading);
+            loaded_features_ref.insert(path.clone(), LoadState::Loading);
         }
 
-        let result = self.load_file(path);
+        let result = self.load_file(&path);
 
         let mut loaded_features_ref = self.loaded_features.borrow_mut();
 
         match result {
             Ok(()) => {
-                loaded_features_ref.insert(path.to_owned(), LoadState::Loaded);
+                loaded_features_ref.insert(path, LoadState::Loaded);
                 Ok(())
             },
             Err(err) => {
-                loaded_features_ref.remove(path);
+                loaded_features_ref.remove(&path);
                 Err(err)
             },
         }
