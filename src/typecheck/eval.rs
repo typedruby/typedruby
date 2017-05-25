@@ -1033,15 +1033,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     fn process_send_args(&self, loc: &Loc, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Vec<CallArg<'ty, 'object>>>
     {
-        let mut args = Vec::new();
-
-        let mut result = EvalResult::Ok((), locals);
-
-        for arg_node in arg_nodes {
-            result = result.and_then(|(), locals| {
+        arg_nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |result, arg_node|
+            result.and_then(|mut args, locals| {
                 self.process_call_arg(arg_node, locals).and_then(|call_arg, locals| {
                     args.push(call_arg);
-                    EvalResult::Ok((), locals)
+                    EvalResult::Ok(args, locals)
                 }).if_not(|| {
                     self.warning("Useless method call", &[
                         Detail::Loc("here", &id.0),
@@ -1049,13 +1045,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     ]);
                 })
             })
-        }
-
-        match result {
-            EvalResult::Ok((), l) => EvalResult::Ok(args, l),
-            EvalResult::Both((), l, comp) => EvalResult::Both(args, l, comp),
-            EvalResult::NonResult(comp) => EvalResult::NonResult(comp),
-        }
+        )
     }
 
     fn process_send_dispatch(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, recv_type: &'ty Type<'ty, 'object>, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
