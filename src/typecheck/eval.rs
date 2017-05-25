@@ -1687,6 +1687,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::FileLiteral(ref loc) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.String), locals)
             }
+            Node::NthRef(ref loc, _) => {
+                // TODO perhaps analyse regex to figure out what nthrefs are
+                // always present:
+                let ty = self.tyenv.nillable(loc,
+                    self.tyenv.instance0(loc.clone(), self.env.object.String));
+
+                Computation::result(ty, locals)
+            }
             _ => panic!("node: {:?}", node),
         }
     }
