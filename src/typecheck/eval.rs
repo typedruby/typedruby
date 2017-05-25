@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::collections::HashMap;
 use typecheck::flow::{Computation, Locals, LocalEntry, LocalEntryMerge, ComputationPredicate};
 use typecheck::types::{Arg, TypeEnv, Type, Prototype};
-use object::{Scope, RubyObject, MethodEntry};
+use object::{Scope, RubyObject, MethodEntry, MethodImpl};
 use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
@@ -624,9 +624,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }).into_computation()
     }
 
-    fn prototype_from_method_entry(&self, loc: &Loc, method: &MethodEntry<'object>, type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
-        match *method {
-            MethodEntry::Ruby { ref node, ref scope, .. } => {
+    fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
+        match *impl_ {
+            MethodImpl::Ruby { ref node, ref scope, .. } => {
                 let prototype_node = match **node {
                     Node::Def(_, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
                     Node::Defs(_, _, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
@@ -637,21 +637,21 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 self.resolve_prototype(&prototype_node, Locals::new(), &type_context, scope.clone()).1
             }
-            MethodEntry::AttrReader { ref ivar, .. } => {
+            MethodImpl::AttrReader { ref ivar, .. } => {
                 Rc::new(match self.lookup_ivar(ivar, &type_context) {
                     Some(ivar_type) => Prototype::Typed { loc: loc.clone(), args: vec![], retn: ivar_type },
                     None => Prototype::Untyped { loc: loc.clone() },
                 })
             }
-            MethodEntry::AttrWriter { ref ivar, ref node } => {
+            MethodImpl::AttrWriter { ref ivar, ref node } => {
                 Rc::new(match self.lookup_ivar(ivar, &type_context) {
                     Some(ivar_type) =>
                         Prototype::Typed { loc: loc.clone(), args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }], retn: ivar_type },
                     None => Prototype::Untyped { loc: loc.clone() },
                 })
             }
-            MethodEntry::Untyped => self.tyenv.any_prototype(loc.clone()),
-            MethodEntry::IntrinsicClassNew => {
+            MethodImpl::Untyped => self.tyenv.any_prototype(loc.clone()),
+            MethodImpl::IntrinsicClassNew => {
                 match *type_context.class {
                     RubyObject::Metaclass { of, .. } => {
                         let initialize_method = match self.env.object.lookup_method(of, "initialize") {
@@ -673,7 +673,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                         let instance_type = initialize_type_context.self_type(&self.tyenv, loc.clone());
 
-                        let proto = self.prototype_from_method_entry(loc, &initialize_method, initialize_type_context);
+                        let proto = self.prototype_from_method_impl(loc, &initialize_method.implementation, initialize_type_context);
 
                         match *proto {
                             Prototype::Untyped { .. } => proto.clone(),
@@ -709,14 +709,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Type::Instance { class, type_parameters: ref tp, .. } => {
                 match self.env.object.lookup_method(class, &id.1) {
                     Some(method) => {
-                        vec![self.prototype_from_method_entry(&loc, &method, TypeContext::new(class, tp.clone()))]
+                        vec![self.prototype_from_method_impl(&loc, &method.implementation, TypeContext::new(class, tp.clone()))]
                     }
                     None => Vec::new(),
                 }
             }
             Type::Proc { .. } => {
                 match self.env.object.lookup_method(self.env.object.Proc, &id.1) {
-                    Some(method) => vec![self.prototype_from_method_entry(&loc, &method, TypeContext::new(&self.env.object.Proc, Vec::new()))],
+                    Some(method) => vec![self.prototype_from_method_impl(&loc, &method.implementation, TypeContext::new(&self.env.object.Proc, Vec::new()))],
                     None => Vec::new(),
                 }
             }

@@ -1,14 +1,17 @@
 use ast::{Id, Node, Loc};
 use environment::Environment;
-use object::{RubyObject, Scope, MethodEntry, IvarEntry, ConstantEntry};
-use std::rc::Rc;
 use errors::Detail;
+use object::{RubyObject, Scope, MethodEntry, MethodVisibility, MethodImpl, IvarEntry, ConstantEntry};
+use std::rc::Rc;
+use std::cell::Cell;
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 
 struct Eval<'env, 'object: 'env> {
     pub env: &'env Environment<'object>,
     pub scope: Rc<Scope<'object>>,
+    def_visibility: Cell<MethodVisibility>,
+    module_function: Cell<bool>,
 }
 
 #[derive(Copy,Clone)]
@@ -35,6 +38,15 @@ impl AttrType {
 }
 
 impl<'env, 'object> Eval<'env, 'object> {
+    fn new(env: &'env Environment<'object>, scope: Rc<Scope<'object>>) -> Eval<'env, 'object> {
+        Eval {
+            env: env,
+            scope: scope,
+            def_visibility: Cell::new(MethodVisibility::Public),
+            module_function: Cell::new(false),
+        }
+    }
+
     fn error(&self, message: &str, details: &[Detail]) {
         self.env.error_sink.borrow_mut().error(message, details)
     }
@@ -75,10 +87,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn enter_scope(&self, module: &'object RubyObject<'object>, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let eval = Eval {
-                env: self.env,
-                scope: Scope::spawn(&self.scope, module),
-            };
+            let eval = Eval::new(self.env, Scope::spawn(&self.scope, module));
 
             eval.eval_node(node)
         }
@@ -249,12 +258,15 @@ impl<'env, 'object> Eval<'env, 'object> {
         self.enter_scope(module, body);
     }
 
-    fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>) {
-        let method = Rc::new(MethodEntry::Ruby {
-            owner: target,
-            name: name.to_owned(),
-            node: def_node.clone(),
-            scope: self.scope.clone(),
+    fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>, visi: MethodVisibility) {
+        let method = Rc::new(MethodEntry {
+            visibility: visi,
+            implementation: MethodImpl::Ruby {
+                owner: target,
+                name: name.to_owned(),
+                node: def_node.clone(),
+                scope: self.scope.clone(),
+            }
         });
 
         self.env.object.define_method(target, name.to_owned(), method.clone());
@@ -293,7 +305,10 @@ impl<'env, 'object> Eval<'env, 'object> {
 
             if let Some(name) = to_name {
                 // define alias target as untyped so that uses of it don't produce even more errors:
-                self.env.object.define_method(klass, name.to_owned(), Rc::new(MethodEntry::Untyped));
+                self.env.object.define_method(klass, name.to_owned(), Rc::new(MethodEntry {
+                    visibility: self.def_visibility.get(),
+                    implementation: MethodImpl::Untyped,
+                }));
             }
         }
     }
@@ -309,21 +324,48 @@ impl<'env, 'object> Eval<'env, 'object> {
                 let ivar = format!("@{}", sym);
 
                 if attr_type.reader() {
-                    let method = MethodEntry::AttrReader {
-                        ivar: ivar.clone(),
-                        node: arg.clone(),
+                    let method = MethodEntry {
+                        visibility: self.def_visibility.get(),
+                        implementation: MethodImpl::AttrReader {
+                            ivar: ivar.clone(),
+                            node: arg.clone(),
+                        },
                     };
                     self.env.object.define_method(class, sym.to_owned(), Rc::new(method));
                 }
 
                 if attr_type.writer() {
-                    let method = MethodEntry::AttrWriter {
-                        ivar: ivar.clone(),
-                        node: arg.clone(),
+                    let method = MethodEntry {
+                        visibility: self.def_visibility.get(),
+                        implementation: MethodImpl::AttrWriter {
+                            ivar: ivar.clone(),
+                            node: arg.clone(),
+                        },
                     };
                     self.env.object.define_method(class, sym.to_owned() + "=", Rc::new(method));
                 }
             }
+        }
+    }
+
+    fn process_module_function(&self, args: &[Rc<Node>]) {
+        if args.is_empty() {
+            self.def_visibility.set(MethodVisibility::Private);
+            self.module_function.set(true);
+        } else {
+            self.error("module_function with arguments not yet implemented", &[
+                Detail::Loc("here", &args.first().unwrap().loc().join(args.last().unwrap().loc())),
+            ]);
+        }
+    }
+
+    fn process_visibility(&self, visi: MethodVisibility, args: &[Rc<Node>]) {
+        if args.is_empty() {
+            self.def_visibility.set(visi);
+        } else {
+            self.error("visibility modifier with arguments not yet implemented", &[
+                Detail::Loc("here", &args.first().unwrap().loc().join(args.last().unwrap().loc())),
+            ]);
         }
     }
 
@@ -391,6 +433,10 @@ impl<'env, 'object> Eval<'env, 'object> {
             "attr_reader" => self.process_attr(AttrType::Reader, args),
             "attr_writer" => self.process_attr(AttrType::Writer, args),
             "attr_accessor" => self.process_attr(AttrType::Accessor, args),
+            "module_function" => self.process_module_function(args),
+            "public" => self.process_visibility(MethodVisibility::Public, args),
+            "private" => self.process_visibility(MethodVisibility::Private, args),
+            "protected" => self.process_visibility(MethodVisibility::Protected, args),
             _ => {}
         }
     }
@@ -435,18 +481,23 @@ impl<'env, 'object> Eval<'env, 'object> {
                     }
                 };
 
-                let metaclass = self.env.object.metaclass(&singleton);
+                let metaclass = self.env.object.metaclass(singleton);
 
                 self.enter_scope(metaclass, body);
             }
             Node::Def(_, Id(_, ref name), ..) => {
-                self.decl_method(&self.scope.module, name, node);
+                self.decl_method(&self.scope.module, name, node, self.def_visibility.get());
+
+                if self.module_function.get() {
+                    let meta = self.env.object.metaclass(self.scope.module);
+                    self.decl_method(meta, name, node, MethodVisibility::Public);
+                }
             }
             Node::Defs(_, ref singleton, Id(_, ref name), ..) => {
                 match self.resolve_static(singleton) {
                     Ok(metaclass) => {
-                        let metaclass = self.env.object.metaclass(&metaclass);
-                        self.decl_method(&metaclass, name, node);
+                        let metaclass = self.env.object.metaclass(metaclass);
+                        self.decl_method(metaclass, name, node, MethodVisibility::Public);
                     }
                     Err((node, message)) => {
                         self.warning(message, &[Detail::Loc("here", node.loc())]);
@@ -623,5 +674,5 @@ impl<'env, 'object> Eval<'env, 'object> {
 pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>) {
     let scope = Rc::new(Scope { parent: None, module: env.object.Object });
 
-    Eval { env: env, scope: scope }.eval_node(&node);
+    Eval::new(env, scope).eval_node(&node);
 }

@@ -5,7 +5,7 @@ mod types;
 
 use std::rc::Rc;
 use environment::Environment;
-use object::MethodEntry;
+use object::{MethodEntry, MethodImpl};
 use typed_arena::Arena;
 use self::types::TypeEnv;
 use self::eval::Eval;
@@ -14,13 +14,13 @@ pub fn check<'env, 'object: 'env>(env: &'env Environment<'object>, method: Rc<Me
     let arena = Arena::new();
     let types = TypeEnv::new(&arena, &env.object);
 
-    match *method {
-        MethodEntry::Ruby { ref scope, ref node, ref owner, .. } =>
+    match method.implementation {
+        MethodImpl::Ruby { ref scope, ref node, ref owner, .. } =>
             Eval::new(env, types, scope.clone(), owner, node.clone()).process(),
-        MethodEntry::AttrReader { .. } |
-        MethodEntry::AttrWriter { .. } |
-        MethodEntry::Untyped |
-        MethodEntry::IntrinsicClassNew =>
+        MethodImpl::AttrReader { .. } |
+        MethodImpl::AttrWriter { .. } |
+        MethodImpl::Untyped |
+        MethodImpl::IntrinsicClassNew =>
             { /* pass */ }
     }
 }
