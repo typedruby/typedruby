@@ -142,6 +142,17 @@ impl<'ty, 'object, T> EvalResult<'ty, 'object, T> {
         }
     }
 
+    fn and_then_comp<F>(self, mut f: F) -> Computation<'ty, 'object>
+        where F : FnOnce(T, Locals<'ty, 'object>) -> Computation<'ty, 'object>
+    {
+        match self {
+            EvalResult::Ok(val, locals) => f(val, locals),
+            EvalResult::Both(val, locals, non_result) =>
+                Computation::divergent(non_result, f(val, locals)),
+            EvalResult::NonResult(non_result) => non_result,
+        }
+    }
+
     fn if_not<F>(self, mut f: F) -> EvalResult<'ty, 'object, T>
         where F : FnMut()
     {
@@ -1120,48 +1131,27 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     {
         let id = Id(id.0.clone(), id.1.clone() + "=");
 
-        let (recv_type, locals, non_result_comp) = match self.process_send_receiver(loc, recv, &id, locals) {
-            EvalResult::Ok(recv_type, locals) => (recv_type, locals, None),
-            EvalResult::Both(recv_type, locals, comp) => (recv_type, locals, Some(comp)),
-            EvalResult::NonResult(comp) => return EvalResult::NonResult(comp),
-        };
+        self.process_send_receiver(loc, recv, &id, locals).and_then(|recv_type, locals| {
+            self.process_send_args(loc, &id, arg_nodes, locals).and_then(|mut args, locals| {
+                let attr_asgn_ty = self.tyenv.new_var(loc.clone());
 
-        let (args, locals, non_result_comp) = match self.process_send_args(loc, &id, arg_nodes, locals) {
-            EvalResult::Ok(args, locals) => (args, locals, non_result_comp),
-            EvalResult::Both(args, locals, comp) => (args, locals, Computation::divergent_option(non_result_comp, Some(comp))),
-            EvalResult::NonResult(comp) => return EvalResult::NonResult(comp),
-        };
+                args.push(CallArg::Pass(loc.clone(), attr_asgn_ty));
 
-        let attr_asgn_ty = self.tyenv.new_var(loc.clone());
+                let comp = self.process_send_dispatch(loc, recv, &id, recv_type, args, None, locals);
 
-        let mut args = args;
-        args.push(CallArg::Pass(loc.clone(), attr_asgn_ty));
-
-        let dispatch_comp = self.process_send_dispatch(loc, recv, &id, recv_type, args, None, locals);
-
-        let comp = Computation::divergent_option(Some(dispatch_comp), non_result_comp).unwrap();
-
-        self.extract_results(comp, loc).map(|_| attr_asgn_ty)
+                self.extract_results(comp, loc).map(|_| attr_asgn_ty)
+            })
+        })
     }
 
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
-        let (recv_type, locals, non_result_comp) = match self.process_send_receiver(loc, recv, id, locals) {
-            EvalResult::Ok(recv_type, locals) => (recv_type, locals, None),
-            EvalResult::Both(recv_type, locals, comp) => (recv_type, locals, Some(comp)),
-            EvalResult::NonResult(comp) => return comp,
-        };
-
-        let (args, locals, non_result_comp) = match self.process_send_args(loc, id, arg_nodes, locals) {
-            EvalResult::Ok(args, locals) => (args, locals, non_result_comp),
-            EvalResult::Both(args, locals, comp) => (args, locals, Computation::divergent_option(non_result_comp, Some(comp))),
-            EvalResult::NonResult(comp) => return comp,
-        };
-
-        let dispatch_comp = self.process_send_dispatch(loc, recv, id, recv_type, args, block, locals);
-
-        Computation::divergent_option(Some(dispatch_comp), non_result_comp).unwrap()
+        self.process_send_receiver(loc, recv, id, locals).and_then_comp(|recv_type, locals| {
+            self.process_send_args(loc, id, arg_nodes, locals).and_then_comp(|args, locals| {
+                self.process_send_dispatch(loc, recv, id, recv_type, args, block, locals)
+            })
+        })
     }
 
     fn seq_process(&self, comp: Computation<'ty, 'object>, node: &Node) -> Computation<'ty, 'object> {
