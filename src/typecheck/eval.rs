@@ -1500,7 +1500,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                                         Detail::Loc("here", value.loc()),
                                     ])
                                 }).map(|value_ty| {
-                                    (value_ty, key_ty)
+                                    (key_ty, value_ty)
                                 })
                             }).map(|(key_ty, value_ty)| {
                                 if let Node::Symbol(ref sym_loc, ref sym) = **key {
