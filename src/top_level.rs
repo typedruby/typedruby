@@ -351,24 +351,59 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
+    fn lookup_method_for_visi(&self, mid: &str) -> Option<Rc<MethodEntry<'object>>> {
+        if let Some(me) = self.env.object.lookup_method(self.scope.module, mid) {
+            return Some(me);
+        }
+
+        if let RubyObject::Module { .. } = *self.scope.module {
+            self.env.object.lookup_method(self.env.object.Object, mid)
+        } else {
+            None
+        }
+    }
+
     fn process_module_function(&self, args: &[Rc<Node>]) {
         if args.is_empty() {
             self.def_visibility.set(MethodVisibility::Private);
             self.module_function.set(true);
         } else {
-            self.error("module_function with arguments not yet implemented", &[
-                Detail::Loc("here", &args.first().unwrap().loc().join(args.last().unwrap().loc())),
-            ]);
+            for arg in args {
+                if let Some(mid) = self.symbol_name(arg, "in method name") {
+                    if let Some(method) = self.lookup_method_for_visi(mid) {
+                        let target = self.env.object.metaclass(self.scope.module);
+                        self.env.object.define_method(target, mid.to_owned(), method.clone())
+                    } else {
+                        self.error("Could not resolve method in module_function", &[
+                            Detail::Loc(&format!("{}#{}", self.scope.module.name(), mid), arg.loc()),
+                        ]);
+                    }
+                }
+            }
         }
     }
 
     fn process_visibility(&self, visi: MethodVisibility, args: &[Rc<Node>]) {
+        let self_ = self.scope.module;
+
         if args.is_empty() {
             self.def_visibility.set(visi);
         } else {
-            self.error("visibility modifier with arguments not yet implemented", &[
-                Detail::Loc("here", &args.first().unwrap().loc().join(args.last().unwrap().loc())),
-            ]);
+            for arg in args {
+                if let Some(mid) = self.symbol_name(arg, "in method name") {
+                    if let Some(method) = self.lookup_method_for_visi(mid) {
+                        if self_ == method.owner {
+                            method.visibility.set(visi);
+                        } else {
+                            self.env.object.define_method(self_, mid.to_owned(), Rc::new(MethodEntry {
+                                owner: self_,
+                                visibility: Cell::new(visi),
+                                implementation: method.implementation.clone(),
+                            }));
+                        }
+                    }
+                }
+            }
         }
     }
 
