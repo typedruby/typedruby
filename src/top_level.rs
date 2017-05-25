@@ -260,13 +260,13 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>, visi: MethodVisibility) {
         let method = Rc::new(MethodEntry {
-            visibility: visi,
-            implementation: MethodImpl::Ruby {
-                owner: target,
+            owner: target,
+            visibility: Cell::new(visi),
+            implementation: Rc::new(MethodImpl::Ruby {
                 name: name.to_owned(),
                 node: def_node.clone(),
                 scope: self.scope.clone(),
-            }
+            })
         });
 
         self.env.object.define_method(target, name.to_owned(), method.clone());
@@ -298,7 +298,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         } else {
             if let Some(name) = from_name {
                 // no need to check None case, symbol_name would have already emitted an error
-                self.warning("Could not resolve source method in alias", &[
+                self.error("Could not resolve source method in alias", &[
                     Detail::Loc(&format!("{}#{}", klass.name(), name), from.loc()),
                 ]);
             }
@@ -306,8 +306,9 @@ impl<'env, 'object> Eval<'env, 'object> {
             if let Some(name) = to_name {
                 // define alias target as untyped so that uses of it don't produce even more errors:
                 self.env.object.define_method(klass, name.to_owned(), Rc::new(MethodEntry {
-                    visibility: self.def_visibility.get(),
-                    implementation: MethodImpl::Untyped,
+                    owner: klass,
+                    visibility: self.def_visibility.clone(),
+                    implementation: Rc::new(MethodImpl::Untyped),
                 }));
             }
         }
@@ -325,22 +326,24 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                 if attr_type.reader() {
                     let method = MethodEntry {
-                        visibility: self.def_visibility.get(),
-                        implementation: MethodImpl::AttrReader {
+                        owner: class,
+                        visibility: self.def_visibility.clone(),
+                        implementation: Rc::new(MethodImpl::AttrReader {
                             ivar: ivar.clone(),
                             node: arg.clone(),
-                        },
+                        }),
                     };
                     self.env.object.define_method(class, sym.to_owned(), Rc::new(method));
                 }
 
                 if attr_type.writer() {
                     let method = MethodEntry {
-                        visibility: self.def_visibility.get(),
-                        implementation: MethodImpl::AttrWriter {
+                        owner: class,
+                        visibility: self.def_visibility.clone(),
+                        implementation: Rc::new(MethodImpl::AttrWriter {
                             ivar: ivar.clone(),
                             node: arg.clone(),
-                        },
+                        }),
                     };
                     self.env.object.define_method(class, sym.to_owned() + "=", Rc::new(method));
                 }

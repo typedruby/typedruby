@@ -196,8 +196,9 @@ impl<'a> ObjectGraph<'a> {
         o.Proc = o.define_class(None, o.Object, "Proc", o.Object, Vec::new());
 
         o.define_method(o.Class, "new".to_owned(), Rc::new(MethodEntry {
-            visibility: MethodVisibility::Public,
-            implementation: MethodImpl::IntrinsicClassNew,
+            owner: o.Class,
+            visibility: Cell::new(MethodVisibility::Public),
+            implementation: Rc::new(MethodImpl::IntrinsicClassNew),
         }));
 
         o
@@ -583,14 +584,14 @@ pub enum MethodVisibility {
 
 #[derive(Debug)]
 pub struct MethodEntry<'object> {
-    pub visibility: MethodVisibility,
-    pub implementation: MethodImpl<'object>,
+    pub owner: &'object RubyObject<'object>,
+    pub visibility: Cell<MethodVisibility>,
+    pub implementation: Rc<MethodImpl<'object>>,
 }
 
 #[derive(Debug)]
 pub enum MethodImpl<'object> {
     Ruby {
-        owner: &'object RubyObject<'object>,
         name: String,
         node: Rc<Node>,
         scope: Rc<Scope<'object>>,
