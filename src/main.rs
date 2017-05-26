@@ -35,7 +35,7 @@ fn config() -> (Config, Vec<PathBuf>) {
             .value_name("directory")
             .help("Adds a directory to the load path")
             .takes_value(true))
-        .arg(Arg::with_name("rails-autoload")
+        .arg(Arg::with_name("autoload-path")
             .multiple(true)
             .number_of_values(1)
             .short("R")
