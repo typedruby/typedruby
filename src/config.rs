@@ -4,6 +4,7 @@ use std::vec::Vec;
 pub struct Config {
     pub require_paths: Vec<PathBuf>,
     pub warning: bool,
+    pub autoload_paths: Vec<PathBuf>,
 }
 
 impl Config {
@@ -12,6 +13,7 @@ impl Config {
         Config {
             require_paths: Vec::new(),
             warning: false,
+            autoload_paths: Vec::new(),
         }
     }
 }
