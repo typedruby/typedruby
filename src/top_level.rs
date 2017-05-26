@@ -407,32 +407,35 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
-    fn process_self_send(&self, id: &Id, args: &[Rc<Node>]) {
-        match id.1.as_str() {
-            "include" => {
-                if args.is_empty() {
-                    self.error("Wrong number of arguments to include", &[
-                        Detail::Loc("here", &id.0),
-                    ]);
-                }
+    fn process_module_inclusion(&self, id: &Id, target: &'object RubyObject<'object>, args: &[Rc<Node>]) {
+        if args.is_empty() {
+            self.error(&format!("Wrong number of arguments to {}", id.1), &[
+                Detail::Loc("here", &id.0),
+            ]);
+        }
 
-                for arg in args {
-                    match self.resolve_static(arg) {
-                        Ok(obj) => {
-                            if !self.env.object.include_module(&self.scope.module, &obj) {
-                                self.error("Cyclic include", &[
-                                    Detail::Loc("here", arg.loc()),
-                                ])
-                            }
-                        }
-                        Err((node, message)) => {
-                            self.warning("Could not statically resolve module reference in include", &[
-                                Detail::Loc(message, node.loc()),
-                            ]);
-                        }
+        for arg in args {
+            match self.resolve_static(arg) {
+                Ok(obj) => {
+                    if !self.env.object.include_module(target, &obj) {
+                        self.error("Cyclic include", &[
+                            Detail::Loc("here", arg.loc()),
+                        ])
                     }
                 }
+                Err((node, message)) => {
+                    self.warning(&format!("Could not statically resolve module reference in {}", id.1), &[
+                        Detail::Loc(message, node.loc()),
+                    ]);
+                }
             }
+        }
+    }
+
+    fn process_self_send(&self, id: &Id, args: &[Rc<Node>]) {
+        match id.1.as_str() {
+            "include" => self.process_module_inclusion(id, self.scope.module, args),
+            "extend" => self.process_module_inclusion(id, self.env.object.metaclass(self.scope.module), args),
             "require" => {
                 if args.len() == 0 {
                     self.error("Missing argument to require", &[
