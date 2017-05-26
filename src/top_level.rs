@@ -704,6 +704,15 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::BlockPass(_, ref expr) => {
                 self.eval_node(expr);
             }
+            Node::Masgn(_, ref lhs, ref rhs) => {
+                self.eval_node(lhs);
+                self.eval_node(rhs);
+            }
+            Node::Mlhs(_, ref nodes) => {
+                for node in nodes {
+                    self.eval_node(node);
+                }
+            }
             _ => panic!("unknown node: {:?}", node),
         }
     }
