@@ -6,7 +6,6 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 
 use typed_arena::Arena;
-use regex::Regex;
 
 use ast::{parse, SourceFile, Node, Id, DiagnosticLevel};
 use config::Config;
@@ -22,7 +21,6 @@ enum LoadState {
 }
 
 pub struct Environment<'object> {
-    arena: &'object Arena<RubyObject<'object>>,
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<Box<ErrorSink>>,
     pub config: Config,
@@ -38,7 +36,6 @@ impl<'object> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
 
         let env = Environment {
-            arena: arena,
             error_sink: RefCell::new(error_sink),
             object: ObjectGraph::new(&arena),
             config: config,
@@ -131,7 +128,7 @@ impl<'object> Environment<'object> {
         }
     }
 
-    fn search_paths(&self, file: &str, paths: &[PathBuf]) -> Option<PathBuf> {
+    fn search_paths(file: &str, paths: &[PathBuf]) -> Option<PathBuf> {
         for path in paths {
             for ext in &["", ".rb"] {
                 let resolved = path.join(file.to_owned() + ext);
@@ -146,11 +143,7 @@ impl<'object> Environment<'object> {
     }
 
     pub fn search_require_path(&self, file: &str) -> Option<PathBuf> {
-        self.search_paths(file, &self.config.require_paths)
-    }
-
-    pub fn search_autoload_path(&self, file: &str) -> Option<PathBuf> {
-        self.search_paths(file, &self.config.autoload_paths)
+        Self::search_paths(file, &self.config.require_paths)
     }
 
     pub fn autoload(&self, module: &'object RubyObject<'object>, name: &str) -> Option<&'object RubyObject<'object>> {
