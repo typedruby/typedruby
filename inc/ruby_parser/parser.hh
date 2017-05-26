@@ -8,50 +8,93 @@
 #include "diagnostic.hh"
 
 namespace ruby_parser {
-  struct builder;
+	struct builder;
 
-  typedef void* foreign_ptr;
+	typedef void* foreign_ptr;
 
-  struct node_list {
-    std::vector<foreign_ptr> nodes;
+	struct node_list {
+		node_list() : exists(true) {}
+		node_list(bool exists) : exists(exists) {}
+		node_list(foreign_ptr node) : nodes(), exists(true) {
+			nodes.push_back(node);
+		}
 
-    node_list() {}
-    node_list(decltype(nodes)&& nodes) : nodes(std::move(nodes)) {}
-  };
+		node_list& operator=(const foreign_ptr &other) = delete;
+		node_list& operator=(foreign_ptr &&other) = delete;
 
-  struct delimited_node_list {
-    token *begin;
-    node_list *inner;
-    token *end;
+		inline size_t size() const { return nodes.size(); }
 
-    delimited_node_list(token *begin, node_list *inner, token *end)
-      : begin(begin), inner(inner), end(end) {}
-  };
+		inline void push_back(const foreign_ptr &ptr) {
+			assert(exists);
+			nodes.push_back(ptr);
+		}
 
-  struct delimited_block {
-    token *begin;
-    foreign_ptr args;
-    foreign_ptr body;
-    token *end;
+		inline void push_front(const foreign_ptr &ptr) {
+			assert(exists);
+			nodes.insert(nodes.begin(), ptr);
+		}
 
-    delimited_block(token *begin, foreign_ptr args, foreign_ptr body, token *end)
-      : begin(begin), args(args), body(body), end(end) {}
-  };
+		inline foreign_ptr &first() { return nodes[0]; }
 
-  struct node_with_token {
-    token *token_;
-    foreign_ptr node_;
+		inline void concat(node_list &other) {
+			assert(exists);
+			nodes.insert(nodes.end(),
+				std::make_move_iterator(other.nodes.begin()),
+				std::make_move_iterator(other.nodes.end())
+			);
+		}
 
-    node_with_token(token *token_, foreign_ptr node_)
-      : token_(token_), node_(node_) {}
-  };
+		inline operator bool() const { return exists; }
 
-  struct case_body {
-    node_list *whens;
-    node_with_token *else_;
+		std::vector<foreign_ptr> nodes;
+		bool exists;
+	};
 
-    case_body(node_with_token *else_) : whens(new node_list()), else_(else_) {}
-  };
+	struct delimited_node_list {
+		delimited_node_list(const token_t &begin, const node_list &inner, const token_t &end)
+			: begin(begin), inner(inner), end(end) {}
+
+		delimited_node_list()
+			: begin(nullptr), inner(), end(nullptr) {}
+
+		token_t begin;
+		node_list inner;
+		token_t end;
+	};
+
+	struct delimited_block {
+		delimited_block(const token_t &begin, foreign_ptr args, foreign_ptr body, const token_t &end)
+			: begin(begin), args(args), body(body), end(end) {}
+
+		delimited_block()
+			: begin(nullptr), args(nullptr), body(nullptr), end(nullptr) {}
+
+		token_t begin;
+		foreign_ptr args;
+		foreign_ptr body;
+		token_t end;
+	};
+
+	struct node_with_token {
+		node_with_token(const token_t &token_, foreign_ptr node_)
+			: tok(token_), nod(node_) {}
+
+		node_with_token()
+			: tok(nullptr), nod(nullptr) {}
+
+		operator bool() const { return tok && nod; }
+
+		token_t tok;
+		foreign_ptr nod;
+	};
+
+	struct case_body {
+		case_body(const node_with_token &else_) : whens(), els(else_) {}
+		case_body() : whens(), els() {}
+
+		node_list whens;
+		node_with_token els;
+	};
 
   namespace parser {
     class base {

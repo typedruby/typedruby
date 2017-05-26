@@ -1,5 +1,6 @@
 #include <ruby_parser/parser.hh>
 #include <ruby_parser/lexer.hh>
+#include "grammars/typedruby24.hh"
 
 using namespace ruby_parser;
 
@@ -27,11 +28,9 @@ void parser::base::check_kwarg_name(const token *name) {
   }
 }
 
-extern "C" {
-  int ruby_parser_typedruby24_yyparse(parser::typedruby24&);
-}
-
 foreign_ptr parser::typedruby24::parse() {
-  ruby_parser_typedruby24_yyparse(*this);
-  return std::move(ast);
+	yy::parser p(*this);
+	//p.set_debug_level(1);
+	p.parse();
+	return std::move(ast);
 }
