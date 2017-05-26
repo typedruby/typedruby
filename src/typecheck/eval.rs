@@ -111,7 +111,7 @@ enum EvalResult<'ty, 'object: 'ty, T> {
 }
 
 impl<'ty, 'object, T> EvalResult<'ty, 'object, T> {
-    fn map<F, U>(self, mut f: F) -> EvalResult<'ty, 'object, U>
+    fn map<F, U>(self, f: F) -> EvalResult<'ty, 'object, U>
         where F : FnOnce(T) -> U
     {
         match self {
@@ -121,7 +121,7 @@ impl<'ty, 'object, T> EvalResult<'ty, 'object, T> {
         }
     }
 
-    fn and_then<F, U>(self, mut f: F) -> EvalResult<'ty, 'object, U>
+    fn and_then<F, U>(self, f: F) -> EvalResult<'ty, 'object, U>
         where F : FnOnce(T, Locals<'ty, 'object>) -> EvalResult<'ty, 'object, U>
     {
         match self {
@@ -142,7 +142,7 @@ impl<'ty, 'object, T> EvalResult<'ty, 'object, T> {
         }
     }
 
-    fn and_then_comp<F>(self, mut f: F) -> Computation<'ty, 'object>
+    fn and_then_comp<F>(self, f: F) -> Computation<'ty, 'object>
         where F : FnOnce(T, Locals<'ty, 'object>) -> Computation<'ty, 'object>
     {
         match self {
