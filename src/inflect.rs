@@ -1,13 +1,16 @@
 use regex::{escape, Regex, Captures};
 
 pub struct Inflector {
-    acronyms: Vec<String>,
     word_regex: Option<Regex>,
     adjacent_caps_regex: Regex,
     adjacent_regex: Regex,
 }
 
-fn word_regex_from_acronyms(acronyms: &[String]) -> Regex {
+fn word_regex_from_acronyms(acronyms: &[String]) -> Option<Regex> {
+    if acronyms.is_empty() {
+        return None;
+    }
+
     let mut re = r"(?:([A-Za-z\d])|^)(".to_owned();
 
     for (idx, acr) in acronyms.iter().enumerate() {
@@ -20,22 +23,18 @@ fn word_regex_from_acronyms(acronyms: &[String]) -> Regex {
 
     re += r")\b";
 
-    Regex::new(&re).unwrap()
+    Some(Regex::new(&re).unwrap())
 }
 
 impl Inflector {
-    pub fn new() -> Inflector {
+    pub fn new(acronyms: &[String]) -> Inflector {
+        let word_regex = word_regex_from_acronyms(acronyms);
+
         Inflector {
-            acronyms: vec![],
-            word_regex: None,
+            word_regex: word_regex,
             adjacent_caps_regex: Regex::new(r"([A-Z\d]+)([A-Z][a-z])").unwrap(),
             adjacent_regex: Regex::new(r"([a-z\d])([A-Z])").unwrap(),
         }
-    }
-
-    pub fn add_acronym(&mut self, acronym: String) {
-        self.acronyms.push(acronym);
-        self.word_regex = Some(word_regex_from_acronyms(&self.acronyms));
     }
 
     pub fn underscore(&self, s: &str) -> String {

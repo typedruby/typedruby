@@ -5,6 +5,7 @@ pub struct Config {
     pub require_paths: Vec<PathBuf>,
     pub warning: bool,
     pub autoload_paths: Vec<PathBuf>,
+    pub inflect_acronyms: Vec<String>,
 }
 
 impl Config {
@@ -14,6 +15,7 @@ impl Config {
             require_paths: Vec::new(),
             warning: false,
             autoload_paths: Vec::new(),
+            inflect_acronyms: Vec::new(),
         }
     }
 }

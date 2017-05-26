@@ -42,6 +42,12 @@ fn config() -> (Config, Vec<PathBuf>) {
             .long("rails-autoload")
             .value_name("directory")
             .help("Turns on Rails-style autoloading and adds a directory to the autoload path"))
+        .arg(Arg::with_name("inflect-acronym")
+            .multiple(true)
+            .number_of_values(1)
+            .long("inflect-acronym")
+            .value_name("word")
+            .help("Registers the passed word as an acronym for inflection in Rails-style autoloading"))
         .arg(Arg::with_name("warning")
             .short("w")
             .help("Turns on additional warnings, like Ruby's -w"))
@@ -60,11 +66,15 @@ fn config() -> (Config, Vec<PathBuf>) {
         config.autoload_paths.extend(autoload_paths.map(PathBuf::from));
     }
 
-    if let Some(files_iter) = matches.values_of("source") {
-        files.extend(files_iter.map(PathBuf::from));
+    if let Some(acronyms) = matches.values_of("inflect-acronym") {
+        config.inflect_acronyms.extend(acronyms.map(String::from));
     }
 
     config.warning = matches.is_present("warning");
+
+    if let Some(files_iter) = matches.values_of("source") {
+        files.extend(files_iter.map(PathBuf::from));
+    }
 
     (config, files)
 }

@@ -35,6 +35,8 @@ static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/stdlib.rb
 
 impl<'object> Environment<'object> {
     pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: Config) -> Environment<'object> {
+        let inflector = Inflector::new(&config.inflect_acronyms);
+
         let env = Environment {
             arena: arena,
             error_sink: RefCell::new(error_sink),
@@ -42,7 +44,7 @@ impl<'object> Environment<'object> {
             config: config,
             loaded_features: RefCell::new(HashMap::new()),
             method_queue: RefCell::new(VecDeque::new()),
-            inflector: Inflector::new(),
+            inflector: inflector,
         };
 
         let source_file = SourceFile::new(PathBuf::from("(builtin stdlib)"), STDLIB_DEFINITIONS.to_owned());
