@@ -10,6 +10,7 @@ type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 struct Eval<'env, 'object: 'env> {
     pub env: &'env Environment<'object>,
     pub scope: Rc<Scope<'object>>,
+    in_def: bool,
     def_visibility: Cell<MethodVisibility>,
     module_function: Cell<bool>,
 }
@@ -38,10 +39,11 @@ impl AttrType {
 }
 
 impl<'env, 'object> Eval<'env, 'object> {
-    fn new(env: &'env Environment<'object>, scope: Rc<Scope<'object>>) -> Eval<'env, 'object> {
+    fn new(env: &'env Environment<'object>, scope: Rc<Scope<'object>>, in_def: bool) -> Eval<'env, 'object> {
         Eval {
             env: env,
             scope: scope,
+            in_def: in_def,
             def_visibility: Cell::new(MethodVisibility::Public),
             module_function: Cell::new(false),
         }
@@ -87,7 +89,15 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn enter_scope(&self, module: &'object RubyObject<'object>, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let eval = Eval::new(self.env, Scope::spawn(&self.scope, module));
+            let eval = Eval::new(self.env, Scope::spawn(&self.scope, module), self.in_def);
+
+            eval.eval_node(node)
+        }
+    }
+
+    fn enter_def(&self, body: &Option<Rc<Node>>) {
+        if let Some(ref node) = *body {
+            let eval = Eval::new(self.env, self.scope.clone(), true);
 
             eval.eval_node(node)
         }
@@ -511,6 +521,10 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Module(_, ref name, ref body) => {
                 self.decl_module(name, body);
             }
+            Node::SClass(_, ref expr, ref body) if self.in_def => {
+                self.eval_node(expr);
+                self.eval_maybe_node(body);
+            }
             Node::SClass(_, ref expr, ref body) => {
                 let singleton = match self.resolve_static(expr) {
                     Ok(singleton) => singleton,
@@ -526,15 +540,24 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                 self.enter_scope(metaclass, body);
             }
-            Node::Def(_, Id(_, ref name), ..) => {
+            Node::Def(_, _, _, ref body) if self.in_def => {
+                self.enter_def(body);
+            }
+            Node::Def(_, Id(_, ref name), _, ref body) => {
                 self.decl_method(&self.scope.module, name, node, self.def_visibility.get());
 
                 if self.module_function.get() {
                     let meta = self.env.object.metaclass(self.scope.module);
                     self.decl_method(meta, name, node, MethodVisibility::Public);
                 }
+
+                self.enter_def(body);
             }
-            Node::Defs(_, ref singleton, Id(_, ref name), ..) => {
+            Node::Defs(_, ref singleton, _, _, ref body) if self.in_def => {
+                self.eval_node(singleton);
+                self.enter_def(body);
+            }
+            Node::Defs(_, ref singleton, Id(_, ref name), _, ref body) => {
                 match self.resolve_static(singleton) {
                     Ok(metaclass) => {
                         let metaclass = self.env.object.metaclass(metaclass);
@@ -544,12 +567,20 @@ impl<'env, 'object> Eval<'env, 'object> {
                         self.warning(message, &[Detail::Loc("here", node.loc())]);
                     }
                 }
+
+                self.enter_def(body);
             }
             Node::Undef(_, ref names) => {
                 // TODO
             }
             Node::Send(_, None, ref id, ref args) => {
-                self.process_self_send(id, args.as_slice());
+                if self.in_def {
+                    for arg in args {
+                        self.eval_node(arg)
+                    }
+                } else {
+                    self.process_self_send(id, args.as_slice());
+                }
             }
             Node::CSend(_, ref recv, _, ref args) |
             Node::Send(_, ref recv, _, ref args) => {
@@ -557,6 +588,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                 for arg in args {
                     self.eval_node(arg);
                 }
+            }
+            Node::Casgn(_, ref base, _, ref expr) if self.in_def => {
+                self.eval_maybe_node(base);
+                self.eval_node(expr);
             }
             Node::Casgn(_, ref base, Id(ref name_loc, ref name), ref expr) => {
                 let loc = match *base {
@@ -606,8 +641,16 @@ impl<'env, 'object> Eval<'env, 'object> {
                     }
                 }
             }
+            Node::Alias(_, _, _) if self.in_def => {
+                // pass
+            }
             Node::Alias(_, ref to, ref from) => {
                 self.alias_method(self.scope.module, from, to);
+            }
+            Node::TyIvardecl(..) if self.in_def => {
+                self.error("Invalid instance variable type declaration", &[
+                    Detail::Loc("here", node.loc()),
+                ]);
             }
             Node::TyIvardecl(_, Id(ref ivar_loc, ref ivar), ref type_node) => {
                 if let Some(ivar_decl) = self.env.object.lookup_ivar(&self.scope.module, ivar) {
@@ -781,5 +824,5 @@ impl<'env, 'object> Eval<'env, 'object> {
 pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>) {
     let scope = Rc::new(Scope { parent: None, module: env.object.Object });
 
-    Eval::new(env, scope).eval_node(&node);
+    Eval::new(env, scope, false).eval_node(&node);
 }
