@@ -1,6 +1,7 @@
 extern crate clap;
 extern crate typed_arena;
 extern crate immutable_map;
+extern crate regex;
 
 use std::io;
 use std::path::PathBuf;
@@ -11,6 +12,7 @@ mod ast;
 mod config;
 mod environment;
 mod errors;
+mod inflect;
 mod object;
 mod slice_util;
 mod top_level;
@@ -33,6 +35,13 @@ fn config() -> (Config, Vec<PathBuf>) {
             .value_name("directory")
             .help("Adds a directory to the load path")
             .takes_value(true))
+        .arg(Arg::with_name("rails-autoload")
+            .multiple(true)
+            .number_of_values(1)
+            .short("R")
+            .long("rails-autoload")
+            .value_name("directory")
+            .help("Turns on Rails-style autoloading and adds a directory to the autoload path"))
         .arg(Arg::with_name("warning")
             .short("w")
             .help("Turns on additional warnings, like Ruby's -w"))
@@ -45,6 +54,10 @@ fn config() -> (Config, Vec<PathBuf>) {
 
     if let Some(load_paths) = matches.values_of("load-path") {
         config.require_paths.extend(load_paths.map(PathBuf::from));
+    }
+
+    if let Some(autoload_paths) = matches.values_of("autoload-path") {
+        config.autoload_paths.extend(autoload_paths.map(PathBuf::from));
     }
 
     if let Some(files_iter) = matches.values_of("source") {

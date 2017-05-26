@@ -6,12 +6,14 @@ use std::collections::{HashMap, VecDeque};
 use std::fs;
 
 use typed_arena::Arena;
+use regex::Regex;
 
 use ast::{parse, SourceFile, Node, Id, DiagnosticLevel};
+use config::Config;
 use errors::{ErrorSink, Detail};
+use inflect::Inflector;
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope};
 use top_level;
-use config::Config;
 use typecheck;
 
 enum LoadState {
@@ -26,6 +28,7 @@ pub struct Environment<'object> {
     pub config: Config,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
+    inflector: Inflector,
 }
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/stdlib.rb");
@@ -39,6 +42,7 @@ impl<'object> Environment<'object> {
             config: config,
             loaded_features: RefCell::new(HashMap::new()),
             method_queue: RefCell::new(VecDeque::new()),
+            inflector: Inflector::new(),
         };
 
         let source_file = SourceFile::new(PathBuf::from("(builtin stdlib)"), STDLIB_DEFINITIONS.to_owned());
@@ -125,14 +129,61 @@ impl<'object> Environment<'object> {
         }
     }
 
-    pub fn search_require_path(&self, file: &str) -> Option<PathBuf> {
-        for path in &self.config.require_paths {
+    fn search_paths(&self, file: &str, paths: &[PathBuf]) -> Option<PathBuf> {
+        for path in paths {
             for ext in &["", ".rb"] {
                 let resolved = path.join(file.to_owned() + ext);
 
                 if resolved.is_file() {
                     return Some(resolved)
                 }
+            }
+        }
+
+        None
+    }
+
+    pub fn search_require_path(&self, file: &str) -> Option<PathBuf> {
+        self.search_paths(file, &self.config.require_paths)
+    }
+
+    pub fn search_autoload_path(&self, file: &str) -> Option<PathBuf> {
+        self.search_paths(file, &self.config.autoload_paths)
+    }
+
+    pub fn autoload(&self, module: &'object RubyObject<'object>, name: &str) -> Option<&'object RubyObject<'object>> {
+        if self.config.autoload_paths.is_empty() {
+            return None;
+        }
+
+        let constant_path = self.object.constant_path(module, name);
+
+        let path = self.inflector.underscore(&constant_path);
+
+        let path_rb = path.clone() + ".rb";
+
+        // search for ruby files first:
+        for autoload_path in &self.config.autoload_paths {
+            let resolved = autoload_path.join(&path_rb);
+
+            println!("AUTOLOAD: {}", resolved.display());
+
+            if resolved.is_file() {
+                // TODO do something with the potential IO error:
+                let _ = self.require(&resolved);
+
+                return self.object.get_const(module, name).map(|ce| ce.value);
+            }
+        }
+
+        // search for directories and autodefine modules:
+        for autoload_path in &self.config.autoload_paths {
+            let resolved = autoload_path.join(&path);
+
+            println!("AUTOLOAD: {}", resolved.display());
+
+            if resolved.is_dir() {
+                return Some(self.object.define_module(None, module, name));
             }
         }
 
@@ -158,24 +209,26 @@ impl<'object> Environment<'object> {
                 match self.resolve_cpath(base, scope) {
                     Ok(&RubyObject::Object { .. }) => Err((base, "Not a class or module")),
                     Ok(&RubyObject::IClass { .. }) => panic!(),
-                    Ok(base_ref) => match self.object.get_const(&base_ref, name) {
-                        Some(ce) => Ok(ce.value),
-                        None => /* TODO autoload */ Err((node, "No such constant")),
-                    },
+                    Ok(base_ref) =>
+                        self.object.get_const(base_ref, name)
+                            .map(|ce| Ok(ce.value)).unwrap_or_else(||
+                                self.autoload(base_ref, name).ok_or(
+                                    (node, "No such constant"))),
                     error => error,
                 }
             },
 
             Node::Const(_, None, Id(_, ref name)) => {
                 for scope in Scope::ancestors(&scope) {
-                    if let Some(ce) = self.object.get_const(&scope.module, name) {
+                    if let Some(ce) = self.object.get_const(scope.module, name) {
                         return Ok(ce.value);
                     }
                 }
 
                 for scope in Scope::ancestors(&scope) {
-                    let _ = scope;
-                    // TODO autoload
+                    if let Some(obj) = self.autoload(scope.module, name) {
+                        return Ok(obj);
+                    }
                 }
 
                 Err((node, "No such constant"))
@@ -185,5 +238,4 @@ impl<'object> Environment<'object> {
                 Err((node, "Not a static constant path")),
         }
     }
-
 }

@@ -6,5 +6,6 @@ authors = ["Charlie Somerville <charlie@github.com>"]
 [dependencies]
 clap = "2.23"
 immutable-map = "0.1.2"
+regex = "0.2"
 ruby_parser = { git = "ssh://git@github.com/github/ruby_parser.git" }
 typed-arena = "1.2.0"
