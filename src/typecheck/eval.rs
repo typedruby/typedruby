@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::collections::HashMap;
 use typecheck::flow::{Computation, Locals, LocalEntry, LocalEntryMerge, ComputationPredicate};
 use typecheck::types::{Arg, TypeEnv, Type, Prototype};
-use object::{Scope, RubyObject, MethodEntry, MethodImpl};
+use object::{Scope, RubyObject, MethodImpl};
 use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
@@ -1248,7 +1248,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Send(ref loc, ref recv, ref id, ref args) => {
                 self.type_for_attr_asgn(loc, recv, id, args, locals)
             }
-            Node::Mlhs(ref loc, ref nodes) => {
+            Node::Mlhs(_, ref nodes) => {
                 let mut locals = locals;
                 let mut lead_types = Vec::new();
                 let mut post_types = Vec::new();

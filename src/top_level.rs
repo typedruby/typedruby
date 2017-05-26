@@ -572,6 +572,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::Undef(_, ref names) => {
                 // TODO
+                let _ = names;
             }
             Node::Send(_, None, ref id, ref args) => {
                 if self.in_def {
