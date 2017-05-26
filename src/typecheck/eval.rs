@@ -803,10 +803,23 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
     fn process_call_arg(&self, node: &Node, locals: Locals<'ty, 'object>) -> EvalResult<'ty, 'object, CallArg<'ty, 'object>> {
         match *node {
-            Node::Splat(_, ref n) =>
-                self.process_and_extract(n.as_ref().expect("splat in call arg must have node"), locals).map(|ty|
-                    CallArg::Splat(node.loc().clone(), ty)
-                ),
+            Node::Splat(_, ref n) => {
+                let splat_node = n.as_ref().expect("splat in call arg must have node");
+
+                self.process_and_extract(splat_node, locals).map(|ty|
+                    match *self.tyenv.prune(ty) {
+                        Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
+                            CallArg::Splat(node.loc().clone(), type_parameters[0])
+                        }
+                        _ => {
+                            self.error("Cannot splat non-array", &[
+                                Detail::Loc(&self.tyenv.describe(ty), splat_node.loc()),
+                            ]);
+                            CallArg::Splat(node.loc().clone(), self.tyenv.new_var(node.loc().clone()))
+                        }
+                    }
+                )
+            }
             _ =>
                 self.process_and_extract(node, locals).map(|ty|
                     CallArg::Pass(node.loc().clone(), ty)
