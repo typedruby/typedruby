@@ -551,8 +551,9 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Send(_, None, ref id, ref args) => {
                 self.process_self_send(id, args.as_slice());
             }
-            Node::Send(_, Some(ref recv), _, ref args) => {
-                self.eval_node(recv);
+            Node::CSend(_, ref recv, _, ref args) |
+            Node::Send(_, ref recv, _, ref args) => {
+                self.eval_maybe_node(recv);
                 for arg in args {
                     self.eval_node(arg);
                 }
@@ -640,23 +641,47 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_node(arg);
             }
             Node::Arg(..) => {}
+            Node::Restarg(..) => {}
             Node::If(_, ref cond, ref then, ref else_) => {
                 self.eval_node(cond);
                 self.eval_maybe_node(then);
                 self.eval_maybe_node(else_);
             }
-            Node::Nil(..) |
-            Node::Self_(..) |
-            Node::Lvar(..) |
-            Node::Lvassignable(..) |
-            Node::Ivar(..) |
+            Node::While(_, ref cond, ref body) |
+            Node::Until(_, ref cond, ref body) => {
+                self.eval_node(cond);
+                self.eval_maybe_node(body);
+            }
+            Node::WhilePost(_, ref body, ref cond) |
+            Node::UntilPost(_, ref body, ref cond) => {
+                self.eval_node(cond);
+                self.eval_node(body);
+            }
+            Node::Backref(..) |
             Node::Cvar(..) |
+            Node::Defined(..) |
+            Node::False(..) |
+            Node::FileLiteral(..) |
+            Node::Float(..) |
             Node::Gvar(..) |
             Node::Integer(..) |
+            Node::Ivar(..) |
+            Node::Lambda(..) |
+            Node::LineLiteral(..) |
+            Node::Lvar(..) |
+            Node::Lvassignable(..) |
+            Node::Nil(..) |
+            Node::NthRef(..) |
+            Node::Regexp(..) |
+            Node::Retry(..) |
+            Node::Self_(..) |
             Node::String(..) |
             Node::Symbol(..) |
-            Node::Regexp(..) |
-            Node::Defined(..) => {}
+            Node::True(..) |
+            Node::ZSuper(..) => {}
+            Node::Splat(_, ref expr) => {
+                self.eval_maybe_node(expr);
+            }
             Node::Rescue(_, ref body, ref rescues, ref else_) => {
                 self.eval_maybe_node(body);
                 for rescue in rescues {
@@ -673,10 +698,17 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_maybe_node(body);
                 self.eval_node(ensure);
             }
-            Node::DString(_, ref elements) |
-            Node::Array(_, ref elements) => {
-                for element in elements {
-                    self.eval_node(element);
+            Node::Array(_, ref exprs) |
+            Node::Break(_, ref exprs) |
+            Node::DString(_, ref exprs) |
+            Node::Hash(_, ref exprs) |
+            Node::Mlhs(_, ref exprs) |
+            Node::Next(_, ref exprs) |
+            Node::Return(_, ref exprs) |
+            Node::Super(_, ref exprs) |
+            Node::Yield(_, ref exprs) => {
+                for expr in exprs {
+                    self.eval_node(expr);
                 }
             }
             Node::Or(_, ref left, ref right) |
@@ -690,30 +722,55 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Gvasgn(_, _, ref expr) => {
                 self.eval_node(expr);
             }
-            Node::Hash(_, ref pairs) => {
-                for pair in pairs {
-                    self.eval_node(pair);
-                }
-            }
             Node::Pair(_, ref key, ref value) => {
                 self.eval_node(key);
                 self.eval_node(value);
             }
-            Node::Next(_, ref exprs) => {
-                for expr in exprs {
-                    self.eval_node(expr);
-                }
+            Node::IRange(_, ref a, ref b) |
+            Node::ERange(_, ref a, ref b) => {
+                self.eval_node(a);
+                self.eval_node(b);
             }
             Node::BlockPass(_, ref expr) => {
                 self.eval_node(expr);
             }
+            Node::OrAsgn(_, ref lhs, ref rhs) |
+            Node::AndAsgn(_, ref lhs, ref rhs) |
+            Node::OpAsgn(_, ref lhs, _, ref rhs) |
             Node::Masgn(_, ref lhs, ref rhs) => {
                 self.eval_node(lhs);
                 self.eval_node(rhs);
             }
-            Node::Mlhs(_, ref nodes) => {
-                for node in nodes {
-                    self.eval_node(node);
+            Node::Case(_, ref cond, ref cases, ref else_) => {
+                self.eval_maybe_node(cond);
+
+                for case in cases {
+                    self.eval_node(case);
+                }
+
+                self.eval_maybe_node(else_);
+            }
+            Node::When(_, ref conds, ref expr) => {
+                for cond in conds {
+                    self.eval_node(cond);
+                }
+
+                self.eval_maybe_node(expr);
+            }
+            Node::TyCast(_, ref expr, ref ty) => {
+                self.eval_node(expr);
+                self.eval_node(ty);
+            }
+            Node::TyCpath(_, ref cpath) => {
+                self.eval_node(cpath);
+            }
+            Node::TyArray(_, ref ty) |
+            Node::TyNillable(_, ref ty) => {
+                self.eval_node(ty);
+            }
+            Node::TyTuple(_, ref tys) => {
+                for ty in tys {
+                    self.eval_node(ty);
                 }
             }
             _ => panic!("unknown node: {:?}", node),
