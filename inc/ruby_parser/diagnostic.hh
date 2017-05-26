@@ -32,13 +32,13 @@ namespace ruby_parser {
     range location_;
 
   public:
-    diagnostic(diagnostic_level level, std::string&& message, range location)
+    diagnostic(diagnostic_level level, const std::string& message, range location)
       : level_(level)
       , message_(message)
       , location_(location)
     {}
 
-    diagnostic(diagnostic_level level, std::string&& message, const token *token)
+    diagnostic(diagnostic_level level, const std::string& message, const token *token)
       : level_(level)
       , message_(message)
       , location_(token->start(), token->end())

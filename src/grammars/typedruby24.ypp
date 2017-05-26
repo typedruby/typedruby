@@ -1,4 +1,6 @@
-%{
+%skeleton "lalr1.cc"
+
+%code requires {
   #include <ruby_parser/builder.hh>
   #include <ruby_parser/node.hh>
   #include <ruby_parser/token.hh>
@@ -9,41 +11,28 @@
   #include <iostream>
   #include <utility>
   #include <cstdlib>
+  #include <mapbox/variant.hpp>
 
-  #define YYERROR_VERBOSE 1
+using namespace ruby_parser;
+using namespace std::string_literals;
+using mapbox::util::variant;
 
-  using namespace ruby_parser;
-  using namespace std::string_literals;
-
-  #define yyparse ruby_parser_typedruby24_yyparse
-
-  extern "C" {
-    int yyparse(parser::typedruby24& p);
-  }
-%}
-
-%pure-parser
-
-%lex-param { parser::typedruby24& p }
-%parse-param { parser::typedruby24& p }
-
-%union {
-  ruby_parser::token *token;
-  ruby_parser::delimited_node_list *delimited_list;
-  ruby_parser::delimited_block *delimited_block;
-  ruby_parser::node_with_token *with_token;
-  ruby_parser::case_body *case_body;
-  ruby_parser::foreign_ptr node;
-  ruby_parser::node_list *list;
-  ruby_parser::state_stack *state_stack;
-  size_t size;
-  bool boolean;
+#ifndef YY_NULLPTR
+#define YY_NULLPTR nullptr
+#endif
 }
+
+%lex-param { ruby_parser::parser::typedruby24& p }
+%parse-param { ruby_parser::parser::typedruby24& p }
+%define api.value.type { class parser_value }
+%define api.token.constructor false
+%define parse.assert
+%define parse.trace
 
 // mirrored in inc/ruby_parser/token.hh
 // if any of these token values are changed here, the header must be updated
 // as well.
-%token <token>
+%token <as<ruby_parser::token_t>()>
   kCLASS              1001
   kMODULE             1002
   kDEF                1003
@@ -189,7 +178,7 @@
   tRATIONAL_IMAGINARY 1143
   tFLOAT_IMAGINARY    1144
 
-%type <node>
+%type <as<ruby_parser::foreign_ptr>()>
   arg
   arg_rhs
   arg_value
@@ -263,7 +252,7 @@
   words
   xstring
 
-%type <list>
+%type <as<ruby_parser::node_list>()>
   aref_args
   args
   args_tail
@@ -313,7 +302,7 @@
   word_list
   xstring_contents
 
-%type <token>
+%type <as<ruby_parser::token_t>()>
   blkarg_mark
   call_op
   cname
@@ -337,11 +326,11 @@
   term
   then
 
-%type <delimited_list>
+%type <as<ruby_parser::delimited_node_list>()>
   opt_paren_args
   paren_args
 
-%type <delimited_block>
+%type <as<ruby_parser::delimited_block>()>
   brace_block
   brace_body
   cmd_brace_block
@@ -350,14 +339,14 @@
   lambda
   lambda_body
 
-%type <with_token>
+%type <as<ruby_parser::node_with_token>()>
   exc_var
   if_tail
   opt_else
   opt_ensure
   superclass
 
-%type <case_body>
+%type <as<ruby_parser::case_body>()>
   case_body
   cases
 
@@ -384,38 +373,67 @@
 %right    tPOW
 %right    tBANG tTILDE tUPLUS
 
-%{
-static node_list *make_node_list() {
-	return new node_list();
-  }
-  static node_list *make_node_list(foreign_ptr node) {
-	node_list *list = new node_list();
-	list->nodes.push_back(node);
-	return list;
-  }
+%code requires {
 
-static void concat_node_list(node_list *a, node_list *b) {
-	a->nodes.insert(
-	  a->nodes.end(),
-	  std::make_move_iterator(b->nodes.begin()),
-	  std::make_move_iterator(b->nodes.end())
-	);
-  }
+class parser_value
+{  
+	using parser_val = variant<
+		ruby_parser::foreign_ptr,
+		ruby_parser::token_t,
+		ruby_parser::delimited_node_list,
+		ruby_parser::delimited_block,
+		ruby_parser::node_with_token,
+		ruby_parser::case_body,
+		ruby_parser::node_list,
+		ruby_parser::state_stack,
+		size_t,
+		bool>;
 
-  #define yyerror(p, msg) yyerror_(p, msg)
+	parser_val _value;
 
-  static void yyerror_(parser::typedruby24& p, const char* msg) {
-    p.diagnostic_(diagnostic_level::ERROR, std::string(msg), diagnostic::range(p.lexer_->last_token_s, p.lexer_->last_token_e));
-  }
+public:
+	parser_value() :
+		_value(mapbox::util::no_init()) {}
 
-  static int yylex(YYSTYPE *lval, parser::typedruby24& p) {
-    auto token = p.lexer_->advance();
-    int token_type = static_cast<int>(token->type());
-    assert(token_type >= 0);
-    lval->token = token;
-    return token_type;
-  }
-%}
+	template<typename T>
+	T& as() {
+		if (!_value.is<T>()) {
+			_value.set<T>();
+		}
+		return _value.get<T>();
+	}
+	
+	inline ruby_parser::state_stack &as_stack() {
+		return as<ruby_parser::state_stack>();
+	}
+
+	inline size_t &as_size() {
+		return as<size_t>();
+	}
+
+	inline bool &as_bool() {
+		return as<bool>();
+	}
+};  
+
+}
+
+%code {
+namespace yy {
+void parser::error(const std::string &msg) {
+	p.diagnostic_(diagnostic_level::ERROR, msg, diagnostic::range(p.lexer_->last_token_s, p.lexer_->last_token_e));
+}
+
+int yylex(parser::semantic_type *lval, ruby_parser::parser::typedruby24& p) {
+	auto token = p.lexer_->advance();
+	int token_type = static_cast<int>(token->type());
+	assert(token_type >= 0);
+	lval->as<ruby_parser::token_t>() = token;
+	return token_type;
+}
+}
+
+}
 
 %%
          program: top_compstmt
@@ -425,25 +443,25 @@ static void concat_node_list(node_list *a, node_list *b) {
 
     top_compstmt: top_stmts opt_terms
                     {
-                      $$ = p.builder.compstmt($1);
+                      $$ = p.builder.compstmt(&$1);
                     }
 
        top_stmts: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | top_stmt
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | top_stmts terms top_stmt
                     {
-					  $1->nodes.push_back($3);
+					  $1.push_back($3);
                       $$ = $1;
                     }
                 | error top_stmt
                     {
-                      $$ = make_node_list($2);
+                      $$ = node_list($2);
                     }
 
         top_stmt: stmt
@@ -454,42 +472,40 @@ static void concat_node_list(node_list *a, node_list *b) {
 
         bodystmt: compstmt opt_rescue opt_else opt_ensure
                     {
-                      auto rescue_bodies = $2;
-                      auto else_ = $3;
-                      auto ensure = $4;
+                      auto &rescue_bodies = $2;
+                      auto &else_ = $3;
+                      auto &ensure = $4;
 
-                      if (rescue_bodies->nodes.size() == 0 && else_ != nullptr) {
-                        p.diagnostic_(diagnostic_level::WARNING, "else without rescue is useless", else_->token_);
+                      if (rescue_bodies.size() == 0 && else_) {
+                        p.diagnostic_(diagnostic_level::WARNING, "else without rescue is useless", else_.tok);
                       }
 
-                      $$ = p.builder.begin_body($1, rescue_bodies,
-                            else_ ? else_->token_ : nullptr,
-                            else_ ? else_->node_ : nullptr,
-                            ensure ? ensure->token_ : nullptr,
-                            ensure ? ensure->node_ : nullptr);
+                      $$ = p.builder.begin_body($1, &rescue_bodies,
+						else_.tok, else_.nod,
+						ensure.tok, ensure.nod);
                     }
 
         compstmt: stmts opt_terms
                     {
-                      $$ = p.builder.compstmt($1);
+                      $$ = p.builder.compstmt(&$1);
                     }
 
            stmts: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | stmt_or_begin
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | stmts terms stmt_or_begin
                     {
-                      $1->nodes.push_back($3);
+                      $1.push_back($3);
                       $$ = $1;
                     }
                 | error stmt
                     {
-                      $$ = make_node_list($2);
+                      $$ = node_list($2);
                     }
 
    stmt_or_begin: stmt
@@ -522,7 +538,7 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | kUNDEF undef_list
                     {
-                      $$ = p.builder.undef_method($1, $2);
+                      $$ = p.builder.undef_method($1, &$2);
                     }
                 | stmt kIF_MOD expr_value
                     {
@@ -542,9 +558,9 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | stmt kRESCUE_MOD stmt
                     {
-                      auto rescue_body = make_node_list(
+                      ruby_parser::node_list rescue_body(
 						p.builder.rescue_body($2, nullptr, nullptr, nullptr, nullptr, $3));
-                      $$ = p.builder.begin_body($1, rescue_body, nullptr, nullptr, nullptr, nullptr);
+                      $$ = p.builder.begin_body($1, &rescue_body, nullptr, nullptr, nullptr, nullptr);
                     }
                 | klEND tLCURLY compstmt tRCURLY
                     {
@@ -557,7 +573,7 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | lhs tEQL mrhs
                     {
-                      $$ = p.builder.assign($1, $2, p.builder.array(nullptr, $3, nullptr));
+                      $$ = p.builder.assign($1, $2, p.builder.array(nullptr, &$3, nullptr));
                     }
                 | mlhs tEQL mrhs_arg
                     {
@@ -579,7 +595,7 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN command_rhs
                     {
-                      $$ = p.builder.op_assign(p.builder.index($1, $2, $3, $4), $5, $6);
+                      $$ = p.builder.op_assign(p.builder.index($1, $2, &$3, $4), $5, $6);
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN command_rhs
                     {
@@ -587,11 +603,6 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN command_rhs
                     {
-                      
-                      
-                      
-                      
-                      
                       $$ = p.builder.op_assign(p.builder.call_method($1, $2, $3, nullptr, nullptr, nullptr), $4, $5);
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN command_rhs
@@ -612,9 +623,9 @@ static void concat_node_list(node_list *a, node_list *b) {
      command_rhs: command_call %prec tOP_ASGN
                 | command_call kRESCUE_MOD stmt
                     {
-                      auto rescue_body =
-                        make_node_list(p.builder.rescue_body($2, nullptr, nullptr, nullptr, nullptr, $3));
-                      $$ = p.builder.begin_body($1, rescue_body, nullptr, nullptr, nullptr, nullptr);
+                      ruby_parser::node_list rescue_body(
+						p.builder.rescue_body($2, nullptr, nullptr, nullptr, nullptr, $3));
+                      $$ = p.builder.begin_body($1, &rescue_body, nullptr, nullptr, nullptr, nullptr);
                     }
                 | command_asgn
 
@@ -645,14 +656,14 @@ static void concat_node_list(node_list *a, node_list *b) {
    block_command: block_call
                 | block_call dot_or_colon operation2 command_args
                     {
-                      $$ = p.builder.call_method($1, $2, $3, nullptr, $4, nullptr);
+                      $$ = p.builder.call_method($1, $2, $3, nullptr, &$4, nullptr);
                     }
 
  cmd_brace_block: tLBRACE_ARG brace_body tRCURLY
                     {
-                      auto block = $2;
-                      block->begin = $1;
-                      block->end = $3;
+                      auto &block = $2;
+                      block.begin = $1;
+                      block.end = $3;
                       $$ = block;
                     }
 
@@ -660,70 +671,70 @@ static void concat_node_list(node_list *a, node_list *b) {
 
          command: fcall command_args %prec tLOWEST
                     {
-                      $$ = p.builder.call_method(nullptr, nullptr, $1, nullptr, $2, nullptr);
+                      $$ = p.builder.call_method(nullptr, nullptr, $1, nullptr, &$2, nullptr);
                     }
                 | fcall command_args cmd_brace_block
                     {
-                      auto method_call = p.builder.call_method(nullptr, nullptr, $1, nullptr, $2, nullptr);
-                      auto delimited_block = $3;
+                      auto method_call = p.builder.call_method(nullptr, nullptr, $1, nullptr, &$2, nullptr);
+                      auto &delimited_block = $3;
                       $$ = p.builder.block(method_call,
-                                      delimited_block->begin,
-                                      delimited_block->args,
-                                      delimited_block->body,
-                                      delimited_block->end);
+                                      delimited_block.begin,
+                                      delimited_block.args,
+                                      delimited_block.body,
+                                      delimited_block.end);
                     }
                 | primary_value call_op operation2 command_args %prec tLOWEST
                     {
-                      $$ = p.builder.call_method($1, $2, $3, nullptr, $4, nullptr);
+                      $$ = p.builder.call_method($1, $2, $3, nullptr, &$4, nullptr);
                     }
                 | primary_value call_op operation2 command_args cmd_brace_block
                     {
-                      auto method_call = p.builder.call_method($1, $2, $3, nullptr, $4, nullptr);
-                      auto delimited_block = $5;
+                      auto method_call = p.builder.call_method($1, $2, $3, nullptr, &$4, nullptr);
+                      auto &delimited_block = $5;
                       $$ = p.builder.block(method_call,
-                                      delimited_block->begin,
-                                      delimited_block->args,
-                                      delimited_block->body,
-                                      delimited_block->end);
+                                      delimited_block.begin,
+                                      delimited_block.args,
+                                      delimited_block.body,
+                                      delimited_block.end);
                     }
                 | primary_value tCOLON2 operation2 command_args %prec tLOWEST
                     {
-                      $$ = p.builder.call_method($1, $2, $3, nullptr, $4, nullptr);
+                      $$ = p.builder.call_method($1, $2, $3, nullptr, &$4, nullptr);
                     }
                 | primary_value tCOLON2 operation2 command_args cmd_brace_block
                     {
-                      auto method_call = p.builder.call_method($1, $2, $3, nullptr, $4, nullptr);
-                      auto delimited_block = $5;
+                      auto method_call = p.builder.call_method($1, $2, $3, nullptr, &$4, nullptr);
+                      auto &delimited_block = $5;
                       $$ = p.builder.block(method_call,
-                                      delimited_block->begin,
-                                      delimited_block->args,
-                                      delimited_block->body,
-                                      delimited_block->end);
+                                      delimited_block.begin,
+                                      delimited_block.args,
+                                      delimited_block.body,
+                                      delimited_block.end);
                     }
                 | kSUPER command_args
                     {
-                      $$ = p.builder.keyword_super($1, nullptr, $2, nullptr);
+                      $$ = p.builder.keyword_super($1, nullptr, &$2, nullptr);
                     }
                 | kYIELD command_args
                     {
-                      $$ = p.builder.keyword_yield($1, nullptr, $2, nullptr);
+                      $$ = p.builder.keyword_yield($1, nullptr, &$2, nullptr);
                     }
                 | kRETURN call_args
                     {
-                      $$ = p.builder.keyword_return($1, nullptr, $2, nullptr);
+                      $$ = p.builder.keyword_return($1, nullptr, &$2, nullptr);
                     }
                 | kBREAK call_args
                     {
-                      $$ = p.builder.keyword_break($1, nullptr, $2, nullptr);
+                      $$ = p.builder.keyword_break($1, nullptr, &$2, nullptr);
                     }
                 | kNEXT call_args
                     {
-                      $$ = p.builder.keyword_next($1, nullptr, $2, nullptr);
+                      $$ = p.builder.keyword_next($1, nullptr, &$2, nullptr);
                     }
 
             mlhs: mlhs_basic
                     {
-                      $$ = p.builder.multi_lhs(nullptr, $1, nullptr);
+                      $$ = p.builder.multi_lhs(nullptr, &$1, nullptr);
                     }
                 | tLPAREN mlhs_inner rparen
                     {
@@ -732,66 +743,65 @@ static void concat_node_list(node_list *a, node_list *b) {
 
       mlhs_inner: mlhs_basic
                     {
-                      $$ = p.builder.multi_lhs(nullptr, $1, nullptr);
+                      $$ = p.builder.multi_lhs(nullptr, &$1, nullptr);
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      auto inner = make_node_list($2);
-                      $$ = p.builder.multi_lhs($1, inner, $3);
+                      node_list inner($2);
+                      $$ = p.builder.multi_lhs($1, &inner, $3);
                     }
 
       mlhs_basic: mlhs_head
                 | mlhs_head mlhs_item
                     {
-                      auto list = $1;
-                      list->nodes.push_back($2);
+                      auto &list = $1;
+                      list.push_back($2);
                       $$ = list;
                     }
                 | mlhs_head tSTAR mlhs_node
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.splat($2, $3));
+                      auto &list = $1;
+                      list.push_back(p.builder.splat($2, $3));
                       $$ = list;
                     }
                 | mlhs_head tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      auto head = $1;
-                      head->nodes.push_back(p.builder.splat($2, $3));
-                      concat_node_list(head, $5);
+                      auto &head = $1;
+                      head.push_back(p.builder.splat($2, $3));
+					  head.concat($5);
                       $$ = head;
                     }
                 | mlhs_head tSTAR
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.splat($2, nullptr));
+                      auto &list = $1;
+                      list.push_back(p.builder.splat($2, nullptr));
                       $$ = list;
                     }
                 | mlhs_head tSTAR tCOMMA mlhs_post
                     {
-                      auto head = $1;
-                      head->nodes.push_back(p.builder.splat($2, nullptr));
-                      concat_node_list(head, $4);
+                      auto &head = $1;
+                      head.push_back(p.builder.splat($2, nullptr));
+                      head.concat($4);
                       $$ = head;
                     }
                 | tSTAR mlhs_node
                     {
-                      $$ = make_node_list(p.builder.splat($1, $2));
+                      $$ = node_list(p.builder.splat($1, $2));
                     }
                 | tSTAR mlhs_node tCOMMA mlhs_post
                     {
-					  // XXX brackets?
-                      auto items = make_node_list(p.builder.splat($1, $2));
-                      concat_node_list(items, $4);
+                      node_list items(p.builder.splat($1, $2));
+					  items.concat($4);
                       $$ = items;
                     }
                 | tSTAR
                     {
-                      $$ = make_node_list(p.builder.splat($1, nullptr));
+                      $$ = node_list(p.builder.splat($1, nullptr));
                     }
                 | tSTAR tCOMMA mlhs_post
                     {
-                      auto items = make_node_list(p.builder.splat($1, nullptr));
-                      concat_node_list(items, $3);
+                      node_list items(p.builder.splat($1, nullptr));
+                      items.concat($3);
                       $$ = items;
                     }
 
@@ -803,29 +813,28 @@ static void concat_node_list(node_list *a, node_list *b) {
 
        mlhs_head: mlhs_item tCOMMA
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | mlhs_head mlhs_item tCOMMA
                     {
-                      auto list = $1;
-                      list->nodes.push_back($2);
+                      auto &list = $1;
+                      list.push_back($2);
                       $$ = list;
                     }
 
        mlhs_post: mlhs_item
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | mlhs_post tCOMMA mlhs_item
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
 
        mlhs_node: user_variable
                     {
-					// XXX: p pointer here
                       $$ = p.builder.assignable(&p, $1);
                     }
                 | keyword_variable
@@ -834,7 +843,7 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = p.builder.index_asgn($1, $2, $3, $4);
+                      $$ = p.builder.index_asgn($1, $2, &$3, $4);
                     }
                 | primary_value call_op tIDENTIFIER
                     {
@@ -872,7 +881,7 @@ static void concat_node_list(node_list *a, node_list *b) {
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
                       
-                      $$ = p.builder.index_asgn($1, $2, $3, $4);
+                      $$ = p.builder.index_asgn($1, $2, &$3, $4);
                     }
                 | primary_value call_op tIDENTIFIER
                     {
@@ -916,7 +925,7 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | primary_value tCOLON2 tLBRACK2 tr_gendeclargs rbracket
                     {
-                      $$ = p.builder.tr_gendecl($1, $3, $4, $5);
+                      $$ = p.builder.tr_gendecl($1, $3, &$4, $5);
                     }
                 | primary_value tCOLON2 cname
                     {
@@ -938,7 +947,7 @@ static void concat_node_list(node_list *a, node_list *b) {
 
       undef_list: fitem
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | undef_list tCOMMA
                     {
@@ -946,8 +955,8 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                     fitem
                     {
-                      auto list = $1;
-                      list->nodes.push_back($4);
+                      auto &list = $1;
+                      list.push_back($4);
                       $$ = list;
                     }
 
@@ -977,7 +986,7 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN arg_rhs
                     {
-                      $$ = p.builder.op_assign(p.builder.index($1, $2, $3, $4), $5, $6);
+                      $$ = p.builder.op_assign(p.builder.index($1, $2, &$3, $4), $5, $6);
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN arg_rhs
                     {
@@ -1141,86 +1150,85 @@ static void concat_node_list(node_list *a, node_list *b) {
                 | args trailer
                 | args tCOMMA assocs trailer
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.associate(nullptr, $3, nullptr));
+                      auto &list = $1;
+                      list.push_back(p.builder.associate(nullptr, &$3, nullptr));
                       $$ = list;
                     }
                 | assocs trailer
                     {
-                      $$ = make_node_list(p.builder.associate(nullptr, $1, nullptr));
+                      $$ = node_list(p.builder.associate(nullptr, &$1, nullptr));
                     }
 
          arg_rhs: arg %prec tOP_ASGN
                 | arg kRESCUE_MOD arg
                     {
-                      auto rescue_body = make_node_list(p.builder.rescue_body($2, nullptr, nullptr, nullptr, nullptr, $3));
-                      $$ = p.builder.begin_body($1, rescue_body, nullptr, nullptr, nullptr, nullptr);
+                      node_list rescue_body(p.builder.rescue_body($2, nullptr, nullptr, nullptr, nullptr, $3));
+                      $$ = p.builder.begin_body($1, &rescue_body, nullptr, nullptr, nullptr, nullptr);
                     }
 
       paren_args: tLPAREN2 opt_call_args rparen
                     {
-                      $$ = new delimited_node_list($1, $2, $3);
+                      $$ = delimited_node_list($1, $2, $3);
                     }
 
   opt_paren_args: // nothing
                     {
-                      $$ = new delimited_node_list(nullptr, make_node_list(), nullptr);
+                      $$ = delimited_node_list(nullptr, node_list(), nullptr);
                     }
                 | paren_args
 
    opt_call_args: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | call_args
                 | args tCOMMA
                 | args tCOMMA assocs tCOMMA
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.associate(nullptr, $3, nullptr));
+                      auto &list = $1;
+                      list.push_back(p.builder.associate(nullptr, &$3, nullptr));
                       $$ = list;
                     }
                 | assocs tCOMMA
                     {
-                      $$ = make_node_list(p.builder.associate(nullptr, $1, nullptr));
+                      $$ = node_list(p.builder.associate(nullptr, &$1, nullptr));
                     }
 
        call_args: command
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | args opt_block_arg
                     {
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+					  args.concat($2);
                       $$ = args;
                     }
                 | assocs opt_block_arg
                     {
-                      auto args = make_node_list(p.builder.associate(nullptr, $1, nullptr));
-                      concat_node_list(args, $2);
+                      node_list args(p.builder.associate(nullptr, &$1, nullptr));
+                      args.concat($2);
                       $$ = args;
                     }
                 | args tCOMMA assocs opt_block_arg
                     {
-                      auto args = $1;
-                      args->nodes.push_back(p.builder.associate(nullptr, $3, nullptr));
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.push_back(p.builder.associate(nullptr, &$3, nullptr));
+                      args.concat($4);
                       $$ = args;
                     }
                 | block_arg
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
 
     command_args:   {
-						// XXX: allocation
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.push(true);
                     }
                   call_args
                     {
-                      p.lexer_->cmdarg = *$<state_stack>1;
+                      p.lexer_->cmdarg = $<as_stack()>1;
                       $$ = $2;
                     }
 
@@ -1231,55 +1239,55 @@ static void concat_node_list(node_list *a, node_list *b) {
 
    opt_block_arg: tCOMMA block_arg
                     {
-                      $$ = make_node_list($2);
+                      $$ = node_list($2);
                     }
                 | // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
 
             args: arg_value
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | tSTAR arg_value
                     {
-                      $$ = make_node_list(p.builder.splat($1, $2));
+                      $$ = node_list(p.builder.splat($1, $2));
                     }
                 | args tCOMMA arg_value
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
                 | args tCOMMA tSTAR arg_value
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.splat($3, $4));
+                      auto &list = $1;
+                      list.push_back(p.builder.splat($3, $4));
                       $$ = list;
                     }
 
         mrhs_arg: mrhs
                     {
-                      $$ = p.builder.array(nullptr, $1, nullptr);
+                      $$ = p.builder.array(nullptr, &$1, nullptr);
                     }
                 | arg_value
 
             mrhs: args tCOMMA arg_value
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
                 | args tCOMMA tSTAR arg_value
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.splat($3, $4));
+                      auto &list = $1;
+                      list.push_back(p.builder.splat($3, $4));
                       $$ = list;
                     }
                 | tSTAR arg_value
                     {
-                      $$ = make_node_list(p.builder.splat($1, $2));
+                      $$ = node_list(p.builder.splat($1, $2));
                     }
 
          primary: literal
@@ -1298,17 +1306,17 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | kBEGIN
                     {
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
-                      p.lexer_->cmdarg = *$<state_stack>2;
+                      p.lexer_->cmdarg = $<as_stack()>2;
                       $$ = p.builder.begin_keyword($1, $3, $4);
                     }
                 | tLPAREN_ARG
                     {
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                     stmt
@@ -1317,7 +1325,7 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                     rparen
                     {
-                      p.lexer_->cmdarg = *$<state_stack>2;
+                      p.lexer_->cmdarg = $<as_stack()>2;
                       $$ = p.builder.begin($1, $3, $5);
                     }
                 | tLPAREN_ARG
@@ -1346,11 +1354,11 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | tLBRACK aref_args tRBRACK
                     {
-                      $$ = p.builder.array($1, $2, $3);
+                      $$ = p.builder.array($1, &$2, $3);
                     }
                 | tLBRACE assoc_list tRCURLY
                     {
-                      $$ = p.builder.associate($1, $2, $3);
+                      $$ = p.builder.associate($1, &$2, $3);
                     }
                 | kRETURN
                     {
@@ -1358,11 +1366,12 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | kYIELD tLPAREN2 call_args rparen
                     {
-                      $$ = p.builder.keyword_yield($1, $2, $3, $4);
+                      $$ = p.builder.keyword_yield($1, $2, &$3, $4);
                     }
                 | kYIELD tLPAREN2 rparen
                     {
-                      $$ = p.builder.keyword_yield($1, $2, make_node_list(), $3);
+                      node_list tmp;
+                      $$ = p.builder.keyword_yield($1, $2, &tmp, $3);
                     }
                 | kYIELD
                     {
@@ -1383,47 +1392,45 @@ static void concat_node_list(node_list *a, node_list *b) {
                 | fcall brace_block
                     {
                       auto method_call = p.builder.call_method(nullptr, nullptr, $1, nullptr, nullptr, nullptr);
-                      auto delimited_block = $2;
+                      auto &delimited_block = $2;
 
                       $$ = p.builder.block(method_call,
-                        delimited_block->begin,
-                        delimited_block->args,
-                        delimited_block->body,
-                        delimited_block->end);
+                        delimited_block.begin,
+                        delimited_block.args,
+                        delimited_block.body,
+                        delimited_block.end);
                     }
                 | method_call
                 | method_call brace_block
                     {
-                      auto delimited_block = $2;
+                      auto &delimited_block = $2;
                       $$ = p.builder.block($1,
-                        delimited_block->begin,
-                        delimited_block->args,
-                        delimited_block->body,
-                        delimited_block->end);
+                        delimited_block.begin,
+                        delimited_block.args,
+                        delimited_block.body,
+                        delimited_block.end);
                     }
                 | tLAMBDA lambda
                     {
                       auto lambda_call = p.builder.call_lambda($1);
-                      auto lambda = $2;
+                      auto &lambda = $2;
                       $$ = p.builder.block(lambda_call,
-                        lambda->begin,
-                        lambda->args,
-                        lambda->body,
-                        lambda->end);
+                        lambda.begin,
+                        lambda.args,
+                        lambda.body,
+                        lambda.end);
                     }
                 | kIF expr_value then compstmt if_tail kEND
                     {
-                      auto else_ = $5;
+                      auto &else_ = $5;
                       $$ = p.builder.condition($1, $2, $3, $4,
-                        else_ ? else_->token_ : nullptr,
-                        else_ ? else_->node_ : nullptr, $6);
+						else_.tok, else_.nod, $6);
                     }
                 | kUNLESS expr_value then compstmt opt_else kEND
                     {
-                      auto else_ = $5;
+                      auto &else_ = $5;
                       $$ = p.builder.condition($1, $2, $3,
-                        else_ ? else_->node_ : nullptr,
-                        else_ ? else_->token_ : nullptr, $4, $6);
+                        else_.nod, else_.tok, $4, $6);
                     }
                 | kWHILE
                     {
@@ -1451,21 +1458,19 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | kCASE expr_value opt_terms case_body kEND
                     {
-                      auto case_body = $4;
-                      auto else_ = case_body->else_;
+                      auto &case_body = $4;
+                      auto &else_ = case_body.els;
                       $$ = p.builder.case_($1, $2,
-                        case_body->whens,
-                        else_ ? else_->token_ : nullptr,
-                        else_ ? else_->node_ : nullptr, $5);
+                        &case_body.whens,
+                        else_.tok, else_.nod, $5);
                     }
                 | kCASE            opt_terms case_body kEND
                     {
-                      auto case_body = $3;
-                      auto else_ = case_body->else_;
+                      auto &case_body = $3;
+                      auto &else_ = case_body.els;
                       $$ = p.builder.case_($1, nullptr,
-                        case_body->whens,
-                        else_ ? else_->token_ : nullptr,
-                        else_ ? else_->node_ : nullptr, $4);
+                        &case_body.whens,
+                        else_.tok, else_.nod, $4);
                     }
                 | kFOR for_var kIN
                     {
@@ -1482,7 +1487,7 @@ static void concat_node_list(node_list *a, node_list *b) {
                 | kCLASS cpath superclass
                     {
                       p.lexer_->extend_static();
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                     bodystmt kEND
@@ -1495,35 +1500,35 @@ static void concat_node_list(node_list *a, node_list *b) {
                         YYERROR;
                       }
 
-                      auto superclass_ = $3;
-                      auto lt_t       = superclass_ ? superclass_->token_ : nullptr;
-                      auto superclass = superclass_ ? superclass_->node_ : nullptr;
+                      auto &superclass_ = $3;
+                      auto lt_t       = superclass_ ? superclass_.tok : nullptr;
+                      auto superclass = superclass_ ? superclass_.nod : nullptr;
 
                       $$ = p.builder.def_class(class_tok, $2, lt_t, superclass, $5, end_tok);
-                      p.lexer_->cmdarg = *($<state_stack>4);
+                      p.lexer_->cmdarg = $<as_stack()>4;
                       p.lexer_->unextend();
                     }
                 | kCLASS tLSHFT expr term
                     {
-                      $<size>$ = p.def_level;
+                      $<as_size()>$ = p.def_level;
                       p.def_level = 0;
                     }
                     {
                       p.lexer_->extend_static();
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                     bodystmt kEND
                     {
                       $$ = p.builder.def_sclass($1, $2, $3, $7, $8);
-                      p.def_level = $<size>5;
-                      p.lexer_->cmdarg = *($<state_stack>6);
+                      p.def_level = $<as_size()>5;
+                      p.lexer_->cmdarg = $<as_stack()>6;
                       p.lexer_->unextend();
                     }
                 | kMODULE cpath
                     {
                       p.lexer_->extend_static();
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                     bodystmt kEND
@@ -1537,20 +1542,20 @@ static void concat_node_list(node_list *a, node_list *b) {
                       }
 
                       $$ = p.builder.def_module(module_tok, $2, $4, end_tok);
-                      p.lexer_->cmdarg = *($<state_stack>3);
+                      p.lexer_->cmdarg = $<as_stack()>3;
                       p.lexer_->unextend();
                     }
                 | kDEF fname
                     {
                       p.def_level++;
                       p.lexer_->extend_static();
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                     f_arglist bodystmt kEND
                     {
                       $$ = p.builder.def_method($1, $2, $4, $5, $6);
-                      p.lexer_->cmdarg = *($<state_stack>3);
+                      p.lexer_->cmdarg = $<as_stack()>3;
                       p.lexer_->unextend();
                       p.def_level--;
                     }
@@ -1562,13 +1567,13 @@ static void concat_node_list(node_list *a, node_list *b) {
                     {
                       p.def_level++;
                       p.lexer_->extend_static();
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                     f_arglist bodystmt kEND
                     {
                       $$ = p.builder.def_singleton($1, $2, $3, $5, $7, $8, $9);
-                      p.lexer_->cmdarg = *($<state_stack>6);
+                      p.lexer_->cmdarg = $<as_stack()>6;
                       p.lexer_->unextend();
                       p.def_level--;
                     }
@@ -1605,23 +1610,21 @@ static void concat_node_list(node_list *a, node_list *b) {
                 | kELSIF expr_value then compstmt if_tail
                     {
                       auto elsif_t = $1;
-                      auto else_ = $5;
-                      $$ = new node_with_token(elsif_t,
+                      auto &else_ = $5;
+                      $$ = node_with_token(elsif_t,
 						  p.builder.condition(
 							  elsif_t, $2, $3, $4,
-							  else_ ? else_->token_ : nullptr,
-							  else_ ? else_->node_ : nullptr,
-							  nullptr)
+							  else_.tok, else_.nod, nullptr)
 						);
                     }
 
         opt_else: none
                     {
-                      $$ = nullptr;
+                      $$; // node_with_token
                     }
                 | kELSE compstmt
                     {
-                      $$ = new node_with_token($1, $2);
+                      $$ = node_with_token($1, $2);
                     }
 
          for_var: lhs
@@ -1633,85 +1636,85 @@ static void concat_node_list(node_list *a, node_list *b) {
                     }
                 | tLPAREN f_margs rparen
                     {
-                      $$ = p.builder.multi_lhs($1, $2, $3);
+                      $$ = p.builder.multi_lhs($1, &$2, $3);
                     }
 
      f_marg_list: f_marg
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | f_marg_list tCOMMA f_marg
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
 
          f_margs: f_marg_list
                 | f_marg_list tCOMMA tSTAR f_norm_arg
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.restarg($3, $4));
+                      auto &list = $1;
+                      list.push_back(p.builder.restarg($3, $4));
                       $$ = list;
                     }
                 | f_marg_list tCOMMA tSTAR f_norm_arg tCOMMA f_marg_list
                     {
-                      auto args = $1;
-                      args->nodes.push_back(p.builder.restarg($3, $4));
-                      concat_node_list(args, $6);
+                      auto &args = $1;
+                      args.push_back(p.builder.restarg($3, $4));
+                      args.concat($6);
                       $$ = args;
                     }
                 | f_marg_list tCOMMA tSTAR
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.restarg($3, nullptr));
+                      auto &list = $1;
+                      list.push_back(p.builder.restarg($3, nullptr));
                       $$ = list;
                     }
                 | f_marg_list tCOMMA tSTAR            tCOMMA f_marg_list
                     {
-                      auto args = $1;
-                      args->nodes.push_back(p.builder.restarg($3, nullptr));
-                      concat_node_list(args, $5);
+                      auto &args = $1;
+                      args.push_back(p.builder.restarg($3, nullptr));
+                      args.concat($5);
                       $$ = args;
                     }
                 |                    tSTAR f_norm_arg
                     {
-                      $$ = make_node_list(p.builder.restarg($1, $2));
+                      $$ = node_list(p.builder.restarg($1, $2));
                     }
                 |                    tSTAR f_norm_arg tCOMMA f_marg_list
                     {
-                      auto args = $4;
-                      args->nodes.insert(args->nodes.begin(), p.builder.restarg($1, $2));
+                      auto &args = $4;
+                      args.push_front(p.builder.restarg($1, $2));
                       $$ = args;
                     }
                 |                    tSTAR
                     {
-                      $$ = make_node_list(p.builder.restarg($1, nullptr));
+                      $$ = node_list(p.builder.restarg($1, nullptr));
                     }
                 |                    tSTAR tCOMMA f_marg_list
                     {
-                      auto args = $3;
-                      args->nodes.insert(args->nodes.begin(), p.builder.restarg($1, nullptr));
+                      auto &args = $3;
+                      args.push_front(p.builder.restarg($1, nullptr));
                       $$ = args;
                     }
 
  block_args_tail: f_block_kwarg tCOMMA f_kwrest opt_f_block_arg
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 | f_block_kwarg opt_f_block_arg
                     {
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+                      args.concat($2);
                       $$ = args;
                     }
                 | f_kwrest opt_f_block_arg
                     {
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+                      args.concat($2);
                       $$ = args;
                     }
                 | f_block_arg
@@ -1726,108 +1729,108 @@ opt_block_args_tail:
                     }
                 | // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
 
      block_param: f_arg tCOMMA f_block_optarg tCOMMA f_rest_arg              opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $6);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($6);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_block_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $7);
-                      concat_node_list(args, $8);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($7);
+                      args.concat($8);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_block_optarg                                opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_block_optarg tCOMMA                   f_arg opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $6);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($6);
                       $$ = args;
                     }
                 | f_arg tCOMMA                       f_rest_arg              opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 | f_arg tCOMMA
                 | f_arg tCOMMA                       f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $6);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($6);
                       $$ = args;
                     }
                 | f_arg                                                      opt_block_args_tail
                     {
-                      auto args = $1;
-                      auto block_args_tail = $2;
+                      auto &args = $1;
+                      auto &block_args_tail = $2;
 
-                      if (block_args_tail->nodes.size() == 0 && args->nodes.size() == 1) {
-                        $$ = make_node_list(p.builder.procarg0(args->nodes[0]));
+                      if (block_args_tail.size() == 0 && args.size() == 1) {
+                        $$ = node_list(p.builder.procarg0(args.first()));
                       } else {
-                        concat_node_list(args, block_args_tail);
+						args.concat(block_args_tail);
                         $$ = args;
                       }
                     }
                 | f_block_optarg tCOMMA              f_rest_arg              opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 | f_block_optarg tCOMMA              f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $6);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($6);
                       $$ = args;
                     }
                 | f_block_optarg                                             opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+                      args.concat($2);
                       $$ = args;
                     }
                 | f_block_optarg tCOMMA                                f_arg opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 |                                    f_rest_arg              opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+                      args.concat($2);
                       $$ = args;
                     }
                 |                                    f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 |                                                                block_args_tail
@@ -1854,7 +1857,7 @@ opt_block_args_tail:
 
  block_param_def: tPIPE opt_bv_decl tPIPE
                     {
-                      $$ = p.builder.args($1, $2, $3, true);
+                      $$ = p.builder.args($1, &$2, $3, true);
                     }
                 | tOROP
                     {
@@ -1862,14 +1865,14 @@ opt_block_args_tail:
                     }
                 | tPIPE block_param opt_bv_decl tPIPE
                     {
-                      auto params = $2;
-                      concat_node_list(params, $3);
-                      $$ = p.builder.args($1, params, $4, true);
+                      auto &params = $2;
+                      params.concat($3);
+                      $$ = p.builder.args($1, &params, $4, true);
                     }
 
      opt_bv_decl: opt_nl
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | opt_nl tSEMI bv_decls opt_nl
                     {
@@ -1878,12 +1881,12 @@ opt_block_args_tail:
 
         bv_decls: bvar
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | bv_decls tCOMMA bvar
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
 
@@ -1903,110 +1906,110 @@ opt_block_args_tail:
                     }
                   f_larglist
                     {
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                   lambda_body
                     {
-                      p.lexer_->cmdarg = *($<state_stack>3);
+                      p.lexer_->cmdarg = $<as_stack()>3;
                       p.lexer_->cmdarg.lexpop();
 
-                      auto delimited_block = $4;
-                      delimited_block->args = $2;
+                      auto &delimited_block = $4;
+                      delimited_block.args = $2;
                       $$ = delimited_block;
                       p.lexer_->unextend();
                     }
 
      f_larglist: tLPAREN2 f_args opt_bv_decl tRPAREN
                     {
-                      auto args = $2;
-                      concat_node_list(args, $3);
-                      $$ = p.builder.args($1, args, $4, true);
+                      auto &args = $2;
+                      args.concat($3);
+                      $$ = p.builder.args($1, &args, $4, true);
                     }
                 | f_args
                     {
-                      $$ = p.builder.args(nullptr, $1, nullptr, true);
+                      $$ = p.builder.args(nullptr, &$1, nullptr, true);
                     }
 
      lambda_body: tLAMBEG compstmt tRCURLY
                     {
-                      $$ = new delimited_block($1, nullptr, $2, $3);
+                      $$ = delimited_block($1, nullptr, $2, $3);
                     }
                 | kDO_LAMBDA compstmt kEND
                     {
-                      $$ = new delimited_block($1, nullptr, $2, $3);
+                      $$ = delimited_block($1, nullptr, $2, $3);
                     }
 
         do_block: kDO_BLOCK do_body kEND
                     {
-                      auto delimited_block = $2;
-                      delimited_block->begin = $1;
-                      delimited_block->end = $3;
+                      auto &delimited_block = $2;
+                      delimited_block.begin = $1;
+                      delimited_block.end = $3;
                       $$ = delimited_block;
                     }
 
       block_call: command do_block
                     {
-                      auto delimited_block = $2;
+                      auto &delimited_block = $2;
                       $$ = p.builder.block($1,
-                          delimited_block->begin,
-                          delimited_block->args,
-                          delimited_block->body,
-                          delimited_block->end
+                          delimited_block.begin,
+                          delimited_block.args,
+                          delimited_block.body,
+                          delimited_block.end
                         );
                     }
                 | block_call dot_or_colon operation2 opt_paren_args
                     {
-                      auto delimited = $4;
+                      auto &delimited = $4;
                       $$ = p.builder.call_method($1, $2, $3,
-                                  delimited->begin,
-                                  delimited->inner,
-                                  delimited->end);
+                                  delimited.begin,
+                                  &delimited.inner,
+                                  delimited.end);
                     }
                 | block_call dot_or_colon operation2 opt_paren_args brace_block
                     {
-                      auto delimited = $4;
+                      auto &delimited = $4;
                       auto method_call = p.builder.call_method($1, $2, $3,
-                          delimited->begin,
-                          delimited->inner,
-                          delimited->end);
-                      auto block = $5;
+                          delimited.begin,
+                          &delimited.inner,
+                          delimited.end);
+                      auto &block = $5;
                       $$ = p.builder.block(method_call,
-                          block->begin,
-                          block->args,
-                          block->body,
-                          block->end);
+                          block.begin,
+                          block.args,
+                          block.body,
+                          block.end);
                     }
                 | block_call dot_or_colon operation2 command_args do_block
                     {
-                      auto method_call = p.builder.call_method($1, $2, $3, nullptr, $4, nullptr);
-                      auto block = $5;
-                      $$ = p.builder.block(method_call, block->begin, block->args, block->body, block->end);
+                      auto method_call = p.builder.call_method($1, $2, $3, nullptr, &$4, nullptr);
+                      auto &block = $5;
+                      $$ = p.builder.block(method_call, block.begin, block.args, &block.body, block.end);
                     }
 
      method_call: fcall paren_args
                     {
-                      auto delimited = $2;
+                      auto &delimited = $2;
                       $$ = p.builder.call_method(nullptr, nullptr, $1,
-                        delimited->begin,
-                        delimited->inner,
-                        delimited->end);
+                        delimited.begin,
+                        &delimited.inner,
+                        delimited.end);
                     }
                 | primary_value call_op operation2 opt_paren_args
                     {
-                      auto delimited = $4;
+                      auto &delimited = $4;
                       $$ = p.builder.call_method($1, $2, $3,
-                          delimited->begin,
-                          delimited->inner,
-                          delimited->end);
+                          delimited.begin,
+                          &delimited.inner,
+                          delimited.end);
                     }
                 | primary_value tCOLON2 operation2 paren_args
                     {
-                      auto delimited = $4;
+                      auto &delimited = $4;
                       $$ = p.builder.call_method($1, $2, $3,
-                          delimited->begin,
-                          delimited->inner,
-                          delimited->end);
+                          delimited.begin,
+                          &delimited.inner,
+                          delimited.end);
                     }
                 | primary_value tCOLON2 operation3
                     {
@@ -2014,27 +2017,27 @@ opt_block_args_tail:
                     }
                 | primary_value call_op paren_args
                     {
-                      auto delimited = $3;
+                      auto &delimited = $3;
                       $$ = p.builder.call_method($1, $2, nullptr,
-                          delimited->begin,
-                          delimited->inner,
-                          delimited->end);
+                          delimited.begin,
+                          &delimited.inner,
+                          delimited.end);
                     }
                 | primary_value tCOLON2 paren_args
                     {
-                      auto delimited = $3;
+                      auto &delimited = $3;
                       $$ = p.builder.call_method($1, $2, nullptr,
-                          delimited->begin,
-                          delimited->inner,
-                          delimited->end);
+                          delimited.begin,
+                          &delimited.inner,
+                          delimited.end);
                     }
                 | kSUPER paren_args
                     {
-                      auto delimited = $2;
+                      auto &delimited = $2;
                       $$ = p.builder.keyword_super($1,
-                          delimited->begin,
-                          delimited->inner,
-                          delimited->end);
+                          delimited.begin,
+                          &delimited.inner,
+                          delimited.end);
                     }
                 | kSUPER
                     {
@@ -2042,21 +2045,21 @@ opt_block_args_tail:
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = p.builder.index($1, $2, $3, $4);
+                      $$ = p.builder.index($1, $2, &$3, $4);
                     }
 
      brace_block: tLCURLY brace_body tRCURLY
                     {
-                      auto block = $2;
-                      block->begin = $1;
-                      block->end = $3;
+                      auto &block = $2;
+                      block.begin = $1;
+                      block.end = $3;
                       $$ = block;
                     }
                 | kDO do_body kEND
                     {
-                      auto block = $2;
-                      block->begin = $1;
-                      block->end = $3;
+                      auto &block = $2;
+                      block.begin = $1;
+                      block.end = $3;
                       $$ = block;
                     }
 
@@ -2064,15 +2067,15 @@ opt_block_args_tail:
                       p.lexer_->extend_dynamic();
                     }
                     {
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                     opt_block_param compstmt
                     {
-                      $$ = new delimited_block(nullptr, $3, $4, nullptr);
+                      $$ = delimited_block(nullptr, $3, $4, nullptr);
 
                       p.lexer_->unextend();
-                      p.lexer_->cmdarg = *($<state_stack>2);
+                      p.lexer_->cmdarg = $<as_stack()>2;
                       p.lexer_->cmdarg.pop();
                     }
 
@@ -2080,78 +2083,77 @@ opt_block_args_tail:
                       p.lexer_->extend_dynamic();
                     }
                     {
-                      $<state_stack>$ = new state_stack(p.lexer_->cmdarg);
+                      $<as_stack()>$ = p.lexer_->cmdarg;
                       p.lexer_->cmdarg.clear();
                     }
                     opt_block_param compstmt
                     {
-                      $$ = new delimited_block(nullptr, $3, $4, nullptr);
+                      $$ = delimited_block(nullptr, $3, $4, nullptr);
                       p.lexer_->unextend();
 
-                      p.lexer_->cmdarg = *($<state_stack>2);
+                      p.lexer_->cmdarg = $<as_stack()>2;
                       p.lexer_->cmdarg.pop();
                     }
 
        case_body: kWHEN args then compstmt cases
                     {
-                      auto cases = $5;
-                      cases->whens->nodes.insert(cases->whens->nodes.begin(), p.builder.when($1, $2, $3, $4));
+                      auto &cases = $5;
+                      cases.whens.push_front(p.builder.when($1, &$2, $3, $4));
                       $$ = cases;
                     }
 
            cases: opt_else
                     {
-                      $$ = new case_body($1);
+                      $$ = case_body($1);
                     }
                 | case_body
 
       opt_rescue: kRESCUE exc_list exc_var then compstmt opt_rescue
                     {
-                      auto exc_var = $3;
-                      auto exc_list_ = $2;
+                      auto &exc_var = $3;
+                      auto &exc_list_ = $2;
                       auto exc_list = exc_list_
-                        ? p.builder.array(nullptr, exc_list_, nullptr)
+                        ? p.builder.array(nullptr, &exc_list_, nullptr)
                         : nullptr;
-                      auto rescues = $6;
+                      auto &rescues = $6;
 
-                      rescues->nodes.insert(rescues->nodes.begin(),
-                        p.builder.rescue_body($1,
+                      rescues.push_front(p.builder.rescue_body($1,
                           exc_list,
-                          exc_var ? exc_var->token_ : nullptr,
-                          exc_var ? exc_var->node_ : nullptr,
+						  exc_var.tok,
+						  exc_var.nod,
                           $4, $5));
 
                       $$ = rescues;
                     }
                 |
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
 
         exc_list: arg_value
                     {
                       
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | mrhs
                 | list_none
 
          exc_var: tASSOC lhs
                     {
-                      $$ = new node_with_token($1, $2);
+                      $$ = node_with_token($1, $2);
                     }
                 | // nothing
                     {
-                      $$ = nullptr;
+                      $$; // node_with_token
                     }
 
       opt_ensure: kENSURE compstmt
                     {
-                      $$ = new node_with_token($1, $2);
+                      $$ = node_with_token($1, $2);
                     }
                 | // nothing
                     {
-                      $$ = nullptr;
+                      $$; // node_with_token
                     }
 
          literal: numeric
@@ -2160,23 +2162,23 @@ opt_block_args_tail:
 
          strings: string
                     {
-                      $$ = p.builder.string_compose(nullptr, $1, nullptr);
+                      $$ = p.builder.string_compose(nullptr, &$1, nullptr);
                     }
 
           string: string1
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | string string1
                     {
-                      auto list = $1;
-                      list->nodes.push_back($2);
+                      auto &list = $1;
+                      list.push_back($2);
                       $$ = list;
                     }
 
          string1: tSTRING_BEG string_contents tSTRING_END
                     {
-                      auto str = p.builder.string_compose($1, $2, $3);
+                      auto str = p.builder.string_compose($1, &$2, $3);
                       $$ = p.builder.dedent_string(str, p.lexer_->dedent_level() || 0);
                     }
                 | tSTRING
@@ -2191,121 +2193,121 @@ opt_block_args_tail:
 
          xstring: tXSTRING_BEG xstring_contents tSTRING_END
                     {
-                      auto xstr = p.builder.xstring_compose($1, $2, $3);
+                      auto xstr = p.builder.xstring_compose($1, &$2, $3);
                       $$ = p.builder.dedent_string(xstr, p.lexer_->dedent_level() || 0);
                     }
 
           regexp: tREGEXP_BEG regexp_contents tSTRING_END tREGEXP_OPT
                     {
                       auto opts = p.builder.regexp_options($4);
-                      $$ = p.builder.regexp_compose($1, $2, $3, opts);
+                      $$ = p.builder.regexp_compose($1, &$2, $3, opts);
                     }
 
            words: tWORDS_BEG word_list tSTRING_END
                     {
-                      $$ = p.builder.words_compose($1, $2, $3);
+                      $$ = p.builder.words_compose($1, &$2, $3);
                     }
 
        word_list: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | word_list word tSPACE
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.word($2));
+                      auto &list = $1;
+                      list.push_back(p.builder.word(&$2));
                       $$ = list;
                     }
 
             word: string_content
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | word string_content
                     {
-                      auto list = $1;
-                      list->nodes.push_back($2);
+                      auto &list = $1;
+                      list.push_back($2);
                       $$ = list;
                     }
 
          symbols: tSYMBOLS_BEG symbol_list tSTRING_END
                     {
-                      $$ = p.builder.symbols_compose($1, $2, $3);
+                      $$ = p.builder.symbols_compose($1, &$2, $3);
                     }
 
      symbol_list: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | symbol_list word tSPACE
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.word($2));
+                      auto &list = $1;
+                      list.push_back(p.builder.word(&$2));
                       $$ = list;
                     }
 
           qwords: tQWORDS_BEG qword_list tSTRING_END
                     {
-                      $$ = p.builder.words_compose($1, $2, $3);
+                      $$ = p.builder.words_compose($1, &$2, $3);
                     }
 
         qsymbols: tQSYMBOLS_BEG qsym_list tSTRING_END
                     {
-                      $$ = p.builder.symbols_compose($1, $2, $3);
+                      $$ = p.builder.symbols_compose($1, &$2, $3);
                     }
 
       qword_list: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | qword_list tSTRING_CONTENT tSPACE
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.string_internal($2));
+                      auto &list = $1;
+                      list.push_back(p.builder.string_internal($2));
                       $$ = list;
                     }
 
        qsym_list: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | qsym_list tSTRING_CONTENT tSPACE
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.symbol_internal($2));
+                      auto &list = $1;
+                      list.push_back(p.builder.symbol_internal($2));
                       $$ = list;
                     }
 
  string_contents: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | string_contents string_content
                     {
-                      auto list = $1;
-                      list->nodes.push_back($2);
+                      auto &list = $1;
+                      list.push_back($2);
                       $$ = list;
                     }
 
 xstring_contents: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | xstring_contents string_content
                     {
-                      auto list = $1;
-                      list->nodes.push_back($2);
+                      auto &list = $1;
+                      list.push_back($2);
                       $$ = list;
                     }
 
 regexp_contents: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | regexp_contents string_content
                     {
-                      auto list = $1;
-                      list->nodes.push_back($2);
+                      auto &list = $1;
+                      list.push_back($2);
                       $$ = list;
                     }
 
@@ -2353,7 +2355,7 @@ regexp_contents: // nothing
             dsym: tSYMBEG xstring_contents tSTRING_END
                     {
                       p.lexer_->set_state_expr_endarg();
-                      $$ = p.builder.symbol_compose($1, $2, $3);
+                      $$ = p.builder.symbol_compose($1, &$2, $3);
                     }
 
          numeric: simple_numeric
@@ -2479,16 +2481,16 @@ keyword_variable: kNIL
                     }
                     expr_value term
                     {
-                      $$ = new node_with_token($1, $3);
+                      $$ = node_with_token($1, $3);
                     }
                 | // nothing
                     {
-                      $$ = nullptr;
+                      $$; // node_with_token
                     }
 
 tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
-                      $$ = p.builder.tr_genargs($1, $2, $3);
+                      $$ = p.builder.tr_genargs($1, &$2, $3);
                     }
                 | // nothing
                     {
@@ -2502,7 +2504,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                   tr_returnsig
                     {
                       auto genargs = $1;
-                      auto args = p.builder.args($2, $3, $4, true);
+                      auto args = p.builder.args($2, &$3, $4, true);
                       auto returnsig = $6;
 
                       if (genargs || returnsig) {
@@ -2513,15 +2515,15 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tr_methodgenargs
                     {
-                      $<boolean>$ = p.lexer_->in_kwarg;
+                      $<as_bool()>$ = p.lexer_->in_kwarg;
                       p.lexer_->in_kwarg = true;
                     }
                   f_args tr_returnsig term
                     {
-                      p.lexer_->in_kwarg = $<boolean>2;
+                      p.lexer_->in_kwarg = $<as_bool()>2;
 
                       auto genargs = $1;
-                      auto args = p.builder.args(nullptr, $3, nullptr, true);
+                      auto args = p.builder.args(nullptr, &$3, nullptr, true);
                       auto returnsig = $4;
 
                       if (genargs || returnsig) {
@@ -2533,21 +2535,21 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
        args_tail: f_kwarg tCOMMA f_kwrest opt_f_block_arg
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 | f_kwarg opt_f_block_arg
                     {
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+                      args.concat($2);
                       $$ = args;
                     }
                 | f_kwrest opt_f_block_arg
                     {
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+                      args.concat($2);
                       $$ = args;
                     }
                 | f_block_arg
@@ -2561,102 +2563,102 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
 
           f_args: f_arg tCOMMA f_optarg tCOMMA f_rest_arg              opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $6);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($6);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $7);
-                      concat_node_list(args, $8);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($7);
+                      args.concat($8);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_optarg                                opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_optarg tCOMMA                   f_arg opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $6);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($6);
                       $$ = args;
                     }
                 | f_arg tCOMMA                 f_rest_arg              opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 | f_arg tCOMMA                 f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $6);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($6);
                       $$ = args;
                     }
                 | f_arg                                                opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+                      args.concat($2);
                       $$ = args;
                     }
                 |              f_optarg tCOMMA f_rest_arg              opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 |              f_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $5);
-                      concat_node_list(args, $6);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($5);
+                      args.concat($6);
                       $$ = args;
                     }
                 |              f_optarg                                opt_args_tail
                     {
                       
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+                      args.concat($2);
                       $$ = args;
                     }
                 |              f_optarg tCOMMA                   f_arg opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 |                              f_rest_arg              opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $2);
+                      auto &args = $1;
+                      args.concat($2);
                       $$ = args;
                     }
                 |                              f_rest_arg tCOMMA f_arg opt_args_tail
                     {
-                      auto args = $1;
-                      concat_node_list(args, $3);
-                      concat_node_list(args, $4);
+                      auto &args = $1;
+                      args.concat($3);
+                      args.concat($4);
                       $$ = args;
                     }
                 |                                                          args_tail
@@ -2665,7 +2667,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
 
        f_bad_arg: tIVAR
@@ -2710,17 +2712,17 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tLPAREN f_margs rparen
                     {
-                      $$ = p.builder.multi_lhs($1, $2, $3);
+                      $$ = p.builder.multi_lhs($1, &$2, $3);
                     }
 
            f_arg: f_arg_item
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | f_arg tCOMMA f_arg_item
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
 
@@ -2778,23 +2780,23 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
    f_block_kwarg: f_block_kw
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | f_block_kwarg tCOMMA f_block_kw
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
 
          f_kwarg: f_kw
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | f_kwarg tCOMMA f_kw
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
 
@@ -2804,11 +2806,11 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       auto ident = $2;
                       p.lexer_->declare(ident->string());
-                      $$ = make_node_list(p.builder.kwrestarg($1, ident));
+					  $$ = node_list(p.builder.kwrestarg($1, ident));
                     }
                 | kwrest_mark
                     {
-                      $$ = make_node_list(p.builder.kwrestarg($1, nullptr));
+                      $$ = node_list(p.builder.kwrestarg($1, nullptr));
                     }
 
            f_opt: tr_argsig f_arg_asgn tEQL arg_value
@@ -2835,23 +2837,23 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
   f_block_optarg: f_block_opt
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | f_block_optarg tCOMMA f_block_opt
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
 
         f_optarg: f_opt
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | f_optarg tCOMMA f_opt
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
 
@@ -2870,7 +2872,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         restarg = p.builder.typed_arg(argsig, restarg);
                       }
 
-                      $$ = make_node_list(restarg);
+                      $$ = node_list(restarg);
                     }
                 | tr_argsig restarg_mark
                     {
@@ -2881,7 +2883,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         restarg = p.builder.typed_arg(argsig, restarg);
                       }
 
-                      $$ = make_node_list(restarg);
+                      $$ = node_list(restarg);
                     }
 
      blkarg_mark: tAMPER2 | tAMPER
@@ -2899,7 +2901,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         blockarg = p.builder.typed_arg(argsig, blockarg);
                       }
 
-                      $$ = make_node_list(blockarg);
+                      $$ = node_list(blockarg);
                     }
                 | tr_argsig blkarg_mark
                     {
@@ -2910,7 +2912,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         blockarg = p.builder.typed_arg(argsig, blockarg);
                       }
 
-                      $$ = make_node_list(blockarg);
+                      $$ = node_list(blockarg);
                     }
 
  opt_f_block_arg: tCOMMA f_block_arg
@@ -2919,7 +2921,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 |
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
 
        singleton: var_ref
@@ -2930,18 +2932,18 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
       assoc_list: // nothing
                     {
-                      $$ = make_node_list();
+                      $$ = node_list();
                     }
                 | assocs trailer
 
           assocs: assoc
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
                 | assocs tCOMMA assoc
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
 
@@ -2955,7 +2957,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tSTRING_BEG string_contents tLABEL_END arg_value
                     {
-                      $$ = p.builder.pair_quoted($1, $2, $3, $4);
+                      $$ = p.builder.pair_quoted($1, &$2, $3, $4);
                     }
                 | tDSTAR arg_value
                     {
@@ -3006,7 +3008,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
        list_none: // nothing
                   {
-                    $$ = nullptr;
+                    $$ = node_list(false);
                   }
 
         tr_cpath: tCOLON3 tCONSTANT
@@ -3024,13 +3026,13 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
        tr_types: tr_types tCOMMA tr_type
                     {
-                      auto list = $1;
-                      list->nodes.push_back($3);
+                      auto &list = $1;
+                      list.push_back($3);
                       $$ = list;
                     }
                | tr_type
                     {
-                      $$ = make_node_list($1);
+                      $$ = node_list($1);
                     }
 
          tr_type: tr_cpath
@@ -3039,7 +3041,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tr_cpath tCOLON2 tLBRACK2 tr_types rbracket
                     {
-                      $$ = p.builder.tr_geninst($1, $3, $4, $5);
+                      $$ = p.builder.tr_geninst($1, $3, &$4, $5);
                     }
                 | tLBRACK tr_type rbracket
                     {
@@ -3047,9 +3049,9 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tLBRACK tr_type tCOMMA tr_types rbracket
                     {
-                      auto types = $4;
-                      types->nodes.insert(types->nodes.begin(), $2);
-                      $$ = p.builder.tr_tuple($1, types, $5);
+                      auto &types = $4;
+                      types.push_front($2);
+                      $$ = p.builder.tr_tuple($1, &types, $5);
                     }
                 | tLBRACE tr_type tASSOC tr_type tRCURLY
                     {
@@ -3121,13 +3123,13 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
   tr_gendeclargs: tr_gendeclargs tCOMMA tCONSTANT
                     {
-                      auto list = $1;
-                      list->nodes.push_back(p.builder.tr_gendeclarg($3));
+                      auto &list = $1;
+                      list.push_back(p.builder.tr_gendeclarg($3));
                       $$ = list;
                     }
                 | tCONSTANT
                     {
-                      $$ = make_node_list(p.builder.tr_gendeclarg($1));
+                      $$ = node_list(p.builder.tr_gendeclarg($1));
                     }
 
    tr_blockproto: { p.lexer_->extend_dynamic(); }

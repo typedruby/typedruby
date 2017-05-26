@@ -364,9 +364,9 @@ static bool eof_codepoint(char c) {
   return c == 0 || c == 0x04 || c == 0x1a;
 }
 
-token *lexer::advance_() {
+token_t lexer::advance_() {
   if (!token_queue.empty()) {
-    token *token = token_queue.front();
+    token_t token = token_queue.front();
     token_queue.pop();
     return token;
   }
@@ -386,17 +386,17 @@ token *lexer::advance_() {
   _p = p;
 
   if (!token_queue.empty()) {
-    token *token = token_queue.front();
+    token_t token = token_queue.front();
     token_queue.pop();
     return token;
   }
 
   if (cs == lex_error) {
     size_t start = (size_t)(p - source_buffer.data());
-    return new token(token_type::error, start, start + 1, std::string(p - 1, 1));
+    return std::make_shared<token>(token_type::error, start, start + 1, std::string(p - 1, 1));
   }
 
-  return new token(token_type::eof, source_buffer.size(), source_buffer.size(), "");
+  return std::make_shared<token>(token_type::eof, source_buffer.size(), source_buffer.size(), "");
 }
 
 void lexer::emit(token_type type) {
@@ -411,7 +411,7 @@ void lexer::emit(token_type type, const std::string& str, const char* start, con
   size_t offset_start = (size_t)(start - source_buffer.data());
   size_t offset_end = (size_t)(end - source_buffer.data());
 
-  token_queue.push(new token(type, offset_start, offset_end, str));
+  token_queue.push(std::make_shared<token>(type, offset_start, offset_end, str));
 }
 
 void lexer::emit_do(bool do_block) {
@@ -2498,7 +2498,7 @@ void lexer::set_state_expr_value() {
 
 }%%
 
-token *lexer::advance() {
+token_t lexer::advance() {
   auto tok = advance_();
   last_token_s = tok->start();
   last_token_e = tok->end();
