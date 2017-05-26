@@ -166,8 +166,6 @@ impl<'object> Environment<'object> {
         for autoload_path in &self.config.autoload_paths {
             let resolved = autoload_path.join(&path_rb);
 
-            println!("AUTOLOAD: {}", resolved.display());
-
             if resolved.is_file() {
                 // TODO do something with the potential IO error:
                 let _ = self.require(&resolved);
@@ -179,8 +177,6 @@ impl<'object> Environment<'object> {
         // search for directories and autodefine modules:
         for autoload_path in &self.config.autoload_paths {
             let resolved = autoload_path.join(&path);
-
-            println!("AUTOLOAD: {}", resolved.display());
 
             if resolved.is_dir() {
                 return Some(self.object.define_module(None, module, name));
