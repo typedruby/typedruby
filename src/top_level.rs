@@ -700,6 +700,11 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_node(cond);
                 self.eval_node(body);
             }
+            Node::For(_, ref lval, ref expr, ref body) => {
+                self.eval_node(lval);
+                self.eval_node(expr);
+                self.eval_maybe_node(body);
+            }
             Node::Backref(..) |
             Node::Cvar(..) |
             Node::Defined(..) |
@@ -725,6 +730,9 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Splat(_, ref expr) => {
                 self.eval_maybe_node(expr);
             }
+            Node::Kwsplat(_, ref expr) => {
+                self.eval_node(expr);
+            }
             Node::Rescue(_, ref body, ref rescues, ref else_) => {
                 self.eval_maybe_node(body);
                 for rescue in rescues {
@@ -744,6 +752,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Array(_, ref exprs) |
             Node::Break(_, ref exprs) |
             Node::DString(_, ref exprs) |
+            Node::DSymbol(_, ref exprs) |
             Node::Hash(_, ref exprs) |
             Node::Mlhs(_, ref exprs) |
             Node::Next(_, ref exprs) |
@@ -816,6 +825,11 @@ impl<'env, 'object> Eval<'env, 'object> {
                     self.eval_node(ty);
                 }
             }
+            Node::TyHash(_, ref key, ref value) => {
+                self.eval_node(key);
+                self.eval_node(value);
+            }
+            Node::TyAny(..) => {}
             _ => panic!("unknown node: {:?}", node),
         }
     }
