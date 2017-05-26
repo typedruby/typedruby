@@ -1023,7 +1023,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_send_receiver(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, locals: Locals<'ty, 'object>)
+    fn process_send_receiver(&self, recv: &Option<Rc<Node>>, id: &Id, locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
     {
         match *recv {
@@ -1043,7 +1043,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_send_args(&self, loc: &Loc, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+    fn process_send_args(&self, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Vec<CallArg<'ty, 'object>>>
     {
         arg_nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |result, arg_node|
@@ -1134,8 +1134,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     {
         let id = Id(id.0.clone(), id.1.clone() + "=");
 
-        self.process_send_receiver(loc, recv, &id, locals).and_then(|recv_type, locals| {
-            self.process_send_args(loc, &id, arg_nodes, locals).and_then(|mut args, locals| {
+        self.process_send_receiver(recv, &id, locals).and_then(|recv_type, locals| {
+            self.process_send_args(&id, arg_nodes, locals).and_then(|mut args, locals| {
                 let attr_asgn_ty = self.tyenv.new_var(loc.clone());
 
                 args.push(CallArg::Pass(loc.clone(), attr_asgn_ty));
@@ -1150,8 +1150,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
-        self.process_send_receiver(loc, recv, id, locals).and_then_comp(|recv_type, locals| {
-            self.process_send_args(loc, id, arg_nodes, locals).and_then_comp(|args, locals| {
+        self.process_send_receiver(recv, id, locals).and_then_comp(|recv_type, locals| {
+            self.process_send_args(id, arg_nodes, locals).and_then_comp(|args, locals| {
                 self.process_send_dispatch(loc, recv, id, recv_type, args, block, locals)
             })
         })
