@@ -119,8 +119,8 @@ using namespace std::string_literals;
 
 %% prepush { check_stack_capacity(); }
 
-lexer::lexer(parser::base& parser, ruby_version version, const std::string& source_buffer_)
-  : parser(parser)
+lexer::lexer(diagnostics_t &diag, ruby_version version, const std::string& source_buffer_)
+  : diagnostics(diag)
   , version(version)
   , source_buffer(source_buffer_ + std::string("\0\0", 2))
   , cs(lex_en_line_begin)
@@ -460,7 +460,7 @@ void lexer::diagnostic_(diagnostic_level level, std::string&& message, const cha
   size_t token_start = (size_t)(start - source_buffer.data());
   size_t token_end = (size_t)(end - source_buffer.data());
 
-  parser.diagnostic_(level, std::forward<std::string>(message), diagnostic::range(token_start, token_end));
+  diagnostics.emplace_back(level, std::forward<std::string>(message), diagnostic::range(token_start, token_end));
 }
 
 //
