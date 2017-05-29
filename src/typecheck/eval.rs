@@ -766,6 +766,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
+    fn merge_locals(&self, a: Locals<'ty, 'object>, b: Locals<'ty, 'object>) -> Locals<'ty, 'object> {
+        let mut merges = Vec::new();
+        let merged_locals = a.merge(b, &self.tyenv, &mut merges);
+        self.process_local_merges(merges);
+        merged_locals
+    }
+
     fn process_local_merges(&self, merges: Vec<LocalEntryMerge<'ty, 'object>>) {
         for merge in merges {
             match merge {
@@ -1303,12 +1310,19 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_masgn(&self, lhs: &Node, rty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
+    fn process_asgn(&self, lhs: &Node, rty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
         -> EvalResult<'ty, 'object, ()>
     {
         self.process_lhs(lhs, locals).map(|lhs_ty| {
             self.compatible(lhs_ty, rty, Some(loc));
         })
+    }
+
+    fn process_option_node(&self, loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        match node {
+            Some(node) => self.process_node(node, locals),
+            None => Computation::result(self.tyenv.nil(loc.clone()), locals),
+        }
     }
 
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
@@ -1674,7 +1688,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 };
 
                 rhs_comp.seq(&|ty, locals| {
-                    self.process_masgn(mlhs, ty, locals, loc).map(|()| ty).into_computation()
+                    self.process_asgn(mlhs, ty, locals, loc).map(|()| ty).into_computation()
                 })
             }
             Node::FileLiteral(ref loc) => {
@@ -1687,6 +1701,75 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     self.tyenv.instance0(loc.clone(), self.env.object.String));
 
                 Computation::result(ty, locals)
+            }
+            Node::Rescue(ref loc, ref body, ref resbodies, ref else_) => {
+                let body_comp = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.autopin())
+                    .map_locals(&|l| l.unautopin());
+
+                let uncertain_comp = body_comp.seq(&|ty, l|
+                    Computation::result(ty, self.merge_locals(locals.clone(), l)));
+
+                let rescue_comps = resbodies.iter().map(|resbody| {
+                    self.seq_process(uncertain_comp.clone(), resbody)
+                }).collect::<Vec<_>>();
+
+                let else_comp = match else_.as_ref() {
+                    Some(else_body) => self.seq_process(body_comp, else_body),
+                    None => body_comp,
+                };
+
+                rescue_comps.into_iter().fold(else_comp, Computation::divergent)
+            }
+            Node::Resbody(ref loc, ref classes, ref var, ref body) => {
+                let ex_type = match classes.as_ref().map(Rc::as_ref) {
+                    Some(&Node::Array(ref loc, ref nodes)) => {
+                        self.extract_results(self.process_array_tuple(loc, nodes, locals), loc).map(&|tuple_ty: &'ty Type<'ty, 'object>| {
+                            let mut tys = Vec::new();
+
+                            if let Type::Tuple { ref lead, ref splat, ref post, .. } = *tuple_ty {
+                                for ty in lead {
+                                    tys.push(*ty);
+                                }
+
+                                if let Some(ty) = *splat {
+                                    tys.push(ty);
+                                }
+
+                                for ty in post {
+                                    tys.push(*ty);
+                                }
+                            } else {
+                                panic!("expected process_array_tuple to return a tuple");
+                            }
+
+                            tys.into_iter().filter_map(|ty| {
+                                if let Type::Instance { class: &RubyObject::Metaclass { of, .. }, .. } = *ty {
+                                    Some(of)
+                                } else {
+                                    self.error("Expected class or module", &[
+                                        Detail::Loc(&self.tyenv.describe(ty), ty.loc()),
+                                    ]);
+                                    None
+                                }
+                            }).map(|class| {
+                                self.create_instance_type(loc, class, Vec::new())
+                            }).fold(self.tyenv.new_var(loc.clone()), |a, b| {
+                                self.tyenv.union(loc, a, b)
+                            })
+                        })
+                    },
+                    Some(other) => panic!("unexpected node type in resbody class list: {:?}", other),
+                    None => EvalResult::Ok(self.tyenv.instance0(loc.clone(), self.env.object.StandardError), locals)
+                };
+
+                ex_type.and_then(&|ex_type, locals| {
+                    match var.as_ref() {
+                        Some(var) => self.process_asgn(var, ex_type, locals, loc),
+                        None => EvalResult::Ok((), locals),
+                    }
+                }).and_then_comp(|(), locals| {
+                    self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals)
+                })
             }
             _ => panic!("node: {:?}", node),
         }
