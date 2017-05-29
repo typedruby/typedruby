@@ -4,7 +4,7 @@
 #include "token.hh"
 #include "node.hh"
 #include "builder.hh"
-#include "parser.hh"
+#include "driver.hh"
 
 extern "C" {
 

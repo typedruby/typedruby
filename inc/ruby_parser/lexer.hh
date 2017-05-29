@@ -145,6 +145,6 @@ namespace ruby_parser {
   };
 }
 
-#include "parser.hh"
+#include "driver.hh"
 
 #endif

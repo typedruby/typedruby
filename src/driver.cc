@@ -1,4 +1,4 @@
-#include <ruby_parser/parser.hh>
+#include <ruby_parser/driver.hh>
 #include <ruby_parser/lexer.hh>
 #include "grammars/typedruby24.hh"
 
@@ -28,7 +28,7 @@ typedruby24::typedruby24(const std::string& source, const struct builder& builde
 foreign_ptr typedruby24::parse() {
 	bison::typedruby24::parser p(*this);
 	p.parse();
-	return std::move(ast);
+	return ast;
 }
 
 }
