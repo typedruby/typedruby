@@ -309,10 +309,22 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
     {
         match *self.0 {
             Computation_::Result(ref ty, ref locals) => f(ty.clone(), locals.clone()),
-            Computation_::Return(_) => self.clone(),
+            Computation_::Return(_) |
             Computation_::Redo |
             Computation_::Retry => self.clone(),
             Computation_::Divergent(ref a, ref b) => Self::divergent(a.seq(f), b.seq(f)),
+        }
+    }
+
+    pub fn map_locals<F>(&self, f: &F) -> Computation<'ty, 'object>
+        where F: Fn(Locals<'ty, 'object>) -> Locals<'ty, 'object>
+    {
+        match *self.0 {
+            Computation_::Result(ty, ref locals) => Self::result(ty, f(locals.clone())),
+            Computation_::Return(_) |
+            Computation_::Redo |
+            Computation_::Retry => self.clone(),
+            Computation_::Divergent(ref a, ref b) => Self::divergent(a.map_locals(f), b.map_locals(f)),
         }
     }
 
