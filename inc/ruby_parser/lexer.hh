@@ -13,6 +13,7 @@
 #include "token.hh"
 #include "state_stack.hh"
 #include "optional_size.hh"
+#include "pool.hh"
 
 namespace ruby_parser {
   enum class ruby_version {
@@ -45,6 +46,8 @@ namespace ruby_parser {
 
   private:
     parser::base& parser;
+
+	pool<token, 64> mempool;
 
     ruby_version version;
     const std::string source_buffer;

@@ -183,13 +183,7 @@ namespace ruby_parser {
     friend std::ostream& operator<<(std::ostream& os, const token& tok);
   };
 
-	class token_t: public std::shared_ptr<token>
-	{
-	public:
-		using std::shared_ptr<token>::shared_ptr;
-		operator token* () const {return this->get();}
-		operator void* () const { return nullptr; }
-	};
+  using token_t = token*;
 }
 
 #endif
