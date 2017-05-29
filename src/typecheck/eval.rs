@@ -1789,6 +1789,16 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     })
                 })
             }
+            Node::Defined(ref loc, ref expr) => {
+                self.process_node(expr, locals).seq(&|_, l| {
+                    // TODO actually implement the logic for defined?() and see
+                    // if we can return either nil or String statically
+                    let ty = self.tyenv.nillable(loc,
+                        self.tyenv.instance0(loc.clone(), self.env.object.String));
+
+                    Computation::result(ty, l)
+                })
+            }
             _ => panic!("node: {:?}", node),
         }
     }
