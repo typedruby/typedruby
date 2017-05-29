@@ -512,7 +512,7 @@ unsafe extern "C" fn character(char_: *const Token) -> *mut Rc<Node> {
 }
 
 unsafe extern "C" fn complex(tok: *const Token) -> *mut Rc<Node> {
-    panic!("unimplemented");
+    Node::Complex(token_loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn compstmt(nodes: *mut NodeList) -> *mut Rc<Node> {
@@ -1100,7 +1100,7 @@ unsafe extern "C" fn range_inclusive(lhs: *mut Rc<Node>, oper: *const Token, rhs
 }
 
 unsafe extern "C" fn rational(tok: *const Token) -> *mut Rc<Node> {
-    panic!("unimplemented");
+    Node::Rational(token_loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn rational_complex(tok: *const Token) -> *mut Rc<Node> {

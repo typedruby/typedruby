@@ -132,12 +132,12 @@ impl Sexp for String {
 
 impl Sexp for Vec<char> {
     fn sexp(&self, f: &mut SexpFormatter) -> fmt::Result {
-        if self.is_empty() {
-            Ok(())
-        } else {
-            let s: String = self.iter().cloned().collect();
-            s.sexp(f)
+        if !self.is_empty() {
+            for b in self.iter() {
+                write!(f, " :{}", b)?;
+            }
         }
+        Ok(())
     }
 }
 
@@ -174,7 +174,7 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::AndAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("AndAsgn");
+                let mut builder = __arg_0.new_node("and-asgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -269,6 +269,12 @@ impl Sexp for Node {
                 let _ = builder.field(__self_3);
                 builder.finish()
             }
+            (&Node::Complex(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("complex");
+                let _ = builder.field(__self_0);
+                let _ = builder.numeric(__self_1);
+                builder.finish()
+            }
             (&Node::Const(ref __self_0, ref __self_1, ref __self_2),) => {
                 let mut builder = __arg_0.new_node("Const");
                 let _ = builder.field(__self_0);
@@ -330,7 +336,7 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::DSymbol(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("DSymbol");
+                let mut builder = __arg_0.new_node("dsym");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
@@ -383,7 +389,7 @@ impl Sexp for Node {
             (&Node::Float(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("Float");
                 let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
+                let _ = builder.numeric(__self_1);
                 builder.finish()
             }
             (&Node::Gvar(ref __self_0, ref __self_1),) => {
@@ -624,6 +630,12 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 let _ = builder.field(__self_3);
+                builder.finish()
+            }
+            (&Node::Rational(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("rational");
+                let _ = builder.field(__self_0);
+                let _ = builder.numeric(__self_1);
                 builder.finish()
             }
             (&Node::Redo(ref __self_0),) => {
