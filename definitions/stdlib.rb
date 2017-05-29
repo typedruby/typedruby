@@ -707,6 +707,10 @@ class Array::[ElementType] < Object
   def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
   alias :collect :map
 
+  def select({ |ElementType x| => Boolean } &) => [ElementType]; end
+
+  def reject({ |ElementType x| => Boolean } &) => [ElementType]; end
+
   def include?(ElementType item) => Boolean; end
 
   def shift => ~ElementType; end
@@ -751,6 +755,8 @@ class Hash::[KeyType, ValueType] < Object
 
   def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
 
+  def select({ |KeyType k, ValueType v| => Boolean } &) => Hash::[KeyType, ValueType]; end
+
   def reject({ |KeyType k, ValueType v| => Boolean } &) => Hash::[KeyType, ValueType]; end
 
   def fetch(KeyType k, ~{ || => ValueType } &) => ValueType; end
@@ -767,6 +773,8 @@ class Hash::[KeyType, ValueType] < Object
   alias :collect :map
 
   def keys => [KeyType]; end
+
+  def values => [ValueType]; end
 
   def delete(KeyType k) => ~ValueType; end
 end
