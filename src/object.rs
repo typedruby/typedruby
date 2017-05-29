@@ -222,6 +222,10 @@ impl<'a> ObjectGraph<'a> {
         self.expect_class("Hash")
     }
 
+    pub fn range_class(&self) -> &'a RubyObject<'a> {
+        self.expect_class("Range")
+    }
+
     fn alloc(&self, obj: RubyObject<'a>) -> &'a RubyObject<'a> {
         self.arena.alloc(obj)
     }
