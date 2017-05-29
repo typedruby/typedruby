@@ -1771,6 +1771,20 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals)
                 })
             }
+            Node::IRange(ref loc, ref begin, ref end) |
+            Node::ERange(ref loc, ref begin, ref end) => {
+                self.process_node(begin, locals).seq(&|begin_ty, locals| {
+                    self.process_node(end, locals).seq(&|end_ty, locals| {
+                        // TODO the Range class needs type constraints to make
+                        // sure the two values can actually be compared
+                        let ty = self.create_instance_type(loc,
+                            self.env.object.range_class(),
+                            vec![begin_ty, end_ty]);
+
+                        Computation::result(ty, locals)
+                    })
+                })
+            }
             _ => panic!("node: {:?}", node),
         }
     }
