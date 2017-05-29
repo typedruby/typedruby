@@ -8,122 +8,118 @@
 #include "diagnostic.hh"
 
 namespace ruby_parser {
-	struct builder;
 
-	typedef void* foreign_ptr;
+struct builder;
 
-	struct node_list {
-		node_list() : exists(true) {}
-		node_list(bool exists) : exists(exists) {}
-		node_list(foreign_ptr node) : nodes(), exists(true) {
-			nodes.push_back(node);
-		}
+typedef void* foreign_ptr;
 
-		node_list& operator=(const foreign_ptr &other) = delete;
-		node_list& operator=(foreign_ptr &&other) = delete;
+struct node_list {
+	node_list() : exists(true) {}
+	node_list(bool exists) : exists(exists) {}
+	node_list(foreign_ptr node) : nodes(), exists(true) {
+		nodes.push_back(node);
+	}
 
-		inline size_t size() const { return nodes.size(); }
+	node_list& operator=(const foreign_ptr &other) = delete;
+	node_list& operator=(foreign_ptr &&other) = delete;
 
-		inline void push_back(const foreign_ptr &ptr) {
-			assert(exists);
-			nodes.push_back(ptr);
-		}
+	inline size_t size() const { return nodes.size(); }
 
-		inline void push_front(const foreign_ptr &ptr) {
-			assert(exists);
-			nodes.insert(nodes.begin(), ptr);
-		}
+	inline void push_back(const foreign_ptr &ptr) {
+		assert(exists);
+		nodes.push_back(ptr);
+	}
 
-		inline foreign_ptr &first() { return nodes[0]; }
+	inline void push_front(const foreign_ptr &ptr) {
+		assert(exists);
+		nodes.insert(nodes.begin(), ptr);
+	}
 
-		inline void concat(node_list &other) {
-			assert(exists);
-			nodes.insert(nodes.end(),
-				std::make_move_iterator(other.nodes.begin()),
-				std::make_move_iterator(other.nodes.end())
-			);
-		}
+	inline foreign_ptr &first() { return nodes[0]; }
 
-		inline operator bool() const { return exists; }
+	inline void concat(node_list &other) {
+		assert(exists);
+		nodes.insert(nodes.end(),
+			std::make_move_iterator(other.nodes.begin()),
+			std::make_move_iterator(other.nodes.end())
+		);
+	}
 
-		std::vector<foreign_ptr> nodes;
-		bool exists;
-	};
+	inline operator bool() const { return exists; }
 
-	struct delimited_node_list {
-		delimited_node_list(const token_t &begin, const node_list &inner, const token_t &end)
-			: begin(begin), inner(inner), end(end) {}
+	std::vector<foreign_ptr> nodes;
+	bool exists;
+};
 
-		delimited_node_list()
-			: begin(nullptr), inner(), end(nullptr) {}
+struct delimited_node_list {
+	delimited_node_list(const token_t &begin, const node_list &inner, const token_t &end)
+		: begin(begin), inner(inner), end(end) {}
 
-		token_t begin;
-		node_list inner;
-		token_t end;
-	};
+	delimited_node_list()
+		: begin(nullptr), inner(), end(nullptr) {}
 
-	struct delimited_block {
-		delimited_block(const token_t &begin, foreign_ptr args, foreign_ptr body, const token_t &end)
-			: begin(begin), args(args), body(body), end(end) {}
+	token_t begin;
+	node_list inner;
+	token_t end;
+};
 
-		delimited_block()
-			: begin(nullptr), args(nullptr), body(nullptr), end(nullptr) {}
+struct delimited_block {
+	delimited_block(const token_t &begin, foreign_ptr args, foreign_ptr body, const token_t &end)
+		: begin(begin), args(args), body(body), end(end) {}
 
-		token_t begin;
-		foreign_ptr args;
-		foreign_ptr body;
-		token_t end;
-	};
+	delimited_block()
+		: begin(nullptr), args(nullptr), body(nullptr), end(nullptr) {}
 
-	struct node_with_token {
-		node_with_token(const token_t &token_, foreign_ptr node_)
-			: tok(token_), nod(node_) {}
+	token_t begin;
+	foreign_ptr args;
+	foreign_ptr body;
+	token_t end;
+};
 
-		node_with_token()
-			: tok(nullptr), nod(nullptr) {}
+struct node_with_token {
+	node_with_token(const token_t &token_, foreign_ptr node_)
+		: tok(token_), nod(node_) {}
 
-		operator bool() const { return tok && nod; }
+	node_with_token()
+		: tok(nullptr), nod(nullptr) {}
 
-		token_t tok;
-		foreign_ptr nod;
-	};
+	operator bool() const { return tok && nod; }
 
-	struct case_body {
-		case_body(const node_with_token &else_) : whens(), els(else_) {}
-		case_body() : whens(), els() {}
+	token_t tok;
+	foreign_ptr nod;
+};
 
-		node_list whens;
-		node_with_token els;
-	};
+struct case_body {
+	case_body(const node_with_token &else_) : whens(), els(else_) {}
+	case_body() : whens(), els() {}
 
-  namespace parser {
-    class base {
-    public:
-      std::unique_ptr<lexer> lexer_;
-      std::vector<diagnostic> diagnostics;
-      size_t def_level;
-      const struct builder& builder;
-      foreign_ptr ast;
+	node_list whens;
+	node_with_token els;
+};
 
-      base(ruby_version version, const std::string& source, const struct builder& builder);
-      virtual ~base();
+class base_driver {
+public:
+	diagnostics_t diagnostics;
+	const struct builder& build;
+	lexer lex;
 
-      virtual foreign_ptr parse() = 0;
+	size_t def_level;
+	foreign_ptr ast;
 
-      void check_kwarg_name(const token *name);
+	base_driver(ruby_version version, const std::string& source, const struct builder& builder);
+	virtual ~base_driver() {}
+	virtual foreign_ptr parse() = 0;
 
-      template<typename... Args>
-      void diagnostic_(Args&&... args) {
-        diagnostics.emplace_back(std::forward<Args>(args)...);
-      }
-    };
+	void check_kwarg_name(const token *name);
+};
 
-    class typedruby24 : public base {
-    public:
-      typedruby24(const std::string& source, const struct builder& builder);
-      virtual foreign_ptr parse();
-    };
-  }
+class typedruby24 : public base_driver {
+public:
+	typedruby24(const std::string& source, const struct builder& builder);
+	virtual foreign_ptr parse();
+	~typedruby24() {}
+};
+
 }
 
 #endif

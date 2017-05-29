@@ -26,10 +26,6 @@ namespace ruby_parser {
     RUBY_24,
   };
 
-  namespace parser {
-    class base;
-  }
-
   class lexer {
   public:
     using environment = std::set<std::string>;
@@ -45,8 +41,7 @@ namespace ruby_parser {
     };
 
   private:
-    parser::base& parser;
-
+	diagnostics_t &diagnostics;
 	pool<token, 64> mempool;
 
     ruby_version version;
@@ -131,7 +126,7 @@ namespace ruby_parser {
 
     bool in_kwarg;            // true at the end of "def foo a:"
 
-    lexer(parser::base& parser, ruby_version version, const std::string& source_buffer_);
+    lexer(diagnostics_t &diag, ruby_version version, const std::string& source_buffer_);
 
     token_t advance();
 
