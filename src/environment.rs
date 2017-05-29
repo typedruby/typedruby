@@ -31,6 +31,8 @@ pub struct Environment<'object> {
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/stdlib.rb");
 
+static REQUIRE_EXTS: &'static [&'static str] = &["", ".rb"];
+
 impl<'object> Environment<'object> {
     pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: Config) -> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
@@ -130,7 +132,7 @@ impl<'object> Environment<'object> {
 
     fn search_paths(file: &str, paths: &[PathBuf]) -> Option<PathBuf> {
         for path in paths {
-            for ext in &["", ".rb"] {
+            for ext in REQUIRE_EXTS {
                 let resolved = path.join(file.to_owned() + ext);
 
                 if resolved.is_file() {
@@ -144,6 +146,16 @@ impl<'object> Environment<'object> {
 
     pub fn search_require_path(&self, file: &str) -> Option<PathBuf> {
         Self::search_paths(file, &self.config.require_paths)
+    }
+
+    pub fn search_relative_path(&self, file: &str, from: &SourceFile) -> Option<PathBuf> {
+        from.filename().parent().and_then(|parent|
+            REQUIRE_EXTS.iter().map(|ext|
+                parent.join(file.to_owned() + ext)
+            ).find(|path|
+                path.is_file()
+            )
+        )
     }
 
     pub fn autoload(&self, module: &'object RubyObject<'object>, name: &str) -> Option<&'object RubyObject<'object>> {

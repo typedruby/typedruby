@@ -38,6 +38,11 @@ impl AttrType {
     }
 }
 
+enum RequireType {
+    LoadPath,
+    Relative,
+}
+
 impl<'env, 'object> Eval<'env, 'object> {
     fn new(env: &'env Environment<'object>, scope: Rc<Scope<'object>>, in_def: bool) -> Eval<'env, 'object> {
         Eval {
@@ -442,45 +447,54 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
+    fn process_require(&self, id: &Id, args: &[Rc<Node>], require_type: RequireType) {
+        if args.len() == 0 {
+            self.error(&format!("Missing argument to {}", id.1), &[
+                Detail::Loc("here", &id.0),
+            ]);
+            return;
+        }
+
+        if args.len() > 1 {
+            self.error(&format!("Too many arguments to {}", id.1), &[
+                Detail::Loc("from here", args[1].loc()),
+            ]);
+            return;
+        }
+
+        let (loc, string) = match *args[0] {
+            Node::String(ref loc, ref string) => (loc, string),
+            _ => {
+                self.warning("Could not resolve dynamic path in require", &[
+                    Detail::Loc("here", args[0].loc()),
+                ]);
+                return;
+            }
+        };
+
+        let path = match require_type {
+            RequireType::LoadPath => self.env.search_require_path(string),
+            RequireType::Relative => self.env.search_relative_path(string, &args[0].loc().file),
+        };
+
+        if let Some(path) = path {
+            match self.env.require(&path) {
+                Ok(()) => {}
+                Err(e) => panic!("TODO: implement error handling for require errors: {:?}", e),
+            }
+        } else {
+            self.warning("Could not resolve require", &[
+                Detail::Loc("here", loc),
+            ]);
+        }
+    }
+
     fn process_self_send(&self, id: &Id, args: &[Rc<Node>]) {
         match id.1.as_str() {
             "include" => self.process_module_inclusion(id, self.scope.module, args),
             "extend" => self.process_module_inclusion(id, self.env.object.metaclass(self.scope.module), args),
-            "require" => {
-                if args.len() == 0 {
-                    self.error("Missing argument to require", &[
-                        Detail::Loc("here", &id.0),
-                    ]);
-                    return;
-                }
-
-                if args.len() > 1 {
-                    self.error("Too many arguments to require", &[
-                        Detail::Loc("from here", args[1].loc()),
-                    ]);
-                    return;
-                }
-
-                match *args[0] {
-                    Node::String(ref loc, ref string) => {
-                        if let Some(path) = self.env.search_require_path(string) {
-                            match self.env.require(&path) {
-                                Ok(()) => {}
-                                Err(e) => panic!("TODO: implement error handling for require errors: {:?}", e),
-                            }
-                        } else {
-                            self.warning("Could not resolve require", &[
-                                Detail::Loc("here", loc),
-                            ]);
-                        }
-                    }
-                    _ => {
-                        self.warning("Could not resolve dynamic path in require", &[
-                            Detail::Loc("here", args[0].loc()),
-                        ]);
-                    }
-                }
-            }
+            "require" => self.process_require(id, args, RequireType::LoadPath),
+            "require_relative" => self.process_require(id, args, RequireType::Relative),
             "attr_reader" => self.process_attr(AttrType::Reader, args),
             "attr_writer" => self.process_attr(AttrType::Writer, args),
             "attr_accessor" => self.process_attr(AttrType::Accessor, args),
