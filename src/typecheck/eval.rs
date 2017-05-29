@@ -1771,6 +1771,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals)
                 })
             }
+            Node::Case(ref loc, ref cond, ref whens, ref else_) => {
+                self.error("TODO - implement case statements", &[]);
+                Computation::result(self.tyenv.new_var(loc.clone()), locals)
+            }
             Node::IRange(ref loc, ref begin, ref end) |
             Node::ERange(ref loc, ref begin, ref end) => {
                 self.process_node(begin, locals).seq(&|begin_ty, locals| {
