@@ -686,6 +686,10 @@ class String < Object
 
   def start_with?(String prefix) => Boolean; end
 
+  def downcase => String; end
+
+  def upcase => String; end
+
   def capitalize => String; end
 
   def []((Integer | Range::[Integer, Integer]) idx) => String; end
@@ -777,6 +781,11 @@ class Hash::[KeyType, ValueType] < Object
   def values => [ValueType]; end
 
   def delete(KeyType k) => ~ValueType; end
+
+  def any?({ |KeyType k, ValueType v| => Boolean } &) => Boolean; end
+
+  def reduce[T](T initial, { |T acc, [KeyType, ValueType] kv| => T } &) => T; end
+  alias :inject :reduce
 end
 
 class NilClass < Object
