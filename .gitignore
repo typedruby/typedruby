@@ -1,6 +1,8 @@
 /librubyparser.a
 /main
-/src/Lexer.cc
+/src/lexer.cc
 /target
 *.o
 Cargo.lock
+/src/grammars/*.cc
+/src/grammars/*.hh
