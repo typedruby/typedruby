@@ -54,7 +54,7 @@ struct builder {
 	foreign_ptr(*file_literal)(const token* tok);
 	foreign_ptr(*float_)(const token* tok);
 	foreign_ptr(*float_complex)(const token* tok);
-	foreign_ptr(*for_)(const token* for_, foreign_ptr iterator, const token* in, foreign_ptr iteratee, const token* do_, foreign_ptr body, const token* end);
+	foreign_ptr(*for_)(const token* for_, foreign_ptr iterator, const token* in_, foreign_ptr iteratee, const token* do_, foreign_ptr body, const token* end);
 	foreign_ptr(*gvar)(const token* tok);
 	foreign_ptr(*ident)(const token* tok);
 	foreign_ptr(*index)(foreign_ptr receiver, const token* lbrack, const node_list* indexes, const token* rbrack);
@@ -105,7 +105,7 @@ struct builder {
 	foreign_ptr(*regexp_options)(const token* regopt);
 	foreign_ptr(*rescue_body)(const token* rescue, foreign_ptr exc_list, const token* assoc, foreign_ptr exc_var, const token* then, foreign_ptr body);
 	foreign_ptr(*restarg)(const token* star, const token* name);
-	foreign_ptr(*self)(const token* tok);
+	foreign_ptr(*self_)(const token* tok);
 	foreign_ptr(*shadowarg)(const token* name);
 	foreign_ptr(*splat)(const token* star, foreign_ptr arg);
 	foreign_ptr(*string)(const token* string_);
@@ -117,8 +117,8 @@ struct builder {
 	foreign_ptr(*symbols_compose)(const token* begin, const node_list* parts, const token* end);
 	foreign_ptr(*ternary)(foreign_ptr cond, const token* question, foreign_ptr if_true, const token* colon, foreign_ptr if_false);
 	foreign_ptr(*tr_any)(const token* special);
-	foreign_ptr(*tr_array)(const token* begin, foreign_ptr type, const token* end);
-	foreign_ptr(*tr_cast)(const token* begin, foreign_ptr expr, const token* colon, foreign_ptr type, const token* end);
+	foreign_ptr(*tr_array)(const token* begin, foreign_ptr type_, const token* end);
+	foreign_ptr(*tr_cast)(const token* begin, foreign_ptr expr, const token* colon, foreign_ptr type_, const token* end);
 	foreign_ptr(*tr_class)(const token* special);
 	foreign_ptr(*tr_cpath)(foreign_ptr cpath);
 	foreign_ptr(*tr_genargs)(const token* begin, const node_list* genargs, const token* end);
@@ -127,15 +127,15 @@ struct builder {
 	foreign_ptr(*tr_geninst)(foreign_ptr cpath, const token* begin, const node_list* genargs, const token* end);
 	foreign_ptr(*tr_hash)(const token* begin, foreign_ptr key_type, const token* assoc, foreign_ptr value_type, const token* end);
 	foreign_ptr(*tr_instance)(const token* special);
-	foreign_ptr(*tr_ivardecl)(const token* name, foreign_ptr type);
+	foreign_ptr(*tr_ivardecl)(const token* name, foreign_ptr type_);
 	foreign_ptr(*tr_nil)(const token* nil);
-	foreign_ptr(*tr_nillable)(const token* tilde, foreign_ptr type);
+	foreign_ptr(*tr_nillable)(const token* tilde, foreign_ptr type_);
 	foreign_ptr(*tr_or)(foreign_ptr a, foreign_ptr b);
 	foreign_ptr(*tr_proc)(const token* begin, foreign_ptr args, const token* end);
 	foreign_ptr(*tr_self)(const token* special);
 	foreign_ptr(*tr_tuple)(const token* begin, const node_list* types, const token* end);
 	foreign_ptr(*true_)(const token* tok);
-	foreign_ptr(*typed_arg)(foreign_ptr type, foreign_ptr arg);
+	foreign_ptr(*typed_arg)(foreign_ptr type_, foreign_ptr arg);
 	foreign_ptr(*unary_op)(const token* oper, foreign_ptr receiver);
 	foreign_ptr(*undef_method)(const token* undef, const node_list* name_list);
 	foreign_ptr(*when)(const token* when, const node_list* patterns, const token* then, foreign_ptr body);

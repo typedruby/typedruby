@@ -23,7 +23,7 @@ LIB_PATH ?= librubyparser.a
 .SUFFIXES:
 .PHONY: all clean
 
-all: $(LIB_PATH)
+all: $(LIB_PATH) src/ffi_builder.rsinc
 
 clean:
 	rm -f librubyparser.a $(OBJECTS) src/grammars/*.cc src/grammars/*.hh
@@ -39,6 +39,9 @@ $(LIB_PATH): $(OBJECTS)
 
 %.cc %.hh: %.ypp
 	$(BISON) --defines=$*.hh -o $*.cc $*.ypp
+
+src/ffi_builder.rsinc: inc/ruby_parser/builder.hh
+	script/mkbuilder $< > $@
 
 # Do not remove generated Bison output
 .PRECIOUS: %.cc %.hh

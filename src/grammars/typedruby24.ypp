@@ -2436,7 +2436,7 @@ keyword_variable: kNIL
                     }
                 | kSELF
                     {
-                      $$ = driver.build.self($1);
+                      $$ = driver.build.self_($1);
                     }
                 | kTRUE
                     {
