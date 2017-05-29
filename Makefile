@@ -10,7 +10,7 @@ OBJECTS = \
 	src/capi.o \
 	src/lexer.o \
 	src/literal.o \
-	src/parser.o \
+	src/driver.o \
 	src/state_stack.o \
 	src/token.o \
 	src/grammars/typedruby24.o \

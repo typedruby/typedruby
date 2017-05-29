@@ -109,7 +109,7 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #
 */
 
-#include <ruby_parser/lexer.hh>
+#include <ruby_parser/driver.hh>
 #include <cassert>
 
 %% write data nofinal;

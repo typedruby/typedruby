@@ -1,5 +1,5 @@
-#ifndef RUBY_PARSER_PARSER_HH
-#define RUBY_PARSER_PARSER_HH
+#ifndef RUBY_PARSER_DRIVER_HH
+#define RUBY_PARSER_DRIVER_HH
 
 #include <memory>
 
@@ -100,7 +100,7 @@ struct case_body {
 class base_driver {
 public:
 	diagnostics_t diagnostics;
-	const struct builder& build;
+	const builder& build;
 	lexer lex;
 
 	size_t def_level;
