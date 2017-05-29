@@ -189,6 +189,8 @@ class Exception < Object
 
   def message => String; end
 
+  def backtrace => [String]; end
+
   def set_backtrace([String] backtrace) => nil; end
 end
 
