@@ -81,9 +81,13 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         let mut types = a.types();
         types.extend(b.types());
 
-        for ty in types.iter() {
-            if reduced_types.iter().any(|rty| self.compatible(rty, ty).is_ok()) {
-                continue;
+        for ty in types.into_iter() {
+            if let Type::Any { .. } = *ty {
+                // pass
+            } else {
+                if reduced_types.iter().any(|rty| self.compatible(rty, ty).is_ok()) {
+                    continue;
+                }
             }
 
             reduced_types.push(ty);
