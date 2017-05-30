@@ -1,3 +1,4 @@
+%require "3.0"
 %skeleton "lalr1.cc"
 
 %code requires {
