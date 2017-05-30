@@ -43,6 +43,23 @@ pub fn sexp_node_new<'a, 'b>(fmt: &'a mut SexpFormatter<'b>, name: &str) -> Sexp
     }
 }
 
+fn escape_rb(f: &mut SexpFormatter, s: &String) -> fmt::Result {
+    f.buf.write_char('"')?;
+    let mut from = 0;
+    for (i, c) in s.char_indices() {
+        let esc = c.escape_default();
+        if esc.len() != 1 {
+            f.write_str(&s[from..i])?;
+            for c in esc {
+                f.buf.write_char(c)?;
+            }
+            from = i + c.len_utf8();
+        }
+    }
+    f.buf.write_str(&s[from..])?;
+    f.buf.write_char('"')
+}
+
 impl<'a, 'b: 'a> SexpNode<'a, 'b> {
     pub fn field(&mut self, value: &Sexp) -> &mut SexpNode<'a, 'b> {
         self.result = self.result.and_then(|_| {
@@ -57,7 +74,8 @@ impl<'a, 'b: 'a> SexpNode<'a, 'b> {
     pub fn string(&mut self, value: &String) -> &mut SexpNode<'a, 'b> {
         self.result = self.result.and_then(|_| {
             if self.fmt.print_str {
-                write!(self.fmt, " {:?}", value)
+                self.fmt.buf.write_char(' ')?;
+                escape_rb(self.fmt, value)
             } else {
                 write!(self.fmt, " [STRING]")
             }

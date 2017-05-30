@@ -188,6 +188,22 @@ std::string lexer::tok(const char* start, const char* end) {
   return std::string(start, (size_t)(end - start));
 }
 
+char lexer::unescape(uint32_t codepoint) {
+    switch (codepoint) {
+    case 'a': return '\a';
+    case 'b': return '\b';
+    case 'e': return 0x1b;
+    case 'f': return '\f';
+    case 'n': return '\n';
+    case 'r': return '\r';
+    case 's': return ' ';
+    case 't': return '\t';
+    case 'v': return '\v';
+    case '\\': return '\\';
+    default: return '\0';
+    }
+}
+
 static const lexer::token_table PUNCTUATION = {
   { "=", token_type::tEQL },
   { "&", token_type::tAMPER2 },
@@ -733,12 +749,12 @@ void lexer::set_state_expr_value() {
   }
 
   action unescape_char {
-    /* TODO
-    codepoint = @source_pts[p - 1]
-    if (@escape = ESCAPES[codepoint]).nil?
-      @escape = encode_escape(@source_buffer.slice(p - 1))
-    end
-    */
+    char esc = unescape(p[-1]);
+    if (esc) {
+      escape = std::make_unique<std::string>(&esc, 1);
+    } else {
+      escape = std::make_unique<std::string>(p - 1, 1);
+    }
   }
 
   action invalid_complex_escape {
