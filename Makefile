@@ -1,16 +1,16 @@
-CXXFLAGS += -Wall -Wextra -pedantic -std=c++1y -I inc -fPIC
+CXXFLAGS += -Wall -Wextra -pedantic -std=c++14 -I inc -fPIC
 
 ifeq ($(PROFILE),release)
 	CXXFLAGS += -O3
 else
-	CXXFLAGS += -g
+	CXXFLAGS += -ggdb3 -O0
 endif
 
 OBJECTS = \
 	src/capi.o \
 	src/lexer.o \
 	src/literal.o \
-	src/parser.o \
+	src/driver.o \
 	src/state_stack.o \
 	src/token.o \
 	src/grammars/typedruby24.o \
@@ -20,29 +20,28 @@ BISON ?= bison
 
 LIB_PATH ?= librubyparser.a
 
-src/builder.o: CXXFLAGS += -Wno-unused-parameter
-src/lexer.o: CXXFLAGS += -Wno-unused-const-variable
-
 .SUFFIXES:
-
 .PHONY: all clean
 
-all: $(LIB_PATH)
-
-main: main.o $(LIB_PATH)
-	$(CXX) -o $@ $(CXXFLAGS) $(LDFLAGS) $^
+all: $(LIB_PATH) src/ffi_builder.rsinc
 
 clean:
-	rm -f librubyparser.a $(OBJECTS)
+	rm -f librubyparser.a $(OBJECTS) src/grammars/*.cc src/grammars/*.hh
 
 $(LIB_PATH): $(OBJECTS)
 	$(AR) rcs $@ $^
 
+%.o: %.cc inc/ruby_parser/*.hh src/grammars/typedruby24.hh
+	$(CXX) -o $@ $(CXXFLAGS) -c $<
+
 %.cc: %.rl
 	$(RAGEL) -o $@ -C $<
 
-%.cc: %.y
-	$(BISON) -o $@ $<
+%.cc %.hh: %.ypp
+	$(BISON) --defines=$*.hh -o $*.cc $*.ypp
 
-%.o: %.cc inc/ruby_parser/*.hh
-	$(CXX) -o $@ $(CXXFLAGS) -c $<
+src/ffi_builder.rsinc: inc/ruby_parser/builder.hh
+	script/mkbuilder $< > $@
+
+# Do not remove generated Bison output
+.PRECIOUS: %.cc %.hh

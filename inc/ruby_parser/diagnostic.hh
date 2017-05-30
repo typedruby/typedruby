@@ -7,55 +7,58 @@
 #include "token.hh"
 
 namespace ruby_parser {
-  enum class diagnostic_level {
-    NOTE    = 1,
-    WARNING = 2,
-    ERROR   = 3,
-    FATAL   = 4,
-  };
+enum class diagnostic_level {
+	NOTE    = 1,
+	WARNING = 2,
+	ERROR   = 3,
+	FATAL   = 4,
+};
 
-  class diagnostic {
-  public:
-    struct range {
-      const size_t begin_pos;
-      const size_t end_pos;
+class diagnostic {
+public:
+	struct range {
+		const size_t begin_pos;
+		const size_t end_pos;
 
-      range(size_t begin_pos, size_t end_pos)
-        : begin_pos(begin_pos)
-        , end_pos(end_pos)
-      {}
-    };
+		range(size_t begin_pos, size_t end_pos)
+			: begin_pos(begin_pos)
+			  , end_pos(end_pos)
+		{}
+	};
 
-  private:
-    diagnostic_level level_;
-    std::string message_;
-    range location_;
+private:
+	diagnostic_level level_;
+	std::string message_;
+	range location_;
 
-  public:
-    diagnostic(diagnostic_level level, std::string&& message, range location)
-      : level_(level)
-      , message_(message)
-      , location_(location)
-    {}
+public:
+	diagnostic(diagnostic_level level, const std::string& message, range location)
+		: level_(level)
+		  , message_(message)
+		  , location_(location)
+	{}
 
-    diagnostic(diagnostic_level level, std::string&& message, token& token)
-      : level_(level)
-      , message_(message)
-      , location_(token.start(), token.end())
-    {}
+	diagnostic(diagnostic_level level, const std::string& message, const token *token)
+		: level_(level)
+		  , message_(message)
+		  , location_(token->start(), token->end())
+	{}
 
-    diagnostic_level level() const {
-      return level_;
-    }
+	diagnostic_level level() const {
+		return level_;
+	}
 
-    const std::string& message() const {
-      return message_;
-    }
+	const std::string& message() const {
+		return message_;
+	}
 
-    const range& location() const {
-      return location_;
-    }
-  };
+	const range& location() const {
+		return location_;
+	}
+};
+
+using diagnostics_t = std::vector<diagnostic>;
+
 }
 
 #endif
