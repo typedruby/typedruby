@@ -1210,7 +1210,8 @@ unsafe extern "C" fn symbol_compose(begin: *const Token, parts: *mut NodeList, e
         match *parts[0] {
             Node::Symbol(ref loc, ref val) =>
                 Node::Symbol(loc.clone(), val.clone()),
-
+            Node::String(ref loc, ref val) =>
+                Node::Symbol(loc.clone(), val.clone()),
             _ => Node::DSymbol(loc, vec![parts[0].clone()]),
         }
     } else {
