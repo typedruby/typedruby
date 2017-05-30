@@ -236,14 +236,18 @@ unsafe extern "C" fn assign(lhs: *mut Rc<Node>, eql: *const Token, rhs: *mut Rc<
             args.push(rhs);
             Node::CSend(asgn_loc, recv, mid, args)
         },
+        Node::Lvasgn(loc, id, _) =>
+            Node::Lvasgn(asgn_loc, id, Some(rhs)),
         Node::Lvassignable(loc, name) =>
-            Node::Lvasgn(asgn_loc, Id(loc, name), rhs),
+            Node::Lvasgn(asgn_loc, Id(loc, name), Some(rhs)),
         Node::Const(loc, scope, name) =>
             Node::Casgn(asgn_loc, scope, name, rhs),
         Node::Cvar(loc, name) =>
             Node::Cvasgn(asgn_loc, Id(loc, name), rhs),
         Node::Ivar(loc, name) =>
-            Node::Ivasgn(asgn_loc, Id(loc, name), rhs),
+            Node::Ivasgn(asgn_loc, Id(loc, name), Some(rhs)),
+        Node::Ivasgn(loc, id, _) =>
+            Node::Ivasgn(asgn_loc, id, Some(rhs)),
         Node::Gvar(loc, name) =>
             Node::Gvasgn(asgn_loc, Id(loc, name), rhs),
         _ => {
@@ -257,10 +261,12 @@ unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Rc<Node>) -> *mu
     match node {
         Node::Ident(loc, name) => {
             Parser::declare(parser, &name);
-            Node::Lvassignable(loc, name)
+            Node::Lvasgn(loc.clone(), Id(loc.clone(), name), None)
+        },
+        Node::Ivar(loc, name) => {
+            Node::Ivasgn(loc.clone(), Id(loc.clone(), name), None)
         },
         lhs @ Node::Const(_, _, _) |
-        lhs @ Node::Ivar(_, _) |
         lhs @ Node::Cvar(_, _) => lhs,
         lhs @ Node::Gvar(_, _) => lhs,
         lhs =>
@@ -305,14 +311,16 @@ unsafe extern "C" fn begin(begin: *const Token, body: *mut Rc<Node>, end: *const
         join_tokens(begin, end)
     };
 
-    // TODO not exactly the logic from parser gem's begin
-    // revisit when Node::Mlhs exists
-    Node::Begin(loc, match body {
-        // A nil expression: `()'.
-        None => vec![],
-
-        Some(boxed_body) => vec![boxed_body],
-    }).to_raw()
+    match body {
+        None => Rc::new(Node::Begin(loc, vec![])),
+        Some(boxed_body) => {
+            match *boxed_body {
+                Node::Begin(_, _) => boxed_body.clone(),
+                Node::Mlhs(_, _) => boxed_body.clone(),
+                _ => Rc::new(Node::Begin(loc, vec![boxed_body])),
+            }
+        },
+    }.to_raw()
 }
 
 unsafe extern "C" fn begin_body(body: *mut Rc<Node>, rescue_bodies: *mut NodeList, else_tok: *const Token, else_: *mut Rc<Node>, ensure_tok: *const Token, ensure: *mut Rc<Node>) -> *mut Rc<Node> {
@@ -379,7 +387,16 @@ unsafe extern "C" fn begin_body(body: *mut Rc<Node>, rescue_bodies: *mut NodeLis
 
 unsafe extern "C" fn begin_keyword(begin: *const Token, body: *mut Rc<Node>, end: *const Token) -> *mut Rc<Node> {
     let body = from_maybe_raw(body);
-    Node::Kwbegin(join_tokens(begin, end), body).to_raw()
+    let tokens = join_tokens(begin, end);
+    match body {
+        Some(node) => {
+            match *node {
+                Node::Begin(_, ref beg) => Node::Kwbegin(tokens, beg.clone()),
+                _ => Node::Kwbegin(tokens, vec![node.clone()]),
+            }
+        },
+        None => Node::Kwbegin(tokens, vec![])
+    }.to_raw()
 }
 
 unsafe extern "C" fn binary_op(recv: *mut Rc<Node>, oper: *const Token, arg: *mut Rc<Node>) -> *mut Rc<Node> {
@@ -495,7 +512,7 @@ unsafe extern "C" fn character(char_: *const Token) -> *mut Rc<Node> {
 }
 
 unsafe extern "C" fn complex(tok: *const Token) -> *mut Rc<Node> {
-    panic!("unimplemented");
+    Node::Complex(token_loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn compstmt(nodes: *mut NodeList) -> *mut Rc<Node> {
@@ -1083,7 +1100,7 @@ unsafe extern "C" fn range_inclusive(lhs: *mut Rc<Node>, oper: *const Token, rhs
 }
 
 unsafe extern "C" fn rational(tok: *const Token) -> *mut Rc<Node> {
-    panic!("unimplemented");
+    Node::Rational(token_loc(tok), Token::string(tok)).to_raw()
 }
 
 unsafe extern "C" fn rational_complex(tok: *const Token) -> *mut Rc<Node> {
@@ -1169,7 +1186,8 @@ unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, e
         match *parts[0] {
             Node::String(ref loc, ref val) =>
                 Node::String(loc.clone(), val.clone()),
-
+            Node::DString(ref loc, ref val) =>
+                Node::DString(loc.clone(), val.clone()),
             _ => Node::DString(loc.clone(), vec![parts[0].clone()]),
         }
     } else {

@@ -13,6 +13,7 @@
 #include "token.hh"
 #include "state_stack.hh"
 #include "optional_size.hh"
+#include "pool.hh"
 
 namespace ruby_parser {
   enum class ruby_version {
@@ -24,10 +25,6 @@ namespace ruby_parser {
     RUBY_23,
     RUBY_24,
   };
-
-  namespace parser {
-    class base;
-  }
 
   class lexer {
   public:
@@ -44,14 +41,15 @@ namespace ruby_parser {
     };
 
   private:
-    parser::base& parser;
+	diagnostics_t &diagnostics;
+	pool<token, 64> mempool;
 
     ruby_version version;
     const std::string source_buffer;
 
     std::stack<environment> static_env;
     std::stack<literal> literal_stack;
-    std::queue<token_ptr> token_queue;
+    std::queue<token_t> token_queue;
 
     int cs;
     const char* _p;
@@ -114,7 +112,7 @@ namespace ruby_parser {
     literal& literal_();
     int pop_literal();
 
-    token_ptr advance_();
+    token_t advance_();
 
     // literal needs to call emit:
     friend class literal;
@@ -128,9 +126,9 @@ namespace ruby_parser {
 
     bool in_kwarg;            // true at the end of "def foo a:"
 
-    lexer(parser::base& parser, ruby_version version, const std::string& source_buffer_);
+    lexer(diagnostics_t &diag, ruby_version version, const std::string& source_buffer_);
 
-    token_ptr advance();
+    token_t advance();
 
     void set_state_expr_beg();
     void set_state_expr_endarg();
@@ -147,6 +145,6 @@ namespace ruby_parser {
   };
 }
 
-#include "parser.hh"
+#include "driver.hh"
 
 #endif
