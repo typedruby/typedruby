@@ -925,7 +925,7 @@ impl Ast {
                     indent: 0,
                     buf: output,
                     print_loc: false,
-                    print_str: false,
+                    print_str: true,
                 };
                 node.sexp(&mut formatter)
             }

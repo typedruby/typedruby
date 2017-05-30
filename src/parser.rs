@@ -527,7 +527,7 @@ fn check_condition(cond: Rc<Node>) -> Rc<Node> {
     match *cond {
         Node::Begin(ref loc, ref stmts) => {
             if stmts.len() == 1 {
-                check_condition(stmts[0].clone())
+                Rc::new(Node::Begin(loc.clone(), vec![check_condition(stmts[0].clone())]))
             } else {
                 cond.clone()
             }
@@ -1180,7 +1180,7 @@ unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, e
 
     let loc = collection_map(begin, parts.as_slice(), end).unwrap();
 
-    if parts.len() == 1 {
+    if collapse_string_parts(&parts) {
         match *parts[0] {
             Node::String(ref loc, ref val) =>
                 Node::String(loc.clone(), val.clone()),
@@ -1206,7 +1206,7 @@ unsafe extern "C" fn symbol_compose(begin: *const Token, parts: *mut NodeList, e
 
     let loc = collection_map(begin, parts.as_slice(), end).unwrap();
 
-    if parts.len() == 1 {
+    if collapse_string_parts(&parts) {
         match *parts[0] {
             Node::Symbol(ref loc, ref val) =>
                 Node::Symbol(loc.clone(), val.clone()),
@@ -1402,10 +1402,22 @@ unsafe extern "C" fn when(when: *const Token, patterns: *mut NodeList, then: *co
     Node::When(loc, patterns, body).to_raw()
 }
 
+fn collapse_string_parts(parts: &[Rc<Node>]) -> bool {
+    if parts.len() == 1 {
+        match *parts[0] {
+            Node::DString(_, _) => true,
+            Node::String(_, _) => true,
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
 unsafe extern "C" fn word(parts: *mut NodeList) -> *mut Rc<Node> {
     let mut parts = ffi::node_list_from_raw(parts);
 
-    if parts.len() == 1 {
+    if collapse_string_parts(&parts) {
         parts.remove(0)
     } else {
         assert!(!parts.is_empty());
