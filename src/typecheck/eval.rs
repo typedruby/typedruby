@@ -705,6 +705,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     _ => panic!("should never happen"),
                 }
             }
+            MethodImpl::IntrinsicProcCall => panic!("should never happen"),
         }
     }
 
@@ -725,9 +726,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     None => Vec::new(),
                 }
             }
-            Type::Proc { .. } => {
+            Type::Proc { ref proto, .. } => {
                 match self.env.object.lookup_method(self.env.object.Proc, &id.1) {
-                    Some(method) => vec![self.prototype_from_method_impl(&loc, &method.implementation, TypeContext::new(&self.env.object.Proc, Vec::new()))],
+                    Some(method) => match *method.implementation {
+                        MethodImpl::IntrinsicProcCall => vec![proto.clone()],
+                        _ => vec![self.prototype_from_method_impl(&loc, &method.implementation, TypeContext::new(&self.env.object.Proc, Vec::new()))],
+                    },
                     None => Vec::new(),
                 }
             }

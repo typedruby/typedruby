@@ -2047,6 +2047,7 @@ class SystemExit < Exception
 end
 
 class Proc < Object
+  alias :[] :call
 end
 
 class Module < Object

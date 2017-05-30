@@ -201,11 +201,16 @@ impl<'a> ObjectGraph<'a> {
         o.Exception = o.define_class(None, o.Object, "Exception", o.Object, Vec::new());
         o.StandardError = o.define_class(None, o.Object, "StandardError", o.Exception, Vec::new());
 
-        o.define_method(o.Class, "new".to_owned(), Rc::new(MethodEntry {
-            owner: o.Class,
-            visibility: Cell::new(MethodVisibility::Public),
-            implementation: Rc::new(MethodImpl::IntrinsicClassNew),
-        }));
+        for (class, mid, impl_) in [
+            (o.Class, "new",  Rc::new(MethodImpl::IntrinsicClassNew)),
+            (o.Proc,  "call", Rc::new(MethodImpl::IntrinsicProcCall)),
+        ].iter().cloned() {
+            o.define_method(class, mid.to_owned(), Rc::new(MethodEntry {
+                owner: class,
+                visibility: Cell::new(MethodVisibility::Public),
+                implementation: impl_,
+            }))
+        }
 
         o
     }
@@ -616,6 +621,7 @@ pub enum MethodImpl<'object> {
     },
     Untyped,
     IntrinsicClassNew,
+    IntrinsicProcCall,
 }
 
 pub struct ConstantEntry<'object> {
