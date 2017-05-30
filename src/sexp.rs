@@ -270,7 +270,10 @@ impl Sexp for Node {
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
-                let _ = builder.field(__self_3);
+                match *__self_3 {
+                    Some(ref x) => { let _ = builder.field(x); },
+                    None => {},
+                };
                 builder.finish()
             }
             (&Node::Cbase(ref __self_0),) => {
@@ -319,7 +322,10 @@ impl Sexp for Node {
                 let mut builder = __arg_0.new_node("Cvasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
+                match *__self_2 {
+                    Some(ref x) => { let _ = builder.field(x); },
+                    None => {},
+                };
                 builder.finish()
             }
             (&Node::Def(ref __self_0, ref __self_1, ref __self_2,
@@ -887,7 +893,7 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::UntilPost(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("UntilPost");
+                let mut builder = __arg_0.new_node("until-post");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);

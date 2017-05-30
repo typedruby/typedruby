@@ -239,9 +239,13 @@ unsafe extern "C" fn assign(lhs: *mut Rc<Node>, eql: *const Token, rhs: *mut Rc<
         Node::Lvasgn(loc, id, _) =>
             Node::Lvasgn(asgn_loc, id, Some(rhs)),
         Node::Const(loc, scope, name) =>
-            Node::Casgn(asgn_loc, scope, name, rhs),
+            Node::Casgn(asgn_loc, scope, name, Some(rhs)),
+        Node::Casgn(loc, scope, id, _) =>
+            Node::Casgn(loc, scope, id, Some(rhs)),
         Node::Cvar(loc, name) =>
-            Node::Cvasgn(asgn_loc, Id(loc, name), rhs),
+            Node::Cvasgn(asgn_loc, Id(loc, name), Some(rhs)),
+        Node::Cvasgn(loc, name, _) =>
+            Node::Cvasgn(loc, name, Some(rhs)),
         Node::Ivar(loc, name) =>
             Node::Ivasgn(asgn_loc, Id(loc, name), Some(rhs)),
         Node::Ivasgn(loc, id, _) =>
@@ -264,8 +268,12 @@ unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Rc<Node>) -> *mu
         Node::Ivar(loc, name) => {
             Node::Ivasgn(loc.clone(), Id(loc.clone(), name), None)
         },
-        lhs @ Node::Const(_, _, _) |
-        lhs @ Node::Cvar(_, _) => lhs,
+        Node::Const(loc, lhs, name) => {
+            Node::Casgn(loc.clone(), lhs, name, None)
+        }
+        Node::Cvar(loc, name) => {
+            Node::Cvasgn(loc.clone(), Id(loc.clone(), name), None)
+        },
         lhs @ Node::Gvar(_, _) => lhs,
         lhs =>
             panic!("not assignable on lhs: {:?}", lhs),
