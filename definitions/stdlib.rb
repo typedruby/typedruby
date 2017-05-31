@@ -44,6 +44,8 @@ module Kernel
   def hash => Integer; end
 
   def tap({ |:self obj| => :any } &) => :self; end
+
+  def block_given? => Boolean; end
 end
 
 class ENVClass
@@ -129,6 +131,8 @@ class File < IO
   def self.expand_path(String file, ~String dir = nil) => String; end
 
   def self.file?(String file) => Boolean; end
+
+  def self.exist?(String file) => Boolean; end
 
   def self.rename(String old_name, String new_name) => Integer; end
 
@@ -754,6 +758,8 @@ class Array::[ElementType] < Object
   def empty? => Boolean; end
 
   def uniq => [ElementType]; end
+
+  def find({ |ElementType element| => Boolean } &) => ~ElementType; end
 end
 
 class Hash::[KeyType, ValueType] < Object
