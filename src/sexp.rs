@@ -264,18 +264,6 @@ impl Sexp for Node {
                 let _ = builder.field(__self_3);
                 builder.finish()
             }
-            (&Node::Casgn(ref __self_0, ref __self_1, ref __self_2,
-                          ref __self_3),) => {
-                let mut builder = __arg_0.new_node("casgn");
-                let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
-                match *__self_3 {
-                    Some(ref x) => { let _ = builder.field(x); },
-                    None => {},
-                };
-                builder.finish()
-            }
             (&Node::Cbase(ref __self_0),) => {
                 let mut builder = __arg_0.new_node("cbase");
                 let _ = builder.field(__self_0);
@@ -303,6 +291,22 @@ impl Sexp for Node {
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
+            (&Node::ConstAsgn(ref __self_0, ref __self_1, ref __self_2,
+                          ref __self_3),) => {
+                let mut builder = __arg_0.new_node("casgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
+                let _ = builder.field(__self_3);
+                builder.finish()
+            }
+            (&Node::ConstLhs(ref __self_0, ref __self_1, ref __self_2),) => {
+                let mut builder = __arg_0.new_node("casgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
             (&Node::CSend(ref __self_0, ref __self_1, ref __self_2,
                           ref __self_3),) => {
                 let mut builder = __arg_0.new_node("csend");
@@ -318,14 +322,17 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Cvasgn(ref __self_0, ref __self_1, ref __self_2),) => {
+            (&Node::CvarAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
                 let mut builder = __arg_0.new_node("cvasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                match *__self_2 {
-                    Some(ref x) => { let _ = builder.field(x); },
-                    None => {},
-                };
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
+            (&Node::CvarLhs(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("cvasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Def(ref __self_0, ref __self_1, ref __self_2,
@@ -422,11 +429,17 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Gvasgn(ref __self_0, ref __self_1, ref __self_2),) => {
+            (&Node::GvarAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
                 let mut builder = __arg_0.new_node("gvasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
+                builder.finish()
+            }
+            (&Node::GvarLhs(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("gvasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Hash(ref __self_0, ref __self_1),) => {
@@ -476,14 +489,19 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Ivasgn(ref __self_0, ref __self_1, ref __self_2),) => {
+            (&Node::IvarAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
                 let mut builder = __arg_0.new_node("ivasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                match *__self_2 {
-                    Some(ref x) => { let _ = builder.field(x); },
-                    None => {},
-                };
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
+            (&Node::IvarLhs(ref __self_0, ref __self_1),) => {
+                // intentionally rendering Ivlhs as an Ivasgn for AST compatibility
+                // with parser gem:
+                let mut builder = __arg_0.new_node("ivasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Kwarg(ref __self_0, ref __self_1),) => {
@@ -533,14 +551,17 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Lvasgn(ref __self_0, ref __self_1, ref __self_2),) => {
+            (&Node::LvarAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
                 let mut builder = __arg_0.new_node("lvasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                match *__self_2 {
-                    Some(ref x) => { let _ = builder.field(x); },
-                    None => {},
-                };
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
+            (&Node::LvarLhs(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("lvasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::MatchCurLine(ref __self_0, ref __self_1),) => {
