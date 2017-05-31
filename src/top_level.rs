@@ -267,7 +267,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                     module
                 }
             }
-            e@Err(..) => panic!("{:?}", e) /* TODO handle error */,
+            Err((node, msg)) => {
+                self.error(msg, &[Detail::Loc("here", node.loc())]);
+                return
+            }
         };
 
         self.enter_scope(module, body);
