@@ -78,16 +78,12 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     pub fn union(&self, loc: &Loc, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
         let mut reduced_types: Vec<&_> = Vec::new();
 
-        let mut types = a.types();
-        types.extend(b.types());
+        let mut types = self.possible_types(a);
+        types.extend(self.possible_types(b));
 
         for ty in types.into_iter() {
-            if let Type::Any { .. } = *ty {
-                // pass
-            } else {
-                if reduced_types.iter().any(|rty| self.compatible(rty, ty).is_ok()) {
-                    continue;
-                }
+            if reduced_types.iter().any(|rty| self.same_type(rty, ty)) {
+                continue;
             }
 
             reduced_types.push(ty);
@@ -621,6 +617,61 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             Type::LocalVariable { .. } => panic!("should never remain after prune"),
         }
     }
+
+    pub fn possible_types(&self, ty: &'ty Type<'ty, 'object>) -> Vec<&'ty Type<'ty, 'object>> {
+        let mut tys = Vec::new();
+        self.possible_types_rec(ty, &mut tys);
+        tys
+    }
+
+    fn possible_types_rec(&self, ty: &'ty Type<'ty, 'object>, out_tys: &mut Vec<&'ty Type<'ty, 'object>>) {
+        match *self.prune(ty) {
+            Type::Union { types: ref union_types, .. } => {
+                for ty in union_types {
+                    self.possible_types_rec(ty, out_tys)
+                }
+            }
+            _ => out_tys.push(ty),
+        }
+    }
+
+    fn same_types(&self, tys1: &[&'ty Type<'ty, 'object>], tys2: &[&'ty Type<'ty, 'object>]) -> bool {
+        tys1.iter().all(|ty1| tys2.iter().any(|ty2| self.same_type(ty1, ty2)))
+    }
+
+    pub fn same_type(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> bool {
+        match (self.prune(a), self.prune(b)) {
+            (&Type::Instance { class: c1, type_parameters: ref tp1, .. },
+                    &Type::Instance { class: c2, type_parameters: ref tp2, .. }) =>
+                c1 == c2 && tp1.iter().zip(tp2).all(|(t1, t2)| self.same_type(t1, t2)),
+
+            (&Type::Union { types: ref tys1, .. }, &Type::Union { types: ref tys2, .. }) =>
+                self.same_types(tys1, tys2) && self.same_types(tys2, tys1),
+
+            (&Type::Tuple { .. }, &Type::Tuple { .. }) =>
+                panic!("TODO"),
+
+            (&Type::KeywordHash { .. }, &Type::KeywordHash { .. }) =>
+                panic!("TODO"),
+
+            (&Type::Proc { .. }, &Type::Proc { .. }) =>
+                false, // TODO
+
+            (&Type::Any { .. }, &Type::Any { .. }) =>
+                true,
+
+            (&Type::TypeParameter { name: ref name1, .. }, &Type::TypeParameter { name: ref name2, .. }) =>
+                name1 == name2,
+
+            (&Type::Var { id: ref id1, .. }, &Type::Var { id: ref id2, .. }) =>
+                id1 == id2,
+
+            (&Type::LocalVariable { .. }, &Type::LocalVariable { .. }) =>
+                panic!("should never happen"),
+
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -687,13 +738,6 @@ impl<'ty, 'object> Type<'ty, 'object> {
 
     pub fn ref_eq(&self, other: &'ty Type<'ty, 'object>) -> bool {
         (self as *const _) == (other as *const _)
-    }
-
-    pub fn types(&'ty self) -> Vec<&'ty Type<'ty, 'object>> {
-        match *self {
-            Type::Union { ref types, .. } => types.clone(),
-            _ => vec![self],
-        }
     }
 }
 
