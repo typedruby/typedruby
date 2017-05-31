@@ -13,7 +13,7 @@ fn main() {
     }
 
     let path = PathBuf::from(&args[1]);
-    let srcfile = SourceFile::open(path).unwrap();
+    let srcfile = SourceFile::open(&path).unwrap();
     let ast = parse(Rc::new(srcfile));
 
     let mut out = String::new();

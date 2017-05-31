@@ -337,17 +337,17 @@ fn line_map_from_source(source: &str) -> Vec<usize> {
 }
 
 impl SourceFile {
-    pub fn new(filename: PathBuf, source: String) -> SourceFile {
+    pub fn new(filename: &PathBuf, source: String) -> SourceFile {
         let line_map = line_map_from_source(&source);
 
         SourceFile {
-            filename: filename,
+            filename: filename.clone(),
             source: source,
             line_map: line_map,
         }
     }
 
-    pub fn open(filename: PathBuf) -> io::Result<SourceFile> {
+    pub fn open(filename: &PathBuf) -> io::Result<SourceFile> {
         let mut file = File::open(&filename)?;
 
         let mut source = String::new();
