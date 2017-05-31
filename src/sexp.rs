@@ -519,9 +519,6 @@ impl Sexp for Node {
                 };
                 builder.finish()
             }
-            (&Node::Lvassignable(ref __self_0, ref __self_1),) => {
-                panic!("Lvassignable should not be in the AST")
-            }
             (&Node::MatchCurLine(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("MatchCurLine");
                 let _ = builder.field(__self_0);
