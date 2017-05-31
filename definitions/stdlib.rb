@@ -42,6 +42,8 @@ module Kernel
   def loop({ || => :any } &) => nil; end
 
   def hash => Integer; end
+
+  def tap({ |:self obj| => :any } &) => :self; end
 end
 
 class ENVClass
