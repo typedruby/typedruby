@@ -236,16 +236,14 @@ unsafe extern "C" fn assign(lhs: *mut Rc<Node>, eql: *const Token, rhs: *mut Rc<
             args.push(rhs);
             Node::CSend(asgn_loc, recv, mid, args)
         },
-        Node::Lvasgn(loc, id, _) =>
-            Node::Lvasgn(asgn_loc, id, Some(rhs)),
+        Node::Lvlhs(loc, name) =>
+            Node::Lvasgn(asgn_loc, Id(loc, name), rhs),
         Node::Const(loc, scope, name) =>
             Node::Casgn(asgn_loc, scope, name, rhs),
         Node::Cvar(loc, name) =>
             Node::Cvasgn(asgn_loc, Id(loc, name), rhs),
-        Node::Ivar(loc, name) =>
-            Node::Ivasgn(asgn_loc, Id(loc, name), Some(rhs)),
-        Node::Ivasgn(loc, id, _) =>
-            Node::Ivasgn(asgn_loc, id, Some(rhs)),
+        Node::Ivlhs(loc, name) =>
+            Node::Ivasgn(asgn_loc, Id(loc, name), rhs),
         Node::Gvar(loc, name) =>
             Node::Gvasgn(asgn_loc, Id(loc, name), rhs),
         _ => {
@@ -259,10 +257,10 @@ unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Rc<Node>) -> *mu
     match node {
         Node::Ident(loc, name) => {
             Parser::declare(parser, &name);
-            Node::Lvasgn(loc.clone(), Id(loc.clone(), name), None)
+            Node::Lvlhs(loc, name)
         },
         Node::Ivar(loc, name) => {
-            Node::Ivasgn(loc.clone(), Id(loc.clone(), name), None)
+            Node::Ivlhs(loc, name)
         },
         lhs @ Node::Const(_, _, _) |
         lhs @ Node::Cvar(_, _) => lhs,
