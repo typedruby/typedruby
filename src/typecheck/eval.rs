@@ -1185,10 +1185,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         where T : Fn(ComputationPredicate<'ty, 'object>, &Node) -> ComputationPredicate<'ty, 'object>
     {
         let asgn_node = match **lhs {
-            Node::Lvassignable(ref loc, ref name) =>
-                Node::Lvasgn(loc.join(rhs.loc()), Id(loc.clone(), name.clone()), rhs.clone()),
-            Node::Ivar(ref loc, ref name) =>
-                Node::Ivasgn(loc.join(rhs.loc()), Id(loc.clone(), name.clone()), rhs.clone()),
+            Node::Lvasgn(ref loc, ref id, None) =>
+                Node::Lvasgn(loc.join(rhs.loc()), id.clone(), Some(rhs.clone())),
+            Node::Ivasgn(ref loc, ref id, None) =>
+                Node::Ivasgn(loc.join(rhs.loc()), id.clone(), Some(rhs.clone())),
             _ =>
                 panic!("unknown lhs in cond_asgn: {:?}", lhs),
         };
@@ -1239,7 +1239,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
     {
         match *lhs {
-            Node::Lvassignable(ref loc, ref name) => {
+            Node::Lvasgn(ref loc, Id(_, ref name), None) => {
                 let lv_ty = self.tyenv.new_var(loc.clone());
 
                 match locals.assign(name.to_owned(), lv_ty) {
@@ -1249,13 +1249,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         EvalResult::Ok(existing_lv_ty, locals),
                 }
             }
-            Node::Ivar(ref loc, ref name) => {
+            Node::Ivasgn(ref loc, Id(_, ref name), None) => {
                 let iv_ty = self.lookup_ivar_or_error(&Id(loc.clone(), name.clone()), &self.type_context);
 
                 EvalResult::Ok(iv_ty, locals)
             }
-            Node::Const(..) => panic!("shouldn't happen"),
-            Node::Cvar(..) | Node::Gvar(..) => panic!("TODO"),
             Node::Send(ref loc, ref recv, ref id, ref args) => {
                 self.type_for_attr_asgn(loc, recv, id, args, locals)
             }
@@ -1329,6 +1327,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
+    fn process_nodes(&self, loc: &Loc, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        let comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
+
+        nodes.iter().fold(comp, |comp, node|
+            self.converge_results(self.seq_process(comp, node), node.loc()))
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
@@ -1343,26 +1348,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     })
                 )
             }
-            Node::Begin(ref loc, ref nodes) => {
-                let comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
-
-                nodes.iter().fold(comp, |comp, node|
-                    self.converge_results(self.seq_process(comp, node), node.loc()))
-            }
-            Node::Kwbegin(ref loc, ref node) => {
-                match *node {
-                    Some(ref n) => self.process_node(n, locals),
-                    None => Computation::result(self.tyenv.nil(loc.clone()), locals),
-                }
-            }
-            Node::Lvasgn(ref asgn_loc, Id(_, ref lvar_name), ref expr) => {
-                self.process_node(expr, locals).seq(&|expr_ty, l| {
-                    let l = self.assign_lvar(lvar_name, expr_ty, l, asgn_loc);
-
-                    let lvar_ty = self.tyenv.local_variable(asgn_loc.clone(), lvar_name.clone(), expr_ty);
-
-                    Computation::result(lvar_ty, l)
-                })
+            Node::Begin(ref loc, ref nodes) |
+            Node::Kwbegin(ref loc, ref nodes) => {
+                self.process_nodes(loc, nodes, locals)
             }
             Node::Lvar(ref loc, ref name) => {
                 let (ty, locals) = locals.lookup(name);
@@ -1384,9 +1372,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Computation::result(ty, locals)
             }
-            // same as Lvar but does not error on use of uninitialised local
-            // variable since we'll be assigning it straight away anyway:
-            Node::Lvassignable(ref loc, ref name) => {
+            Node::Lvasgn(ref loc, Id(_, ref name), None) => {
                 let (ty, locals) = locals.lookup(name);
 
                 let ty = match ty {
@@ -1400,12 +1386,22 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Computation::result(ty, locals)
             }
-            Node::Ivar(ref loc, ref name) => {
+            Node::Lvasgn(ref asgn_loc, Id(_, ref lvar_name), Some(ref expr)) => {
+                self.process_node(expr, locals).seq(&|expr_ty, l| {
+                    let l = self.assign_lvar(lvar_name, expr_ty, l, asgn_loc);
+
+                    let lvar_ty = self.tyenv.local_variable(asgn_loc.clone(), lvar_name.clone(), expr_ty);
+
+                    Computation::result(lvar_ty, l)
+                })
+            }
+            Node::Ivar(ref loc, ref name) |
+            Node::Ivasgn(ref loc, Id(_, ref name), None) => {
                 let ty = self.lookup_ivar_or_error(&Id(loc.clone(), name.clone()), &self.type_context);
 
                 Computation::result(ty, locals)
             }
-            Node::Ivasgn(ref loc, ref ivar, ref expr) => {
+            Node::Ivasgn(ref loc, ref ivar, Some(ref expr)) => {
                 let ivar_ty = self.lookup_ivar_or_error(ivar, &self.type_context);
 
                 self.process_node(expr, locals).seq(&|ty, l| {
