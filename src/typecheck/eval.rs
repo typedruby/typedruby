@@ -1337,16 +1337,25 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
-                let element_ty = self.tyenv.new_var(loc.clone());
-                let array_ty = self.create_array_type(loc, element_ty);
-                let comp = Computation::result(array_ty, locals);
+                let element_ty = self.tyenv.new_var(
+                    match elements.get(0) {
+                        Some(element) => element.loc().clone(),
+                        None => loc.clone(),
+                    });
 
-                elements.iter().fold(comp, |comp, element_node|
-                    self.seq_process(comp, element_node).seq(&|ty, l| {
-                        self.unify(element_ty, ty, Some(loc));
-                        Computation::result(array_ty, l)
-                    })
-                )
+                let init_comp = Computation::result(element_ty, locals);
+
+                elements.iter().fold(init_comp, |comp, element_node|
+                    comp.seq(&|element_ty, l|
+                        self.process_node(element_node, l).seq(&|ty, l| {
+                            let element_ty = self.tyenv.union(element_node.loc(), element_ty, ty);
+                            Computation::result(element_ty, l)
+                        })
+                    )
+                ).seq(&|element_ty, l| {
+                    let array_ty = self.create_array_type(loc, element_ty);
+                    Computation::result(array_ty, l)
+                })
             }
             Node::Begin(ref loc, ref nodes) |
             Node::Kwbegin(ref loc, ref nodes) => {
