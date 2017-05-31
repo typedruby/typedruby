@@ -36,11 +36,28 @@ pub struct SexpNode<'a, 'b: 'a> {
 
 pub fn sexp_node_new<'a, 'b>(fmt: &'a mut SexpFormatter<'b>, name: &str) -> SexpNode<'a, 'b> {
     let indent = fmt.indent*2;
-    let result = write!(fmt, "{:width$}({}", "", name.to_lowercase(), width=indent);
+    let result = write!(fmt, "{:width$}({}", "", name, width=indent);
     SexpNode {
         fmt: fmt,
         result: result,
     }
+}
+
+fn escape_rb(f: &mut SexpFormatter, s: &String) -> fmt::Result {
+    f.buf.write_char('"')?;
+    let mut from = 0;
+    for (i, c) in s.char_indices() {
+        let esc = c.escape_default();
+        if esc.len() != 1 {
+            f.write_str(&s[from..i])?;
+            for c in esc {
+                f.buf.write_char(c)?;
+            }
+            from = i + c.len_utf8();
+        }
+    }
+    f.buf.write_str(&s[from..])?;
+    f.buf.write_char('"')
 }
 
 impl<'a, 'b: 'a> SexpNode<'a, 'b> {
@@ -57,7 +74,8 @@ impl<'a, 'b: 'a> SexpNode<'a, 'b> {
     pub fn string(&mut self, value: &String) -> &mut SexpNode<'a, 'b> {
         self.result = self.result.and_then(|_| {
             if self.fmt.print_str {
-                write!(self.fmt, " {:?}", value)
+                self.fmt.buf.write_char(' ')?;
+                escape_rb(self.fmt, value)
             } else {
                 write!(self.fmt, " [STRING]")
             }
@@ -67,7 +85,7 @@ impl<'a, 'b: 'a> SexpNode<'a, 'b> {
 
     pub fn numeric(&mut self, value: &String) -> &mut SexpNode<'a, 'b> {
         self.result = self.result.and_then(|_| {
-            write!(self.fmt, " {}", value)
+            write!(self.fmt, " {}", value.replace("_", ""))
         });
         self
     }
@@ -160,14 +178,14 @@ impl Sexp for Node {
     fn sexp(&self, __arg_0: &mut SexpFormatter) -> fmt::Result {
         match (&*self,) {
             (&Node::Alias(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Alias");
+                let mut builder = __arg_0.new_node("alias");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::And(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("And");
+                let mut builder = __arg_0.new_node("and");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -181,19 +199,19 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Arg(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Arg");
+                let mut builder = __arg_0.new_node("arg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Args(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Args");
+                let mut builder = __arg_0.new_node("args");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Array(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Array");
+                let mut builder = __arg_0.new_node("array");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
@@ -205,14 +223,14 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Begin(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Begin");
+                let mut builder = __arg_0.new_node("begin");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Block(ref __self_0, ref __self_1, ref __self_2,
                           ref __self_3),) => {
-                let mut builder = __arg_0.new_node("Block");
+                let mut builder = __arg_0.new_node("block");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -220,7 +238,7 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Blockarg(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Blockarg");
+                let mut builder = __arg_0.new_node("blockarg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
@@ -232,23 +250,14 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Break(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Break");
+                let mut builder = __arg_0.new_node("break");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Case(ref __self_0, ref __self_1, ref __self_2,
                          ref __self_3),) => {
-                let mut builder = __arg_0.new_node("Case");
-                let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
-                let _ = builder.field(__self_3);
-                builder.finish()
-            }
-            (&Node::Casgn(ref __self_0, ref __self_1, ref __self_2,
-                          ref __self_3),) => {
-                let mut builder = __arg_0.new_node("Casgn");
+                let mut builder = __arg_0.new_node("case");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -256,13 +265,13 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Cbase(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("Cbase");
+                let mut builder = __arg_0.new_node("cbase");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::Class(ref __self_0, ref __self_1, ref __self_2,
                           ref __self_3),) => {
-                let mut builder = __arg_0.new_node("Class");
+                let mut builder = __arg_0.new_node("class");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -276,7 +285,23 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Const(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Const");
+                let mut builder = __arg_0.new_node("const");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
+            (&Node::ConstAsgn(ref __self_0, ref __self_1, ref __self_2,
+                          ref __self_3),) => {
+                let mut builder = __arg_0.new_node("casgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
+                let _ = builder.field(__self_3);
+                builder.finish()
+            }
+            (&Node::ConstLhs(ref __self_0, ref __self_1, ref __self_2),) => {
+                let mut builder = __arg_0.new_node("casgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -284,7 +309,7 @@ impl Sexp for Node {
             }
             (&Node::CSend(ref __self_0, ref __self_1, ref __self_2,
                           ref __self_3),) => {
-                let mut builder = __arg_0.new_node("CSend");
+                let mut builder = __arg_0.new_node("csend");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -292,21 +317,27 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Cvar(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Cvar");
+                let mut builder = __arg_0.new_node("cvar");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Cvasgn(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Cvasgn");
+            (&Node::CvarAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
+                let mut builder = __arg_0.new_node("cvasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
+            (&Node::CvarLhs(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("cvasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                builder.finish()
+            }
             (&Node::Def(ref __self_0, ref __self_1, ref __self_2,
                         ref __self_3),) => {
-                let mut builder = __arg_0.new_node("Def");
+                let mut builder = __arg_0.new_node("def");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -321,7 +352,7 @@ impl Sexp for Node {
             }
             (&Node::Defs(ref __self_0, ref __self_1, ref __self_2,
                          ref __self_3, ref __self_4),) => {
-                let mut builder = __arg_0.new_node("Defs");
+                let mut builder = __arg_0.new_node("defs");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -342,44 +373,44 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::EFlipflop(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("EFlipflop");
+                let mut builder = __arg_0.new_node("eflipflop");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::EncodingLiteral(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("EncodingLiteral");
+                let mut builder = __arg_0.new_node("--ENCODING--");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::Ensure(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Ensure");
+                let mut builder = __arg_0.new_node("ensure");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::ERange(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("ERange");
+                let mut builder = __arg_0.new_node("erange");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::False(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("False");
+                let mut builder = __arg_0.new_node("false");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::FileLiteral(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("FileLiteral");
+                let mut builder = __arg_0.new_node("--FILE--");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::For(ref __self_0, ref __self_1, ref __self_2,
                         ref __self_3),) => {
-                let mut builder = __arg_0.new_node("For");
+                let mut builder = __arg_0.new_node("for");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -387,39 +418,45 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Float(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Float");
+                let mut builder = __arg_0.new_node("float");
                 let _ = builder.field(__self_0);
                 let _ = builder.numeric(__self_1);
                 builder.finish()
             }
             (&Node::Gvar(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Gvar");
+                let mut builder = __arg_0.new_node("gvar");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Gvasgn(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Gvasgn");
+            (&Node::GvarAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
+                let mut builder = __arg_0.new_node("gvasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
+            (&Node::GvarLhs(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("gvasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                builder.finish()
+            }
             (&Node::Hash(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Hash");
+                let mut builder = __arg_0.new_node("hash");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Ident(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Ident");
+                let mut builder = __arg_0.new_node("ident");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::If(ref __self_0, ref __self_1, ref __self_2,
                        ref __self_3),) => {
-                let mut builder = __arg_0.new_node("If");
+                let mut builder = __arg_0.new_node("if");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -427,7 +464,7 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::IFlipflop(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("IFlipflop");
+                let mut builder = __arg_0.new_node("iflipflop");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -440,119 +477,127 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::IRange(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("IRange");
+                let mut builder = __arg_0.new_node("irange");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::Ivar(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Ivar");
+                let mut builder = __arg_0.new_node("ivar");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Ivasgn(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Ivasgn");
+            (&Node::IvarAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
+                let mut builder = __arg_0.new_node("ivasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                match *__self_2 {
-                    Some(ref x) => { let _ = builder.field(x); },
-                    None => {},
-                };
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
+            (&Node::IvarLhs(ref __self_0, ref __self_1),) => {
+                // intentionally rendering Ivlhs as an Ivasgn for AST compatibility
+                // with parser gem:
+                let mut builder = __arg_0.new_node("ivasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Kwarg(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Kwarg");
+                let mut builder = __arg_0.new_node("kwarg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Kwbegin(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Kwbegin");
+                let mut builder = __arg_0.new_node("kwbegin");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Kwoptarg(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Kwoptarg");
+                let mut builder = __arg_0.new_node("kwoptarg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::Kwrestarg(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Kwrestarg");
+                let mut builder = __arg_0.new_node("kwrestarg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Kwsplat(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Kwsplat");
+                let mut builder = __arg_0.new_node("kwsplat");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Lambda(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("Lambda");
+                let mut builder = __arg_0.new_node("lambda");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::LineLiteral(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("LineLiteral");
+                let mut builder = __arg_0.new_node("lineLiteral");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::Lvar(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Lvar");
+                let mut builder = __arg_0.new_node("lvar");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Lvasgn(ref __self_0, ref __self_1, ref __self_2),) => {
+            (&Node::LvarAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
                 let mut builder = __arg_0.new_node("lvasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                match *__self_2 {
-                    Some(ref x) => { let _ = builder.field(x); },
-                    None => {},
-                };
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
+            (&Node::LvarLhs(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("lvasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::MatchCurLine(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("MatchCurLine");
+                let mut builder = __arg_0.new_node("matchcurline");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Masgn(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Masgn");
+                let mut builder = __arg_0.new_node("masgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::Mlhs(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Mlhs");
+                let mut builder = __arg_0.new_node("mlhs");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Module(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Module");
+                let mut builder = __arg_0.new_node("module");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::Next(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Next");
+                let mut builder = __arg_0.new_node("next");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Nil(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("Nil");
+                let mut builder = __arg_0.new_node("nil");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
@@ -572,14 +617,14 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Optarg(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Optarg");
+                let mut builder = __arg_0.new_node("optarg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::Or(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Or");
+                let mut builder = __arg_0.new_node("or");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -593,26 +638,26 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Pair(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Pair");
+                let mut builder = __arg_0.new_node("pair");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::Postexe(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Postexe");
+                let mut builder = __arg_0.new_node("postexe");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Preexe(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Preexe");
+                let mut builder = __arg_0.new_node("preexe");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Procarg0(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Procarg0");
+                let mut builder = __arg_0.new_node("procarg0");
                 let _ = builder.field(__self_0);
                 let _ = match **__self_1 {
                     Node::Arg(_, ref arg) => builder.field(arg),
@@ -622,7 +667,7 @@ impl Sexp for Node {
             }
             (&Node::Prototype(ref __self_0, ref __self_1, ref __self_2,
                               ref __self_3),) => {
-                let mut builder = __arg_0.new_node("Prototype");
+                let mut builder = __arg_0.new_node("prototype");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -636,26 +681,26 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Redo(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("Redo");
+                let mut builder = __arg_0.new_node("redo");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::Regexp(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Regexp");
+                let mut builder = __arg_0.new_node("regexp");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::Regopt(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Regopt");
+                let mut builder = __arg_0.new_node("regopt");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Resbody(ref __self_0, ref __self_1, ref __self_2,
                             ref __self_3),) => {
-                let mut builder = __arg_0.new_node("Resbody");
+                let mut builder = __arg_0.new_node("resbody");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -664,7 +709,7 @@ impl Sexp for Node {
             }
             (&Node::Rescue(ref __self_0, ref __self_1, ref __self_2,
                            ref __self_3),) => {
-                let mut builder = __arg_0.new_node("Rescue");
+                let mut builder = __arg_0.new_node("rescue");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -672,24 +717,24 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Restarg(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Restarg");
+                let mut builder = __arg_0.new_node("restarg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Retry(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("Retry");
+                let mut builder = __arg_0.new_node("retry");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::Return(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Return");
+                let mut builder = __arg_0.new_node("return");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::SClass(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("SClass");
+                let mut builder = __arg_0.new_node("sclass");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -702,7 +747,7 @@ impl Sexp for Node {
             }
             (&Node::Send(ref __self_0, ref __self_1, ref __self_2,
                          ref __self_3),) => {
-                let mut builder = __arg_0.new_node("Send");
+                let mut builder = __arg_0.new_node("send");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -710,7 +755,7 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Splat(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Splat");
+                let mut builder = __arg_0.new_node("splat");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
@@ -722,7 +767,7 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Super(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Super");
+                let mut builder = __arg_0.new_node("super");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
@@ -734,163 +779,163 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::True(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("True");
+                let mut builder = __arg_0.new_node("true");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::TyAny(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("TyAny");
+                let mut builder = __arg_0.new_node("ty-any");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::TyArray(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("TyArray");
+                let mut builder = __arg_0.new_node("ty-array");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::TyCast(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("TyCast");
+                let mut builder = __arg_0.new_node("ty-cast");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::TyClass(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("TyClass");
+                let mut builder = __arg_0.new_node("ty-class");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::TyCpath(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("TyCpath");
+                let mut builder = __arg_0.new_node("ty-cpath");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::TyGenargs(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("TyGenargs");
+                let mut builder = __arg_0.new_node("ty-genargs");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::TyGendecl(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("TyGendecl");
+                let mut builder = __arg_0.new_node("ty-gendecl");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::TyGendeclarg(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("TyGendeclarg");
+                let mut builder = __arg_0.new_node("ty-gendeclarg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::TyGeninst(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("TyGeninst");
+                let mut builder = __arg_0.new_node("ty-geninst");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::TyHash(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("TyHash");
+                let mut builder = __arg_0.new_node("ty-hash");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::TyInstance(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("TyInstance");
+                let mut builder = __arg_0.new_node("ty-instance");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::TyIvardecl(ref __self_0, ref __self_1, ref __self_2),) =>
             {
-                let mut builder = __arg_0.new_node("TyIvardecl");
+                let mut builder = __arg_0.new_node("ty-ivardecl");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::TyNil(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("TyNil");
+                let mut builder = __arg_0.new_node("ty-nil");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::TyNillable(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("TyNillable");
+                let mut builder = __arg_0.new_node("ty-nillable");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::TyOr(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("TyOr");
+                let mut builder = __arg_0.new_node("ty-or");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::TypedArg(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("TypedArg");
+                let mut builder = __arg_0.new_node("typed-arg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::TyProc(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("TyProc");
+                let mut builder = __arg_0.new_node("ty-proc");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::TySelf(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("TySelf");
+                let mut builder = __arg_0.new_node("ty-self");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
             (&Node::TyTuple(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("TyTuple");
+                let mut builder = __arg_0.new_node("ty-tuple");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Undef(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Undef");
+                let mut builder = __arg_0.new_node("undef");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Until(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("Until");
+                let mut builder = __arg_0.new_node("until");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::UntilPost(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("UntilPost");
+                let mut builder = __arg_0.new_node("until-post");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::When(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("When");
+                let mut builder = __arg_0.new_node("when");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::While(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("While");
+                let mut builder = __arg_0.new_node("while");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::WhilePost(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("WhilePost");
+                let mut builder = __arg_0.new_node("while-post");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
@@ -903,13 +948,13 @@ impl Sexp for Node {
                 builder.finish()
             }
             (&Node::Yield(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("Yield");
+                let mut builder = __arg_0.new_node("yield");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::ZSuper(ref __self_0),) => {
-                let mut builder = __arg_0.new_node("ZSuper");
+                let mut builder = __arg_0.new_node("zsuper");
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
@@ -925,7 +970,7 @@ impl Ast {
                     indent: 0,
                     buf: output,
                     print_loc: false,
-                    print_str: false,
+                    print_str: true,
                 };
                 node.sexp(&mut formatter)
             }

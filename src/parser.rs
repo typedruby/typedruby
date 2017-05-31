@@ -236,18 +236,16 @@ unsafe extern "C" fn assign(lhs: *mut Rc<Node>, eql: *const Token, rhs: *mut Rc<
             args.push(rhs);
             Node::CSend(asgn_loc, recv, mid, args)
         },
-        Node::Lvasgn(loc, id, _) =>
-            Node::Lvasgn(asgn_loc, id, Some(rhs)),
-        Node::Const(loc, scope, name) =>
-            Node::Casgn(asgn_loc, scope, name, rhs),
-        Node::Cvar(loc, name) =>
-            Node::Cvasgn(asgn_loc, Id(loc, name), rhs),
-        Node::Ivar(loc, name) =>
-            Node::Ivasgn(asgn_loc, Id(loc, name), Some(rhs)),
-        Node::Ivasgn(loc, id, _) =>
-            Node::Ivasgn(asgn_loc, id, Some(rhs)),
-        Node::Gvar(loc, name) =>
-            Node::Gvasgn(asgn_loc, Id(loc, name), rhs),
+        Node::LvarLhs(loc, name) =>
+            Node::LvarAsgn(asgn_loc, name, rhs),
+        Node::ConstLhs(loc, scope, name) =>
+            Node::ConstAsgn(asgn_loc, scope, name, rhs),
+        Node::CvarLhs(loc, id) =>
+            Node::CvarAsgn(loc, id, rhs),
+        Node::IvarLhs(loc, id) =>
+            Node::IvarAsgn(asgn_loc, id, rhs),
+        Node::GvarLhs(loc, id) =>
+            Node::GvarAsgn(asgn_loc, id, rhs),
         _ => {
             panic!("unimplemented lhs: {:?}", lhs);
         }
@@ -259,14 +257,16 @@ unsafe extern "C" fn assignable(parser: *mut Parser, node: *mut Rc<Node>) -> *mu
     match node {
         Node::Ident(loc, name) => {
             Parser::declare(parser, &name);
-            Node::Lvasgn(loc.clone(), Id(loc.clone(), name), None)
+            Node::LvarLhs(loc.clone(), Id(loc.clone(), name))
         },
-        Node::Ivar(loc, name) => {
-            Node::Ivasgn(loc.clone(), Id(loc.clone(), name), None)
-        },
-        lhs @ Node::Const(_, _, _) |
-        lhs @ Node::Cvar(_, _) => lhs,
-        lhs @ Node::Gvar(_, _) => lhs,
+        Node::Ivar(loc, name) =>
+            Node::IvarLhs(loc.clone(), Id(loc.clone(), name)),
+        Node::Const(loc, lhs, name) =>
+            Node::ConstLhs(loc.clone(), lhs, name),
+        Node::Cvar(loc, name) =>
+            Node::CvarLhs(loc.clone(), Id(loc.clone(), name)),
+        Node::Gvar(loc, name) =>
+            Node::GvarLhs(loc.clone(), Id(loc.clone(), name)),
         lhs =>
             panic!("not assignable on lhs: {:?}", lhs),
     }.to_raw()
@@ -527,7 +527,7 @@ fn check_condition(cond: Rc<Node>) -> Rc<Node> {
     match *cond {
         Node::Begin(ref loc, ref stmts) => {
             if stmts.len() == 1 {
-                check_condition(stmts[0].clone())
+                Rc::new(Node::Begin(loc.clone(), vec![check_condition(stmts[0].clone())]))
             } else {
                 cond.clone()
             }
@@ -1180,7 +1180,7 @@ unsafe extern "C" fn string_compose(begin: *const Token, parts: *mut NodeList, e
 
     let loc = collection_map(begin, parts.as_slice(), end).unwrap();
 
-    if parts.len() == 1 {
+    if collapse_string_parts(&parts) {
         match *parts[0] {
             Node::String(ref loc, ref val) =>
                 Node::String(loc.clone(), val.clone()),
@@ -1206,11 +1206,12 @@ unsafe extern "C" fn symbol_compose(begin: *const Token, parts: *mut NodeList, e
 
     let loc = collection_map(begin, parts.as_slice(), end).unwrap();
 
-    if parts.len() == 1 {
+    if collapse_string_parts(&parts) {
         match *parts[0] {
             Node::Symbol(ref loc, ref val) =>
                 Node::Symbol(loc.clone(), val.clone()),
-
+            Node::String(ref loc, ref val) =>
+                Node::Symbol(loc.clone(), val.clone()),
             _ => Node::DSymbol(loc, vec![parts[0].clone()]),
         }
     } else {
@@ -1402,10 +1403,22 @@ unsafe extern "C" fn when(when: *const Token, patterns: *mut NodeList, then: *co
     Node::When(loc, patterns, body).to_raw()
 }
 
+fn collapse_string_parts(parts: &[Rc<Node>]) -> bool {
+    if parts.len() == 1 {
+        match *parts[0] {
+            Node::DString(_, _) => true,
+            Node::String(_, _) => true,
+            _ => false,
+        }
+    } else {
+        false
+    }
+}
+
 unsafe extern "C" fn word(parts: *mut NodeList) -> *mut Rc<Node> {
     let mut parts = ffi::node_list_from_raw(parts);
 
-    if parts.len() == 1 {
+    if collapse_string_parts(&parts) {
         parts.remove(0)
     } else {
         assert!(!parts.is_empty());

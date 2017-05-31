@@ -97,6 +97,7 @@ namespace ruby_parser {
     int stack_pop();
     int arg_or_cmdarg();
     void emit_comment(const char* s, const char* e);
+    char unescape(uint32_t cp);
     std::string tok();
     std::string tok(const char* start);
     std::string tok(const char* start, const char* end);
