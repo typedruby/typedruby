@@ -10,6 +10,7 @@ use typed_arena::Arena;
 use util::Or;
 use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
+use itertools::Itertools;
 
 pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     env: &'env Environment<'object>,
@@ -1394,28 +1395,28 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             self.converge_results(self.seq_process(comp, node), node.loc()))
     }
 
+    fn process_seq_exprs(&self, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+        -> EvalResult<'ty, 'object, Vec<&'ty Type<'ty, 'object>>>
+    {
+        nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |ev, n| {
+            ev.and_then(|mut tys, l| {
+                self.extract_results(self.process_node(n, l), n.loc()).and_then(|ty, l| {
+                    tys.push(ty);
+                    EvalResult::Ok(tys, l)
+                })
+            })
+        })
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
-                let element_ty = self.tyenv.new_var(
-                    match elements.get(0) {
-                        Some(element) => element.loc().clone(),
-                        None => loc.clone(),
-                    });
-
-                let init_comp = Computation::result(element_ty, locals);
-
-                elements.iter().fold(init_comp, |comp, element_node|
-                    comp.seq(&|element_ty, l|
-                        self.process_node(element_node, l).seq(&|ty, l| {
-                            let element_ty = self.tyenv.union(element_node.loc(), element_ty, ty);
-                            Computation::result(element_ty, l)
-                        })
-                    )
-                ).seq(&|element_ty, l| {
-                    let array_ty = self.create_array_type(loc, element_ty);
-                    Computation::result(array_ty, l)
-                })
+                self.process_seq_exprs(elements, locals).map(|tys| {
+                    tys.into_iter().fold1(|a, b| self.tyenv.union(loc, a, b)).unwrap_or_else(||
+                        self.tyenv.new_var(loc.clone()))
+                }).map(|element_ty|
+                    self.create_array_type(loc, element_ty)
+                ).into_computation()
             }
             Node::Begin(ref loc, ref nodes) |
             Node::Kwbegin(ref loc, ref nodes) => {
