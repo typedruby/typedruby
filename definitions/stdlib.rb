@@ -765,7 +765,7 @@ class Hash::[KeyType, ValueType] < Object
 
   def reject({ |KeyType k, ValueType v| => Boolean } &) => Hash::[KeyType, ValueType]; end
 
-  def fetch(KeyType k, ~{ || => ValueType } &) => ValueType; end
+  def fetch(KeyType k, ~:any v = nil, ~{ || => ValueType } &) => ValueType; end
 
   def [](KeyType k) => ~ValueType; end
 
