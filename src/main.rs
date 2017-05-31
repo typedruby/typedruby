@@ -1,7 +1,8 @@
 extern crate clap;
-extern crate typed_arena;
 extern crate immutable_map;
+extern crate itertools;
 extern crate regex;
+extern crate typed_arena;
 
 use std::io;
 use std::path::PathBuf;
