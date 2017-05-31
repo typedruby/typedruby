@@ -1790,7 +1790,7 @@ opt_block_args_tail:
                       auto &block_args_tail = $2;
 
                       if (block_args_tail.size() == 0 && args.size() == 1) {
-                        $$ = node_list(driver.build.procarg0(args.first()));
+                        $$ = node_list(driver.build.procarg0(args.at(0)));
                       } else {
                         args.concat(block_args_tail);
                         $$ = args;
@@ -2180,12 +2180,12 @@ opt_block_args_tail:
          string1: tSTRING_BEG string_contents tSTRING_END
                     {
                       auto str = driver.build.string_compose($1, &$2, $3);
-                      $$ = driver.build.dedent_string(str, driver.lex.dedent_level() || 0);
+                      $$ = driver.build.dedent_string(str, driver.lex.dedent_level().value_or(0));
                     }
                 | tSTRING
                     {
                       auto str = driver.build.string($1);
-                      $$ = driver.build.dedent_string(str, driver.lex.dedent_level() || 0);
+                      $$ = driver.build.dedent_string(str, driver.lex.dedent_level().value_or(0));
                     }
                 | tCHARACTER
                     {
@@ -2195,7 +2195,7 @@ opt_block_args_tail:
          xstring: tXSTRING_BEG xstring_contents tSTRING_END
                     {
                       auto xstr = driver.build.xstring_compose($1, &$2, $3);
-                      $$ = driver.build.dedent_string(xstr, driver.lex.dedent_level() || 0);
+                      $$ = driver.build.dedent_string(xstr, driver.lex.dedent_level().value_or(0));
                     }
 
           regexp: tREGEXP_BEG regexp_contents tSTRING_END tREGEXP_OPT
@@ -3012,7 +3012,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
        list_none: // nothing
                   {
-                    $$ = node_list(false);
+                    $$ = node_list(std::nullopt);
                   }
 
         tr_cpath: tCOLON3 tCONSTANT

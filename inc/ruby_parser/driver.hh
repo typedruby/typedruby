@@ -6,6 +6,7 @@
 #include "lexer.hh"
 #include "node.hh"
 #include "diagnostic.hh"
+#include "optional.hpp"
 
 namespace ruby_parser {
 
@@ -14,41 +15,42 @@ struct builder;
 typedef void* foreign_ptr;
 
 struct node_list {
-	node_list() : exists(true) {}
-	node_list(bool exists) : exists(exists) {}
-	node_list(foreign_ptr node) : nodes(), exists(true) {
-		nodes.push_back(node);
+	node_list() : nodes(std::in_place) {}
+	node_list(std::nullopt_t) : nodes(std::nullopt) {}
+	node_list(foreign_ptr node) : nodes(std::in_place) {
+		nodes->push_back(node);
 	}
 
 	node_list& operator=(const foreign_ptr &other) = delete;
 	node_list& operator=(foreign_ptr &&other) = delete;
 
-	inline size_t size() const { return nodes.size(); }
+	inline size_t size() const {
+		if (!nodes.has_value())
+			return 0;
+		return nodes->size();
+	}
 
 	inline void push_back(const foreign_ptr &ptr) {
-		assert(exists);
-		nodes.push_back(ptr);
+		nodes->push_back(ptr);
 	}
 
 	inline void push_front(const foreign_ptr &ptr) {
-		assert(exists);
-		nodes.insert(nodes.begin(), ptr);
+		nodes->insert(nodes->begin(), ptr);
 	}
 
-	inline foreign_ptr &first() { return nodes[0]; }
+	inline foreign_ptr &at(size_t n) { return nodes->at(n); }
 
 	inline void concat(node_list &other) {
-		assert(exists);
-		nodes.insert(nodes.end(),
-			std::make_move_iterator(other.nodes.begin()),
-			std::make_move_iterator(other.nodes.end())
+		nodes->insert(nodes->end(),
+			std::make_move_iterator(other.nodes->begin()),
+			std::make_move_iterator(other.nodes->end())
 		);
 	}
 
-	inline operator bool() const { return exists; }
+	inline operator bool() const { return nodes.has_value(); }
 
-	std::vector<foreign_ptr> nodes;
-	bool exists;
+protected:
+	std::optional<std::vector<foreign_ptr>> nodes;
 };
 
 struct delimited_node_list {

@@ -4,8 +4,8 @@
 #include <string>
 #include <utility>
 
-#include "optional_size.hh"
 #include "token.hh"
+#include "optional.hpp"
 
 namespace ruby_parser {
   enum class literal_type {
@@ -29,6 +29,8 @@ namespace ruby_parser {
     BACKTICK_XSTRING,
     BACKTICK_HEREDOC,
   };
+
+  using optional_size = std::optional<size_t>;
 
   class lexer;
 
