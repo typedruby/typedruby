@@ -1387,7 +1387,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_nodes(&self, loc: &Loc, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+    fn process_seq_stmts(&self, loc: &Loc, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         let comp = Computation::result(self.tyenv.nil(loc.clone()), locals);
 
         nodes.iter().fold(comp, |comp, node|
@@ -1419,7 +1419,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Node::Begin(ref loc, ref nodes) |
             Node::Kwbegin(ref loc, ref nodes) => {
-                self.process_nodes(loc, nodes, locals)
+                self.process_seq_stmts(loc, nodes, locals)
             }
             Node::Lvar(ref loc, ref name) => {
                 let (ty, locals) = locals.lookup(name);
