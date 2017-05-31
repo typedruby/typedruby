@@ -456,10 +456,15 @@ impl Sexp for Node {
                 let mut builder = __arg_0.new_node("Ivasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                match *__self_2 {
-                    Some(ref x) => { let _ = builder.field(x); },
-                    None => {},
-                };
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
+            (&Node::Ivlhs(ref __self_0, ref __self_1),) => {
+                // intentionally rendering Ivlhs as an Ivasgn for AST compatibility
+                // with parser gem:
+                let mut builder = __arg_0.new_node("Ivasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::Kwarg(ref __self_0, ref __self_1),) => {
@@ -513,10 +518,13 @@ impl Sexp for Node {
                 let mut builder = __arg_0.new_node("lvasgn");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
-                match *__self_2 {
-                    Some(ref x) => { let _ = builder.field(x); },
-                    None => {},
-                };
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
+            (&Node::Lvlhs(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("lvasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
                 builder.finish()
             }
             (&Node::MatchCurLine(ref __self_0, ref __self_1),) => {
