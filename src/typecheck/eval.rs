@@ -1771,6 +1771,18 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Computation::result(ty, locals)
             }
+            Node::Ensure(ref loc, ref body, ref ensure) => {
+                let body_result = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.autopin())
+                    .map_locals(&|l| l.unautopin());
+
+                body_result.seq(&|ty, l| {
+                    let uncertain_locals = self.merge_locals(locals.clone(), l);
+
+                    self.process_node(ensure, uncertain_locals).seq(&|_, l| {
+                        Computation::result(ty, l)
+                    })
+                })
+            }
             Node::Rescue(ref loc, ref body, ref resbodies, ref else_) => {
                 let body_comp = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.autopin())
                     .map_locals(&|l| l.unautopin());
