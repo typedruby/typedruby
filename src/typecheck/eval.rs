@@ -274,7 +274,62 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         self.tyenv.instance(loc.clone(), class, type_parameters)
     }
 
-    fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: Vec<&'ty Type<'ty, 'object>>, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
+    fn resolve_class_instance_type(&self, loc: &Loc, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
+        if type_parameters.len() == 0 {
+            return self.tyenv.instance0(loc.clone(), self.env.object.Class);
+        }
+
+        if type_parameters.len() > 1 {
+            self.error("Too many type parameters supplied in instantiation of metaclass", &[
+                Detail::Loc("from here", type_parameters[1].loc()),
+            ]);
+        }
+
+        let cpath = if let Node::TyCpath(_, ref cpath) = *type_parameters[0] {
+            cpath
+        } else {
+            self.error("Type parameter in metaclass must be constant path", &[
+                Detail::Loc("here", type_parameters[0].loc()),
+            ]);
+
+            return self.tyenv.new_var(loc.clone());
+        };
+
+        let class = match **cpath {
+            Node::Const(_, None, Id(_, ref name)) => {
+                if let Some(&&Type::Instance { class, .. }) = context.type_names.get(name) {
+                    Ok(class)
+                } else {
+                    self.env.resolve_cpath(cpath, scope)
+                }
+            }
+            _ => self.env.resolve_cpath(cpath, scope),
+        };
+
+        match class {
+            Ok(class@&RubyObject::Module { .. }) |
+            Ok(class@&RubyObject::Class { .. }) |
+            Ok(class@&RubyObject::Metaclass { .. }) => {
+                let metaclass = self.env.object.metaclass(class);
+                self.tyenv.instance0(loc.clone(), metaclass)
+            },
+            Ok(&RubyObject::IClass { .. }) => panic!(),
+            Ok(&RubyObject::Object { .. }) => {
+                self.error("Constant does not reference class/module", &[
+                    Detail::Loc("here", cpath.loc()),
+                ]);
+                self.tyenv.new_var(loc.clone())
+            }
+            Err((err_node, message)) => {
+                self.error(message, &[
+                    Detail::Loc("here", err_node.loc()),
+                ]);
+                self.tyenv.new_var(loc.clone())
+            }
+        }
+    }
+
+    fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
         if let Node::Const(_, None, Id(ref name_loc, ref name)) = *cpath {
             if let Some(ty) = context.type_names.get(name) {
                 if !type_parameters.is_empty() {
@@ -287,8 +342,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
         }
 
-        match self.env.resolve_cpath(cpath, scope) {
+        match self.env.resolve_cpath(cpath, scope.clone()) {
             Ok(class) => match *class {
+                _ if class == self.env.object.Class =>
+                    self.resolve_class_instance_type(loc, type_parameters, context, scope),
                 RubyObject::Object { .. } => {
                     self.error("Constant mentioned in type name does not reference class/module", &[
                         Detail::Loc("here", cpath.loc()),
@@ -298,8 +355,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 },
                 RubyObject::Module { .. } |
                 RubyObject::Metaclass { .. } |
-                RubyObject::Class { .. } =>
-                    self.create_instance_type(loc, class, type_parameters),
+                RubyObject::Class { .. } => {
+                    let type_parameters = type_parameters.iter().map(|arg|
+                        self.resolve_type(arg, context, scope.clone())
+                    ).collect();
+
+                    self.create_instance_type(loc, class, type_parameters)
+                },
                 RubyObject::IClass { .. } => panic!("unexpected iclass"),
             },
             Err((err_node, message)) => {
@@ -323,11 +385,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
         match *node {
             Node::TyCpath(ref loc, ref cpath) =>
-                self.resolve_instance_type(loc, cpath, Vec::new(), context, scope),
-            Node::TyGeninst(ref loc, ref cpath, ref args) => {
-                let type_parameters = args.iter().map(|arg| self.resolve_type(arg, context, scope.clone())).collect();
-                self.resolve_instance_type(loc, cpath, type_parameters, context, scope)
-            },
+                self.resolve_instance_type(loc, cpath, &[], context, scope),
+            Node::TyGeninst(ref loc, ref cpath, ref args) =>
+                self.resolve_instance_type(loc, cpath, args, context, scope),
             Node::TyNil(ref loc) => {
                 self.create_instance_type(loc, self.env.object.NilClass, Vec::new())
             },
