@@ -40,6 +40,8 @@ module Kernel
   def __method__ => Symbol; end
 
   def loop({ || => :any } &) => nil; end
+
+  def hash => Integer; end
 end
 
 class ENVClass
