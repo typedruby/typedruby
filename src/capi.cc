@@ -56,13 +56,13 @@ ruby_parser_token_get_string(const ruby_parser::token* tok, const char** out_ptr
 size_t
 ruby_parser_node_list_get_length(const ruby_parser::node_list* list)
 {
-  return list->nodes.size();
+  return list->size();
 }
 
 void*
 ruby_parser_node_list_index(ruby_parser::node_list* list, size_t index)
 {
-  return list->nodes.at(index);
+  return list->at(index);
 }
 
 size_t

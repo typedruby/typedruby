@@ -2536,6 +2536,6 @@ optional_size lexer::dedent_level() {
   // We erase @dedent_level as a precaution to avoid accidentally
   // using a stale value.
   auto ret = dedent_level_;
-  dedent_level_ = optional_size::none();
+  dedent_level_ = std::nullopt;
   return ret;
 }

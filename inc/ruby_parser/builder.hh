@@ -7,7 +7,6 @@
 
 #include "node.hh"
 #include "token.hh"
-#include "optional_size.hh"
 #include "driver.hh"
 
 namespace ruby_parser {
