@@ -519,8 +519,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                     self.eval_node(stmt);
                 }
             }
-            Node::Kwbegin(_, ref node) => {
-                self.eval_maybe_node(node);
+            Node::Kwbegin(_, ref nodes) => {
+                for node in nodes {
+                    self.eval_node(node);
+                }
             }
             Node::Class(_, ref declname, ref superclass, ref body) => {
                 match **declname {
@@ -732,7 +734,6 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Lambda(..) |
             Node::LineLiteral(..) |
             Node::Lvar(..) |
-            Node::Lvassignable(..) |
             Node::Nil(..) |
             Node::NthRef(..) |
             Node::Regexp(..) |
@@ -784,7 +785,9 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_node(right);
             }
             Node::Lvasgn(_, _, ref expr) |
-            Node::Ivasgn(_, _, ref expr) |
+            Node::Ivasgn(_, _, ref expr) => {
+                self.eval_maybe_node(expr);
+            }
             Node::Cvasgn(_, _, ref expr) |
             Node::Gvasgn(_, _, ref expr) => {
                 self.eval_node(expr);
