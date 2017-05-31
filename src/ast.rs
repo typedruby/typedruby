@@ -46,7 +46,7 @@ impl Loc {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub struct Id(pub Loc, pub String);
 
 #[derive(Debug)]
