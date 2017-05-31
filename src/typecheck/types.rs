@@ -435,7 +435,22 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (&Type::TypeParameter { .. }, _) =>
                 Err((t1.clone(), t2.clone())),
 
-            _ => panic!("unify! t1={:?}, t2={:?}", t1, t2),
+            (&Type::Proc { .. }, &Type::Proc { .. }) => {
+                panic!("TODO unify proc");
+            },
+
+            (&Type::Proc { .. }, _) =>
+                Err((t1.clone(), t2.clone())),
+
+            (&Type::KeywordHash { .. }, &Type::KeywordHash { .. }) => {
+                panic!("TODO unify keyword hash")
+            }
+
+            (&Type::KeywordHash { .. }, _) =>
+                Err((t1.clone(), t2.clone())),
+
+            (&Type::LocalVariable { .. }, _) =>
+                panic!("LocalVariable should not be present after pruning!"),
         }
     }
 
