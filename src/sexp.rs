@@ -144,12 +144,18 @@ impl Sexp for Id {
 
 fn sym_print_p(sym: &str) -> bool {
     if sym.len() == 1 {
-        true
-    } else {
-        !sym.chars().any(|c| {
-            c.is_whitespace() || c == '.' || c == '-' }
-        )
+        return true;
     }
+
+    if sym.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+
+    if sym.chars().all(|c| !c.is_alphanumeric()) {
+        return true;
+    }
+
+    !sym.chars().any(|c| { c == '.' || c == '-' })
 }
 
 impl Sexp for String {

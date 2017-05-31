@@ -11,17 +11,6 @@ use difference::{Changeset, Difference};
 
 fn known_failure(path: &PathBuf) -> bool {
     match path.to_str().unwrap() {
-        // Unicode escaping issues
-        "library/04/366f4149a4e8cbed776ef942ac9c4b.rb" => true,
-        "library/1d/5e4e1adaa1ba949947a08eeff4111a.rb" => true,
-        "library/24/510f9519e650e76d8849acf95bf073.rb" => true,
-        "library/30/5d03654f76d5286175a6d78101ea13.rb" => true,
-        "library/31/6e1e3598a45c719b623e3878d3e98f.rb" => true,
-        "library/8b/69110e8901f40f6119a66d116075a2.rb" => true,
-        "library/a1/cd831b43b2be9f67eb8c6eb008cba1.rb" => true,
-        "library/b2/650be44867235f5f9ac99ea9f3554e.rb" => true,
-        "library/c8/08230a8cd26f0d686f4784ad3c49a0.rb" => true,
-
         // Mlhs
         "library/32/ae1517d8058d13e7948d890377bf77.rb" => true,
         "library/bf/48d40cd135bd8083711e089549b373.rb" => true,
