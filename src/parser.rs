@@ -238,8 +238,6 @@ unsafe extern "C" fn assign(lhs: *mut Rc<Node>, eql: *const Token, rhs: *mut Rc<
         },
         Node::Lvasgn(loc, id, _) =>
             Node::Lvasgn(asgn_loc, id, Some(rhs)),
-        Node::Lvassignable(loc, name) =>
-            Node::Lvasgn(asgn_loc, Id(loc, name), Some(rhs)),
         Node::Const(loc, scope, name) =>
             Node::Casgn(asgn_loc, scope, name, rhs),
         Node::Cvar(loc, name) =>
