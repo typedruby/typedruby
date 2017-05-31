@@ -5,6 +5,7 @@ use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
 use immutable_map::TreeMap;
 use util::Or;
+use itertools::Itertools;
 
 pub type TypeVarId = usize;
 
@@ -568,8 +569,12 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
                 // degrade keyword hash to instance type:
                 let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
-                let value_ty = keywords.iter().fold(self.new_var(loc.clone()), |tyvar, &(_, keyword_ty)|
-                    self.union(loc, tyvar, keyword_ty)
+                let value_ty = keywords.iter().map(|&(_, keyword_ty)|
+                    keyword_ty
+                ).fold1(|ty1, ty2|
+                    self.union(loc, ty1, ty2)
+                ).unwrap_or_else(||
+                    self.new_var(loc.clone())
                 );
 
                 let instance_ty = self.instance(loc.clone(), hash_class, vec![key_ty, value_ty]);

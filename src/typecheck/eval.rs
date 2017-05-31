@@ -1637,24 +1637,21 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                     self.tyenv.keyword_hash(loc.clone(), keywords)
                 } else {
-                    let key_ty = self.tyenv.new_var(loc.clone());
-                    let value_ty = self.tyenv.new_var(loc.clone());
-
-                    for entry in entries {
-                        match entry {
-                            HashEntry::Symbol(Id(sym_loc, _), value) => {
-                                self.compatible(key_ty, self.tyenv.instance0(sym_loc, self.env.object.Symbol), Some(loc));
-                                self.compatible(value_ty, value, Some(loc));
+                    let (key_ty, value_ty) =
+                        entries.into_iter().map(|hash_entry| {
+                            match hash_entry {
+                                HashEntry::Symbol(Id(sym_loc, _), value) =>
+                                    (self.tyenv.instance0(sym_loc, self.env.object.Symbol), value),
+                                HashEntry::Pair(key, value) =>
+                                    (key, value),
+                                HashEntry::Kwsplat(_) =>
+                                    panic!("TODO"),
                             }
-                            HashEntry::Pair(key, value) => {
-                                self.compatible(key_ty, key, Some(loc));
-                                self.compatible(value_ty, value, Some(loc));
-                            }
-                            HashEntry::Kwsplat(_) => {
-                                panic!("TODO")
-                            }
-                        }
-                    }
+                        }).fold1(|(k1, v1), (k2, v2)|
+                            (self.tyenv.union(loc, k1, k2), self.tyenv.union(loc, v1, v2))
+                        ).unwrap_or_else(||
+                            (self.tyenv.new_var(loc.clone()), self.tyenv.new_var(loc.clone()))
+                        );
 
                     self.create_hash_type(loc, key_ty, value_ty)
                 };
@@ -1835,9 +1832,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                                 }
                             }).map(|class| {
                                 self.create_instance_type(loc, class, Vec::new())
-                            }).fold(self.tyenv.new_var(loc.clone()), |a, b| {
+                            }).fold1(|a, b| {
                                 self.tyenv.union(loc, a, b)
-                            })
+                            }).unwrap_or_else(||
+                                self.tyenv.new_var(loc.clone())
+                            )
                         })
                     },
                     Some(other) => panic!("unexpected node type in resbody class list: {:?}", other),
