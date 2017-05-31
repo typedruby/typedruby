@@ -1375,11 +1375,13 @@ class RubyVM::InstructionSequence < Object
 end
 
 class Regexp < Object
-  IGNORECASE = nil
-  EXTENDED = nil
-  MULTILINE = nil
-  FIXEDENCODING = nil
-  NOENCODING = nil
+  IGNORECASE = (nil : Integer)
+  EXTENDED = (nil : Integer)
+  MULTILINE = (nil : Integer)
+  FIXEDENCODING = (nil : Integer)
+  NOENCODING = (nil : Integer)
+
+  def initialize(String pattern, (Integer | Boolean | nil) options = nil) => nil; end
 end
 
 class StdlibDumper < Object
