@@ -21,7 +21,8 @@ pub fn check<'env, 'object: 'env>(env: &'env Environment<'object>, method: Rc<Me
         MethodImpl::AttrWriter { .. } |
         MethodImpl::Untyped |
         MethodImpl::IntrinsicClassNew |
-        MethodImpl::IntrinsicProcCall =>
+        MethodImpl::IntrinsicProcCall |
+        MethodImpl::IntrinsicKernelRaise =>
             { /* pass */ }
     }
 }

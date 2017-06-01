@@ -260,6 +260,7 @@ impl<'ty, 'object> PartialEq for Locals<'ty, 'object> {
 enum Computation_<'ty, 'object: 'ty> {
     Result(&'ty Type<'ty, 'object>, Locals<'ty, 'object>),
     Return(&'ty Type<'ty, 'object>),
+    Raise(Locals<'ty, 'object>),
     Redo,
     Retry,
     Divergent(Computation<'ty, 'object>, Computation<'ty, 'object>),
@@ -281,6 +282,10 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
 
     pub fn return_(ty: &'ty Type<'ty, 'object>) -> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Return(ty)))
+    }
+
+    pub fn raise(locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        Computation(Rc::new(Computation_::Raise(locals)))
     }
 
     pub fn redo() -> Computation<'ty, 'object> {
@@ -310,6 +315,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(ref ty, ref locals) => f(ty.clone(), locals.clone()),
             Computation_::Return(_) |
+            Computation_::Raise(_) |
             Computation_::Redo |
             Computation_::Retry => self.clone(),
             Computation_::Divergent(ref a, ref b) => Self::divergent(a.seq(f), b.seq(f)),
@@ -321,6 +327,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
     {
         match *self.0 {
             Computation_::Result(ty, ref locals) => Self::result(ty, f(locals.clone())),
+            Computation_::Raise(ref locals) => Self::raise(f(locals.clone())),
             Computation_::Return(_) |
             Computation_::Redo |
             Computation_::Retry => self.clone(),
@@ -334,6 +341,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(ref ty, _) |
             Computation_::Return(ref ty) => f(ty.clone()),
+            Computation_::Raise(_) |
             Computation_::Redo |
             Computation_::Retry => {},
             Computation_::Divergent(ref a, ref b) => {
@@ -361,6 +369,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(..) |
             Computation_::Return(..) |
+            Computation_::Raise(..) |
             Computation_::Redo |
             Computation_::Retry => self.clone(),
 
@@ -397,6 +406,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         match *converged.0 {
             Computation_::Result(ty, ref locals) => Or::Left((ty, locals.clone())),
 
+            Computation_::Raise(..) |
             Computation_::Return(..) |
             Computation_::Redo |
             Computation_::Retry => Or::Right(converged.clone()),
@@ -440,6 +450,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             Computation_::Divergent(ref a, ref b) => {
                 a.predicate(loc, tyenv).append(b.predicate(loc, tyenv))
             }
+            Computation_::Raise(..) |
             Computation_::Return(..) |
             Computation_::Redo |
             Computation_::Retry => {
