@@ -26,14 +26,14 @@ using mapbox::util::variant;
 %param { ruby_parser::typedruby24& driver }
 %define api.namespace {ruby_parser::bison::typedruby24}
 %define api.prefix {typedruby24}
-%define api.value.type { class parser_value }
+%define api.value.type { union parser_value }
 %define api.token.constructor false
 %define parse.assert
 
 // mirrored in inc/ruby_parser/token.hh
 // if any of these token values are changed here, the header must be updated
 // as well.
-%token <as<ruby_parser::token_t>()>
+%token <token>
   kCLASS              1001
   kMODULE             1002
   kDEF                1003
@@ -179,7 +179,7 @@ using mapbox::util::variant;
   tRATIONAL_IMAGINARY 1143
   tFLOAT_IMAGINARY    1144
 
-%type <as<ruby_parser::foreign_ptr>()>
+%type <node>
   arg
   arg_rhs
   arg_value
@@ -255,7 +255,7 @@ using mapbox::util::variant;
   words
   xstring
 
-%type <as<ruby_parser::node_list>()>
+%type <list>
   aref_args
   args
   args_tail
@@ -305,7 +305,7 @@ using mapbox::util::variant;
   word_list
   xstring_contents
 
-%type <as<ruby_parser::token_t>()>
+%type <token>
   blkarg_mark
   call_op
   cname
@@ -329,11 +329,11 @@ using mapbox::util::variant;
   term
   then
 
-%type <as<ruby_parser::delimited_node_list>()>
+%type <delimited_list>
   opt_paren_args
   paren_args
 
-%type <as<ruby_parser::delimited_block>()>
+%type <delimited_block>
   brace_block
   brace_body
   cmd_brace_block
@@ -342,14 +342,14 @@ using mapbox::util::variant;
   lambda
   lambda_body
 
-%type <as<ruby_parser::node_with_token>()>
+%type <with_token>
   exc_var
   if_tail
   opt_else
   opt_ensure
   superclass
 
-%type <as<ruby_parser::case_body>()>
+%type <case_body>
   case_body
   cases
 
@@ -378,38 +378,17 @@ using mapbox::util::variant;
 
 %code requires {
 
-class parser_value {
-  variant<
-    ruby_parser::foreign_ptr,
-    ruby_parser::token_t,
-    ruby_parser::delimited_node_list,
-    ruby_parser::delimited_block,
-    ruby_parser::node_with_token,
-    ruby_parser::case_body,
-    ruby_parser::node_list,
-    ruby_parser::state_stack,
-    size_t,
-    bool>
-    _value;
-
-public:
-  parser_value() :
-  _value(mapbox::util::no_init()) {}
-
-  template<typename T>
-  T& as() {
-    if (!_value.is<T>()) {
-      _value.set<T>();
-    }
-    return _value.get<T>();
-  }
-
-  inline ruby_parser::state_stack &as_stack() {
-    return as<ruby_parser::state_stack>();
-  }
-
-  inline size_t &as_size() { return as<size_t>(); }
-  inline bool &as_bool() { return as<bool>(); }
+union parser_value {
+  ruby_parser::token *token;
+  ruby_parser::delimited_node_list *delimited_list;
+  ruby_parser::delimited_block *delimited_block;
+  ruby_parser::node_with_token *with_token;
+  ruby_parser::case_body *case_body;
+  ruby_parser::foreign_ptr node;
+  ruby_parser::node_list *list;
+  ruby_parser::state_stack *stack;
+  size_t size;
+  bool boolean;
 };
 
 }
@@ -429,7 +408,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 	auto token = driver.lex.advance();
 	int token_type = static_cast<int>(token->type());
 	assert(token_type >= 0);
-	lval->as<ruby_parser::token_t>() = token;
+	lval->token = token;
 	return token_type;
 }
 
@@ -444,25 +423,25 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
     top_compstmt: top_stmts opt_terms
                     {
-                      $$ = driver.build.compstmt(&$1);
+                      $$ = driver.build.compstmt($1);
                     }
 
        top_stmts: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | top_stmt
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | top_stmts terms top_stmt
                     {
-                      $1.push_back($3);
+                      $1->push_back($3);
                       $$ = $1;
                     }
                 | error top_stmt
                     {
-                      $$ = node_list($2);
+                      $$ = driver.pool.node_list.alloc($2);
                     }
 
         top_stmt: stmt
@@ -477,37 +456,39 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       auto &else_ = $3;
                       auto &ensure = $4;
 
-                      if (rescue_bodies.size() == 0 && else_) {
+                      if (rescue_bodies->size() == 0 && else_ != nullptr) {
                         driver.diagnostics.emplace_back(
-			  diagnostic_level::WARNING, "else without rescue is useless", else_.tok);
+			  diagnostic_level::WARNING, "else without rescue is useless", else_->tok);
                       }
 
-                      $$ = driver.build.begin_body($1, &rescue_bodies,
-						else_.tok, else_.nod,
-						ensure.tok, ensure.nod);
+                      $$ = driver.build.begin_body($1, rescue_bodies,
+						else_ ? else_->tok : nullptr,
+						else_ ? else_->nod : nullptr,
+						ensure ? ensure->tok : nullptr,
+						ensure ? ensure->nod : nullptr);
                     }
 
         compstmt: stmts opt_terms
                     {
-                      $$ = driver.build.compstmt(&$1);
+                      $$ = driver.build.compstmt($1);
                     }
 
            stmts: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | stmt_or_begin
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | stmts terms stmt_or_begin
                     {
-                      $1.push_back($3);
+                      $1->push_back($3);
                       $$ = $1;
                     }
                 | error stmt
                     {
-                      $$ = node_list($2);
+                      $$ = driver.pool.node_list.alloc($2);
                     }
 
    stmt_or_begin: stmt
@@ -542,7 +523,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | kUNDEF undef_list
                     {
-                      $$ = driver.build.undef_method($1, &$2);
+                      $$ = driver.build.undef_method($1, $2);
                     }
                 | stmt kIF_MOD expr_value
                     {
@@ -577,7 +558,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | lhs tEQL mrhs
                     {
-                      $$ = driver.build.assign($1, $2, driver.build.array(nullptr, &$3, nullptr));
+                      $$ = driver.build.assign($1, $2, driver.build.array(nullptr, $3, nullptr));
                     }
                 | mlhs tEQL mrhs_arg
                     {
@@ -599,7 +580,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN command_rhs
                     {
-                      $$ = driver.build.op_assign(driver.build.index($1, $2, &$3, $4), $5, $6);
+                      $$ = driver.build.op_assign(driver.build.index($1, $2, $3, $4), $5, $6);
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN command_rhs
                     {
@@ -659,14 +640,14 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
    block_command: block_call
                 | block_call dot_or_colon operation2 command_args
                     {
-                      $$ = driver.build.call_method($1, $2, $3, nullptr, &$4, nullptr);
+                      $$ = driver.build.call_method($1, $2, $3, nullptr, $4, nullptr);
                     }
 
  cmd_brace_block: tLBRACE_ARG brace_body tRCURLY
                     {
                       auto &block = $2;
-                      block.begin = $1;
-                      block.end = $3;
+                      block->begin = $1;
+                      block->end = $3;
                       $$ = block;
                     }
 
@@ -674,70 +655,70 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
          command: fcall command_args %prec tLOWEST
                     {
-                      $$ = driver.build.call_method(nullptr, nullptr, $1, nullptr, &$2, nullptr);
+                      $$ = driver.build.call_method(nullptr, nullptr, $1, nullptr, $2, nullptr);
                     }
                 | fcall command_args cmd_brace_block
                     {
-                      auto method_call = driver.build.call_method(nullptr, nullptr, $1, nullptr, &$2, nullptr);
+                      auto method_call = driver.build.call_method(nullptr, nullptr, $1, nullptr, $2, nullptr);
                       auto &delimited_block = $3;
                       $$ = driver.build.block(method_call,
-                                      delimited_block.begin,
-                                      delimited_block.args,
-                                      delimited_block.body,
-                                      delimited_block.end);
+                                      delimited_block->begin,
+                                      delimited_block->args,
+                                      delimited_block->body,
+                                      delimited_block->end);
                     }
                 | primary_value call_op operation2 command_args %prec tLOWEST
                     {
-                      $$ = driver.build.call_method($1, $2, $3, nullptr, &$4, nullptr);
+                      $$ = driver.build.call_method($1, $2, $3, nullptr, $4, nullptr);
                     }
                 | primary_value call_op operation2 command_args cmd_brace_block
                     {
-                      auto method_call = driver.build.call_method($1, $2, $3, nullptr, &$4, nullptr);
+                      auto method_call = driver.build.call_method($1, $2, $3, nullptr, $4, nullptr);
                       auto &delimited_block = $5;
                       $$ = driver.build.block(method_call,
-                                      delimited_block.begin,
-                                      delimited_block.args,
-                                      delimited_block.body,
-                                      delimited_block.end);
+                                      delimited_block->begin,
+                                      delimited_block->args,
+                                      delimited_block->body,
+                                      delimited_block->end);
                     }
                 | primary_value tCOLON2 operation2 command_args %prec tLOWEST
                     {
-                      $$ = driver.build.call_method($1, $2, $3, nullptr, &$4, nullptr);
+                      $$ = driver.build.call_method($1, $2, $3, nullptr, $4, nullptr);
                     }
                 | primary_value tCOLON2 operation2 command_args cmd_brace_block
                     {
-                      auto method_call = driver.build.call_method($1, $2, $3, nullptr, &$4, nullptr);
+                      auto method_call = driver.build.call_method($1, $2, $3, nullptr, $4, nullptr);
                       auto &delimited_block = $5;
                       $$ = driver.build.block(method_call,
-                                      delimited_block.begin,
-                                      delimited_block.args,
-                                      delimited_block.body,
-                                      delimited_block.end);
+                                      delimited_block->begin,
+                                      delimited_block->args,
+                                      delimited_block->body,
+                                      delimited_block->end);
                     }
                 | kSUPER command_args
                     {
-                      $$ = driver.build.keyword_super($1, nullptr, &$2, nullptr);
+                      $$ = driver.build.keyword_super($1, nullptr, $2, nullptr);
                     }
                 | kYIELD command_args
                     {
-                      $$ = driver.build.keyword_yield($1, nullptr, &$2, nullptr);
+                      $$ = driver.build.keyword_yield($1, nullptr, $2, nullptr);
                     }
                 | kRETURN call_args
                     {
-                      $$ = driver.build.keyword_return($1, nullptr, &$2, nullptr);
+                      $$ = driver.build.keyword_return($1, nullptr, $2, nullptr);
                     }
                 | kBREAK call_args
                     {
-                      $$ = driver.build.keyword_break($1, nullptr, &$2, nullptr);
+                      $$ = driver.build.keyword_break($1, nullptr, $2, nullptr);
                     }
                 | kNEXT call_args
                     {
-                      $$ = driver.build.keyword_next($1, nullptr, &$2, nullptr);
+                      $$ = driver.build.keyword_next($1, nullptr, $2, nullptr);
                     }
 
             mlhs: mlhs_basic
                     {
-                      $$ = driver.build.multi_lhs(nullptr, &$1, nullptr);
+                      $$ = driver.build.multi_lhs(nullptr, $1, nullptr);
                     }
                 | tLPAREN mlhs_inner rparen
                     {
@@ -746,7 +727,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
       mlhs_inner: mlhs_basic
                     {
-                      $$ = driver.build.multi_lhs(nullptr, &$1, nullptr);
+                      $$ = driver.build.multi_lhs(nullptr, $1, nullptr);
                     }
                 | tLPAREN mlhs_inner rparen
                     {
@@ -758,53 +739,53 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | mlhs_head mlhs_item
                     {
                       auto &list = $1;
-                      list.push_back($2);
+                      list->push_back($2);
                       $$ = list;
                     }
                 | mlhs_head tSTAR mlhs_node
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.splat($2, $3));
+                      list->push_back(driver.build.splat($2, $3));
                       $$ = list;
                     }
                 | mlhs_head tSTAR mlhs_node tCOMMA mlhs_post
                     {
                       auto &head = $1;
-                      head.push_back(driver.build.splat($2, $3));
-                      head.concat($5);
+                      head->push_back(driver.build.splat($2, $3));
+                      head->concat($5);
                       $$ = head;
                     }
                 | mlhs_head tSTAR
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.splat($2, nullptr));
+                      list->push_back(driver.build.splat($2, nullptr));
                       $$ = list;
                     }
                 | mlhs_head tSTAR tCOMMA mlhs_post
                     {
                       auto &head = $1;
-                      head.push_back(driver.build.splat($2, nullptr));
-                      head.concat($4);
+                      head->push_back(driver.build.splat($2, nullptr));
+                      head->concat($4);
                       $$ = head;
                     }
                 | tSTAR mlhs_node
                     {
-                      $$ = node_list(driver.build.splat($1, $2));
+                      $$ = driver.pool.node_list.alloc(driver.build.splat($1, $2));
                     }
                 | tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      node_list items(driver.build.splat($1, $2));
-                      items.concat($4);
+                      node_list *items = driver.pool.node_list.alloc(driver.build.splat($1, $2));
+                      items->concat($4);
                       $$ = items;
                     }
                 | tSTAR
                     {
-                      $$ = node_list(driver.build.splat($1, nullptr));
+                      $$ = driver.pool.node_list.alloc(driver.build.splat($1, nullptr));
                     }
                 | tSTAR tCOMMA mlhs_post
                     {
-                      node_list items(driver.build.splat($1, nullptr));
-                      items.concat($3);
+                      node_list *items = driver.pool.node_list.alloc(driver.build.splat($1, nullptr));
+                      items->concat($3);
                       $$ = items;
                     }
 
@@ -816,23 +797,23 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
        mlhs_head: mlhs_item tCOMMA
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | mlhs_head mlhs_item tCOMMA
                     {
                       auto &list = $1;
-                      list.push_back($2);
+                      list->push_back($2);
                       $$ = list;
                     }
 
        mlhs_post: mlhs_item
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | mlhs_post tCOMMA mlhs_item
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
 
@@ -846,7 +827,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = driver.build.index_asgn($1, $2, &$3, $4);
+                      $$ = driver.build.index_asgn($1, $2, $3, $4);
                     }
                 | primary_value call_op tIDENTIFIER
                     {
@@ -883,8 +864,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-
-                      $$ = driver.build.index_asgn($1, $2, &$3, $4);
+                      $$ = driver.build.index_asgn($1, $2, $3, $4);
                     }
                 | primary_value call_op tIDENTIFIER
                     {
@@ -929,7 +909,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | primary_value tCOLON2 tLBRACK2 tr_gendeclargs rbracket
                     {
-                      $$ = driver.build.tr_gendecl($1, $3, &$4, $5);
+                      $$ = driver.build.tr_gendecl($1, $3, $4, $5);
                     }
                 | primary_value tCOLON2 cname
                     {
@@ -951,7 +931,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
       undef_list: fitem
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | undef_list tCOMMA
                     {
@@ -960,7 +940,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     fitem
                     {
                       auto &list = $1;
-                      list.push_back($4);
+                      list->push_back($4);
                       $$ = list;
                     }
 
@@ -990,7 +970,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN arg_rhs
                     {
-                      $$ = driver.build.op_assign(driver.build.index($1, $2, &$3, $4), $5, $6);
+                      $$ = driver.build.op_assign(driver.build.index($1, $2, $3, $4), $5, $6);
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN arg_rhs
                     {
@@ -1155,12 +1135,12 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | args tCOMMA assocs trailer
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.associate(nullptr, &$3, nullptr));
+                      list->push_back(driver.build.associate(nullptr, $3, nullptr));
                       $$ = list;
                     }
                 | assocs trailer
                     {
-                      $$ = node_list(driver.build.associate(nullptr, &$1, nullptr));
+                      $$ = driver.pool.node_list.alloc(driver.build.associate(nullptr, $1, nullptr));
                     }
 
          arg_rhs: arg %prec tOP_ASGN
@@ -1172,67 +1152,67 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
       paren_args: tLPAREN2 opt_call_args rparen
                     {
-                      $$ = delimited_node_list($1, $2, $3);
+                      $$ = driver.pool.delimited_node_list.alloc($1, $2, $3);
                     }
 
   opt_paren_args: // nothing
                     {
-                      $$ = delimited_node_list(nullptr, node_list(), nullptr);
+                      $$ = driver.pool.delimited_node_list.alloc(nullptr, driver.pool.node_list.alloc(), nullptr);
                     }
                 | paren_args
 
    opt_call_args: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | call_args
                 | args tCOMMA
                 | args tCOMMA assocs tCOMMA
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.associate(nullptr, &$3, nullptr));
+                      list->push_back(driver.build.associate(nullptr, $3, nullptr));
                       $$ = list;
                     }
                 | assocs tCOMMA
                     {
-                      $$ = node_list(driver.build.associate(nullptr, &$1, nullptr));
+                      $$ = driver.pool.node_list.alloc(driver.build.associate(nullptr, $1, nullptr));
                     }
 
        call_args: command
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | args opt_block_arg
                     {
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 | assocs opt_block_arg
                     {
-                      node_list args(driver.build.associate(nullptr, &$1, nullptr));
-                      args.concat($2);
+                      node_list *args = driver.pool.node_list.alloc(driver.build.associate(nullptr, $1, nullptr));
+                      args->concat($2);
                       $$ = args;
                     }
                 | args tCOMMA assocs opt_block_arg
                     {
                       auto &args = $1;
-                      args.push_back(driver.build.associate(nullptr, &$3, nullptr));
-                      args.concat($4);
+                      args->push_back(driver.build.associate(nullptr, $3, nullptr));
+                      args->concat($4);
                       $$ = args;
                     }
                 | block_arg
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
 
     command_args:   {
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.push(true);
                     }
                   call_args
                     {
-                      driver.lex.cmdarg = $<as_stack()>1;
+                      driver.replace_stack($<stack>1);
                       $$ = $2;
                     }
 
@@ -1243,55 +1223,55 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
    opt_block_arg: tCOMMA block_arg
                     {
-                      $$ = node_list($2);
+                      $$ = driver.pool.node_list.alloc($2);
                     }
                 | // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
 
             args: arg_value
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | tSTAR arg_value
                     {
-                      $$ = node_list(driver.build.splat($1, $2));
+                      $$ = driver.pool.node_list.alloc(driver.build.splat($1, $2));
                     }
                 | args tCOMMA arg_value
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
                 | args tCOMMA tSTAR arg_value
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.splat($3, $4));
+                      list->push_back(driver.build.splat($3, $4));
                       $$ = list;
                     }
 
         mrhs_arg: mrhs
                     {
-                      $$ = driver.build.array(nullptr, &$1, nullptr);
+                      $$ = driver.build.array(nullptr, $1, nullptr);
                     }
                 | arg_value
 
             mrhs: args tCOMMA arg_value
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
                 | args tCOMMA tSTAR arg_value
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.splat($3, $4));
+                      list->push_back(driver.build.splat($3, $4));
                       $$ = list;
                     }
                 | tSTAR arg_value
                     {
-                      $$ = node_list(driver.build.splat($1, $2));
+                      $$ = driver.pool.node_list.alloc(driver.build.splat($1, $2));
                     }
 
          primary: literal
@@ -1310,17 +1290,17 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | kBEGIN
                     {
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                     bodystmt kEND
                     {
-                      driver.lex.cmdarg = $<as_stack()>2;
+                      driver.replace_stack($<stack>2);
                       $$ = driver.build.begin_keyword($1, $3, $4);
                     }
                 | tLPAREN_ARG
                     {
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                     stmt
@@ -1329,7 +1309,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                     rparen
                     {
-                      driver.lex.cmdarg = $<as_stack()>2;
+                      driver.replace_stack($<stack>2);
                       $$ = driver.build.begin($1, $3, $5);
                     }
                 | tLPAREN_ARG
@@ -1358,11 +1338,11 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | tLBRACK aref_args tRBRACK
                     {
-                      $$ = driver.build.array($1, &$2, $3);
+                      $$ = driver.build.array($1, $2, $3);
                     }
                 | tLBRACE assoc_list tRCURLY
                     {
-                      $$ = driver.build.associate($1, &$2, $3);
+                      $$ = driver.build.associate($1, $2, $3);
                     }
                 | kRETURN
                     {
@@ -1370,7 +1350,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | kYIELD tLPAREN2 call_args rparen
                     {
-                      $$ = driver.build.keyword_yield($1, $2, &$3, $4);
+                      $$ = driver.build.keyword_yield($1, $2, $3, $4);
                     }
                 | kYIELD tLPAREN2 rparen
                     {
@@ -1399,42 +1379,44 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       auto &delimited_block = $2;
 
                       $$ = driver.build.block(method_call,
-                        delimited_block.begin,
-                        delimited_block.args,
-                        delimited_block.body,
-                        delimited_block.end);
+                        delimited_block->begin,
+                        delimited_block->args,
+                        delimited_block->body,
+                        delimited_block->end);
                     }
                 | method_call
                 | method_call brace_block
                     {
                       auto &delimited_block = $2;
                       $$ = driver.build.block($1,
-                        delimited_block.begin,
-                        delimited_block.args,
-                        delimited_block.body,
-                        delimited_block.end);
+                        delimited_block->begin,
+                        delimited_block->args,
+                        delimited_block->body,
+                        delimited_block->end);
                     }
                 | tLAMBDA lambda
                     {
                       auto lambda_call = driver.build.call_lambda($1);
                       auto &lambda = $2;
                       $$ = driver.build.block(lambda_call,
-                        lambda.begin,
-                        lambda.args,
-                        lambda.body,
-                        lambda.end);
+                        lambda->begin,
+                        lambda->args,
+                        lambda->body,
+                        lambda->end);
                     }
                 | kIF expr_value then compstmt if_tail kEND
                     {
                       auto &else_ = $5;
                       $$ = driver.build.condition($1, $2, $3, $4,
-						else_.tok, else_.nod, $6);
+			else_ ? else_->tok : nullptr,
+			else_ ? else_->nod : nullptr, $6);
                     }
                 | kUNLESS expr_value then compstmt opt_else kEND
                     {
                       auto &else_ = $5;
                       $$ = driver.build.condition($1, $2, $3,
-                        else_.nod, else_.tok, $4, $6);
+                        else_ ? else_->nod : nullptr,
+			else_ ? else_->tok : nullptr, $4, $6);
                     }
                 | kWHILE
                     {
@@ -1463,18 +1445,20 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | kCASE expr_value opt_terms case_body kEND
                     {
                       auto &case_body = $4;
-                      auto &else_ = case_body.els;
+                      auto &else_ = case_body->els;
                       $$ = driver.build.case_($1, $2,
-                        &case_body.whens,
-                        else_.tok, else_.nod, $5);
+                        &case_body->whens,
+                        else_ ? else_->tok : nullptr,
+			else_ ? else_->nod : nullptr, $5);
                     }
                 | kCASE opt_terms case_body kEND
                     {
                       auto &case_body = $3;
-                      auto &else_ = case_body.els;
+                      auto &else_ = case_body->els;
                       $$ = driver.build.case_($1, nullptr,
-                        &case_body.whens,
-                        else_.tok, else_.nod, $4);
+                        &case_body->whens,
+                        else_ ? else_->tok : nullptr,
+			else_ ? else_->nod : nullptr, $4);
                     }
                 | kFOR for_var kIN
                     {
@@ -1491,7 +1475,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | kCLASS cpath superclass
                     {
                       driver.lex.extend_static();
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                     bodystmt kEND
@@ -1506,34 +1490,34 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       }
 
                       auto &superclass_ = $3;
-                      auto lt_t       = superclass_ ? superclass_.tok : nullptr;
-                      auto superclass = superclass_ ? superclass_.nod : nullptr;
+                      auto lt_t       = superclass_ ? superclass_->tok : nullptr;
+                      auto superclass = superclass_ ? superclass_->nod : nullptr;
 
                       $$ = driver.build.def_class(class_tok, $2, lt_t, superclass, $5, end_tok);
-                      driver.lex.cmdarg = $<as_stack()>4;
+                      driver.replace_stack($<stack>4);
                       driver.lex.unextend();
                     }
                 | kCLASS tLSHFT expr term
                     {
-                      $<as_size()>$ = driver.def_level;
+                      $<size>$ = driver.def_level;
                       driver.def_level = 0;
                     }
                     {
                       driver.lex.extend_static();
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                     bodystmt kEND
                     {
                       $$ = driver.build.def_sclass($1, $2, $3, $7, $8);
-                      driver.def_level = $<as_size()>5;
-                      driver.lex.cmdarg = $<as_stack()>6;
+                      driver.def_level = $<size>5;
+                      driver.replace_stack($<stack>6);
                       driver.lex.unextend();
                     }
                 | kMODULE cpath
                     {
                       driver.lex.extend_static();
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                     bodystmt kEND
@@ -1548,20 +1532,20 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       }
 
                       $$ = driver.build.def_module(module_tok, $2, $4, end_tok);
-                      driver.lex.cmdarg = $<as_stack()>3;
+                      driver.replace_stack($<stack>3);
                       driver.lex.unextend();
                     }
                 | kDEF fname
                     {
                       driver.def_level++;
                       driver.lex.extend_static();
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                     f_arglist bodystmt kEND
                     {
                       $$ = driver.build.def_method($1, $2, $4, $5, $6);
-                      driver.lex.cmdarg = $<as_stack()>3;
+                      driver.replace_stack($<stack>3);
                       driver.lex.unextend();
                       driver.def_level--;
                     }
@@ -1573,13 +1557,13 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     {
                       driver.def_level++;
                       driver.lex.extend_static();
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                     f_arglist bodystmt kEND
                     {
                       $$ = driver.build.def_singleton($1, $2, $3, $5, $7, $8, $9);
-                      driver.lex.cmdarg = $<as_stack()>6;
+                      driver.replace_stack($<stack>6);
                       driver.lex.unextend();
                       driver.def_level--;
                     }
@@ -1617,20 +1601,21 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     {
                       auto elsif_t = $1;
                       auto &else_ = $5;
-                      $$ = node_with_token(elsif_t,
-                      driver.build.condition(
-                          elsif_t, $2, $3, $4,
-                          else_.tok, else_.nod, nullptr)
+                      $$ = driver.pool.node_with_token.alloc(elsif_t,
+			driver.build.condition(
+			    elsif_t, $2, $3, $4,
+			    else_ ? else_->tok : nullptr,
+			    else_ ? else_->nod : nullptr, nullptr)
                        );
                     }
 
         opt_else: none
                     {
-                      $$ = node_with_token();
+                      $$ = nullptr;
                     }
                 | kELSE compstmt
                     {
-                      $$ = node_with_token($1, $2);
+                      $$ = driver.pool.node_with_token.alloc($1, $2);
                     }
 
          for_var: lhs
@@ -1642,17 +1627,17 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | tLPAREN f_margs rparen
                     {
-                      $$ = driver.build.multi_lhs($1, &$2, $3);
+                      $$ = driver.build.multi_lhs($1, $2, $3);
                     }
 
      f_marg_list: f_marg
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | f_marg_list tCOMMA f_marg
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
 
@@ -1660,67 +1645,67 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | f_marg_list tCOMMA tSTAR f_norm_arg
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.restarg($3, $4));
+                      list->push_back(driver.build.restarg($3, $4));
                       $$ = list;
                     }
                 | f_marg_list tCOMMA tSTAR f_norm_arg tCOMMA f_marg_list
                     {
                       auto &args = $1;
-                      args.push_back(driver.build.restarg($3, $4));
-                      args.concat($6);
+                      args->push_back(driver.build.restarg($3, $4));
+                      args->concat($6);
                       $$ = args;
                     }
                 | f_marg_list tCOMMA tSTAR
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.restarg($3, nullptr));
+                      list->push_back(driver.build.restarg($3, nullptr));
                       $$ = list;
                     }
                 | f_marg_list tCOMMA tSTAR            tCOMMA f_marg_list
                     {
                       auto &args = $1;
-                      args.push_back(driver.build.restarg($3, nullptr));
-                      args.concat($5);
+                      args->push_back(driver.build.restarg($3, nullptr));
+                      args->concat($5);
                       $$ = args;
                     }
                 |                    tSTAR f_norm_arg
                     {
-                      $$ = node_list(driver.build.restarg($1, $2));
+                      $$ = driver.pool.node_list.alloc(driver.build.restarg($1, $2));
                     }
                 |                    tSTAR f_norm_arg tCOMMA f_marg_list
                     {
                       auto &args = $4;
-                      args.push_front(driver.build.restarg($1, $2));
+                      args->push_front(driver.build.restarg($1, $2));
                       $$ = args;
                     }
                 |                    tSTAR
                     {
-                      $$ = node_list(driver.build.restarg($1, nullptr));
+                      $$ = driver.pool.node_list.alloc(driver.build.restarg($1, nullptr));
                     }
                 |                    tSTAR tCOMMA f_marg_list
                     {
                       auto &args = $3;
-                      args.push_front(driver.build.restarg($1, nullptr));
+                      args->push_front(driver.build.restarg($1, nullptr));
                       $$ = args;
                     }
 
  block_args_tail: f_block_kwarg tCOMMA f_kwrest opt_f_block_arg
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 | f_block_kwarg opt_f_block_arg
                     {
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 | f_kwrest opt_f_block_arg
                     {
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 | f_block_arg
@@ -1735,55 +1720,55 @@ opt_block_args_tail:
                     }
                 | // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
 
      block_param: f_arg tCOMMA f_block_optarg tCOMMA f_rest_arg              opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($6);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($6);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_block_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($7);
-                      args.concat($8);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($7);
+                      args->concat($8);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_block_optarg                                opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_block_optarg tCOMMA                   f_arg opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($6);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($6);
                       $$ = args;
                     }
                 | f_arg tCOMMA                       f_rest_arg              opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 | f_arg tCOMMA
                 | f_arg tCOMMA                       f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($6);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($6);
                       $$ = args;
                     }
                 | f_arg                                                      opt_block_args_tail
@@ -1791,52 +1776,52 @@ opt_block_args_tail:
                       auto &args = $1;
                       auto &block_args_tail = $2;
 
-                      if (block_args_tail.size() == 0 && args.size() == 1) {
-                        $$ = node_list(driver.build.procarg0(args.at(0)));
+                      if (block_args_tail->size() == 0 && args->size() == 1) {
+                        $$ = driver.pool.node_list.alloc(driver.build.procarg0(args->at(0)));
                       } else {
-                        args.concat(block_args_tail);
+                        args->concat(block_args_tail);
                         $$ = args;
                       }
                     }
                 | f_block_optarg tCOMMA              f_rest_arg              opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 | f_block_optarg tCOMMA              f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($6);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($6);
                       $$ = args;
                     }
                 | f_block_optarg                                             opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 | f_block_optarg tCOMMA                                f_arg opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 |                                    f_rest_arg              opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 |                                    f_rest_arg tCOMMA f_arg opt_block_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 |                                                                block_args_tail
@@ -1863,7 +1848,7 @@ opt_block_args_tail:
 
  block_param_def: tPIPE opt_bv_decl tPIPE
                     {
-                      $$ = driver.build.args($1, &$2, $3, true);
+                      $$ = driver.build.args($1, $2, $3, true);
                     }
                 | tOROP
                     {
@@ -1872,13 +1857,13 @@ opt_block_args_tail:
                 | tPIPE block_param opt_bv_decl tPIPE
                     {
                       auto &params = $2;
-                      params.concat($3);
-                      $$ = driver.build.args($1, &params, $4, true);
+                      params->concat($3);
+                      $$ = driver.build.args($1, params, $4, true);
                     }
 
      opt_bv_decl: opt_nl
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | opt_nl tSEMI bv_decls opt_nl
                     {
@@ -1887,12 +1872,12 @@ opt_block_args_tail:
 
         bv_decls: bvar
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | bv_decls tCOMMA bvar
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
 
@@ -1912,16 +1897,16 @@ opt_block_args_tail:
                     }
                   f_larglist
                     {
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                   lambda_body
                     {
-                      driver.lex.cmdarg = $<as_stack()>3;
+                      driver.replace_stack($<stack>3);
                       driver.lex.cmdarg.lexpop();
 
                       auto &delimited_block = $4;
-                      delimited_block.args = $2;
+                      delimited_block->args = $2;
                       $$ = delimited_block;
                       driver.lex.unextend();
                     }
@@ -1929,28 +1914,28 @@ opt_block_args_tail:
      f_larglist: tLPAREN2 f_args opt_bv_decl tRPAREN
                     {
                       auto &args = $2;
-                      args.concat($3);
-                      $$ = driver.build.args($1, &args, $4, true);
+                      args->concat($3);
+                      $$ = driver.build.args($1, args, $4, true);
                     }
                 | f_args
                     {
-                      $$ = driver.build.args(nullptr, &$1, nullptr, true);
+                      $$ = driver.build.args(nullptr, $1, nullptr, true);
                     }
 
      lambda_body: tLAMBEG compstmt tRCURLY
                     {
-                      $$ = delimited_block($1, nullptr, $2, $3);
+                      $$ = driver.pool.delimited_block.alloc($1, nullptr, $2, $3);
                     }
                 | kDO_LAMBDA compstmt kEND
                     {
-                      $$ = delimited_block($1, nullptr, $2, $3);
+                      $$ = driver.pool.delimited_block.alloc($1, nullptr, $2, $3);
                     }
 
         do_block: kDO_BLOCK do_body kEND
                     {
                       auto &delimited_block = $2;
-                      delimited_block.begin = $1;
-                      delimited_block.end = $3;
+                      delimited_block->begin = $1;
+                      delimited_block->end = $3;
                       $$ = delimited_block;
                     }
 
@@ -1958,64 +1943,64 @@ opt_block_args_tail:
                     {
                       auto &delimited_block = $2;
                       $$ = driver.build.block($1,
-                          delimited_block.begin,
-                          delimited_block.args,
-                          delimited_block.body,
-                          delimited_block.end
+                          delimited_block->begin,
+                          delimited_block->args,
+                          delimited_block->body,
+                          delimited_block->end
                         );
                     }
                 | block_call dot_or_colon operation2 opt_paren_args
                     {
                       auto &delimited = $4;
                       $$ = driver.build.call_method($1, $2, $3,
-                                  delimited.begin,
-                                  &delimited.inner,
-                                  delimited.end);
+                                  delimited->begin,
+                                  delimited->inner,
+                                  delimited->end);
                     }
                 | block_call dot_or_colon operation2 opt_paren_args brace_block
                     {
                       auto &delimited = $4;
                       auto method_call = driver.build.call_method($1, $2, $3,
-                          delimited.begin,
-                          &delimited.inner,
-                          delimited.end);
+                          delimited->begin,
+                          delimited->inner,
+                          delimited->end);
                       auto &block = $5;
                       $$ = driver.build.block(method_call,
-                          block.begin,
-                          block.args,
-                          block.body,
-                          block.end);
+                          block->begin,
+                          block->args,
+                          block->body,
+                          block->end);
                     }
                 | block_call dot_or_colon operation2 command_args do_block
                     {
-                      auto method_call = driver.build.call_method($1, $2, $3, nullptr, &$4, nullptr);
+                      auto method_call = driver.build.call_method($1, $2, $3, nullptr, $4, nullptr);
                       auto &block = $5;
-                      $$ = driver.build.block(method_call, block.begin, block.args, &block.body, block.end);
+                      $$ = driver.build.block(method_call, block->begin, block->args, block->body, block->end);
                     }
 
      method_call: fcall paren_args
                     {
                       auto &delimited = $2;
                       $$ = driver.build.call_method(nullptr, nullptr, $1,
-                        delimited.begin,
-                        &delimited.inner,
-                        delimited.end);
+                        delimited->begin,
+                        delimited->inner,
+                        delimited->end);
                     }
                 | primary_value call_op operation2 opt_paren_args
                     {
                       auto &delimited = $4;
                       $$ = driver.build.call_method($1, $2, $3,
-                          delimited.begin,
-                          &delimited.inner,
-                          delimited.end);
+                          delimited->begin,
+                          delimited->inner,
+                          delimited->end);
                     }
                 | primary_value tCOLON2 operation2 paren_args
                     {
                       auto &delimited = $4;
                       $$ = driver.build.call_method($1, $2, $3,
-                          delimited.begin,
-                          &delimited.inner,
-                          delimited.end);
+                          delimited->begin,
+                          delimited->inner,
+                          delimited->end);
                     }
                 | primary_value tCOLON2 operation3
                     {
@@ -2025,25 +2010,25 @@ opt_block_args_tail:
                     {
                       auto &delimited = $3;
                       $$ = driver.build.call_method($1, $2, nullptr,
-                          delimited.begin,
-                          &delimited.inner,
-                          delimited.end);
+                          delimited->begin,
+                          delimited->inner,
+                          delimited->end);
                     }
                 | primary_value tCOLON2 paren_args
                     {
                       auto &delimited = $3;
                       $$ = driver.build.call_method($1, $2, nullptr,
-                          delimited.begin,
-                          &delimited.inner,
-                          delimited.end);
+                          delimited->begin,
+                          delimited->inner,
+                          delimited->end);
                     }
                 | kSUPER paren_args
                     {
                       auto &delimited = $2;
                       $$ = driver.build.keyword_super($1,
-                          delimited.begin,
-                          &delimited.inner,
-                          delimited.end);
+                          delimited->begin,
+                          delimited->inner,
+                          delimited->end);
                     }
                 | kSUPER
                     {
@@ -2051,21 +2036,21 @@ opt_block_args_tail:
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      $$ = driver.build.index($1, $2, &$3, $4);
+                      $$ = driver.build.index($1, $2, $3, $4);
                     }
 
      brace_block: tLCURLY brace_body tRCURLY
                     {
                       auto &block = $2;
-                      block.begin = $1;
-                      block.end = $3;
+                      block->begin = $1;
+                      block->end = $3;
                       $$ = block;
                     }
                 | kDO do_body kEND
                     {
                       auto &block = $2;
-                      block.begin = $1;
-                      block.end = $3;
+                      block->begin = $1;
+                      block->end = $3;
                       $$ = block;
                     }
 
@@ -2073,15 +2058,15 @@ opt_block_args_tail:
                       driver.lex.extend_dynamic();
                     }
                     {
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                     opt_block_param compstmt
                     {
-                      $$ = delimited_block(nullptr, $3, $4, nullptr);
+                      $$ = driver.pool.delimited_block.alloc(nullptr, $3, $4, nullptr);
 
                       driver.lex.unextend();
-                      driver.lex.cmdarg = $<as_stack()>2;
+                      driver.replace_stack($<stack>2);
                       driver.lex.cmdarg.pop();
                     }
 
@@ -2089,28 +2074,28 @@ opt_block_args_tail:
                       driver.lex.extend_dynamic();
                     }
                     {
-                      $<as_stack()>$ = driver.lex.cmdarg;
+                      $<stack>$ = driver.copy_stack();
                       driver.lex.cmdarg.clear();
                     }
                     opt_block_param compstmt
                     {
-                      $$ = delimited_block(nullptr, $3, $4, nullptr);
+                      $$ = driver.pool.delimited_block.alloc(nullptr, $3, $4, nullptr);
                       driver.lex.unextend();
 
-                      driver.lex.cmdarg = $<as_stack()>2;
+                      driver.replace_stack($<stack>2);
                       driver.lex.cmdarg.pop();
                     }
 
        case_body: kWHEN args then compstmt cases
                     {
                       auto &cases = $5;
-                      cases.whens.push_front(driver.build.when($1, &$2, $3, $4));
+                      cases->whens.push_front(driver.build.when($1, $2, $3, $4));
                       $$ = cases;
                     }
 
            cases: opt_else
                     {
-                      $$ = case_body($1);
+                      $$ = driver.pool.case_body.alloc($1);
                     }
                 | case_body
 
@@ -2119,44 +2104,46 @@ opt_block_args_tail:
                       auto &exc_var = $3;
                       auto &exc_list_ = $2;
                       auto exc_list = exc_list_
-                        ? driver.build.array(nullptr, &exc_list_, nullptr)
+                        ? driver.build.array(nullptr, exc_list_, nullptr)
                         : nullptr;
                       auto &rescues = $6;
 
-                      rescues.push_front(driver.build.rescue_body($1,
-                          exc_list, exc_var.tok, exc_var.nod, $4, $5));
+                      rescues->push_front(driver.build.rescue_body($1,
+                          exc_list,
+			  exc_var ? exc_var->tok : nullptr,
+			  exc_var ? exc_var->nod : nullptr,
+			  $4, $5));
 
                       $$ = rescues;
                     }
                 |
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
 
         exc_list: arg_value
                     {
-
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | mrhs
                 | list_none
 
          exc_var: tASSOC lhs
                     {
-                      $$ = node_with_token($1, $2);
+                      $$ = driver.pool.node_with_token.alloc($1, $2);
                     }
                 | // nothing
                     {
-                      $$ = node_with_token();
+                      $$ = nullptr;
                     }
 
       opt_ensure: kENSURE compstmt
                     {
-                      $$ = node_with_token($1, $2);
+                      $$ = driver.pool.node_with_token.alloc($1, $2);
                     }
                 | // nothing
                     {
-                      $$ = node_with_token();
+                      $$ = nullptr;
                     }
 
          literal: numeric
@@ -2165,23 +2152,23 @@ opt_block_args_tail:
 
          strings: string
                     {
-                      $$ = driver.build.string_compose(nullptr, &$1, nullptr);
+                      $$ = driver.build.string_compose(nullptr, $1, nullptr);
                     }
 
           string: string1
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | string string1
                     {
                       auto &list = $1;
-                      list.push_back($2);
+                      list->push_back($2);
                       $$ = list;
                     }
 
          string1: tSTRING_BEG string_contents tSTRING_END
                     {
-                      auto str = driver.build.string_compose($1, &$2, $3);
+                      auto str = driver.build.string_compose($1, $2, $3);
                       $$ = driver.build.dedent_string(str, driver.lex.dedent_level().value_or(0));
                     }
                 | tSTRING
@@ -2196,121 +2183,121 @@ opt_block_args_tail:
 
          xstring: tXSTRING_BEG xstring_contents tSTRING_END
                     {
-                      auto xstr = driver.build.xstring_compose($1, &$2, $3);
+                      auto xstr = driver.build.xstring_compose($1, $2, $3);
                       $$ = driver.build.dedent_string(xstr, driver.lex.dedent_level().value_or(0));
                     }
 
           regexp: tREGEXP_BEG regexp_contents tSTRING_END tREGEXP_OPT
                     {
                       auto opts = driver.build.regexp_options($4);
-                      $$ = driver.build.regexp_compose($1, &$2, $3, opts);
+                      $$ = driver.build.regexp_compose($1, $2, $3, opts);
                     }
 
            words: tWORDS_BEG word_list tSTRING_END
                     {
-                      $$ = driver.build.words_compose($1, &$2, $3);
+                      $$ = driver.build.words_compose($1, $2, $3);
                     }
 
        word_list: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | word_list word tSPACE
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.word(&$2));
+                      list->push_back(driver.build.word($2));
                       $$ = list;
                     }
 
             word: string_content
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | word string_content
                     {
                       auto &list = $1;
-                      list.push_back($2);
+                      list->push_back($2);
                       $$ = list;
                     }
 
          symbols: tSYMBOLS_BEG symbol_list tSTRING_END
                     {
-                      $$ = driver.build.symbols_compose($1, &$2, $3);
+                      $$ = driver.build.symbols_compose($1, $2, $3);
                     }
 
      symbol_list: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | symbol_list word tSPACE
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.word(&$2));
+                      list->push_back(driver.build.word($2));
                       $$ = list;
                     }
 
           qwords: tQWORDS_BEG qword_list tSTRING_END
                     {
-                      $$ = driver.build.words_compose($1, &$2, $3);
+                      $$ = driver.build.words_compose($1, $2, $3);
                     }
 
         qsymbols: tQSYMBOLS_BEG qsym_list tSTRING_END
                     {
-                      $$ = driver.build.symbols_compose($1, &$2, $3);
+                      $$ = driver.build.symbols_compose($1, $2, $3);
                     }
 
       qword_list: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | qword_list tSTRING_CONTENT tSPACE
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.string_internal($2));
+                      list->push_back(driver.build.string_internal($2));
                       $$ = list;
                     }
 
        qsym_list: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | qsym_list tSTRING_CONTENT tSPACE
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.symbol_internal($2));
+                      list->push_back(driver.build.symbol_internal($2));
                       $$ = list;
                     }
 
  string_contents: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | string_contents string_content
                     {
                       auto &list = $1;
-                      list.push_back($2);
+                      list->push_back($2);
                       $$ = list;
                     }
 
 xstring_contents: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | xstring_contents string_content
                     {
                       auto &list = $1;
-                      list.push_back($2);
+                      list->push_back($2);
                       $$ = list;
                     }
 
 regexp_contents: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | regexp_contents string_content
                     {
                       auto &list = $1;
-                      list.push_back($2);
+                      list->push_back($2);
                       $$ = list;
                     }
 
@@ -2358,7 +2345,7 @@ regexp_contents: // nothing
             dsym: tSYMBEG xstring_contents tSTRING_END
                     {
                       driver.lex.set_state_expr_endarg();
-                      $$ = driver.build.symbol_compose($1, &$2, $3);
+                      $$ = driver.build.symbol_compose($1, $2, $3);
                     }
 
          numeric: simple_numeric
@@ -2484,16 +2471,16 @@ keyword_variable: kNIL
                     }
                     expr_value term
                     {
-                      $$ = node_with_token($1, $3);
+                      $$ = driver.pool.node_with_token.alloc($1, $3);
                     }
                 | // nothing
                     {
-                      $$ = node_with_token();
+                      $$ = nullptr;
                     }
 
 tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
-                      $$ = driver.build.tr_genargs($1, &$2, $3);
+                      $$ = driver.build.tr_genargs($1, $2, $3);
                     }
                 | // nothing
                     {
@@ -2507,7 +2494,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                   tr_returnsig
                     {
                       auto genargs = $1;
-                      auto args = driver.build.args($2, &$3, $4, true);
+                      auto args = driver.build.args($2, $3, $4, true);
                       auto returnsig = $6;
 
                       if (genargs || returnsig) {
@@ -2518,15 +2505,15 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tr_methodgenargs
                     {
-                      $<as_bool()>$ = driver.lex.in_kwarg;
+                      $<boolean>$ = driver.lex.in_kwarg;
                       driver.lex.in_kwarg = true;
                     }
                   f_args tr_returnsig term
                     {
-                      driver.lex.in_kwarg = $<as_bool()>2;
+                      driver.lex.in_kwarg = $<boolean>2;
 
                       auto genargs = $1;
-                      auto args = driver.build.args(nullptr, &$3, nullptr, true);
+                      auto args = driver.build.args(nullptr, $3, nullptr, true);
                       auto returnsig = $4;
 
                       if (genargs || returnsig) {
@@ -2539,20 +2526,20 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
        args_tail: f_kwarg tCOMMA f_kwrest opt_f_block_arg
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 | f_kwarg opt_f_block_arg
                     {
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 | f_kwrest opt_f_block_arg
                     {
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 | f_block_arg
@@ -2566,102 +2553,102 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
 
           f_args: f_arg tCOMMA f_optarg tCOMMA f_rest_arg              opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($6);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($6);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($7);
-                      args.concat($8);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($7);
+                      args->concat($8);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_optarg                                opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 | f_arg tCOMMA f_optarg tCOMMA                   f_arg opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($6);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($6);
                       $$ = args;
                     }
                 | f_arg tCOMMA                 f_rest_arg              opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 | f_arg tCOMMA                 f_rest_arg tCOMMA f_arg opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($6);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($6);
                       $$ = args;
                     }
                 | f_arg                                                opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 |              f_optarg tCOMMA f_rest_arg              opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 |              f_optarg tCOMMA f_rest_arg tCOMMA f_arg opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($5);
-                      args.concat($6);
+                      args->concat($3);
+                      args->concat($5);
+                      args->concat($6);
                       $$ = args;
                     }
                 |              f_optarg                                opt_args_tail
                     {
 
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 |              f_optarg tCOMMA                   f_arg opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 |                              f_rest_arg              opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($2);
+                      args->concat($2);
                       $$ = args;
                     }
                 |                              f_rest_arg tCOMMA f_arg opt_args_tail
                     {
                       auto &args = $1;
-                      args.concat($3);
-                      args.concat($4);
+                      args->concat($3);
+                      args->concat($4);
                       $$ = args;
                     }
                 |                                                          args_tail
@@ -2670,7 +2657,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
 
        f_bad_arg: tIVAR
@@ -2718,17 +2705,17 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tLPAREN f_margs rparen
                     {
-                      $$ = driver.build.multi_lhs($1, &$2, $3);
+                      $$ = driver.build.multi_lhs($1, $2, $3);
                     }
 
            f_arg: f_arg_item
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | f_arg tCOMMA f_arg_item
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
 
@@ -2786,23 +2773,23 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
    f_block_kwarg: f_block_kw
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | f_block_kwarg tCOMMA f_block_kw
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
 
          f_kwarg: f_kw
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | f_kwarg tCOMMA f_kw
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
 
@@ -2812,11 +2799,11 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       auto ident = $2;
                       driver.lex.declare(ident->string());
-                      $$ = node_list(driver.build.kwrestarg($1, ident));
+                      $$ = driver.pool.node_list.alloc(driver.build.kwrestarg($1, ident));
                     }
                 | kwrest_mark
                     {
-                      $$ = node_list(driver.build.kwrestarg($1, nullptr));
+                      $$ = driver.pool.node_list.alloc(driver.build.kwrestarg($1, nullptr));
                     }
 
            f_opt: tr_argsig f_arg_asgn tEQL arg_value
@@ -2843,23 +2830,23 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
   f_block_optarg: f_block_opt
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | f_block_optarg tCOMMA f_block_opt
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
 
         f_optarg: f_opt
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | f_optarg tCOMMA f_opt
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
 
@@ -2878,7 +2865,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         restarg = driver.build.typed_arg(argsig, restarg);
                       }
 
-                      $$ = node_list(restarg);
+                      $$ = driver.pool.node_list.alloc(restarg);
                     }
                 | tr_argsig restarg_mark
                     {
@@ -2889,7 +2876,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         restarg = driver.build.typed_arg(argsig, restarg);
                       }
 
-                      $$ = node_list(restarg);
+                      $$ = driver.pool.node_list.alloc(restarg);
                     }
 
      blkarg_mark: tAMPER2 | tAMPER
@@ -2907,7 +2894,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         blockarg = driver.build.typed_arg(argsig, blockarg);
                       }
 
-                      $$ = node_list(blockarg);
+                      $$ = driver.pool.node_list.alloc(blockarg);
                     }
                 | tr_argsig blkarg_mark
                     {
@@ -2918,7 +2905,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                         blockarg = driver.build.typed_arg(argsig, blockarg);
                       }
 
-                      $$ = node_list(blockarg);
+                      $$ = driver.pool.node_list.alloc(blockarg);
                     }
 
  opt_f_block_arg: tCOMMA f_block_arg
@@ -2927,7 +2914,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 |
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
 
        singleton: var_ref
@@ -2938,18 +2925,18 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
       assoc_list: // nothing
                     {
-                      $$ = node_list();
+                      $$ = driver.pool.node_list.alloc();
                     }
                 | assocs trailer
 
           assocs: assoc
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
                 | assocs tCOMMA assoc
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
 
@@ -2963,7 +2950,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tSTRING_BEG string_contents tLABEL_END arg_value
                     {
-                      $$ = driver.build.pair_quoted($1, &$2, $3, $4);
+                      $$ = driver.build.pair_quoted($1, $2, $3, $4);
                     }
                 | tDSTAR arg_value
                     {
@@ -3014,7 +3001,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
        list_none: // nothing
                   {
-                    $$ = node_list(std::nullopt);
+                    $$ = nullptr;
                   }
 
         tr_cpath: tCOLON3 tCONSTANT
@@ -3033,12 +3020,12 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
        tr_types: tr_types tCOMMA tr_type
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
                | tr_type
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
 
          tr_type: tr_cpath
@@ -3047,7 +3034,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 | tr_cpath tCOLON2 tLBRACK2 tr_types rbracket
                     {
-                      $$ = driver.build.tr_geninst($1, $3, &$4, $5);
+                      $$ = driver.build.tr_geninst($1, $3, $4, $5);
                     }
                 | tLBRACK tr_type rbracket
                     {
@@ -3056,8 +3043,8 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                 | tLBRACK tr_type tCOMMA tr_types rbracket
                     {
                       auto &types = $4;
-                      types.push_front($2);
-                      $$ = driver.build.tr_tuple($1, &types, $5);
+                      types->push_front($2);
+                      $$ = driver.build.tr_tuple($1, types, $5);
                     }
                 | tLBRACE tr_type tASSOC tr_type tRCURLY
                     {
@@ -3149,12 +3136,12 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
   tr_gendeclargs: tr_gendeclargs tCOMMA tr_gendeclarg
                     {
                       auto &list = $1;
-                      list.push_back($3);
+                      list->push_back($3);
                       $$ = list;
                     }
                 | tr_gendeclarg
                     {
-                      $$ = node_list($1);
+                      $$ = driver.pool.node_list.alloc($1);
                     }
 
    tr_blockproto: { driver.lex.extend_dynamic(); }

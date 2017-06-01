@@ -14,7 +14,7 @@ ruby_parser_typedruby24_free(ruby_parser::typedruby24* parser)
   delete parser;
 }
 
-void*
+const void*
 ruby_parser_parse(ruby_parser::base_driver* parser)
 {
   return parser->parse();
@@ -59,7 +59,7 @@ ruby_parser_node_list_get_length(const ruby_parser::node_list* list)
   return list->size();
 }
 
-void*
+const void*
 ruby_parser_node_list_index(ruby_parser::node_list* list, size_t index)
 {
   return list->at(index);
