@@ -16,7 +16,7 @@ ruby_parser_typedruby24_new(const char* source, size_t source_length, const ruby
 void
 ruby_parser_typedruby24_free(ruby_parser::typedruby24* parser);
 
-void*
+const void*
 ruby_parser_parse(ruby_parser::base_driver* parser);
 
 bool
@@ -37,7 +37,7 @@ ruby_parser_token_get_string(const ruby_parser::token* tok, const char** out_ptr
 size_t
 ruby_parser_node_list_get_length(const ruby_parser::node_list* list);
 
-void*
+const void*
 ruby_parser_node_list_index(ruby_parser::node_list* list, size_t index);
 
 size_t

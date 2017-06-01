@@ -6,97 +6,91 @@
 #include "lexer.hh"
 #include "node.hh"
 #include "diagnostic.hh"
-#include "optional.hpp"
 
 namespace ruby_parser {
 
 struct builder;
 
-typedef void* foreign_ptr;
+using foreign_ptr = const void*;
 
 struct node_list {
-	node_list() : nodes(std::in_place) {}
-	node_list(std::nullopt_t) : nodes(std::nullopt) {}
-	node_list(foreign_ptr node) : nodes(std::in_place) {
-		nodes->push_back(node);
+	node_list() = default;
+	node_list(foreign_ptr node) {
+		nodes.push_back(node);
 	}
 
 	node_list& operator=(const foreign_ptr &other) = delete;
 	node_list& operator=(foreign_ptr &&other) = delete;
 
 	inline size_t size() const {
-		if (!nodes.has_value())
-			return 0;
-		return nodes->size();
+		return nodes.size();
 	}
 
 	inline void push_back(const foreign_ptr &ptr) {
-		nodes->push_back(ptr);
+		nodes.push_back(ptr);
 	}
 
 	inline void push_front(const foreign_ptr &ptr) {
-		nodes->insert(nodes->begin(), ptr);
+		nodes.insert(nodes.begin(), ptr);
 	}
 
-	inline foreign_ptr &at(size_t n) { return nodes->at(n); }
+	inline foreign_ptr &at(size_t n) { return nodes.at(n); }
 
-	inline void concat(node_list &other) {
-		nodes->insert(nodes->end(),
-			std::make_move_iterator(other.nodes->begin()),
-			std::make_move_iterator(other.nodes->end())
+	inline void concat(node_list *other) {
+		nodes.insert(nodes.end(),
+			std::make_move_iterator(other->nodes.begin()),
+			std::make_move_iterator(other->nodes.end())
 		);
 	}
 
-	inline operator bool() const { return nodes.has_value(); }
-
 protected:
-	std::optional<std::vector<foreign_ptr>> nodes;
+	std::vector<foreign_ptr> nodes;
 };
 
 struct delimited_node_list {
-	delimited_node_list(const token_t &begin, const node_list &inner, const token_t &end)
+	delimited_node_list() = default;
+	delimited_node_list(const token_t &begin, node_list *inner, const token_t &end)
 		: begin(begin), inner(inner), end(end) {}
 
-	delimited_node_list()
-		: begin(nullptr), inner(), end(nullptr) {}
-
-	token_t begin;
-	node_list inner;
-	token_t end;
+	token_t begin = nullptr;
+	node_list *inner = nullptr;
+	token_t end = nullptr;
 };
 
 struct delimited_block {
+	delimited_block() = default;
 	delimited_block(const token_t &begin, foreign_ptr args, foreign_ptr body, const token_t &end)
 		: begin(begin), args(args), body(body), end(end) {}
 
-	delimited_block()
-		: begin(nullptr), args(nullptr), body(nullptr), end(nullptr) {}
-
-	token_t begin;
-	foreign_ptr args;
-	foreign_ptr body;
-	token_t end;
+	token_t begin = nullptr;
+	foreign_ptr args = nullptr;
+	foreign_ptr body = nullptr;
+	token_t end = nullptr;
 };
 
 struct node_with_token {
+	node_with_token() = default;
 	node_with_token(const token_t &token_, foreign_ptr node_)
 		: tok(token_), nod(node_) {}
 
-	node_with_token()
-		: tok(nullptr), nod(nullptr) {}
-
-	operator bool() const { return tok && nod; }
-
-	token_t tok;
-	foreign_ptr nod;
+	token_t tok = nullptr;
+	foreign_ptr nod = nullptr;
 };
 
 struct case_body {
-	case_body(const node_with_token &else_) : whens(), els(else_) {}
-	case_body() : whens(), els() {}
-
+	case_body() = default;
+	case_body(node_with_token *else_) : els(else_) {}
 	node_list whens;
-	node_with_token els;
+	node_with_token *els = nullptr;
+};
+
+struct mempool {
+	pool<ruby_parser::node_list, 16> node_list;
+	pool<ruby_parser::delimited_node_list, 32> delimited_node_list;
+	pool<ruby_parser::delimited_block, 32> delimited_block;
+	pool<ruby_parser::node_with_token, 32> node_with_token;
+	pool<ruby_parser::case_body, 32> case_body;
+	pool<ruby_parser::state_stack, 8> stacks;
 };
 
 class base_driver {
@@ -104,6 +98,7 @@ public:
 	diagnostics_t diagnostics;
 	const builder& build;
 	lexer lex;
+	mempool pool;
 
 	size_t def_level;
 	foreign_ptr ast;
@@ -113,6 +108,14 @@ public:
 	virtual foreign_ptr parse() = 0;
 
 	void check_kwarg_name(const token *name);
+
+	ruby_parser::state_stack *copy_stack() {
+		return pool.stacks.alloc(lex.cmdarg);
+	}
+
+	void replace_stack(ruby_parser::state_stack *stack) {
+		lex.cmdarg = *stack;
+	}
 };
 
 class typedruby24 : public base_driver {
