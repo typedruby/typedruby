@@ -6,10 +6,10 @@ use glob::glob;
 use std::rc::Rc;
 use std::fs::File;
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use difference::{Changeset, Difference};
 
-fn known_failure(path: &PathBuf) -> bool {
+fn known_failure(path: &Path) -> bool {
     match path.to_str().unwrap() {
         // Mlhs
         "library/32/ae1517d8058d13e7948d890377bf77.rb" => true,
@@ -23,13 +23,13 @@ fn known_failure(path: &PathBuf) -> bool {
     }
 }
 
-fn compare_sexps(path: &PathBuf) {
+fn compare_sexps(path: PathBuf) {
     let mut buf_rs = String::new();
     let mut buf_rb = String::new();
 
     let sexp_path = path.with_extension("sexp");
-    let src = ruby_parser::SourceFile::open(&path).expect("failed to load file");
-    let ast = ruby_parser::parse(Rc::new(src));
+    let src = Rc::new(ruby_parser::SourceFile::open(path).expect("failed to load file"));
+    let ast = ruby_parser::parse(src.clone());
 
     {
         let mut file = File::open(&sexp_path).unwrap();
@@ -43,7 +43,7 @@ fn compare_sexps(path: &PathBuf) {
     if buf_rs.len() != buf_rb.len() {
         let ch = Changeset::new(buf_rs.as_str(), buf_rb.as_str(), "\n");
         if ch.distance != 0 {
-            println!("Mismatch in '{}':", path.display());
+            println!("Mismatch in '{}':", src.filename().display());
             for d in &ch.diffs {
                 match *d {
                     Difference::Add(ref x) => {
@@ -66,7 +66,7 @@ fn compare_full_library() {
     for entry in glob("library/**/*.rb").unwrap() {
         let path = entry.expect("failed to glob path");
         if !known_failure(&path) {
-            compare_sexps(&path);
+            compare_sexps(path);
         }
     }
 }
@@ -74,5 +74,5 @@ fn compare_full_library() {
 #[test]
 fn compare_sinatra() {
     let path = PathBuf::from("tests/fixtures/sinatra.rb");
-    compare_sexps(&path);
+    compare_sexps(path);
 }
