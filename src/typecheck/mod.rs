@@ -1,6 +1,6 @@
 mod call;
 mod eval;
-mod flow;
+mod control;
 mod locals;
 mod types;
 

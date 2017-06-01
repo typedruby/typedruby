@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use std::collections::HashMap;
-use typecheck::flow::{Computation, ComputationPredicate, EvalResult};
+use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
 use typecheck::types::{Arg, TypeEnv, Type, Prototype, ReturnType};
 use object::{Scope, RubyObject, MethodImpl};
