@@ -459,3 +459,73 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         }
     }
 }
+
+pub enum EvalResult<'ty, 'object: 'ty, T> {
+    Ok(T, Locals<'ty, 'object>),
+    Both(T, Locals<'ty, 'object>, Computation<'ty, 'object>),
+    NonResult(Computation<'ty, 'object>)
+}
+
+impl<'ty, 'object, T> EvalResult<'ty, 'object, T> {
+    pub fn map<F, U>(self, f: F) -> EvalResult<'ty, 'object, U>
+        where F : FnOnce(T) -> U
+    {
+        match self {
+            EvalResult::Ok(val, locals) => EvalResult::Ok(f(val), locals),
+            EvalResult::Both(val, locals, non_result) => EvalResult::Both(f(val), locals, non_result),
+            EvalResult::NonResult(non_result) => EvalResult::NonResult(non_result),
+        }
+    }
+
+    pub fn and_then<F, U>(self, f: F) -> EvalResult<'ty, 'object, U>
+        where F : FnOnce(T, Locals<'ty, 'object>) -> EvalResult<'ty, 'object, U>
+    {
+        match self {
+            EvalResult::Ok(val, locals) => f(val, locals),
+            EvalResult::Both(val, locals, non_result) => {
+                match f(val, locals) {
+                    EvalResult::Ok(val, locals) =>
+                        EvalResult::Both(val, locals, non_result),
+                    EvalResult::Both(val, locals, other_non_result) =>
+                        EvalResult::Both(val, locals,
+                            Computation::divergent(non_result, other_non_result)),
+                    EvalResult::NonResult(other_non_result) =>
+                        EvalResult::NonResult(
+                            Computation::divergent(non_result, other_non_result)),
+                }
+            }
+            EvalResult::NonResult(non_result) => EvalResult::NonResult(non_result),
+        }
+    }
+
+    pub fn and_then_comp<F>(self, f: F) -> Computation<'ty, 'object>
+        where F : FnOnce(T, Locals<'ty, 'object>) -> Computation<'ty, 'object>
+    {
+        match self {
+            EvalResult::Ok(val, locals) => f(val, locals),
+            EvalResult::Both(val, locals, non_result) =>
+                Computation::divergent(non_result, f(val, locals)),
+            EvalResult::NonResult(non_result) => non_result,
+        }
+    }
+
+    pub fn if_not<F>(self, mut f: F) -> EvalResult<'ty, 'object, T>
+        where F : FnMut()
+    {
+        if let EvalResult::NonResult(_) = self {
+            f();
+        }
+
+        self
+    }
+}
+
+impl<'ty, 'object> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>> {
+    pub fn into_computation(self) -> Computation<'ty, 'object> {
+        match self {
+            EvalResult::Ok(ty, locals) => Computation::result(ty, locals),
+            EvalResult::Both(ty, locals, comp) => Computation::divergent(Computation::result(ty, locals), comp),
+            EvalResult::NonResult(comp) => comp,
+        }
+    }
+}
