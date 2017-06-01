@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use std::collections::HashMap;
 use typecheck::flow::{Computation, Locals, LocalEntry, LocalEntryMerge, ComputationPredicate};
-use typecheck::types::{Arg, TypeEnv, Type, Prototype};
+use typecheck::types::{Arg, TypeEnv, Type, Prototype, ReturnType};
 use object::{Scope, RubyObject, MethodImpl};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -229,8 +229,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
             self.process_node(body_node, locals).terminate(&|ty|
-                if let Prototype::Typed { retn, .. } = *prototype {
-                    self.compatible(retn, ty, None)
+                if let Prototype::Typed { retn: ReturnType::Value(retn_ty), .. } = *prototype {
+                    self.compatible(retn_ty, ty, None)
                 }
             );
         }
@@ -573,7 +573,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             locals = locals_;
         }
 
-        (status, Rc::new(Prototype::Typed { loc: node.loc().clone(), args: args, retn: return_type }), locals)
+        (status, Rc::new(Prototype::Typed { loc: node.loc().clone(), args: args, retn: ReturnType::Value(return_type) }), locals)
     }
 
     fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
@@ -711,14 +711,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             MethodImpl::AttrReader { ref ivar, .. } => {
                 Rc::new(match self.lookup_ivar(ivar, &type_context) {
-                    Some(ivar_type) => Prototype::Typed { loc: loc.clone(), args: vec![], retn: ivar_type },
+                    Some(ivar_type) => Prototype::Typed { loc: loc.clone(), args: vec![], retn: ReturnType::Value(ivar_type) },
                     None => Prototype::Untyped { loc: loc.clone() },
                 })
             }
             MethodImpl::AttrWriter { ref ivar, ref node } => {
                 Rc::new(match self.lookup_ivar(ivar, &type_context) {
                     Some(ivar_type) =>
-                        Prototype::Typed { loc: loc.clone(), args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }], retn: ivar_type },
+                        Prototype::Typed { loc: loc.clone(), args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }], retn: ReturnType::Value(ivar_type) },
                     None => Prototype::Untyped { loc: loc.clone() },
                 })
             }
@@ -749,7 +749,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                         match *proto {
                             Prototype::Untyped { .. } => proto.clone(),
-                            Prototype::Typed { ref loc, ref args, .. } => Rc::new(Prototype::Typed { loc: loc.clone(), args: args.clone(), retn: instance_type }),
+                            Prototype::Typed { ref loc, ref args, .. } => Rc::new(Prototype::Typed { loc: loc.clone(), args: args.clone(), retn: ReturnType::Value(instance_type) }),
                         }
                     },
                     RubyObject::Class { .. } => {
@@ -765,6 +765,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     },
                     _ => panic!("should never happen"),
                 }
+            }
+            MethodImpl::IntrinsicKernelRaise => {
+                // TODO give Kernel#raise a proper prototype
+                Rc::new(Prototype::Typed {
+                    loc: loc.clone(),
+                    args: vec![Arg::Rest { loc: loc.clone(), ty: self.tyenv.any(loc.clone()) }],
+                    retn: ReturnType::Raise,
+                })
             }
             MethodImpl::IntrinsicProcCall => panic!("should never happen"),
         }
@@ -942,7 +950,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
         };
 
-        let (proto_args, proto_retn, proto_loc) = if let Prototype::Typed { ref args, ref retn, ref loc } = *proto {
+        let (proto_args, proto_retn, proto_loc) = if let Prototype::Typed { ref args, retn, ref loc } = *proto {
             (args, retn, loc)
         } else {
             self.error("Can't infer type for symbol-as-proc", &[
@@ -1053,10 +1061,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 let (_, block_prototype, block_locals) = self.resolve_prototype(args, block_locals, &self.type_context, self.scope.clone());
 
-                let block_return_type = if let Prototype::Typed { ref retn, .. } = *block_prototype {
+                let block_return_type = if let Prototype::Typed { retn, .. } = *block_prototype {
                     retn
                 } else {
-                    self.tyenv.new_var(loc.clone())
+                    ReturnType::Value(self.tyenv.new_var(loc.clone()))
                 };
 
                 let block_proc_type = self.tyenv.alloc(Type::Proc {
@@ -1074,7 +1082,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.extract_results(block_comp
                     .capture_next(), loc)
                     .and_then(|ty, locals| {
-                        self.compatible(block_return_type, ty, None);
+                        if let ReturnType::Value(return_ty) = block_return_type {
+                            self.compatible(return_ty, ty, None);
+                        }
                         EvalResult::Ok((), locals.unextend())
                     })
             }
@@ -1151,7 +1161,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         for proto in prototypes {
             let comp = match *proto {
-                Prototype::Typed { args: ref proto_args, ref retn, loc: ref proto_loc } => {
+                Prototype::Typed { args: ref proto_args, retn, loc: ref proto_loc } => {
                     let (proto_block, proto_args) = match proto_args.last() {
                         Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
                         Some(_) | None => (None, proto_args.as_slice()),
@@ -1187,9 +1197,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         self.compatible(proto_ty, pass_ty, Some(loc));
                     }
 
-                    let retn_ty = self.tyenv.update_loc(retn, loc.clone());
-
-                    self.process_block(&id.0, block.as_ref(), locals.clone(), proto_block).map(|()| retn_ty).into_computation()
+                    self.process_block(&id.0, block.as_ref(), locals.clone(), proto_block).and_then(|(), locals| {
+                        match retn {
+                            ReturnType::Value(retn_ty) =>
+                                EvalResult::Ok(self.tyenv.update_loc(retn_ty, loc.clone()), locals),
+                            ReturnType::Raise =>
+                                EvalResult::NonResult(Computation::raise(locals)),
+                        }
+                    }).into_computation()
                 },
                 Prototype::Untyped { .. } =>
                     Computation::result(self.tyenv.any(loc.clone()), locals.clone()),
