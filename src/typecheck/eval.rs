@@ -1,13 +1,13 @@
 use std::rc::Rc;
 use std::collections::HashMap;
-use typecheck::flow::{Computation, Locals, LocalEntry, LocalEntryMerge, ComputationPredicate, EvalResult};
+use typecheck::flow::{Computation, ComputationPredicate, EvalResult};
+use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
 use typecheck::types::{Arg, TypeEnv, Type, Prototype, ReturnType};
 use object::{Scope, RubyObject, MethodImpl};
 use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
 use typed_arena::Arena;
-use util::Or;
 use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
 use itertools::Itertools;
@@ -796,12 +796,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let mut merges = Vec::new();
         let result = comp.extract_results(loc, &self.tyenv, &mut merges);
         self.process_local_merges(merges);
-
-        match result {
-            Or::Left((ty, locals)) => EvalResult::Ok(ty, locals),
-            Or::Both((ty, locals), comp) => EvalResult::Both(ty, locals, comp),
-            Or::Right(comp) => EvalResult::NonResult(comp),
-        }
+        result
     }
 
     fn converge_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> Computation<'ty, 'object> {

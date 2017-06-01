@@ -1,6 +1,7 @@
 mod call;
 mod eval;
 mod flow;
+mod locals;
 mod types;
 
 use std::rc::Rc;
