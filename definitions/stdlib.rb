@@ -780,6 +780,7 @@ class Hash::[KeyType, ValueType] < Object
   def []=(KeyType k, ValueType v) => ValueType; end
 
   def key?(KeyType k) => Boolean; end
+  alias :has_key? :key?
 
   def empty? => Boolean; end
 
