@@ -14,9 +14,6 @@ module Kernel
 
   def warn(:any *) => nil; end
 
-  # TODO tighten up prototype:
-  def raise(:any *) => :any; end
-
   def nil? => Boolean; end
 
   def to_s => String; end
@@ -46,6 +43,8 @@ module Kernel
   def tap({ |:self obj| => :any } &) => :self; end
 
   def block_given? => Boolean; end
+
+  def respond_to?((String|Symbol) mid) => Boolean; end
 end
 
 class ENVClass
