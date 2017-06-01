@@ -355,6 +355,49 @@ static const lexer::token_table KEYWORDS_BEGIN = {
   { "__ENCODING__", token_type::k__ENCODING__ },
 };
 
+static size_t utf8_encode_char(int32_t uc, std::string &dst) {
+  if (uc < 0x00) {
+    return 0;
+  } else if (uc < 0x80) {
+    dst.push_back(static_cast<uint8_t>(uc));
+    return 1;
+  } else if (uc < 0x800) {
+    dst.push_back(static_cast<uint8_t>(0xC0 + (uc >> 6)));
+    dst.push_back(static_cast<uint8_t>(0x80 + (uc & 0x3F)));
+    return 2;
+  } else if (uc < 0x10000) {
+    dst.push_back(static_cast<uint8_t>(0xE0 + (uc >> 12)));
+    dst.push_back(static_cast<uint8_t>(0x80 + ((uc >> 6) & 0x3F)));
+    dst.push_back(static_cast<uint8_t>(0x80 + (uc & 0x3F)));
+    return 3;
+  } else if (uc < 0x110000) {
+    dst.push_back(static_cast<uint8_t>(0xF0 + (uc >> 18)));
+    dst.push_back(static_cast<uint8_t>(0x80 + ((uc >> 12) & 0x3F)));
+    dst.push_back(static_cast<uint8_t>(0x80 + ((uc >> 6) & 0x3F)));
+    dst.push_back(static_cast<uint8_t>(0x80 + (uc & 0x3F)));
+    return 4;
+  } else return 0;
+}
+
+static bool split_codepoints(const std::string &str, std::string &output) {
+  auto isspace = [](char c) { return c == ' ' || c == '\t'; };
+  const char *ptr = str.c_str();
+
+  while (*ptr) {
+    while (isspace(*ptr))
+      ptr++;
+
+    const char *start = ptr;
+    while (*ptr && !isspace(*ptr))
+      ptr++;
+
+    std::string cp {start, static_cast<size_t>(ptr - start)};
+    if (utf8_encode_char(std::stoi(cp, nullptr, 16), output) == 0)
+      return false;
+  }
+  return true;
+}
+
 static std::string gsub(const std::string&& str, const std::string&& search, const std::string&& replace) {
   std::string result;
 
@@ -727,25 +770,17 @@ void lexer::set_state_expr_value() {
   escaped_nl = "\\" c_nl;
 
   action unicode_points {
-    /* TODO
-    @escape = ""
+    auto codepoint_str = tok(escape_s + 2, p - 1);
+    std::string result;
 
-    codepoints  = tok(@escape_s + 2, p - 1)
-    codepoint_s = @escape_s + 2
-
-    codepoints.split(/[ \t]/).each do |codepoint_str|
-      codepoint = codepoint_str.to_i(16)
-
-      if codepoint >= 0x110000
-        diagnostic :error, :unicode_point_too_large, nil,
-                   range(codepoint_s, codepoint_s + codepoint_str.length)
-        break
-      end
-
-      @escape     += codepoint.chr(Encoding::UTF_8)
-      codepoint_s += codepoint_str.length + 1
-    end
-    */
+    if (split_codepoints(codepoint_str, result)) {
+      escape = std::make_unique<std::string>(result);
+    } else {
+      /*
+	diagnostic :error, :unicode_point_too_large, nil,
+	range(codepoint_s, codepoint_s + codepoint_str.length)
+      */
+    }
   }
 
   action unescape_char {
@@ -787,16 +822,25 @@ void lexer::set_state_expr_value() {
   escape = (
       # \377
       [0-7]{1,3}
-      % { /* TODO @escape = encode_escape(tok(@escape_s, p).to_i(8) % 0x100) */ }
-
+      % {
+	auto esc = tok(escape_s, p);
+	char c = std::stoi(esc, nullptr, 8);
+	escape = std::make_unique<std::string>(&c, 1);
+      }
       # \xff
     | 'x' xdigit{1,2}
-        % { /* TODO @escape = encode_escape(tok(@escape_s + 1, p).to_i(16)) */ }
-
+        % {
+	  auto esc = tok(escape_s + 1, p);
+	  char c = std::stoi(esc, nullptr, 16);
+	  escape = std::make_unique<std::string>(&c, 1);
+      }
       # \u263a
     | 'u' xdigit{4}
-      % { /* TODO @escape = tok(@escape_s + 1, p).to_i(16).chr(Encoding::UTF_8) */ }
-
+      % {
+	std::string result;
+	split_codepoints(tok(escape_s + 1, p), result);
+	escape = std::make_unique<std::string>(result);
+      }
       # %q[\x]
     | 'x' ( c_any - xdigit )
       % {

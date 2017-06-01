@@ -137,14 +137,35 @@ impl Sexp for Option<Rc<Node>> {
 impl Sexp for Id {
     fn sexp(&self, w: &mut SexpFormatter) -> fmt::Result {
         match self {
-            &Id(_, ref id) => write!(w, " :{}", id)
+            &Id(_, ref id) => id.sexp(w)
         }
     }
 }
 
+fn sym_print_p(sym: &str) -> bool {
+    if sym.len() == 1 {
+        return true;
+    }
+
+    if sym.chars().any(|c| c.is_whitespace()) {
+        return false;
+    }
+
+    if sym.chars().all(|c| !c.is_alphanumeric()) {
+        return true;
+    }
+
+    !sym.chars().any(|c| { c == '.' || c == '-' })
+}
+
 impl Sexp for String {
-    fn sexp(&self, f: &mut SexpFormatter) -> fmt::Result {
-        write!(f, " :{}", self)
+    fn sexp(&self, w: &mut SexpFormatter) -> fmt::Result {
+        if sym_print_p(self.as_str()) {
+            write!(w, " :{}", self)
+        } else {
+            write!(w, " :")?;
+            escape_rb(w, self)
+        }
     }
 }
 

@@ -7,6 +7,10 @@ build = "build.rs"
 [dependencies]
 libc = "0.2.0"
 
+[dev-dependencies]
+glob = "0.2"
+difference = "1.0"
+
 [profile.dev]
 debug = true
 panic = "abort"

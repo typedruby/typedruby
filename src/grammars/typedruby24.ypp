@@ -1624,7 +1624,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
         opt_else: none
                     {
-                      $$; // node_with_token
+                      $$ = node_with_token();
                     }
                 | kELSE compstmt
                     {
@@ -2145,7 +2145,7 @@ opt_block_args_tail:
                     }
                 | // nothing
                     {
-                      $$; // node_with_token
+                      $$ = node_with_token();
                     }
 
       opt_ensure: kENSURE compstmt
@@ -2154,7 +2154,7 @@ opt_block_args_tail:
                     }
                 | // nothing
                     {
-                      $$; // node_with_token
+                      $$ = node_with_token();
                     }
 
          literal: numeric
@@ -2486,7 +2486,7 @@ keyword_variable: kNIL
                     }
                 | // nothing
                     {
-                      $$; // node_with_token
+                      $$ = node_with_token();
                     }
 
 tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
