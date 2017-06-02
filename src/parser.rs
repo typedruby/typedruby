@@ -1270,6 +1270,22 @@ unsafe extern "C" fn tr_class(special: *const Token) -> *mut Rc<Node> {
     Node::TyClass(token_loc(special)).to_raw()
 }
 
+unsafe extern "C" fn tr_consubtype(sub: *mut Rc<Node>, super_: *mut Rc<Node>) -> *mut Rc<Node> {
+    let sub = from_raw(sub);
+    let super_ = from_raw(super_);
+    let loc = sub.loc().join(super_.loc());
+
+    Node::TyConSubtype(loc, sub, super_).to_raw()
+}
+
+unsafe extern "C" fn tr_conunify(a: *mut Rc<Node>, b: *mut Rc<Node>) -> *mut Rc<Node> {
+    let a = from_raw(a);
+    let b = from_raw(b);
+    let loc = a.loc().join(b.loc());
+
+    Node::TyConUnify(loc, a, b).to_raw()
+}
+
 unsafe extern "C" fn tr_cpath(cpath: *mut Rc<Node>) -> *mut Rc<Node> {
     let cpath = from_raw(cpath);
 
@@ -1289,8 +1305,10 @@ unsafe extern "C" fn tr_gendecl(cpath: *mut Rc<Node>, begin: *const Token, genar
     Node::TyGendecl(cpath.loc().join(&token_loc(end)), cpath, genargs).to_raw()
 }
 
-unsafe extern "C" fn tr_gendeclarg(tok: *const Token) -> *mut Rc<Node> {
-    Node::TyGendeclarg(token_loc(tok), Token::string(tok)).to_raw()
+unsafe extern "C" fn tr_gendeclarg(tok: *const Token, constraint: *mut Rc<Node>) -> *mut Rc<Node> {
+    let constraint = from_maybe_raw(constraint);
+
+    Node::TyGendeclarg(token_loc(tok), Token::string(tok), constraint).to_raw()
 }
 
 unsafe extern "C" fn tr_geninst(cpath: *mut Rc<Node>, begin: *const Token, genargs: *mut NodeList, end: *const Token) -> *mut Rc<Node> {
@@ -1545,6 +1563,8 @@ static BUILDER: Builder = Builder {
     tr_array: tr_array,
     tr_cast: tr_cast,
     tr_class: tr_class,
+    tr_consubtype: tr_consubtype,
+    tr_conunify: tr_conunify,
     tr_cpath: tr_cpath,
     tr_genargs: tr_genargs,
     tr_gendecl: tr_gendecl,

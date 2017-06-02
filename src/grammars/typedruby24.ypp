@@ -242,7 +242,9 @@ using mapbox::util::variant;
   top_stmt
   tr_argsig
   tr_blockproto
+  tr_constraint
   tr_cpath
+  tr_gendeclarg
   tr_methodgenargs
   tr_returnsig
   tr_type
@@ -408,7 +410,7 @@ public:
 
   inline size_t &as_size() { return as<size_t>(); }
   inline bool &as_bool() { return as<bool>(); }
-};  
+};
 
 }
 
@@ -881,7 +883,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
-                      
+
                       $$ = driver.build.index_asgn($1, $2, &$3, $4);
                     }
                 | primary_value call_op tIDENTIFIER
@@ -2133,7 +2135,7 @@ opt_block_args_tail:
 
         exc_list: arg_value
                     {
-                      
+
                       $$ = node_list($1);
                     }
                 | mrhs
@@ -2637,7 +2639,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     }
                 |              f_optarg                                opt_args_tail
                     {
-                      
+
                       auto &args = $1;
                       args.concat($2);
                       $$ = args;
@@ -3126,15 +3128,33 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       $$ = nullptr;
                     }
 
-  tr_gendeclargs: tr_gendeclargs tCOMMA tCONSTANT
+   tr_constraint: tr_type tEQL tr_type
+                    {
+                      $$ = driver.build.tr_conunify($1, $3);
+                    }
+                | tr_type tLT tr_type
+                    {
+                      $$ = driver.build.tr_consubtype($1, $3);
+                    }
+
+   tr_gendeclarg: tCONSTANT
+                    {
+                      $$ = driver.build.tr_gendeclarg($1, nullptr);
+                    }
+                | tCONSTANT tCOLON tr_constraint
+                    {
+                      $$ = driver.build.tr_gendeclarg($1, $3);
+                    }
+
+  tr_gendeclargs: tr_gendeclargs tCOMMA tr_gendeclarg
                     {
                       auto &list = $1;
-                      list.push_back(driver.build.tr_gendeclarg($3));
+                      list.push_back($3);
                       $$ = list;
                     }
-                | tCONSTANT
+                | tr_gendeclarg
                     {
-                      $$ = node_list(driver.build.tr_gendeclarg($1));
+                      $$ = node_list($1);
                     }
 
    tr_blockproto: { driver.lex.extend_dynamic(); }
