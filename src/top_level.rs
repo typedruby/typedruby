@@ -705,6 +705,8 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::Arg(..) => {}
             Node::Restarg(..) => {}
+            Node::Kwrestarg(..) => {}
+            Node::Blockarg(..) => {}
             Node::If(_, ref cond, ref then, ref else_) => {
                 self.eval_node(cond);
                 self.eval_maybe_node(then);
@@ -836,6 +838,12 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::TyCpath(_, ref cpath) => {
                 self.eval_node(cpath);
+            }
+            Node::TyGeninst(_, ref cpath, ref args) => {
+                self.eval_node(cpath);
+                for arg in args {
+                    self.eval_node(arg);
+                }
             }
             Node::TyArray(_, ref ty) |
             Node::TyNillable(_, ref ty) => {
