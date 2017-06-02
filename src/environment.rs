@@ -64,6 +64,10 @@ impl<'object> Environment<'object> {
         Ok(())
     }
 
+    pub fn should_emit_errors(&self, path: &Path) -> bool {
+        !self.config.ignore_errors_in.iter().any(|prefix| path.starts_with(prefix))
+    }
+
     fn load_source_file(&self, source_file: SourceFile) {
         let ast = parse(Rc::new(source_file));
 

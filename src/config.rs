@@ -6,6 +6,7 @@ pub struct Config {
     pub warning: bool,
     pub autoload_paths: Vec<PathBuf>,
     pub inflect_acronyms: Vec<String>,
+    pub ignore_errors_in: Vec<PathBuf>,
 }
 
 impl Config {
@@ -16,6 +17,7 @@ impl Config {
             warning: false,
             autoload_paths: Vec::new(),
             inflect_acronyms: Vec::new(),
+            ignore_errors_in: Vec::new(),
         }
     }
 }
