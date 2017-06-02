@@ -11,6 +11,7 @@ struct Eval<'env, 'object: 'env> {
     pub env: &'env Environment<'object>,
     pub scope: Rc<Scope<'object>>,
     in_def: bool,
+    emit_errors: bool,
     def_visibility: Cell<MethodVisibility>,
     module_function: Cell<bool>,
 }
@@ -44,22 +45,27 @@ enum RequireType {
 }
 
 impl<'env, 'object> Eval<'env, 'object> {
-    fn new(env: &'env Environment<'object>, scope: Rc<Scope<'object>>, in_def: bool) -> Eval<'env, 'object> {
+    fn new(env: &'env Environment<'object>, scope: Rc<Scope<'object>>, in_def: bool, emit_errors: bool) -> Eval<'env, 'object> {
         Eval {
             env: env,
             scope: scope,
             in_def: in_def,
+            emit_errors: emit_errors,
             def_visibility: Cell::new(MethodVisibility::Public),
             module_function: Cell::new(false),
         }
     }
 
     fn error(&self, message: &str, details: &[Detail]) {
-        self.env.error_sink.borrow_mut().error(message, details)
+        if self.emit_errors {
+            self.env.error_sink.borrow_mut().error(message, details)
+        }
     }
 
     fn warning(&self, message: &str, details: &[Detail]) {
-        self.env.error_sink.borrow_mut().warning(message, details)
+        if self.emit_errors {
+            self.env.error_sink.borrow_mut().warning(message, details)
+        }
     }
 
     fn resolve_cpath<'a>(&self, node: &'a Node) -> EvalResult<'a, &'object RubyObject<'object>> {
@@ -94,7 +100,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn enter_scope(&self, module: &'object RubyObject<'object>, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let eval = Eval::new(self.env, Scope::spawn(&self.scope, module), self.in_def);
+            let eval = Eval::new(self.env, Scope::spawn(&self.scope, module), self.in_def, self.emit_errors);
 
             eval.eval_node(node)
         }
@@ -102,7 +108,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn enter_def(&self, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let eval = Eval::new(self.env, self.scope.clone(), true);
+            let eval = Eval::new(self.env, self.scope.clone(), true, self.emit_errors);
 
             eval.eval_node(node)
         }
@@ -867,5 +873,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>) {
     let scope = Rc::new(Scope { parent: None, module: env.object.Object });
 
-    Eval::new(env, scope, false).eval_node(&node);
+    let emit_errors = env.should_emit_errors(node.loc().file.filename());
+
+    Eval::new(env, scope, false, emit_errors).eval_node(&node);
 }

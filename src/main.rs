@@ -6,6 +6,7 @@ extern crate typed_arena;
 
 use std::io;
 use std::path::PathBuf;
+use std::fs;
 use clap::{App, Arg};
 use typed_arena::Arena;
 
@@ -49,6 +50,12 @@ fn config() -> (Config, Vec<PathBuf>) {
             .long("inflect-acronym")
             .value_name("word")
             .help("Registers the passed word as an acronym for inflection in Rails-style autoloading"))
+        .arg(Arg::with_name("ignore-errors-in")
+            .multiple(true)
+            .number_of_values(1)
+            .long("ignore-errors-in")
+            .value_name("directory")
+            .help("Ignores warnings/errors under a path prefix"))
         .arg(Arg::with_name("warning")
             .short("w")
             .help("Turns on additional warnings, like Ruby's -w"))
@@ -69,6 +76,13 @@ fn config() -> (Config, Vec<PathBuf>) {
 
     if let Some(acronyms) = matches.values_of("inflect-acronym") {
         config.inflect_acronyms.extend(acronyms.map(String::from));
+    }
+
+    if let Some(ignore_errors_in) = matches.values_of("ignore-errors-in") {
+        config.ignore_errors_in.extend(ignore_errors_in
+            .map(PathBuf::from)
+            .map(fs::canonicalize)
+            .filter_map(Result::ok));
     }
 
     config.warning = matches.is_present("warning");
