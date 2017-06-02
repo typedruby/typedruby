@@ -961,7 +961,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
-    fn process_block(&self, send_loc: &Loc, block: Option<&BlockArg>, locals: Locals<'ty, 'object>, prototype_block: Option<&'ty Type<'ty, 'object>>)
+    fn process_block(&self, send_loc: &Loc, block: Option<&BlockArg>, locals: Locals<'ty, 'object>, proto_loc: &Loc, prototype_block: Option<&'ty Type<'ty, 'object>>)
         -> EvalResult<'ty, 'object, ()>
     {
         match (prototype_block, block) {
@@ -972,6 +972,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.error("Block passed in method invocation", &[
                     Detail::Loc("here", block.loc()),
                     Detail::Loc("but this method does not take a block", send_loc),
+                    Detail::Loc("as defined here", proto_loc),
                 ]);
 
                 EvalResult::Ok((), locals)
@@ -1122,7 +1123,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         self.compatible(proto_ty, pass_ty, Some(loc));
                     }
 
-                    self.process_block(&id.0, block.as_ref(), locals.clone(), proto_block).and_then(|(), locals| {
+                    self.process_block(&id.0, block.as_ref(), locals.clone(), proto.loc(), proto_block).and_then(|(), locals| {
                         match retn {
                             ReturnType::Value(retn_ty) =>
                                 EvalResult::Ok(self.tyenv.update_loc(retn_ty, loc.clone()), locals),
