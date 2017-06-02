@@ -1,4 +1,4 @@
-CXXFLAGS += -Wall -Wextra -pedantic -std=c++14 -I inc -fPIC
+CXXFLAGS += -Wall -Wextra -pedantic -std=c++14 -I include -fPIC
 
 ifeq ($(PROFILE),release)
 	CXXFLAGS += -O3
@@ -31,7 +31,7 @@ clean:
 $(LIB_PATH): $(OBJECTS)
 	$(AR) rcs $@ $^
 
-%.o: %.cc inc/ruby_parser/*.hh src/grammars/typedruby24.hh
+%.o: %.cc include/ruby_parser/*.hh src/grammars/typedruby24.hh
 	$(CXX) -o $@ $(CXXFLAGS) -c $<
 
 %.cc: %.rl
@@ -40,7 +40,7 @@ $(LIB_PATH): $(OBJECTS)
 %.cc %.hh: %.ypp
 	$(BISON) --defines=$*.hh -o $*.cc $*.ypp
 
-src/ffi_builder.rsinc: inc/ruby_parser/builder.hh
+src/ffi_builder.rsinc: include/ruby_parser/builder.hh
 	script/mkbuilder $< > $@
 
 .clang_complete: Makefile
