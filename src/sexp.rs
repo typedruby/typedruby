@@ -827,6 +827,20 @@ impl Sexp for Node {
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
+            (&Node::TyConSubtype(ref loc, ref sub, ref super_),) => {
+                let mut builder = __arg_0.new_node("ty-consubtype");
+                let _ = builder.field(loc);
+                let _ = builder.field(sub);
+                let _ = builder.field(super_);
+                builder.finish()
+            }
+            (&Node::TyConUnify(ref loc, ref a, ref b),) => {
+                let mut builder = __arg_0.new_node("ty-conunify");
+                let _ = builder.field(loc);
+                let _ = builder.field(a);
+                let _ = builder.field(b);
+                builder.finish()
+            }
             (&Node::TyCpath(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("ty-cpath");
                 let _ = builder.field(__self_0);
@@ -846,10 +860,11 @@ impl Sexp for Node {
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
-            (&Node::TyGendeclarg(ref __self_0, ref __self_1),) => {
+            (&Node::TyGendeclarg(ref __self_0, ref __self_1, ref __self_2),) => {
                 let mut builder = __arg_0.new_node("ty-gendeclarg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::TyGeninst(ref __self_0, ref __self_1, ref __self_2),) => {
