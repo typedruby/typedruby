@@ -81,7 +81,7 @@ unsafe fn node_list_from_c(list: *mut NodeListPtr) -> Vec<Rc<Node>> {
     }
 }
 
-pub enum ParserPtr {}
+pub enum DriverPtr {}
 pub enum TokenPtr {}
 pub enum NodeListPtr {}
 
@@ -91,21 +91,21 @@ include!("ffi_builder.rsinc");
 #[cfg_attr(target_os="linux", link(name="stdc++"))]
 #[cfg_attr(target_os="macos", link(name="c++"))]
 extern "C" {
-    fn rbdriver_typedruby24_new(source: *const u8, source_length: size_t, builder: *const BuilderInterface) -> *mut ParserPtr;
-    fn rbdriver_typedruby24_free(parser: *mut ParserPtr);
-    fn rbdriver_parse(parser: *mut ParserPtr, builder: *mut Builder) -> *mut Rc<Node>;
-    fn rbdriver_env_is_declared(p: *const ParserPtr, name: *const u8, len: size_t) -> bool;
-    fn rbdriver_env_declare(p: *mut ParserPtr, name: *const u8, len: size_t);
+    fn rbdriver_typedruby24_new(source: *const u8, source_length: size_t, builder: *const BuilderInterface) -> *mut DriverPtr;
+    fn rbdriver_typedruby24_free(driver: *mut DriverPtr);
+    fn rbdriver_parse(driver: *mut DriverPtr, builder: *mut Builder) -> *mut Rc<Node>;
+    fn rbdriver_env_is_declared(driver: *const DriverPtr, name: *const u8, len: size_t) -> bool;
+    fn rbdriver_env_declare(driver: *mut DriverPtr, name: *const u8, len: size_t);
     fn rbtoken_get_start(token: *const TokenPtr) -> size_t;
     fn rbtoken_get_end(token: *const TokenPtr) -> size_t;
     fn rbtoken_get_string(token: *const TokenPtr, ptr: *mut *const u8) -> size_t;
     fn rblist_get_length(list: *mut NodeListPtr) -> size_t;
     fn rblist_index(list: *mut NodeListPtr, index: size_t) -> *mut Rc<Node>;
-    fn rbdriver_diag_get_length(parser: *const ParserPtr) -> size_t;
-    fn rbdriver_diag_get_level(parser: *const ParserPtr, index: size_t) -> c_int;
-    fn rbdriver_diag_get_message(parser: *const ParserPtr, index: size_t, ptr: *mut *const u8) -> size_t;
-    fn rbdriver_diag_get_begin(parser: *const ParserPtr, index: size_t) -> size_t;
-    fn rbdriver_diag_get_end(parser: *const ParserPtr, index: size_t) -> size_t;
+    fn rbdriver_diag_get_length(driver: *const DriverPtr) -> size_t;
+    fn rbdriver_diag_get_level(driver: *const DriverPtr, index: size_t) -> c_int;
+    fn rbdriver_diag_get_message(driver: *const DriverPtr, index: size_t, ptr: *mut *const u8) -> size_t;
+    fn rbdriver_diag_get_begin(driver: *const DriverPtr, index: size_t) -> size_t;
+    fn rbdriver_diag_get_end(driver: *const DriverPtr, index: size_t) -> size_t;
 }
 
 pub struct Token {
@@ -134,7 +134,7 @@ impl Token {
 }
 
 pub struct Driver {
-    ptr: *mut ParserPtr,
+    ptr: *mut DriverPtr,
     pub current_file: Rc<SourceFile>,
 }
 
