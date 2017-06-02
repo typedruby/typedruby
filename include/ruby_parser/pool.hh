@@ -2,6 +2,8 @@
 #define RUBY_PARSER_POOL_HH
 
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 template<typename T, std::size_t N>
 class pool {
