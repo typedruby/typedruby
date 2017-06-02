@@ -23,6 +23,7 @@ pub enum ArgError {
     TooFewArguments,
     TooManyArguments(Loc),
     MissingKeyword(String),
+    UnknownKeyword(String),
 }
 
 #[derive(Debug)]
@@ -49,7 +50,8 @@ fn consume_remaining_keywords<'a, 'ty: 'a, 'object: 'ty>(
                 prototype_args.consume_back();
                 result.errors.push(ArgError::MissingKeyword(name.clone()));
             }
-            Some(&Arg::Kwoptarg { .. }) => {
+            Some(&Arg::Kwoptarg { .. }) |
+            Some(&Arg::Kwrest { .. }) => {
                 prototype_args.consume_back();
             }
             _ => break
@@ -110,12 +112,14 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
     let kw_loc = match prototype_args.last() {
         Some(&Arg::Kwarg { ref loc, .. }) |
         Some(&Arg::Kwoptarg { ref loc, .. }) => loc,
+        Some(&Arg::Kwrest { ref loc, .. }) => loc,
         _ => return,
     };
 
     match keyword_hash_argument(tyenv, prototype_args, args) {
         KeywordHashArgument::Keywords(ref keywords) => {
             let mut keywords = keywords.iter().cloned().collect::<HashMap<_,_>>();
+            let mut kwrest_ty = None;
 
             loop {
                 match prototype_args.last() {
@@ -135,8 +139,21 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
                             None => { /* pass */ }
                         }
                     }
+                    Some(&Arg::Kwrest { ty: proto_ty, .. }) => {
+                        prototype_args.consume_back();
+                        kwrest_ty = Some(proto_ty);
+                    }
                     _ => break
                 }
+            }
+
+            if let Some(kwrest_ty) = kwrest_ty {
+                for (_, passed_ty) in keywords {
+                    match_argument(kwrest_ty, passed_ty, result);
+                }
+            } else {
+                let unknown_keywords = keywords.iter().map(|(name,_)| ArgError::UnknownKeyword(name.clone()));
+                result.errors.extend(unknown_keywords);
             }
         }
         KeywordHashArgument::Hash(ref hash_ty) => {
@@ -152,6 +169,11 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
                         keyword_hash_loc = keyword_hash_loc.join(loc);
 
                         potential_keywords.push((name.clone(), proto_ty));
+                    }
+                    Some(&Arg::Kwrest { .. }) => {
+                        // TODO need to match the value type of the hash
+                        // against the type of the kwrest arg
+                        prototype_args.consume_back();
                     }
                     _ => break
                 }

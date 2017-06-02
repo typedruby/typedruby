@@ -1116,6 +1116,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                                     Detail::Loc("for this prototype", proto_loc),
                                 ])
                             }
+                            ArgError::UnknownKeyword(ref name) => {
+                                self.error(&format!("Unknown keyword argument :{}", name), &[
+                                    Detail::Loc("in this invocation", &id.0),
+                                    Detail::Loc("for this prototype", proto_loc),
+                                ])
+                            }
                         }
                     }
 
