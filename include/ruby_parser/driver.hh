@@ -85,13 +85,42 @@ struct case_body {
 	node_with_token *els = nullptr;
 };
 
-struct mempool {
-	pool<ruby_parser::node_list, 16> node_list;
-	pool<ruby_parser::delimited_node_list, 32> delimited_node_list;
-	pool<ruby_parser::delimited_block, 32> delimited_block;
-	pool<ruby_parser::node_with_token, 32> node_with_token;
-	pool<ruby_parser::case_body, 32> case_body;
-	pool<ruby_parser::state_stack, 8> stacks;
+class mempool {
+	pool<ruby_parser::node_list, 16> _node_list;
+	pool<ruby_parser::delimited_node_list, 32> _delimited_node_list;
+	pool<ruby_parser::delimited_block, 32> _delimited_block;
+	pool<ruby_parser::node_with_token, 32> _node_with_token;
+	pool<ruby_parser::case_body, 32> _case_body;
+	pool<ruby_parser::state_stack, 8> _stacks;
+	friend class base_driver;
+
+public:
+	mempool() = default;
+
+	template <typename... Args>
+	ruby_parser::node_list *node_list(Args&&... args) {
+		return _node_list.alloc(std::forward<Args>(args)...);
+	}
+
+	template <typename... Args>
+	ruby_parser::delimited_node_list *delimited_node_list(Args&&... args) {
+		return _delimited_node_list.alloc(std::forward<Args>(args)...);
+	}
+
+	template <typename... Args>
+	ruby_parser::delimited_block *delimited_block(Args&&... args) {
+		return _delimited_block.alloc(std::forward<Args>(args)...);
+	}
+
+	template <typename... Args>
+	ruby_parser::node_with_token *node_with_token(Args&&... args) {
+		return _node_with_token.alloc(std::forward<Args>(args)...);
+	}
+
+	template <typename... Args>
+	ruby_parser::case_body *case_body(Args&&... args) {
+		return _case_body.alloc(std::forward<Args>(args)...);
+	}
 };
 
 class base_driver {
@@ -99,7 +128,7 @@ public:
 	diagnostics_t diagnostics;
 	const builder& build;
 	lexer lex;
-	mempool pool;
+	mempool alloc;
 
 	size_t def_level;
 	foreign_ptr ast;
@@ -111,7 +140,7 @@ public:
 	void check_kwarg_name(const token *name);
 
 	ruby_parser::state_stack *copy_stack() {
-		return pool.stacks.alloc(lex.cmdarg);
+		return alloc._stacks.alloc(lex.cmdarg);
 	}
 
 	void replace_stack(ruby_parser::state_stack *stack) {
