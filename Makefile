@@ -43,5 +43,8 @@ $(LIB_PATH): $(OBJECTS)
 src/ffi_builder.rsinc: inc/ruby_parser/builder.hh
 	script/mkbuilder $< > $@
 
+.clang_complete: Makefile
+	echo $(CXXFLAGS) > $@
+
 # Do not remove generated Bison output
 .PRECIOUS: %.cc %.hh

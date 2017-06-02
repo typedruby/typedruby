@@ -12,6 +12,7 @@ namespace ruby_parser {
 struct builder;
 
 using foreign_ptr = const void*;
+using self_ptr = const void *;
 
 struct node_list {
 	node_list() = default;
@@ -105,7 +106,7 @@ public:
 
 	base_driver(ruby_version version, const std::string& source, const struct builder& builder);
 	virtual ~base_driver() {}
-	virtual foreign_ptr parse() = 0;
+	virtual foreign_ptr parse(self_ptr self) = 0;
 
 	void check_kwarg_name(const token *name);
 
@@ -121,7 +122,7 @@ public:
 class typedruby24 : public base_driver {
 public:
 	typedruby24(const std::string& source, const struct builder& builder);
-	virtual foreign_ptr parse();
+	virtual foreign_ptr parse(self_ptr self);
 	~typedruby24() {}
 };
 
