@@ -155,7 +155,8 @@ impl Driver {
         let driver = self.ptr;
         let mut builder = Box::new(Builder {
             driver: self,
-            cookie: 12345678
+            cookie: 12345678,
+            emit_file_vars_as_literals: true,
         });
         let ast = unsafe { rbdriver_parse(driver, &mut *builder) };
 

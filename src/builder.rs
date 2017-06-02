@@ -5,6 +5,7 @@ use std::collections::HashSet;
 
 pub struct Builder<'a> {
     pub driver: &'a mut Driver,
+    pub emit_file_vars_as_literals: bool,
     pub cookie: usize,
 }
 
@@ -682,7 +683,20 @@ impl<'a> Builder<'a> {
     }
 
     pub fn encoding_literal(&self, tok: Option<Token>) -> Node {
-        Node::EncodingLiteral(loc!(self, tok))
+        if self.emit_file_vars_as_literals {
+            let loc = loc!(self, tok);
+            Node::Const(loc.clone(),
+                Some(
+                    Rc::new(Node::Const(
+                        loc.clone(), None,
+                        Id(loc.clone(), "Encoding".to_string()),
+                    ))
+                ),
+                Id(loc.clone(), "UTF_8".to_string())
+            )
+        } else {
+            Node::EncodingLiteral(loc!(self, tok))
+        }
     }
 
     pub fn false_(&self, tok: Option<Token>) -> Node {
@@ -690,7 +704,13 @@ impl<'a> Builder<'a> {
     }
 
     pub fn file_literal(&self, tok: Option<Token>) -> Node {
-        Node::FileLiteral(loc!(self, tok))
+        if self.emit_file_vars_as_literals {
+            let loc = loc!(self, tok);
+            let filename = loc.file.filename().to_str().unwrap();
+            Node::String(loc.clone(), filename.to_string())
+        } else {
+            Node::FileLiteral(loc!(self, tok))
+        }
     }
 
     pub fn float_(&self, tok: Option<Token>) -> Node {
@@ -826,7 +846,13 @@ impl<'a> Builder<'a> {
     }
 
     pub fn line_literal(&self, tok: Option<Token>) -> Node {
-        Node::LineLiteral(loc!(self, tok))
+        if self.emit_file_vars_as_literals {
+            let loc = loc!(self, tok);
+            let line = loc.file.line_for_pos(loc.begin_pos);
+            Node::Integer(loc.clone(), line.number.to_string())
+        } else {
+            Node::LineLiteral(loc!(self, tok))
+        }
     }
 
     pub fn logical_and(&self, lhs: Option<Rc<Node>>, _op: Option<Token>, rhs: Option<Rc<Node>>) -> Node {
