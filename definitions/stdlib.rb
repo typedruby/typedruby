@@ -706,6 +706,8 @@ class String < Object
   def lines => [String]; end
 
   def chomp => String; end
+
+  def split(String delim) => [String]; end
 end
 
 class Array::[ElementType] < Object
@@ -759,6 +761,8 @@ class Array::[ElementType] < Object
   def uniq => [ElementType]; end
 
   def find({ |ElementType element| => Boolean } &) => ~ElementType; end
+
+  def drop(Integer n) => [ElementType]; end
 end
 
 class Hash::[KeyType, ValueType] < Object
@@ -1382,6 +1386,8 @@ class Regexp < Object
   NOENCODING = (nil : Integer)
 
   def initialize(String pattern, (Integer | Boolean | nil) options = nil) => nil; end
+
+  def match(String str, Integer pos = 0) => ~MatchData; end
 end
 
 class StdlibDumper < Object
