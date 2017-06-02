@@ -3,7 +3,7 @@
 RE_BODY = /struct builder \{(.*?)\}/m
 RE_FUNC = /foreign_ptr\(\*(\w+)\)\((.*?)\);/
 
-CHECK_COOKIES = true
+CHECK_COOKIES = false
 TYPE_CONVERSION = {
   "foreign_ptr" => "*mut Rc<Node>",
   "const token*" => "*const TokenPtr",
