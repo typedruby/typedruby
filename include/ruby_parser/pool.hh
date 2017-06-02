@@ -34,7 +34,7 @@ protected:
 		}
 
 		template<typename ...Args>
-		T *alloc(Args&&... args) 
+		T *alloc(Args&&... args)
 		{
 			assert(!is_full());
 			T *p = reinterpret_cast<T*>(data+_size);
