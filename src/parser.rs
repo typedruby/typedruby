@@ -2,17 +2,27 @@ use ast::*;
 use ffi::Driver;
 use std::rc::Rc;
 
-pub fn parse(source_file: Rc<SourceFile>) -> Ast {
-    parse_with_env(source_file, &[])
+pub struct ParserOptions<'a> {
+    pub emit_file_vars_as_literals: bool,
+    pub declare_env: &'a [&'a str],
 }
 
-pub fn parse_with_env(source_file: Rc<SourceFile>, env: &[&str]) -> Ast {
-    let mut driver = Driver::new(source_file.clone());
-    for var in env.iter() {
-        driver.declare(var);
+impl<'a> ParserOptions<'a> {
+    fn defaults() -> Self {
+        ParserOptions {
+            emit_file_vars_as_literals: false,
+            declare_env: &[],
+        }
     }
+}
 
-    let ast = driver.parse();
+pub fn parse(source_file: Rc<SourceFile>) -> Ast {
+    parse_with_opts(source_file, &ParserOptions::defaults())
+}
+
+pub fn parse_with_opts(source_file: Rc<SourceFile>, opts: &ParserOptions) -> Ast {
+    let mut driver = Driver::new(source_file.clone());
+    let ast = driver.parse(&opts);
     let diagnostics = driver.diagnostics();
 
     Ast {

@@ -325,7 +325,6 @@ pub struct Ast {
 
 fn line_map_from_source(source: &str) -> Vec<usize> {
     let mut line_map = vec![];
-
     let mut previous_index = 0;
 
     for (index, c) in source.char_indices() {
@@ -335,7 +334,15 @@ fn line_map_from_source(source: &str) -> Vec<usize> {
         }
     }
 
-    line_map.push(previous_index);
+    if line_map.is_empty() {
+        line_map.push(0);
+    }
+
+    if line_map.last().unwrap() == &previous_index {
+        line_map.push(source.len());
+    } else {
+        line_map.push(previous_index);
+    }
 
     line_map
 }

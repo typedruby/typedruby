@@ -34,8 +34,12 @@ mod helpers {
             let code = $code;
             let sexp = $sexp.trim();
             let src = Rc::new(ruby_parser::SourceFile::new(
-                    PathBuf::from("(assert_sexp)"), code.to_owned()));
-            let ast = ruby_parser::parse_with_env(src, &["foo", "bar", "baz"]);
+                    PathBuf::from("(assert_parses)"), code.to_owned()));
+            let opts = ruby_parser::ParserOptions {
+                emit_file_vars_as_literals: true,
+                declare_env: &["foo", "bar", "baz"]
+            };
+            let ast = ruby_parser::parse_with_opts(src, &opts);
 
             let mut buf = String::new();
             ast.to_sexp(&mut buf).expect("failed to write sexp output");
