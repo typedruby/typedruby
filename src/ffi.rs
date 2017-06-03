@@ -4,6 +4,7 @@ extern crate libc;
 
 use ::ast::{Node, Loc, SourceFile, DiagnosticLevel};
 use ::builder::Builder;
+use ::parser::ParserOptions;
 use self::libc::{size_t, c_int};
 use std::vec::Vec;
 use std::rc::Rc;
@@ -151,12 +152,16 @@ impl Driver {
         Driver { ptr: ptr, current_file: file.clone() }
     }
 
-    pub fn parse(&mut self) -> Option<Box<Rc<Node>>> {
+    pub fn parse(&mut self, opt: &ParserOptions) -> Option<Box<Rc<Node>>> {
+        for var in opt.declare_env.iter() {
+            self.declare(var);
+        }
+
         let driver = self.ptr;
         let mut builder = Box::new(Builder {
             driver: self,
             cookie: 12345678,
-            emit_file_vars_as_literals: true,
+            magic_literals: opt.emit_file_vars_as_literals,
         });
         let ast = unsafe { rbdriver_parse(driver, &mut *builder) };
 

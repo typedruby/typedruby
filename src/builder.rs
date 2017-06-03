@@ -5,7 +5,7 @@ use std::collections::HashSet;
 
 pub struct Builder<'a> {
     pub driver: &'a mut Driver,
-    pub emit_file_vars_as_literals: bool,
+    pub magic_literals: bool,
     pub cookie: usize,
 }
 
@@ -683,7 +683,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn encoding_literal(&self, tok: Option<Token>) -> Node {
-        if self.emit_file_vars_as_literals {
+        if self.magic_literals {
             let loc = loc!(self, tok);
             Node::Const(loc.clone(),
                 Some(
@@ -704,7 +704,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn file_literal(&self, tok: Option<Token>) -> Node {
-        if self.emit_file_vars_as_literals {
+        if self.magic_literals {
             let loc = loc!(self, tok);
             let filename = loc.file.filename().to_str().unwrap();
             Node::String(loc.clone(), filename.to_string())
@@ -846,7 +846,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn line_literal(&self, tok: Option<Token>) -> Node {
-        if self.emit_file_vars_as_literals {
+        if self.magic_literals {
             let loc = loc!(self, tok);
             let line = loc.file.line_for_pos(loc.begin_pos);
             Node::Integer(loc.clone(), line.number.to_string())

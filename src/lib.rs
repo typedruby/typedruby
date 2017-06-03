@@ -5,4 +5,4 @@ mod sexp;
 mod builder;
 
 pub use ast::{SourceFile, Id, Node, Loc, Diagnostic, DiagnosticLevel};
-pub use parser::{parse, parse_with_env};
+pub use parser::{parse, parse_with_opts, ParserOptions};
