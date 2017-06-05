@@ -196,10 +196,16 @@ impl<'env, 'object> Eval<'env, 'object> {
                     let type_parameters =
                         if superclass.type_parameters().is_empty() {
                             type_parameters.iter().map(|param|
-                                if let Node::TyGendeclarg(ref loc, ref name) = **param {
-                                    Id(loc.clone(), name.to_owned())
-                                } else {
-                                    panic!("expected TyGendeclarg in TyGendecl");
+                                match **param {
+                                    Node::TyGendeclarg(ref loc, ref name, None) =>
+                                        Id(loc.clone(), name.to_owned()),
+                                    Node::TyGendeclarg(ref loc, ref name, Some(ref constraint)) => {
+                                        self.error("Type constraints not permitted on class type parameters", &[
+                                            Detail::Loc("here", constraint.loc()),
+                                        ]);
+                                        Id(loc.clone(), name.to_owned())
+                                    },
+                                    _ => panic!("expected TyGendeclarg in TyGendecl"),
                                 }
                             ).collect()
                         } else if type_parameters.is_empty() {

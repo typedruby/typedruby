@@ -305,7 +305,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    fn is_unresolved_var(&self, ty: &'ty Type<'ty, 'object>) -> bool {
+    pub fn is_unresolved_var(&self, ty: &'ty Type<'ty, 'object>) -> bool {
         if let Type::Var { .. } = *self.prune(ty) {
             true
         } else {
