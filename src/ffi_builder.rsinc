@@ -73,6 +73,7 @@ struct BuilderInterface {
 	pub match_op: unsafe extern "C" fn(builder: *mut Builder, receiver: *mut Rc<Node>, oper: *const TokenPtr, arg: *mut Rc<Node>) -> *mut Rc<Node>,
 	pub multi_assign: unsafe extern "C" fn(builder: *mut Builder, mlhs: *mut Rc<Node>, rhs: *mut Rc<Node>) -> *mut Rc<Node>,
 	pub multi_lhs: unsafe extern "C" fn(builder: *mut Builder, begin: *const TokenPtr, items: *mut NodeListPtr, end: *const TokenPtr) -> *mut Rc<Node>,
+	pub multi_lhs1: unsafe extern "C" fn(builder: *mut Builder, begin: *const TokenPtr, item: *mut Rc<Node>, end: *const TokenPtr) -> *mut Rc<Node>,
 	pub negate: unsafe extern "C" fn(builder: *mut Builder, uminus: *const TokenPtr, numeric: *mut Rc<Node>) -> *mut Rc<Node>,
 	pub nil: unsafe extern "C" fn(builder: *mut Builder, tok: *const TokenPtr) -> *mut Rc<Node>,
 	pub not_op: unsafe extern "C" fn(builder: *mut Builder, not_: *const TokenPtr, begin: *const TokenPtr, receiver: *mut Rc<Node>, end: *const TokenPtr) -> *mut Rc<Node>,
@@ -543,6 +544,12 @@ unsafe extern "C" fn multi_lhs(builder: *mut Builder, begin: *const TokenPtr, it
 	let end = token_from_c(end);
 	(*builder).multi_lhs(begin, items, end).to_raw()
 }
+unsafe extern "C" fn multi_lhs1(builder: *mut Builder, begin: *const TokenPtr, item: *mut Rc<Node>, end: *const TokenPtr) -> *mut Rc<Node> {
+	let begin = token_from_c(begin);
+	let item = node_from_c(item);
+	let end = token_from_c(end);
+	(*builder).multi_lhs1(begin, item, end).to_raw()
+}
 unsafe extern "C" fn negate(builder: *mut Builder, uminus: *const TokenPtr, numeric: *mut Rc<Node>) -> *mut Rc<Node> {
 	let uminus = token_from_c(uminus);
 	let numeric = node_from_c(numeric);
@@ -939,6 +946,7 @@ static CALLBACKS: BuilderInterface = BuilderInterface {
 	match_op: match_op,
 	multi_assign: multi_assign,
 	multi_lhs: multi_lhs,
+	multi_lhs1: multi_lhs1,
 	negate: negate,
 	nil: nil,
 	not_op: not_op,

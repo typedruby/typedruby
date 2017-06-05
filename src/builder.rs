@@ -946,6 +946,20 @@ impl<'a> Builder<'a> {
         Node::Mlhs(self.collection_map(begin, items.as_slice(), end).unwrap(), items)
     }
 
+    pub fn multi_lhs1(&self, begin: Option<Token>, item: Option<Rc<Node>>, end: Option<Token>) -> Rc<Node> {
+        let item = item.unwrap();
+        match *item {
+            Node::Mlhs(_, _) => {
+                item.clone()
+            },
+            _ => {
+                let items = vec![item];
+                let loc = self.collection_map(begin, items.as_slice(), end).unwrap();
+                Rc::new(Node::Mlhs(loc, items))
+            }
+        }
+    }
+
     pub fn negate(&self, uminus: Option<Token>, numeric: Option<Rc<Node>>) -> Node {
         let numeric = numeric.unwrap();
         let loc = loc!(self, uminus).join(numeric.loc());
