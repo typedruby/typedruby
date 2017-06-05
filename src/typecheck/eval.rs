@@ -1193,10 +1193,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         where T : Fn(ComputationPredicate<'ty, 'object>, &Node) -> ComputationPredicate<'ty, 'object>
     {
         let asgn_node = match **lhs {
-            Node::Lvasgn(ref loc, ref id, None) =>
-                Node::Lvasgn(loc.join(rhs.loc()), id.clone(), Some(rhs.clone())),
-            Node::Ivasgn(ref loc, ref id, None) =>
-                Node::Ivasgn(loc.join(rhs.loc()), id.clone(), Some(rhs.clone())),
+            Node::LvarLhs(ref loc, ref id) =>
+                Node::LvarAsgn(loc.join(rhs.loc()), id.clone(), rhs.clone()),
+            Node::IvarLhs(ref loc, ref id) =>
+                Node::IvarAsgn(loc.join(rhs.loc()), id.clone(), rhs.clone()),
             _ =>
                 panic!("unknown lhs in cond_asgn: {:?}", lhs),
         };
@@ -1247,7 +1247,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
     {
         match *lhs {
-            Node::Lvasgn(ref loc, Id(_, ref name), None) => {
+            Node::LvarLhs(ref loc, Id(_, ref name)) => {
                 let lv_ty = self.tyenv.new_var(loc.clone());
 
                 match locals.assign(name.to_owned(), lv_ty) {
@@ -1257,7 +1257,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         EvalResult::Ok(existing_lv_ty, locals),
                 }
             }
-            Node::Ivasgn(ref loc, Id(_, ref name), None) => {
+            Node::IvarLhs(ref loc, Id(_, ref name)) => {
                 let iv_ty = self.lookup_ivar_or_error(&Id(loc.clone(), name.clone()), &self.type_context);
 
                 EvalResult::Ok(iv_ty, locals)
@@ -1392,7 +1392,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Computation::result(ty, locals)
             }
-            Node::Lvasgn(ref loc, Id(_, ref name), None) => {
+            Node::LvarLhs(ref loc, Id(_, ref name)) => {
                 let (ty, locals) = locals.lookup(name);
 
                 let ty = match ty {
@@ -1406,7 +1406,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 Computation::result(ty, locals)
             }
-            Node::Lvasgn(ref asgn_loc, Id(_, ref lvar_name), Some(ref expr)) => {
+            Node::LvarAsgn(ref asgn_loc, Id(_, ref lvar_name), ref expr) => {
                 self.process_node(expr, locals).seq(&|expr_ty, l| {
                     let l = self.assign_lvar(lvar_name, expr_ty, l, asgn_loc);
 
@@ -1416,12 +1416,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 })
             }
             Node::Ivar(ref loc, ref name) |
-            Node::Ivasgn(ref loc, Id(_, ref name), None) => {
+            Node::IvarLhs(ref loc, Id(_, ref name)) => {
                 let ty = self.lookup_ivar_or_error(&Id(loc.clone(), name.clone()), &self.type_context);
 
                 Computation::result(ty, locals)
             }
-            Node::Ivasgn(ref loc, ref ivar, Some(ref expr)) => {
+            Node::IvarAsgn(ref loc, ref ivar, ref expr) => {
                 let ivar_ty = self.lookup_ivar_or_error(ivar, &self.type_context);
 
                 self.process_node(expr, locals).seq(&|ty, l| {

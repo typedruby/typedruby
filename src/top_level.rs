@@ -615,11 +615,11 @@ impl<'env, 'object> Eval<'env, 'object> {
                     self.eval_node(arg);
                 }
             }
-            Node::Casgn(_, ref base, _, ref expr) if self.in_def => {
+            Node::ConstAsgn(_, ref base, _, ref expr) if self.in_def => {
                 self.eval_maybe_node(base);
                 self.eval_node(expr);
             }
-            Node::Casgn(_, ref base, Id(ref name_loc, ref name), ref expr) => {
+            Node::ConstAsgn(_, ref base, Id(ref name_loc, ref name), ref expr) => {
                 let loc = match *base {
                     Some(ref base_node) => base_node.loc().join(name_loc),
                     None => name_loc.clone(),
@@ -795,12 +795,14 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_node(left);
                 self.eval_node(right);
             }
-            Node::Lvasgn(_, _, ref expr) |
-            Node::Ivasgn(_, _, ref expr) => {
-                self.eval_maybe_node(expr);
-            }
-            Node::Cvasgn(_, _, ref expr) |
-            Node::Gvasgn(_, _, ref expr) => {
+            Node::LvarLhs(_, _) |
+            Node::IvarLhs(_, _) |
+            Node::CvarLhs(_, _) |
+            Node::GvarLhs(_, _) => {}
+            Node::LvarAsgn(_, _, ref expr) |
+            Node::IvarAsgn(_, _, ref expr) |
+            Node::CvarAsgn(_, _, ref expr) |
+            Node::GvarAsgn(_, _, ref expr) => {
                 self.eval_node(expr);
             }
             Node::Pair(_, ref key, ref value) => {
