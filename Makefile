@@ -46,8 +46,5 @@ src/ffi_builder.rsinc: include/ruby_parser/builder.hh
 .clang_complete: Makefile
 	echo $(CXXFLAGS) > $@
 
-docker-test:
-	docker run -it --rm -v $(CURDIR):/source github/ruby_parser-test
-
 # Do not remove generated Bison output
 .PRECIOUS: %.cc %.hh
