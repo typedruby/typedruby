@@ -730,8 +730,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | tLPAREN mlhs_inner rparen
                     {
-                      node_list inner($2);
-                      $$ = driver.build.multi_lhs(self, $1, &inner, $3);
+                      $$ = driver.build.multi_lhs1(self, $1, $2, $3);
                     }
 
       mlhs_basic: mlhs_head
