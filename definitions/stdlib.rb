@@ -681,7 +681,7 @@ class String < Object
 
   def *(Integer times) => String; end
 
-  def gsub(Regexp pattern, { |String s| => String } &) => String; end
+  def gsub((String | Regexp) pattern, { |String s| => String } &) => String; end
 
   def size => Integer; end
 
