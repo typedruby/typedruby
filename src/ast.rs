@@ -81,7 +81,7 @@ pub enum Node {
     DSymbol         (Loc,   Vec<Rc<Node>>),
     EFlipflop       (Loc,   Rc<Node>, Rc<Node>),
     EncodingLiteral (Loc),
-    Ensure          (Loc,   Option<Rc<Node>>, Rc<Node>),
+    Ensure          (Loc,   Option<Rc<Node>>, Option<Rc<Node>>),
     ERange          (Loc,   Rc<Node>, Rc<Node>),
     False           (Loc),
     FileLiteral     (Loc),
