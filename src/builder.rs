@@ -6,6 +6,8 @@ use std::collections::HashSet;
 pub struct Builder<'a> {
     pub driver: &'a mut Driver,
     pub magic_literals: bool,
+    pub emit_lambda: bool,
+    pub emit_procarg0: bool,
     pub cookie: usize,
 }
 
@@ -45,6 +47,7 @@ fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
         Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
         Node::Restarg(_, None) => return,
         Node::Restarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+        Node::ShadowArg(_, Id(ref loc, ref name)) => (loc, name),
         _ => panic!("not an arg node {:?}", arg),
     };
 
@@ -523,7 +526,12 @@ impl<'a> Builder<'a> {
     }
 
     pub fn call_lambda(&self, lambda: Option<Token>) -> Node {
-        Node::Lambda(loc!(self, lambda))
+        if self.emit_lambda {
+            Node::Lambda(loc!(self, lambda))
+        } else {
+            let loc = loc!(self, lambda);
+            Node::Send(loc.clone(), None, Id(loc.clone(), "lambda".to_owned()), vec![])
+        }
     }
 
     pub fn call_method(&self, recv: Option<Rc<Node>>, dot: Option<Token>, selector: Option<Token>, _lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
@@ -633,8 +641,9 @@ impl<'a> Builder<'a> {
         Node::Const(loc, Some(Rc::new(Node::Cbase(loc!(self, colon)))), tok_id!(self, name))
     }
 
-    pub fn const_op_assignable(&self, _node: Option<Rc<Node>>) -> Node {
-        unimplemented!();
+    pub fn const_op_assignable(&self, node: Option<Rc<Node>>) -> Rc<Node> {
+        let node = node.unwrap();
+        node
     }
 
     pub fn cvar(&self, tok: Option<Token>) -> Node {
@@ -718,8 +727,9 @@ impl<'a> Builder<'a> {
         Node::Float(loc, id)
     }
 
-    pub fn float_complex(&self, _tok: Option<Token>) -> Node {
-        unimplemented!();
+    pub fn float_complex(&self, tok: Option<Token>) -> Node {
+        let (loc, id) = tok_split!(self, tok);
+        Node::Complex(loc, id)
     }
 
     pub fn for_(&self, for_: Option<Token>, iterator: Option<Rc<Node>>, _in: Option<Token>, iteratee: Option<Rc<Node>>, _do: Option<Token>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
@@ -1012,9 +1022,13 @@ impl<'a> Builder<'a> {
         Node::Preexe(loc!(self, begin).join(&loc!(self, rbrace)), node)
     }
 
-    pub fn procarg0(&self, arg: Option<Rc<Node>>) -> Node {
+    pub fn procarg0(&self, arg: Option<Rc<Node>>) -> Rc<Node> {
         let arg = arg.unwrap();
-        Node::Procarg0(arg.loc().clone(), arg)
+        if self.emit_procarg0 {
+            Rc::new(Node::Procarg0(arg.loc().clone(), arg))
+        } else {
+            arg
+        }
     }
 
     pub fn prototype(&self, genargs: Option<Rc<Node>>, args: Option<Rc<Node>>, return_type: Option<Rc<Node>>) -> Node {
@@ -1051,8 +1065,9 @@ impl<'a> Builder<'a> {
         Node::Rational(loc, id)
     }
 
-    pub fn rational_complex(&self, _tok: Option<Token>) -> Node {
-        unimplemented!();
+    pub fn rational_complex(&self, tok: Option<Token>) -> Node {
+        let (loc, id) = tok_split!(self, tok);
+        Node::Complex(loc, id)
     }
 
     pub fn regexp_compose(&self, begin: Option<Token>, parts: Vec<Rc<Node>>, end: Option<Token>, options: Option<Rc<Node>>) -> Node {
@@ -1104,8 +1119,9 @@ impl<'a> Builder<'a> {
         Node::Self_(loc!(self, tok))
     }
 
-    pub fn shadowarg(&self, _name: Option<Token>) -> Node {
-        unimplemented!();
+    pub fn shadowarg(&self, name: Option<Token>) -> Node {
+        let (loc, name) = tok_split!(self, name);
+        Node::ShadowArg(loc.clone(), Id(loc.clone(), name))
     }
 
     pub fn splat(&self, star: Option<Token>, arg: Option<Rc<Node>>) -> Node {

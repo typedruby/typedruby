@@ -162,6 +162,8 @@ impl Driver {
             driver: self,
             cookie: 12345678,
             magic_literals: opt.emit_file_vars_as_literals,
+            emit_lambda: opt.emit_lambda,
+            emit_procarg0: opt.emit_procarg0,
         });
         let ast = unsafe { rbdriver_parse(driver, &mut *builder) };
 
