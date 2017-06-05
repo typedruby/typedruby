@@ -752,9 +752,7 @@ class Array::[ElementType] < Object
 
   def length => Integer; end
 
-  # TODO implement type constraints so that compact can be typed something like:
-  # def compact[NonNullType : ~NonNullType = ElementType] => [NonNullType]; end
-  def compact => [ElementType]; end
+  def compact[NonNullType : ~NonNullType = ElementType] => [NonNullType]; end
 
   def empty? => Boolean; end
 
