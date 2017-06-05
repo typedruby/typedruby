@@ -1359,7 +1359,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         match *node {
             Node::Array(ref loc, ref elements) => {
                 self.process_seq_exprs(elements, locals).map(|tys| {
-                    tys.into_iter().fold1(|a, b| self.tyenv.union(loc, a, b)).unwrap_or_else(||
+                    tys.into_iter().fold1(|a, b| {
+                        let ab_loc = a.loc().join(b.loc());
+                        self.tyenv.union(&ab_loc, a, b)
+                    }).unwrap_or_else(||
                         self.tyenv.new_var(loc.clone()))
                 }).map(|element_ty|
                     self.create_array_type(loc, element_ty)
