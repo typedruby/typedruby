@@ -3,3 +3,5 @@
 *.o
 librubyparser.a
 target
+library
+tests/ruby

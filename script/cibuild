@@ -9,4 +9,4 @@ echo "%%%FOLD {script/bootstrap}%%%"
 script/bootstrap
 echo "%%%END FOLD%%%"
 
-time docker run --rm -v "$(pwd):/src" ruby_parser-build cargo test
+time docker run --rm -v "$(pwd):/src" ruby_parser-build ./script/testall
