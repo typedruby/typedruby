@@ -501,12 +501,27 @@ impl<'a> Builder<'a> {
 
         match *method_call {
             Node::Send(_, _, _, _) |
-                Node::CSend(_, _, _, _) |
-                Node::Super(_, _) |
-                Node::ZSuper(_) |
-                Node::Lambda(_) =>
-                Node::Block(method_call.loc().join(&loc!(self, end)), method_call, args, body),
-            _ => panic!("unknown method call node: {:?}", method_call),
+            Node::CSend(_, _, _, _) |
+            Node::Super(_, _) |
+            Node::ZSuper(_) |
+            Node::Lambda(_) => {
+                Node::Block(method_call.loc().join(&loc!(self, end)), method_call.clone(), args, body)
+            },
+            Node::Break(ref loc, ref sends) |
+            Node::Next(ref loc, ref sends) |
+            Node::Return(ref loc, ref sends) => {
+                let actual_send = sends.first().unwrap().clone();
+                let block = Rc::new(Node::Block(loc.join(&loc!(self, end)), actual_send, args, body));
+                let loc = loc.join(&join_exprs(&[method_call.clone(), block.clone()]));
+
+                match *method_call {
+                    Node::Return(_, _) => Node::Return(loc, vec![block]),
+                    Node::Next(_, _) => Node::Next(loc, vec![block]),
+                    Node::Break(_, _) => Node::Break(loc, vec![block]),
+                    _ => unreachable!(),
+                }
+            },
+            _ => panic!("unknown method call node: {:?}", method_call)
         }
     }
 
