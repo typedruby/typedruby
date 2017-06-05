@@ -1,0 +1,5 @@
+.cargo-in-container
+.git
+*.o
+librubyparser.a
+target
