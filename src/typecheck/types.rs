@@ -372,20 +372,22 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                     return Err((t1, t2));
                 }
 
-                let mut marked = Vec::new();
-                marked.resize(types1.len(), false);
+                let mut marked1 = Vec::new();
+                marked1.resize(types1.len(), false);
+                let mut marked2 = marked1.clone();
 
                 // attempt to unify all concrete types first:
-                for ty2 in types2 {
+                for (idx2, ty2) in types2.iter().enumerate() {
                     if self.is_unresolved_var(ty2) { continue }
 
-                    for (index, ty1) in types1.iter().enumerate() {
-                        if marked[index] { continue }
+                    for (idx1, ty1) in types1.iter().enumerate() {
+                        if marked1[idx1] { continue }
                         if self.is_unresolved_var(ty1) { continue }
 
                         match self.unify(ty1, ty2) {
                             Ok(()) => {
-                                marked[index] = true;
+                                marked1[idx1] = true;
+                                marked2[idx2] = true;
                                 break
                             }
                             Err(..) => {
@@ -396,23 +398,21 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 }
 
                 // unify all unresolved type variables:
-                for ty2 in types2 {
-                    if !self.is_unresolved_var(ty2) { continue }
+                for (idx2, ty2) in types2.iter().enumerate() {
+                    if marked2[idx2] { continue }
 
-                    for (index, ty1) in types1.iter().enumerate() {
-                        if marked[index] { continue }
-                        if !self.is_unresolved_var(ty1) { continue }
+                    for (idx1, ty1) in types1.iter().enumerate() {
+                        if marked1[idx1] { continue }
 
                         self.unify(ty1, ty2).expect("unifying two unresolved type variables should never fail");
-                        marked[index] = true;
+                        marked1[idx1] = true;
+                        marked2[idx2] = true;
                     }
                 }
 
                 // if by this point not all types are marked, there was a mismatch
-                for m in marked {
-                    if !m {
-                        return Err((t1, t2));
-                    }
+                if !(marked1.iter().any(|m| *m) && marked2.iter().any(|m| *m)) {
+                    return Err((t1, t2));
                 }
 
                 Ok(())
