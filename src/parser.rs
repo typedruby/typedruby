@@ -4,6 +4,8 @@ use std::rc::Rc;
 
 pub struct ParserOptions<'a> {
     pub emit_file_vars_as_literals: bool,
+    pub emit_lambda: bool,
+    pub emit_procarg0: bool,
     pub declare_env: &'a [&'a str],
 }
 
@@ -11,6 +13,8 @@ impl<'a> ParserOptions<'a> {
     fn defaults() -> Self {
         ParserOptions {
             emit_file_vars_as_literals: false,
+            emit_lambda: true,
+            emit_procarg0: true,
             declare_env: &[],
         }
     }

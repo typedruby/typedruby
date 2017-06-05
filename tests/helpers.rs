@@ -29,17 +29,13 @@ mod helpers {
     }
 
     #[macro_export]
-    macro_rules! assert_sexp {
-        ($code:expr , $sexp:expr) => ({
+    macro_rules! parse_and_cmp {
+        ($code:expr , $sexp:expr , $opts:expr) => ({
             let code = $code;
             let sexp = $sexp.trim();
             let src = Rc::new(ruby_parser::SourceFile::new(
                     PathBuf::from("(assert_parses)"), code.to_owned()));
-            let opts = ruby_parser::ParserOptions {
-                emit_file_vars_as_literals: true,
-                declare_env: &["foo", "bar", "baz"]
-            };
-            let ast = ruby_parser::parse_with_opts(src, &opts);
+            let ast = ruby_parser::parse_with_opts(src, &$opts);
 
             let mut buf = String::new();
             ast.to_sexp(&mut buf).expect("failed to write sexp output");
