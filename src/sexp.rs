@@ -585,6 +585,13 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
+            (&Node::MatchAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
+                let mut builder = __arg_0.new_node("match-with-lvasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
             (&Node::MatchCurLine(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("match-current-line");
                 let _ = builder.field(__self_0);

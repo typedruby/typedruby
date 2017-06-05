@@ -23,6 +23,41 @@ fn collapse_string_parts(parts: &[Rc<Node>]) -> bool {
     }
 }
 
+fn build_static_string(output: &mut String, nodes: &[Rc<Node>]) -> bool {
+    for node in nodes {
+        match **node {
+            Node::String(_, ref s) => output.push_str(s),
+            Node::Begin(_, ref nodes) => {
+                if !build_static_string(output, nodes) {
+                    return false;
+                }
+            },
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn extract_regexp_names(re: &str) -> Vec<&str> {
+    let grpat = "(?<";
+    let mut begin = 0;
+    let mut names = Vec::new();
+
+    // TODO: handle escaping
+
+    while let Some(m1) = re[begin..].find(grpat) {
+        let m1 = begin + m1 + grpat.len();
+        if let Some(m2) = re[m1..].find('>') {
+            let m2 = m1 + m2;
+            names.push(&re[m1..m2]);
+            begin = m2 + 1;
+        } else {
+            break
+        }
+    }
+    names
+}
+
 fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
     let (_, name) = match *arg {
         // nodes that wrap other arg nodes:
@@ -924,16 +959,22 @@ impl<'a> Builder<'a> {
         }
     }
 
-    pub fn match_op(&self, recv: Option<Rc<Node>>, oper: Option<Token>, arg: Option<Rc<Node>>) -> Node {
+    pub fn match_op(&mut self, recv: Option<Rc<Node>>, oper: Option<Token>, arg: Option<Rc<Node>>) -> Node {
         let recv = recv.unwrap();
         let arg = arg.unwrap();
+        let loc = recv.loc().join(arg.loc());
 
         if let Node::Regexp(_, ref _parts, _) = *recv {
-            // TODO if parts are all static string literals, declare any named
-            // captures as local variables and emit MatchWithLvasgn node
+            let mut st = String::new();
+            if build_static_string(&mut st, _parts) {
+                for name in extract_regexp_names(&st) {
+                    self.driver.declare(name);
+                }
+                return Node::MatchAsgn(loc, recv.clone(), vec![arg])
+            }
         }
 
-        Node::Send(recv.loc().join(arg.loc()), Some(recv), tok_id!(self, oper), vec![arg])
+        Node::Send(loc, Some(recv), tok_id!(self, oper), vec![arg])
     }
 
     pub fn multi_assign(&self, mlhs: Option<Rc<Node>>, rhs: Option<Rc<Node>>) -> Node {
