@@ -443,17 +443,17 @@ impl<'a> Builder<'a> {
             compound_stmt = Some(Rc::new(Node::Begin(join_exprs(stmts.as_slice()), stmts)));
         }
 
-        if let Some(ensure_box) = ensure {
-            let loc = {
-                let ensure_loc = ensure_box.loc();
-
-                match compound_stmt {
-                    Some(ref compound_stmt_box) => compound_stmt_box.loc().join(ensure_loc),
-                    None => loc!(self, ensure_tok).join(ensure_loc),
-                }
+        if ensure_tok.is_some() {
+            let mut loc = match compound_stmt {
+                Some(ref compound_stmt_box) => compound_stmt_box.loc().clone(),
+                None => loc!(self, ensure_tok),
             };
 
-            compound_stmt = Some(Rc::new(Node::Ensure(loc, compound_stmt, ensure_box)));
+            if let Some(ref ensure_box) = ensure {
+                loc = loc.join(ensure_box.loc());
+            };
+
+            compound_stmt = Some(Rc::new(Node::Ensure(loc, compound_stmt, ensure)));
         }
 
         compound_stmt
