@@ -977,7 +977,7 @@ impl<'a> Builder<'a> {
                 assert!(begin.is_some() && end.is_some());
                 let nil_loc = tok_join!(self, begin, end);
                 let loc = not_loc.join(&nil_loc);
-                let recv = Rc::new(Node::Begin(nil_loc.clone(), vec![Rc::new(Node::Nil(nil_loc))]));
+                let recv = Rc::new(Node::Begin(nil_loc.clone(), vec![]));
                 Node::Send(loc, Some(recv), id, vec![])
             }
         }
