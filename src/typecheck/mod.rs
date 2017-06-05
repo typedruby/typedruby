@@ -17,7 +17,7 @@ pub fn check<'env, 'object: 'env>(env: &'env Environment<'object>, method: Rc<Me
 
     match *method.implementation {
         MethodImpl::Ruby { ref scope, ref node, .. } =>
-            Eval::new(env, types, scope.clone(), method.owner, node.clone()).process(),
+            Eval::process(env, types, scope.clone(), method.owner, node.clone()),
         MethodImpl::AttrReader { .. } |
         MethodImpl::AttrWriter { .. } |
         MethodImpl::Untyped |
