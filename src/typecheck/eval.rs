@@ -104,6 +104,11 @@ impl BlockArg {
     }
 }
 
+enum Lhs<'ty, 'object: 'ty> {
+    Simple(Loc, &'ty Type<'ty, 'object>),
+    Send(Loc, Option<Rc<Node>>, &'ty Type<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
+}
+
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     pub fn process(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) {
         let class_type_parameters = class.type_parameters().iter().map(|&Id(ref loc, _)|
@@ -1175,24 +1180,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         result_comp.unwrap_or_else(|| Computation::result(self.tyenv.any(loc.clone()), locals))
     }
 
-    fn type_for_attr_asgn(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
-    {
-        let id = Id(id.0.clone(), id.1.clone() + "=");
-
-        self.process_send_receiver(recv, &id, locals).and_then(|recv_type, locals| {
-            self.process_send_args(&id, arg_nodes, locals).and_then(|mut args, locals| {
-                let attr_asgn_ty = self.tyenv.new_var(loc.clone());
-
-                args.push(CallArg::Pass(loc.clone(), attr_asgn_ty));
-
-                let comp = self.process_send_dispatch(loc, recv, &id, recv_type, args, None, locals);
-
-                self.extract_results(comp, loc).map(|_| attr_asgn_ty)
-            })
-        })
-    }
-
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1270,8 +1257,26 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_lhs(&self, lhs: &Node, locals: Locals<'ty, 'object>)
+    fn type_for_lhs(&self, lhs: &Lhs<'ty, 'object>, locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
+    {
+        match *lhs {
+            Lhs::Simple(_, ty) => EvalResult::Ok(ty, locals),
+            Lhs::Send(ref loc, ref recv, ref recv_ty, ref id, ref args) => {
+                let rhs_ty = self.tyenv.new_var(loc.clone());
+
+                let mut args = args.clone();
+                args.push(CallArg::Pass(loc.clone(), rhs_ty));
+
+                let comp = self.process_send_dispatch(loc, recv, id, recv_ty, args, None, locals);
+
+                self.extract_results(comp, loc).map(|_| rhs_ty)
+            }
+        }
+    }
+
+    fn process_lhs(&self, lhs: &Node, locals: Locals<'ty, 'object>)
+        -> EvalResult<'ty, 'object, Lhs<'ty, 'object>>
     {
         match *lhs {
             Node::LvarLhs(ref loc, Id(_, ref name)) => {
@@ -1279,20 +1284,24 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 match locals.assign(name.to_owned(), lv_ty) {
                     (None, locals) =>
-                        EvalResult::Ok(lv_ty, locals),
+                        EvalResult::Ok(Lhs::Simple(loc.clone(), lv_ty), locals),
                     (Some(existing_lv_ty), locals) =>
-                        EvalResult::Ok(existing_lv_ty, locals),
+                        EvalResult::Ok(Lhs::Simple(loc.clone(), existing_lv_ty), locals),
                 }
             }
             Node::IvarLhs(ref loc, Id(_, ref name)) => {
                 let iv_ty = self.lookup_ivar_or_error(&Id(loc.clone(), name.clone()), &self.type_context);
 
-                EvalResult::Ok(iv_ty, locals)
+                EvalResult::Ok(Lhs::Simple(loc.clone(), iv_ty), locals)
             }
-            Node::Send(ref loc, ref recv, ref id, ref args) => {
-                self.type_for_attr_asgn(loc, recv, id, args, locals)
+            Node::Send(ref loc, ref recv, ref id, ref arg_nodes) => {
+                self.process_send_receiver(recv, id, locals).and_then(|recv_ty, locals| {
+                    self.process_send_args(id, arg_nodes, locals).map(|args| {
+                        Lhs::Send(loc.clone(), recv.clone(), recv_ty, id.clone(), args)
+                    })
+                })
             }
-            Node::Mlhs(_, ref nodes) => {
+            Node::Mlhs(ref loc, ref nodes) => {
                 let mut locals = locals;
                 let mut lead_types = Vec::new();
                 let mut post_types = Vec::new();
@@ -1305,7 +1314,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         _ => (false, node),
                     };
 
-                    let ty = match self.process_lhs(node, locals) {
+                    let ty_result = self.process_lhs(node, locals).and_then(|lhs, locals| {
+                        self.type_for_lhs(&lhs, locals)
+                    });
+
+                    let ty = match ty_result {
                         EvalResult::Ok(ty, l) => {
                             locals = l;
                             ty
@@ -1338,9 +1351,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     post: post_types,
                 });
 
+                let lhs = Lhs::Simple(lhs.loc().clone(), tuple);
+
                 match non_result_comp {
-                    Some(comp) => EvalResult::Both(tuple, locals, comp),
-                    None => EvalResult::Ok(tuple, locals),
+                    Some(comp) => EvalResult::Both(lhs, locals, comp),
+                    None => EvalResult::Ok(lhs, locals),
                 }
             }
             _ => panic!("unknown node type in lhs: {:?}", lhs),
@@ -1350,9 +1365,29 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     fn process_asgn(&self, lhs: &Node, rty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
         -> EvalResult<'ty, 'object, ()>
     {
-        self.process_lhs(lhs, locals).map(|lhs_ty| {
-            self.compatible(lhs_ty, rty, Some(loc));
+        self.process_lhs(lhs, locals).and_then(|lhs, locals| {
+            self.assign(lhs, rty, locals, loc)
         })
+    }
+
+    fn assign(&self, lhs: Lhs<'ty, 'object>, rty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
+        -> EvalResult<'ty, 'object, ()>
+    {
+        match lhs {
+            Lhs::Simple(_, lty) => {
+                self.compatible(lty, rty, Some(loc));
+                EvalResult::Ok((), locals)
+            }
+            Lhs::Send(_, ref recv_node, recv_ty, ref id, ref args) => {
+                let mut args = args.clone();
+                args.push(CallArg::Pass(rty.loc().clone(), rty));
+
+                let id = Id(id.0.clone(), id.1.clone() + "=");
+
+                let send_comp = self.process_send_dispatch(loc, recv_node, &id, recv_ty, args, None, locals);
+                self.extract_results(send_comp, loc).map(|_| ())
+            }
+        }
     }
 
     fn process_option_node(&self, loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
