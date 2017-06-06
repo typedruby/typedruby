@@ -108,7 +108,7 @@ impl BlockArg {
 enum Lhs<'ty, 'object: 'ty> {
     Lvar(Loc, String),
     Simple(Loc, &'ty Type<'ty, 'object>),
-    Send(Loc, Option<Rc<Node>>, &'ty Type<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
+    Send(Loc, &'ty Type<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
 }
 
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
@@ -740,19 +740,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn prototypes_for_invocation(&self, recv_loc: Option<&Loc>, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Rc<Prototype<'ty, 'object>>> {
+    fn prototypes_for_invocation(&self, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Rc<Prototype<'ty, 'object>>> {
         let degraded_recv_type = self.tyenv.degrade_to_instance(recv_type);
-
-        let loc = match recv_loc {
-            Some(recv_loc) => recv_loc.join(&id.0),
-            None => id.0.clone(),
-        };
 
         match *degraded_recv_type {
             Type::Instance { class, type_parameters: ref tp, .. } => {
                 match self.env.object.lookup_method(class, &id.1) {
                     Some(method) => {
-                        vec![self.prototype_from_method_impl(&loc, &method.implementation, TypeContext::new(class, tp.clone()))]
+                        vec![self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(class, tp.clone()))]
                     }
                     None => Vec::new(),
                 }
@@ -761,14 +756,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 match self.env.object.lookup_method(self.env.object.Proc, &id.1) {
                     Some(method) => match *method.implementation {
                         MethodImpl::IntrinsicProcCall => vec![proto.clone()],
-                        _ => vec![self.prototype_from_method_impl(&loc, &method.implementation, TypeContext::new(&self.env.object.Proc, Vec::new()))],
+                        _ => vec![self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(&self.env.object.Proc, Vec::new()))],
                     },
                     None => Vec::new(),
                 }
             }
             Type::Union { ref types, .. } => {
                 types.iter().flat_map(|ty| {
-                    let prototypes = self.prototypes_for_invocation(recv_loc, ty, id);
+                    let prototypes = self.prototypes_for_invocation(ty, id);
 
                     if prototypes.is_empty() {
                         let message = format!("Union member {} does not respond to #{}", self.tyenv.describe(ty), &id.1);
@@ -783,14 +778,16 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Type::Any { .. } => vec![self.tyenv.any_prototype(id.0.clone())],
             Type::TypeParameter { ref name, .. } => {
                 self.error(&format!("Type parameter {} is of unknown type", name), &[
-                    Detail::Loc("in receiver of this invocation", &loc),
+                    Detail::Loc("in receiver", recv_type.loc()),
+                    Detail::Loc("of this invocation", &id.0),
                 ]);
 
                 vec![]
             }
-            Type::Var { id, .. } => {
+            Type::Var { id: tyid, .. } => {
                 self.error(&format!("Type of receiver is not known at this point"), &[
-                    Detail::Loc(&format!("t{}", id), &loc),
+                    Detail::Loc(&format!("t{}", tyid), recv_type.loc()),
+                    Detail::Loc("in this invocation", &id.0),
                 ]);
 
                 vec![]
@@ -929,7 +926,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 })
             });
 
-            let prototypes = self.prototypes_for_invocation(None, ty, &Id(loc.clone(), mid.to_owned()));
+            let prototypes = self.prototypes_for_invocation(ty, &Id(loc.clone(), mid.to_owned()));
 
             if prototypes.is_empty() {
                 self.error(&format!("Could not resolve method #{}", mid), &[
@@ -1096,10 +1093,10 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         )
     }
 
-    fn process_send_dispatch(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, recv_type: &'ty Type<'ty, 'object>, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
+    fn process_send_dispatch(&self, loc: &Loc, recv_type: &'ty Type<'ty, 'object>, id: &Id, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
-        let prototypes = self.prototypes_for_invocation(recv.as_ref().map(|r| r.loc()), recv_type, id);
+        let prototypes = self.prototypes_for_invocation(recv_type, id);
 
         if prototypes.is_empty() {
             self.error(&format!("Could not resolve method #{}", &id.1), &[
@@ -1180,7 +1177,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     {
         self.process_send_receiver(recv, id, locals).and_then_comp(|recv_type, locals| {
             self.process_send_args(id, arg_nodes, locals).and_then_comp(|args, locals| {
-                self.process_send_dispatch(loc, recv, id, recv_type, args, block, locals)
+                self.process_send_dispatch(loc, recv_type, id, args, block, locals)
             })
         })
     }
@@ -1299,7 +1296,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
             }
             Lhs::Simple(_, ty) => EvalResult::Ok(ty, locals),
-            Lhs::Send(ref loc, ref recv, ref recv_ty, ref id, ref args) => {
+            Lhs::Send(ref loc, ref recv_ty, ref id, ref args) => {
                 let id = Id(id.0.clone(), id.1.clone() + "=");
 
                 let rhs_ty = self.tyenv.new_var(loc.clone());
@@ -1307,7 +1304,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 let mut args = args.clone();
                 args.push(CallArg::Pass(loc.clone(), rhs_ty));
 
-                let comp = self.process_send_dispatch(loc, recv, &id, recv_ty, args, None, locals);
+                let comp = self.process_send_dispatch(loc, recv_ty,  &id, args, None, locals);
 
                 self.extract_results(comp, loc).map(|_| rhs_ty)
             }
@@ -1329,7 +1326,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Send(ref loc, ref recv, ref id, ref arg_nodes) => {
                 self.process_send_receiver(recv, id, locals).and_then(|recv_ty, locals| {
                     self.process_send_args(id, arg_nodes, locals).map(|args| {
-                        Lhs::Send(loc.clone(), recv.clone(), recv_ty, id.clone(), args)
+                        Lhs::Send(loc.clone(), recv_ty, id.clone(), args)
                     })
                 })
             }
@@ -1377,13 +1374,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
 
                 let tuple = self.tyenv.alloc(Type::Tuple {
-                    loc: lhs.loc().clone(),
+                    loc: loc.clone(),
                     lead: lead_types,
                     splat: splat_type,
                     post: post_types,
                 });
 
-                let lhs = Lhs::Simple(lhs.loc().clone(), tuple);
+                let lhs = Lhs::Simple(loc.clone(), tuple);
 
                 match non_result_comp {
                     Some(comp) => EvalResult::Both(lhs, locals, comp),
@@ -1421,13 +1418,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.compatible(lty, rty, Some(loc));
                 EvalResult::Ok((), locals)
             }
-            Lhs::Send(_, ref recv_node, recv_ty, ref id, ref args) => {
+            Lhs::Send(_, recv_ty, ref id, ref args) => {
                 let mut args = args.clone();
                 args.push(CallArg::Pass(rty.loc().clone(), rty));
 
                 let id = Id(id.0.clone(), id.1.clone() + "=");
 
-                let send_comp = self.process_send_dispatch(loc, recv_node, &id, recv_ty, args, None, locals);
+                let send_comp = self.process_send_dispatch(loc, recv_ty, &id, args, None, locals);
                 self.extract_results(send_comp, loc).map(|_| ())
             }
         }
@@ -1771,8 +1768,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let lhs_ty = match lhs {
                         Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals),
                         Lhs::Simple(_, ty) => EvalResult::Ok(ty, locals),
-                        Lhs::Send(ref lhs_loc, ref recv, ref recv_ty, ref id, ref args) => {
-                            let comp = self.process_send_dispatch(lhs_loc, recv, id, recv_ty, args.clone(), None, locals);
+                        Lhs::Send(ref lhs_loc, ref recv_ty, ref id, ref args) => {
+                            let comp = self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals);
                             self.extract_results(comp, lhs_loc)
                         }
                     };
@@ -1780,7 +1777,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     lhs_ty.and_then(|lhs_ty, locals| {
                         self.eval_node(rhs, locals).and_then(|rhs_ty, locals| {
                             let args = vec![CallArg::Pass(rhs.loc().clone(), rhs_ty)];
-                            let op_comp = self.process_send_dispatch(loc, &Some(lhs_node.clone()), op, lhs_ty, args, None, locals);
+                            let op_comp = self.process_send_dispatch(loc, lhs_ty, op, args, None, locals);
                             self.extract_results(op_comp, loc)
                         })
                     }).and_then(|op_ty, locals| {
