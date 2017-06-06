@@ -104,7 +104,9 @@ impl BlockArg {
     }
 }
 
+#[derive(Debug)]
 enum Lhs<'ty, 'object: 'ty> {
+    Lvar(Loc, String),
     Simple(Loc, &'ty Type<'ty, 'object>),
     Send(Loc, Option<Rc<Node>>, &'ty Type<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
 }
@@ -1233,6 +1235,41 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
+    fn lookup_lvar(&self, loc: &Loc, name: &str, locals: Locals<'ty, 'object>)
+        -> EvalResult<'ty, 'object, Option<&'ty Type<'ty, 'object>>>
+    {
+        let (ty, locals) = locals.lookup(name);
+
+        let ty = match ty {
+            LocalEntry::Bound(ty) |
+            LocalEntry::Pinned(ty) => {
+                let lv_ty = self.tyenv.local_variable(loc.clone(), name.to_owned(), ty);
+                Some(lv_ty)
+            }
+            LocalEntry::ConditionallyPinned(ty) => {
+                let lv_ty = self.tyenv.nillable(loc, self.tyenv.local_variable(loc.clone(), name.to_owned(), ty));
+                Some(lv_ty)
+            }
+            LocalEntry::Unbound => None,
+        };
+
+        EvalResult::Ok(ty, locals)
+    }
+
+    fn lookup_lvar_or_error(&self, loc: &Loc, name: &str, locals: Locals<'ty, 'object>)
+        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
+    {
+        self.lookup_lvar(loc, name, locals).map(|ty| {
+            ty.unwrap_or_else(|| {
+                self.error("Use of uninitialised local variable", &[
+                    Detail::Loc("here", loc),
+                ]);
+
+                self.tyenv.nil(loc.clone())
+            })
+        })
+    }
+
     fn assign_lvar(&self, name: &str, ty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
         -> Locals<'ty, 'object>
     {
@@ -1254,14 +1291,23 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
     {
         match *lhs {
+            Lhs::Lvar(ref loc, ref name) => {
+                let lv_ty = self.tyenv.new_var(loc.clone());
+                match locals.assign(name.clone(), lv_ty) {
+                    (Some(ty), locals) => EvalResult::Ok(ty, locals),
+                    (None, locals) => EvalResult::Ok(lv_ty, locals),
+                }
+            }
             Lhs::Simple(_, ty) => EvalResult::Ok(ty, locals),
             Lhs::Send(ref loc, ref recv, ref recv_ty, ref id, ref args) => {
+                let id = Id(id.0.clone(), id.1.clone() + "=");
+
                 let rhs_ty = self.tyenv.new_var(loc.clone());
 
                 let mut args = args.clone();
                 args.push(CallArg::Pass(loc.clone(), rhs_ty));
 
-                let comp = self.process_send_dispatch(loc, recv, id, recv_ty, args, None, locals);
+                let comp = self.process_send_dispatch(loc, recv, &id, recv_ty, args, None, locals);
 
                 self.extract_results(comp, loc).map(|_| rhs_ty)
             }
@@ -1273,14 +1319,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     {
         match *lhs {
             Node::LvarLhs(ref loc, Id(_, ref name)) => {
-                let lv_ty = self.tyenv.new_var(loc.clone());
-
-                match locals.assign(name.to_owned(), lv_ty) {
-                    (None, locals) =>
-                        EvalResult::Ok(Lhs::Simple(loc.clone(), lv_ty), locals),
-                    (Some(existing_lv_ty), locals) =>
-                        EvalResult::Ok(Lhs::Simple(loc.clone(), existing_lv_ty), locals),
-                }
+                EvalResult::Ok(Lhs::Lvar(loc.clone(), name.clone()), locals)
             }
             Node::IvarLhs(ref loc, Id(_, ref name)) => {
                 let iv_ty = self.lookup_ivar_or_error(&Id(loc.clone(), name.clone()), &self.type_context);
@@ -1367,6 +1406,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         -> EvalResult<'ty, 'object, ()>
     {
         match lhs {
+            Lhs::Lvar(_, name) => {
+                match locals.assign(name, rty) {
+                    (Some(ty), locals) => {
+                        self.compatible(ty, rty, Some(loc));
+                        EvalResult::Ok((), locals)
+                    }
+                    (None, locals) => {
+                        EvalResult::Ok((), locals)
+                    }
+                }
+            }
             Lhs::Simple(_, lty) => {
                 self.compatible(lty, rty, Some(loc));
                 EvalResult::Ok((), locals)
@@ -1444,38 +1494,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.process_seq_stmts(loc, nodes, locals)
             }
             Node::Lvar(ref loc, ref name) => {
-                let (ty, locals) = locals.lookup(name);
-
-                let ty = match ty {
-                    LocalEntry::Bound(ty) |
-                    LocalEntry::Pinned(ty) => self.tyenv.local_variable(loc.clone(), name.clone(), ty),
-                    LocalEntry::ConditionallyPinned(ty) => {
-                        self.tyenv.nillable(loc, self.tyenv.local_variable(loc.clone(), name.clone(), ty))
-                    }
-                    LocalEntry::Unbound => {
-                        self.error("Use of uninitialised local variable", &[
-                            Detail::Loc("here", loc),
-                        ]);
-
-                        self.tyenv.nil(loc.clone())
-                    }
-                };
-
-                Computation::result(ty, locals)
+                self.lookup_lvar_or_error(loc, name, locals).into_computation()
             }
             Node::LvarLhs(ref loc, Id(_, ref name)) => {
-                let (ty, locals) = locals.lookup(name);
-
-                let ty = match ty {
-                    LocalEntry::Bound(ty) |
-                    LocalEntry::Pinned(ty) => self.tyenv.local_variable(loc.clone(), name.clone(), ty),
-                    LocalEntry::ConditionallyPinned(ty) => {
-                        self.tyenv.nillable(loc, self.tyenv.local_variable(loc.clone(), name.clone(), ty))
-                    }
-                    LocalEntry::Unbound => self.tyenv.nil(loc.clone())
-                };
-
-                Computation::result(ty, locals)
+                self.lookup_lvar(loc, name, locals)
+                    .map(|ty| ty.unwrap_or_else(|| self.tyenv.nil(loc.clone())))
+                    .into_computation()
             }
             Node::LvarAsgn(ref asgn_loc, Id(_, ref lvar_name), ref expr) => {
                 self.process_node(expr, locals).seq(&|expr_ty, l| {
@@ -1748,6 +1772,28 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     truthy: pred.truthy.map(|comp| self.seq_process(comp, asgn_node)),
                     ..pred
                 })
+            }
+            Node::OpAsgn(ref loc, ref lhs_node, ref op, ref rhs) => {
+                self.process_lhs(lhs_node, locals).and_then(|lhs, locals| {
+                    let lhs_ty = match lhs {
+                        Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals),
+                        Lhs::Simple(_, ty) => EvalResult::Ok(ty, locals),
+                        Lhs::Send(ref lhs_loc, ref recv, ref recv_ty, ref id, ref args) => {
+                            let comp = self.process_send_dispatch(lhs_loc, recv, id, recv_ty, args.clone(), None, locals);
+                            self.extract_results(comp, lhs_loc)
+                        }
+                    };
+
+                    lhs_ty.and_then(|lhs_ty, locals| {
+                        self.eval_node(rhs, locals).and_then(|rhs_ty, locals| {
+                            let args = vec![CallArg::Pass(rhs.loc().clone(), rhs_ty)];
+                            let op_comp = self.process_send_dispatch(loc, &Some(lhs_node.clone()), op, lhs_ty, args, None, locals);
+                            self.extract_results(op_comp, loc)
+                        })
+                    }).and_then(|op_ty, locals| {
+                        self.assign(lhs, op_ty, locals, loc).map(|()| op_ty)
+                    })
+                }).into_computation()
             }
             Node::Or(_, ref lhs, ref rhs) => {
                 let lhs_pred = self.process_node(lhs, locals).predicate(lhs.loc(), &self.tyenv);
