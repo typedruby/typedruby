@@ -830,6 +830,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_node(lhs);
                 self.eval_node(rhs);
             }
+            Node::MatchAsgn(_, ref lhs, ref rhs) => {
+                self.eval_node(lhs);
+                self.eval_node(&rhs[0]);
+            }
             Node::Case(_, ref cond, ref cases, ref else_) => {
                 self.eval_maybe_node(cond);
 
