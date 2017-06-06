@@ -29,6 +29,21 @@ mod helpers {
     }
 
     #[macro_export]
+    macro_rules! assert_diag {
+        ($code:expr , $expect_level:expr , $expect_class:expr , $opts:expr) => ({
+            let code = $code;
+            let src = Rc::new(ruby_parser::SourceFile::new(
+                    PathBuf::from("(assert_diagnostics)"), code.to_owned()));
+            let ast = ruby_parser::parse_with_opts(src, &$opts);
+            assert_eq!(ast.diagnostics.len(), 1);
+
+            let err = ast.diagnostics.first().unwrap();
+            assert_eq!(err.level, $expect_level);
+            assert_eq!(err.class, $expect_class);
+        })
+    }
+
+    #[macro_export]
     macro_rules! parse_and_cmp {
         ($code:expr , $sexp:expr , $opts:expr) => ({
             let code = $code;

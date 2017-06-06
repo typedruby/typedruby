@@ -1,0 +1,24 @@
+#!/usr/bin/env ruby
+
+infile = File.read(ARGV[1])
+diagnostics = infile.split("\n").map { |d| d.strip }
+
+case ARGV[0]
+when "rs"
+  puts "#[derive(Debug)]"
+  puts "#[derive(PartialEq)]"
+  puts "#[repr(C)]"
+  puts "pub enum DiagClass {"
+  diagnostics.each do |d|
+    puts "\t#{d},"
+  end
+  puts "}"
+
+when "cpp"
+  puts "enum class dclass {"
+  puts diagnostics.map { |d| "\t#{d}" }.join(",\n")
+  puts "};"
+
+else
+  abort("Unknown output mode")
+end

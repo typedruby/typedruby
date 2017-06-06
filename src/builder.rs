@@ -2,6 +2,10 @@ use ffi::{Token, Driver};
 use std::rc::Rc;
 use ast::{Node, Id, Loc, SourceFile};
 use std::collections::HashSet;
+use diagnostics::DiagClass;
+
+#[cfg(feature = "regex")]
+use onig::Regex;
 
 pub struct Builder<'a> {
     pub driver: &'a mut Driver,
@@ -36,71 +40,6 @@ fn build_static_string(output: &mut String, nodes: &[Rc<Node>]) -> bool {
         }
     }
     true
-}
-
-fn extract_regexp_names(re: &str) -> Vec<&str> {
-    let grpat = "(?<";
-    let mut begin = 0;
-    let mut names = Vec::new();
-
-    // TODO: handle escaping
-
-    while let Some(m1) = re[begin..].find(grpat) {
-        let m1 = begin + m1 + grpat.len();
-        if let Some(m2) = re[m1..].find('>') {
-            let m2 = m1 + m2;
-            names.push(&re[m1..m2]);
-            begin = m2 + 1;
-        } else {
-            break
-        }
-    }
-    names
-}
-
-fn check_duplicate_args_inner<'a>(names: &mut HashSet<&'a str>, arg: &'a Node) {
-    let (_, name) = match *arg {
-        // nodes that wrap other arg nodes:
-        Node::Procarg0(_, ref arg) |
-        Node::TypedArg(_, _, ref arg) => {
-            return check_duplicate_args_inner(names, arg);
-        },
-        Node::Mlhs(_, ref mlhs_items) => {
-            for mlhs_item in mlhs_items {
-                check_duplicate_args_inner(names, mlhs_item);
-            }
-            return;
-        },
-        // normal arg nodes:
-        Node::Arg(ref loc, ref name) => (loc, name),
-        Node::Blockarg(_, None) => return,
-        Node::Blockarg(_, Some(Id(ref loc, ref name))) => (loc, name),
-        Node::Kwarg(ref loc, ref name) => (loc, name),
-        Node::Kwoptarg(_, Id(ref loc, ref name), _) => (loc, name),
-        Node::Kwrestarg(_, None) => return,
-        Node::Kwrestarg(_, Some(Id(ref loc, ref name))) => (loc, name),
-        Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
-        Node::Restarg(_, None) => return,
-        Node::Restarg(_, Some(Id(ref loc, ref name))) => (loc, name),
-        Node::ShadowArg(_, Id(ref loc, ref name)) => (loc, name),
-        _ => panic!("not an arg node {:?}", arg),
-    };
-
-    if name.starts_with("_") {
-        return;
-    }
-
-    if names.contains(name.as_str()) {
-        // TODO error
-    }
-
-    names.insert(name);
-}
-
-fn check_duplicate_args<'a>(args: &[Rc<Node>]) {
-    for arg in args {
-        check_duplicate_args_inner(&mut HashSet::new(), arg);
-    }
 }
 
 fn check_condition(cond: Rc<Node>) -> Rc<Node> {
@@ -286,6 +225,114 @@ impl<'a> Builder<'a> {
         }
     }
 
+    fn check_duplicate_args_inner<'arg>(&mut self, names: &mut HashSet<&'arg str>, arg: &'arg Node) {
+        let (_, name) = match *arg {
+            // nodes that wrap other arg nodes:
+            Node::Procarg0(_, ref arg) |
+                Node::TypedArg(_, _, ref arg) => {
+                    return self.check_duplicate_args_inner(names, arg);
+                },
+                Node::Mlhs(_, ref mlhs_items) => {
+                    for mlhs_item in mlhs_items {
+                        self.check_duplicate_args_inner(names, mlhs_item);
+                    }
+                    return;
+                },
+                // normal arg nodes:
+                Node::Arg(ref loc, ref name) => (loc, name),
+                Node::Blockarg(_, None) => return,
+                Node::Blockarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+                Node::Kwarg(ref loc, ref name) => (loc, name),
+                Node::Kwoptarg(_, Id(ref loc, ref name), _) => (loc, name),
+                Node::Kwrestarg(_, None) => return,
+                Node::Kwrestarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+                Node::Optarg(_, Id(ref loc, ref name), _) => (loc, name),
+                Node::Restarg(_, None) => return,
+                Node::Restarg(_, Some(Id(ref loc, ref name))) => (loc, name),
+                Node::ShadowArg(_, Id(ref loc, ref name)) => (loc, name),
+                _ => panic!("not an arg node {:?}", arg),
+        };
+
+        if name.starts_with("_") {
+            return;
+        }
+
+        if names.contains(name.as_str()) {
+            self.driver.error(DiagClass::DuplicateArgument, arg.loc().clone());
+            return;
+        }
+
+        names.insert(name);
+    }
+
+    fn check_duplicate_args<'arg>(&mut self, args: &[Rc<Node>]) {
+        let mut set = HashSet::new();
+        for arg in args {
+            self.check_duplicate_args_inner(&mut set, arg);
+        }
+    }
+
+    /*
+     * Oniguruma methods (ENABLED)
+     */
+    #[cfg(feature = "regex")]
+    fn parse_static_regexp(&mut self, loc: &Loc, parts: &[Rc<Node>]) -> Option<Regex> {
+        let mut st = String::new();
+        if build_static_string(&mut st, parts) {
+            match Regex::new(&st) {
+                Ok(re) => Some(re),
+                Err(_) => {
+                    // TODO: report message
+                    self.driver.error(DiagClass::InvalidRegexp, loc.clone());
+                    None
+                }
+            }
+        } else {
+            None
+        }
+    }
+
+    #[cfg(feature = "regex")]
+    fn declare_static_regexp(&mut self, node: &Node) -> bool {
+        if let &Node::Regexp(ref loc, ref parts, _) = node {
+            match self.parse_static_regexp(loc, parts) {
+                Some(re) => {
+                    for (name, _) in re.capture_names() {
+                        self.driver.declare(name);
+                    }
+                    true
+                },
+                None => false
+            }
+        } else {
+            false
+        }
+    }
+
+    #[cfg(feature = "regex")]
+    fn check_static_regexp(&mut self, loc: &Loc, parts: &[Rc<Node>]) -> bool {
+        self.parse_static_regexp(loc, parts).is_some()
+    }
+
+    /*
+     * Oniguruma methods (DISABLED)
+     */
+    #[cfg(not(feature = "regex"))]
+    fn check_static_regexp(&mut self, _: &Loc, _: &[Rc<Node>]) -> bool {
+        true
+    }
+
+    #[cfg(not(feature = "regex"))]
+    fn declare_static_regexp(&mut self, node: &Node) -> bool {
+        if let &Node::Regexp(_, ref parts, _) = node {
+            let mut st = String::new();
+            build_static_string(&mut st, parts)
+        } else {
+            false
+        }
+    }
+
+
     /*
      * Implementation
      */
@@ -316,9 +363,9 @@ impl<'a> Builder<'a> {
         Node::Arg(loc, id)
     }
 
-    pub fn args(&self, begin: Option<Token>, args: Vec<Rc<Node>>, end: Option<Token>, check_args: bool) -> Node {
+    pub fn args(&mut self, begin: Option<Token>, args: Vec<Rc<Node>>, end: Option<Token>, check_args: bool) -> Node {
         if check_args {
-            check_duplicate_args(args.as_slice());
+            self.check_duplicate_args(args.as_slice());
         }
 
         let loc = self.collection_map(begin, args.as_slice(), end).unwrap_or(
@@ -372,14 +419,26 @@ impl<'a> Builder<'a> {
             },
             Node::Ivar(loc, name) =>
                 Node::IvarLhs(loc.clone(), Id(loc.clone(), name)),
-            Node::Const(loc, lhs, name) =>
-                Node::ConstLhs(loc.clone(), lhs, name),
+            Node::Const(loc, lhs, name) => {
+                if self.driver.is_in_definition() {
+                    self.driver.error(DiagClass::DynamicConst, loc.clone());
+                }
+                Node::ConstLhs(loc.clone(), lhs, name)
+            },
             Node::Cvar(loc, name) =>
                 Node::CvarLhs(loc.clone(), Id(loc.clone(), name)),
             Node::Gvar(loc, name) =>
                 Node::GvarLhs(loc.clone(), Id(loc.clone(), name)),
-            lhs =>
-                panic!("not assignable on lhs: {:?}", lhs),
+            Node::Backref(loc, _) |
+            Node::NthRef(loc, _) => {
+                self.driver.error(DiagClass::BackrefAssignment, loc.clone());
+                Node::Nil(loc)
+            },
+            _ => {
+                let loc = node.loc().clone();
+                self.driver.error(DiagClass::InvalidAssignment, loc.clone());
+                Node::Nil(loc)
+            },
         }
     }
 
@@ -513,12 +572,13 @@ impl<'a> Builder<'a> {
         Node::Send(recv.loc().join(arg.loc()), Some(recv), tok_id!(self, oper), vec![arg])
     }
 
-    pub fn block(&self, method_call: Option<Rc<Node>>, _begin: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
+    pub fn block(&mut self, method_call: Option<Rc<Node>>, _begin: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let method_call = method_call.unwrap();
         let args = args.unwrap();
 
-        if let Node::Yield(_, _) = *method_call {
-            // diagnostic :error, :block_given_to_yield, nil, method_call.loc.keyword, [loc(begin_t)]
+        if let Node::Yield(ref loc, _) = *method_call {
+            self.driver.error(DiagClass::BlockGivenToYield, loc.clone());
+            return Node::Yield(loc.clone(), vec![]);
         }
 
         match *method_call {
@@ -526,8 +586,8 @@ impl<'a> Builder<'a> {
                 Node::CSend(_, _, _, ref args) |
                 Node::Super(_, ref args) => {
                     if let Some(ref last_arg) = args.last() {
-                        if let Node::BlockPass(ref _loc, _) = ***last_arg {
-                            // diagnostic :error, :block_and_blockarg, nil, last_arg.loc.expression, [loc(begin_t)]
+                        if let Node::BlockPass(ref loc, _) = ***last_arg {
+                            self.driver.error(DiagClass::BlockAndBlockarg, loc.clone());
                         }
                     }
                 },
@@ -736,9 +796,25 @@ impl<'a> Builder<'a> {
         Node::SClass(tok_join!(self, class_, end_), expr.unwrap(), body)
     }
 
-    pub fn def_singleton(&self, def: Option<Token>, definee: Option<Rc<Node>>, _dot: Option<Token>, name: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
+    pub fn def_singleton(&mut self, def: Option<Token>, definee: Option<Rc<Node>>, _dot: Option<Token>, name: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let loc = tok_join!(self, def, end);
-        Node::Defs(loc, definee.unwrap(), tok_id!(self, name), args, body)
+        let definee = definee.unwrap();
+
+        match *definee {
+            Node::Integer(_, _) |
+            Node::String(_, _) |
+            Node::DString(_, _) |
+            Node::Symbol(_, _) |
+            Node::DSymbol(_, _) |
+            Node::Regexp(_, _, _) |
+            Node::Array(_, _) |
+            Node::Hash(_, _) => {
+                self.driver.error(DiagClass::SingletonLiteral, loc.clone());
+            },
+            _ => {},
+        };
+
+        Node::Defs(loc, definee, tok_id!(self, name), args, body)
     }
 
     pub fn encoding_literal(&self, tok: Option<Token>) -> Node {
@@ -867,10 +943,18 @@ impl<'a> Builder<'a> {
         Node::Super(loc, args)
     }
 
-    pub fn keyword_yield(&self, keyword: Option<Token>, lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
+    pub fn keyword_yield(&mut self, keyword: Option<Token>, lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
         let mut loc = loc!(self, keyword);
         if let Some(operand_loc) = self.collection_map(lparen, args.as_slice(), rparen) {
             loc = loc.join(&operand_loc);
+        }
+        if args.len() > 0 {
+            match **args.last().unwrap() {
+                Node::BlockPass(ref loc, _) => {
+                    self.driver.error(DiagClass::BlockGivenToYield, loc.clone());
+                },
+                _ => ()
+            };
         }
         Node::Yield(loc, args)
     }
@@ -964,17 +1048,11 @@ impl<'a> Builder<'a> {
         let arg = arg.unwrap();
         let loc = recv.loc().join(arg.loc());
 
-        if let Node::Regexp(_, ref _parts, _) = *recv {
-            let mut st = String::new();
-            if build_static_string(&mut st, _parts) {
-                for name in extract_regexp_names(&st) {
-                    self.driver.declare(name);
-                }
-                return Node::MatchAsgn(loc, recv.clone(), arg)
-            }
+        if self.declare_static_regexp(&*recv) {
+            Node::MatchAsgn(loc, recv.clone(), arg)
+        } else {
+            Node::Send(loc, Some(recv), tok_id!(self, oper), vec![arg])
         }
-
-        Node::Send(loc, Some(recv), tok_id!(self, oper), vec![arg])
     }
 
     pub fn multi_assign(&self, mlhs: Option<Rc<Node>>, rhs: Option<Rc<Node>>) -> Node {
@@ -1043,14 +1121,18 @@ impl<'a> Builder<'a> {
         Node::NthRef(loc, id.parse().unwrap())
     }
 
-    pub fn op_assign(&self, lhs: Option<Rc<Node>>, op: Option<Token>, rhs: Option<Rc<Node>>) -> Node {
+    pub fn op_assign(&mut self, lhs: Option<Rc<Node>>, op: Option<Token>, rhs: Option<Rc<Node>>) -> Node {
         let lhs = lhs.unwrap();
         let rhs = rhs.unwrap();
         let op = op.unwrap();
 
-        // match lhs {
-        //  TODO error on back ref and nth ref
-        // }
+        match *lhs {
+            Node::Backref(ref loc, _)|
+            Node::NthRef(ref loc, _) => {
+                self.driver.error(DiagClass::BackrefAssignment, loc.clone());
+            },
+            _ => {}
+        }
 
         match op.string().as_str() {
             "&&" => Node::AndAsgn(lhs.loc().join(rhs.loc()), lhs, rhs),
@@ -1140,12 +1222,13 @@ impl<'a> Builder<'a> {
         Node::Complex(loc, id)
     }
 
-    pub fn regexp_compose(&self, begin: Option<Token>, parts: Vec<Rc<Node>>, end: Option<Token>, options: Option<Rc<Node>>) -> Node {
+    pub fn regexp_compose(&mut self, begin: Option<Token>, parts: Vec<Rc<Node>>, end: Option<Token>, options: Option<Rc<Node>>) -> Node {
         let begin_loc = loc!(self, begin);
         let loc = match options {
             Some(ref opt_box) => begin_loc.join(opt_box.loc()),
             None => begin_loc.join(&loc!(self, end)),
         };
+        self.check_static_regexp(&loc, parts.as_slice());
         Node::Regexp(loc, parts, options)
     }
 

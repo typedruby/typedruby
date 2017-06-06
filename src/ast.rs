@@ -6,6 +6,8 @@ use std::rc::Rc;
 use std::vec::Vec;
 use std::io::prelude::*;
 use std::fmt;
+use ffi::{DiagLevel};
+use diagnostics::{DiagClass};
 
 pub struct SourceFile {
     filename: PathBuf,
@@ -24,6 +26,14 @@ pub struct Loc {
     pub file: Rc<SourceFile>,
     pub begin_pos: usize,
     pub end_pos: usize,
+}
+
+#[derive(Debug)]
+pub struct Diagnostic {
+    pub level: DiagLevel,
+    pub class: DiagClass,
+    pub message: String,
+    pub loc: Loc,
 }
 
 impl fmt::Debug for Loc {
@@ -304,21 +314,6 @@ impl Node {
             &Node::ZSuper(ref loc) => loc,
         }
     }
-}
-
-#[derive(Debug)]
-pub enum DiagnosticLevel {
-    Note,
-    Warning,
-    Error,
-    Fatal,
-}
-
-#[derive(Debug)]
-pub struct Diagnostic {
-    pub level: DiagnosticLevel,
-    pub message: String,
-    pub loc: Loc,
 }
 
 #[derive(Debug)]
