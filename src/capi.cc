@@ -99,29 +99,3 @@ rbdriver_diag_report(ruby_parser::base_driver* driver, const struct cdiagnostic 
 		diag->message ? std::string(diag->message) : ""
 	);
 }
-
-ruby_parser::dlevel
-rbdriver_diag_get_level(const ruby_parser::base_driver* driver, size_t index)
-{
-	return driver->diagnostics.at(index).level();
-}
-
-size_t
-rbdriver_diag_get_message(const ruby_parser::base_driver* driver, size_t index, const char** out_ptr)
-{
-	auto& message = driver->diagnostics.at(index).message();
-	*out_ptr = message.data();
-	return message.size();
-}
-
-size_t
-rbdriver_diag_get_begin(const ruby_parser::base_driver* driver, size_t index)
-{
-	return driver->diagnostics.at(index).location().begin_pos;
-}
-
-size_t
-rbdriver_diag_get_end(const ruby_parser::base_driver* driver, size_t index)
-{
-  return driver->diagnostics.at(index).location().end_pos;
-}
