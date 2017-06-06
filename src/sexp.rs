@@ -585,8 +585,15 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
+            (&Node::MatchAsgn(ref __self_0, ref __self_1, ref __self_2),) => {
+                let mut builder = __arg_0.new_node("match-with-lvasgn");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
+                builder.finish()
+            }
             (&Node::MatchCurLine(ref __self_0, ref __self_1),) => {
-                let mut builder = __arg_0.new_node("matchcurline");
+                let mut builder = __arg_0.new_node("match-current-line");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 builder.finish()
@@ -775,10 +782,18 @@ impl Sexp for Node {
                 let _ = builder.field(__self_3);
                 builder.finish()
             }
+            (&Node::ShadowArg(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("shadowarg");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                builder.finish()
+            }
             (&Node::Splat(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("splat");
                 let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
+                if __self_1.is_some() {
+                    let _ = builder.field(__self_1);
+                }
                 builder.finish()
             }
             (&Node::String(ref __self_0, ref __self_1),) => {

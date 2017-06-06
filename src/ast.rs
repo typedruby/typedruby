@@ -81,7 +81,7 @@ pub enum Node {
     DSymbol         (Loc,   Vec<Rc<Node>>),
     EFlipflop       (Loc,   Rc<Node>, Rc<Node>),
     EncodingLiteral (Loc),
-    Ensure          (Loc,   Option<Rc<Node>>, Rc<Node>),
+    Ensure          (Loc,   Option<Rc<Node>>, Option<Rc<Node>>),
     ERange          (Loc,   Rc<Node>, Rc<Node>),
     False           (Loc),
     FileLiteral     (Loc),
@@ -109,6 +109,7 @@ pub enum Node {
     Lvar            (Loc,   String),
     LvarAsgn        (Loc,   Id, Rc<Node>),
     LvarLhs         (Loc,   Id),
+    MatchAsgn       (Loc,   Rc<Node>, Vec<Rc<Node>>),
     MatchCurLine    (Loc,   Rc<Node>),
     Masgn           (Loc,   Rc<Node>, Rc<Node>),
     Mlhs            (Loc,   Vec<Rc<Node>>),
@@ -137,6 +138,7 @@ pub enum Node {
     SClass          (Loc,   Rc<Node>, Option<Rc<Node>>),
     Self_           (Loc),
     Send            (Loc,   Option<Rc<Node>>, Id, Vec<Rc<Node>>),
+    ShadowArg       (Loc,   Id),
     Splat           (Loc,   Option<Rc<Node>>),
     String          (Loc,   String),
     Super           (Loc,   Vec<Rc<Node>>),
@@ -235,6 +237,7 @@ impl Node {
             &Node::Lvar(ref loc, _) => loc,
             &Node::LvarAsgn(ref loc, _, _) => loc,
             &Node::LvarLhs(ref loc, _) => loc,
+            &Node::MatchAsgn(ref loc, _, _) => loc,
             &Node::MatchCurLine(ref loc, _) => loc,
             &Node::Masgn(ref loc, _, _) => loc,
             &Node::Mlhs(ref loc, _) => loc,
@@ -263,6 +266,7 @@ impl Node {
             &Node::SClass(ref loc, _, _) => loc,
             &Node::Self_(ref loc) => loc,
             &Node::Send(ref loc, _, _, _) => loc,
+            &Node::ShadowArg(ref loc, _) => loc,
             &Node::Splat(ref loc, _) => loc,
             &Node::String(ref loc, _) => loc,
             &Node::Super(ref loc, _) => loc,
@@ -325,7 +329,6 @@ pub struct Ast {
 
 fn line_map_from_source(source: &str) -> Vec<usize> {
     let mut line_map = vec![];
-
     let mut previous_index = 0;
 
     for (index, c) in source.char_indices() {
@@ -335,7 +338,15 @@ fn line_map_from_source(source: &str) -> Vec<usize> {
         }
     }
 
-    line_map.push(previous_index);
+    if line_map.is_empty() {
+        line_map.push(0);
+    }
+
+    if line_map.last().unwrap() == &previous_index {
+        line_map.push(source.len());
+    } else {
+        line_map.push(previous_index);
+    }
 
     line_map
 }
