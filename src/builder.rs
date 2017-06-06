@@ -970,7 +970,7 @@ impl<'a> Builder<'a> {
                 for name in extract_regexp_names(&st) {
                     self.driver.declare(name);
                 }
-                return Node::MatchAsgn(loc, recv.clone(), vec![arg])
+                return Node::MatchAsgn(loc, recv.clone(), arg)
             }
         }
 
