@@ -7,18 +7,10 @@ namespace ruby_parser {
 base_driver::base_driver(ruby_version version, const std::string& source, const struct builder& builder)
 	: build(builder),
 	lex(diagnostics, version, source),
+	pending_error(false),
 	def_level(0),
 	ast(nullptr)
 {
-}
-
-void base_driver::check_kwarg_name(const token *name) {
-	char c = name->string().at(0);
-
-	if (c >= 'A' && c <= 'Z') {
-		// XXX: todo
-		// diagnostic :error, :argument_const, nil, name_t
-	}
 }
 
 typedruby24::typedruby24(const std::string& source, const struct builder& builder)

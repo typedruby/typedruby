@@ -2,15 +2,18 @@
 
 extern crate libc;
 
-use ::ast::{Node, Loc, SourceFile, DiagnosticLevel};
+use ::ast::{Node, Loc, SourceFile, Diagnostic};
 use ::builder::Builder;
 use ::parser::ParserOptions;
-use self::libc::{size_t, c_int};
+use ::diagnostics::DiagClass;
+use self::libc::{size_t, c_char};
+use std::ffi::CStr;
 use std::vec::Vec;
 use std::rc::Rc;
 use std::ptr;
 use std::slice;
 use std::str;
+use std::mem;
 
 trait ToRaw {
     fn to_raw(self) -> *mut Rc<Node>;
@@ -86,6 +89,25 @@ pub enum DriverPtr {}
 pub enum TokenPtr {}
 pub enum NodeListPtr {}
 
+#[derive(Debug)]
+#[derive(PartialEq)]
+#[repr(C)]
+pub enum DiagLevel {
+	Note    = 1,
+	Warning = 2,
+	Error   = 3,
+	Fatal   = 4,
+}
+
+#[repr(C)]
+struct CDiagnostic {
+    level: DiagLevel,
+    class: DiagClass,
+    message: *const c_char,
+    begin_pos: size_t,
+    end_pos: size_t,
+}
+
 include!("ffi_builder.rsinc");
 
 #[link(name="rubyparser")]
@@ -95,6 +117,7 @@ extern "C" {
     fn rbdriver_typedruby24_new(source: *const u8, source_length: size_t, builder: *const BuilderInterface) -> *mut DriverPtr;
     fn rbdriver_typedruby24_free(driver: *mut DriverPtr);
     fn rbdriver_parse(driver: *mut DriverPtr, builder: *mut Builder) -> *mut Rc<Node>;
+    fn rbdriver_in_definition(driver: *const DriverPtr) -> bool;
     fn rbdriver_env_is_declared(driver: *const DriverPtr, name: *const u8, len: size_t) -> bool;
     fn rbdriver_env_declare(driver: *mut DriverPtr, name: *const u8, len: size_t);
     fn rbtoken_get_start(token: *const TokenPtr) -> size_t;
@@ -103,10 +126,8 @@ extern "C" {
     fn rblist_get_length(list: *mut NodeListPtr) -> size_t;
     fn rblist_index(list: *mut NodeListPtr, index: size_t) -> *mut Rc<Node>;
     fn rbdriver_diag_get_length(driver: *const DriverPtr) -> size_t;
-    fn rbdriver_diag_get_level(driver: *const DriverPtr, index: size_t) -> c_int;
-    fn rbdriver_diag_get_message(driver: *const DriverPtr, index: size_t, ptr: *mut *const u8) -> size_t;
-    fn rbdriver_diag_get_begin(driver: *const DriverPtr, index: size_t) -> size_t;
-    fn rbdriver_diag_get_end(driver: *const DriverPtr, index: size_t) -> size_t;
+    fn rbdriver_diag_get(driver: *const DriverPtr, index: size_t, diag: *mut CDiagnostic);
+    fn rbdriver_diag_report(driver: *const DriverPtr, diag: *const CDiagnostic);
 }
 
 pub struct Token {
@@ -174,6 +195,24 @@ impl Driver {
         }
     }
 
+    pub fn error(&mut self, class: DiagClass, loc: Loc) {
+        let diag = CDiagnostic {
+            level: DiagLevel::Error,
+            class: class,
+            message: ptr::null(),
+            begin_pos: loc.begin_pos,
+            end_pos: loc.end_pos,
+        };
+
+        unsafe {
+            rbdriver_diag_report(self.ptr, &diag);
+        }
+    }
+
+    pub fn is_in_definition(&self) -> bool {
+        unsafe { rbdriver_in_definition(self.ptr) }
+    }
+
     pub fn is_declared(&self, id: &str) -> bool {
         unsafe { rbdriver_env_is_declared(self.ptr, id.as_ptr(), id.len()) }
     }
@@ -182,30 +221,33 @@ impl Driver {
         unsafe { rbdriver_env_declare(self.ptr, id.as_ptr(), id.len()); }
     }
 
-    pub fn diagnostics(&self) -> Vec<(DiagnosticLevel, String, usize, usize)> {
-        let mut vec = Vec::new();
+    pub fn diagnostics(&self) -> Vec<Diagnostic> {
         let len = unsafe { rbdriver_diag_get_length(self.ptr) };
+        let mut vec = Vec::with_capacity(len);
 
         for index in 0..len {
+            let cdiag = unsafe {
+                let mut diag: CDiagnostic = mem::uninitialized();
+                rbdriver_diag_get(self.ptr, index, &mut diag);
+                diag
+            };
+
             let message = unsafe {
-                let mut message_ptr: *const u8 = ptr::null();
-                let message_len = rbdriver_diag_get_message(self.ptr, index, &mut message_ptr);
-                String::from(str::from_utf8_unchecked(slice::from_raw_parts(message_ptr, message_len)))
+                CStr::from_ptr(cdiag.message)
+            }.to_str().unwrap();
+
+            let diag = Diagnostic {
+                level: cdiag.level,
+                class: cdiag.class,
+                message: message.to_owned(),
+                loc: Loc { 
+                    file: self.current_file.clone(),
+                    begin_pos: cdiag.begin_pos,
+                    end_pos: cdiag.end_pos
+                },
             };
 
-            let level = unsafe { rbdriver_diag_get_level(self.ptr, index) };
-            let level = match level {
-                1 => DiagnosticLevel::Note,
-                2 => DiagnosticLevel::Warning,
-                3 => DiagnosticLevel::Error,
-                4 => DiagnosticLevel::Fatal,
-                _ => panic!("bad diagnostic level"),
-            };
-
-            let begin = unsafe { rbdriver_diag_get_begin(self.ptr, index) };
-            let end = unsafe { rbdriver_diag_get_end(self.ptr, index) };
-
-            vec.push((level, message, begin, end));
+            vec.push(diag);
         }
 
         vec

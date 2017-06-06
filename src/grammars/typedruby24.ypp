@@ -397,10 +397,18 @@ namespace ruby_parser {
 namespace bison {
 namespace typedruby24 {
 
+#define DIAGCHECK() do { \
+	if (driver.pending_error) { \
+		driver.pending_error = false; \
+		YYERROR; \
+	} \
+} while(false);
+
 void parser::error(const std::string &msg) {
 	driver.diagnostics.emplace_back(
-		diagnostic_level::ERROR, msg,
-		diagnostic::range(driver.lex.last_token_s, driver.lex.last_token_e));
+		dlevel::ERROR, dclass::UnexpectedToken,
+		diagnostic::range(driver.lex.last_token_s, driver.lex.last_token_e),
+		msg);
 }
 
 int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
@@ -457,7 +465,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
                       if (rescue_bodies->size() == 0 && else_ != nullptr) {
                         driver.diagnostics.emplace_back(
-			  diagnostic_level::WARNING, "else without rescue is useless", else_->tok);
+			  dlevel::WARNING, dclass::UselessElse, else_->tok);
                       }
 
                       $$ = driver.build.begin_body(self, $1, rescue_bodies,
@@ -493,8 +501,8 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
    stmt_or_begin: stmt
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
-                      driver.diagnostics.emplace_back(
-			diagnostic_level::ERROR, "BEGIN in method"s, $1);
+                      driver.diagnostics.emplace_back(dlevel::ERROR,
+			dclass::BeginInMethod, $1);
                       YYERROR;
                     }
 
@@ -516,8 +524,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | kALIAS tGVAR tNTH_REF
                     {
-                      driver.diagnostics.emplace_back(
-		        diagnostic_level::ERROR, "cannot define an alias for a back-reference variable"s, $3);
+                      driver.diagnostics.emplace_back(dlevel::ERROR, dclass::NthRefAlias, $3);
                       YYERROR;
                     }
                 | kUNDEF undef_list
@@ -576,31 +583,38 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | var_lhs tOP_ASGN command_rhs
                     {
                       $$ = driver.build.op_assign(self, $1, $2, $3);
+                      DIAGCHECK();
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN command_rhs
                     {
                       $$ = driver.build.op_assign(self, driver.build.index(self, $1, $2, $3, $4), $5, $6);
+                      DIAGCHECK();
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN command_rhs
                     {
                       $$ = driver.build.op_assign(self, driver.build.call_method(self, $1, $2, $3, nullptr, nullptr, nullptr), $4, $5);
+                      DIAGCHECK();
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN command_rhs
                     {
                       $$ = driver.build.op_assign(self, driver.build.call_method(self, $1, $2, $3, nullptr, nullptr, nullptr), $4, $5);
+                      DIAGCHECK();
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN command_rhs
                     {
                       auto const_node = driver.build.const_op_assignable(self, driver.build.const_fetch(self, $1, $2, $3));
                       $$ = driver.build.op_assign(self, const_node, $4, $5);
+                      DIAGCHECK();
                     }
                 | primary_value tCOLON2 tIDENTIFIER tOP_ASGN command_rhs
                     {
                       $$ = driver.build.op_assign(self, driver.build.call_method(self, $1, $2, $3, nullptr, nullptr, nullptr), $4, $5);
+                      DIAGCHECK();
                     }
                 | backref tOP_ASGN command_rhs
                     {
                       $$ = driver.build.op_assign(self, $1, $2, $3);
+                      DIAGCHECK();
                     }
 
      command_rhs: command_call %prec tOP_ASGN
@@ -665,6 +679,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                                       delimited_block->args,
                                       delimited_block->body,
                                       delimited_block->end);
+                      DIAGCHECK();
                     }
                 | primary_value call_op operation2 command_args %prec tLOWEST
                     {
@@ -679,6 +694,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                                       delimited_block->args,
                                       delimited_block->body,
                                       delimited_block->end);
+                      DIAGCHECK();
                     }
                 | primary_value tCOLON2 operation2 command_args %prec tLOWEST
                     {
@@ -693,6 +709,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                                       delimited_block->args,
                                       delimited_block->body,
                                       delimited_block->end);
+                      DIAGCHECK();
                     }
                 | kSUPER command_args
                     {
@@ -701,6 +718,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | kYIELD command_args
                     {
                       $$ = driver.build.keyword_yield(self, $1, nullptr, $2, nullptr);
+                      DIAGCHECK();
                     }
                 | kRETURN call_args
                     {
@@ -818,10 +836,12 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
        mlhs_node: user_variable
                     {
                       $$ = driver.build.assignable(self, $1);
+                      DIAGCHECK();
                     }
                 | keyword_variable
                     {
                       $$ = driver.build.assignable(self, $1);
+                      DIAGCHECK();
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
@@ -842,23 +862,28 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | primary_value tCOLON2 tCONSTANT
                     {
                       $$ = driver.build.assignable(self, driver.build.const_fetch(self, $1, $2, $3));
+                      DIAGCHECK();
                     }
                 | tCOLON3 tCONSTANT
                     {
                       $$ = driver.build.assignable(self, driver.build.const_global(self, $1, $2));
+                      DIAGCHECK();
                     }
                 | backref
                     {
                       $$ = driver.build.assignable(self, $1);
+                      DIAGCHECK();
                     }
 
              lhs: user_variable
                     {
                       $$ = driver.build.assignable(self, $1);
+                      DIAGCHECK();
                     }
                 | keyword_variable
                     {
                       $$ = driver.build.assignable(self, $1);
+                      DIAGCHECK();
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket
                     {
@@ -879,20 +904,22 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | primary_value tCOLON2 tCONSTANT
                     {
                       $$ = driver.build.assignable(self, driver.build.const_fetch(self, $1, $2, $3));
+                      DIAGCHECK();
                     }
                 | tCOLON3 tCONSTANT
                     {
                       $$ = driver.build.assignable(self, driver.build.const_global(self, $1, $2));
+                      DIAGCHECK();
                     }
                 | backref
                     {
                       $$ = driver.build.assignable(self, $1);
+                      DIAGCHECK();
                     }
 
            cname: tIDENTIFIER
                     {
-                      driver.diagnostics.emplace_back(
-			diagnostic_level::ERROR, "class or module name must be a constant literal"s, $1);
+                      driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ModuleNameConst, $1);
                       YYERROR;
                     }
                 | tCONSTANT
@@ -965,36 +992,44 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | var_lhs tOP_ASGN arg_rhs
                     {
                       $$ = driver.build.op_assign(self, $1, $2, $3);
+                      DIAGCHECK();
                     }
                 | primary_value tLBRACK2 opt_call_args rbracket tOP_ASGN arg_rhs
                     {
                       $$ = driver.build.op_assign(self, driver.build.index(self, $1, $2, $3, $4), $5, $6);
+                      DIAGCHECK();
                     }
                 | primary_value call_op tIDENTIFIER tOP_ASGN arg_rhs
                     {
                       $$ = driver.build.op_assign(self, driver.build.call_method(self, $1, $2, $3, nullptr, nullptr, nullptr), $4, $5);
+                      DIAGCHECK();
                     }
                 | primary_value call_op tCONSTANT tOP_ASGN arg_rhs
                     {
                       $$ = driver.build.op_assign(self, driver.build.call_method(self, $1, $2, $3, nullptr, nullptr, nullptr), $4, $5);
+                      DIAGCHECK();
                     }
                 | primary_value tCOLON2 tIDENTIFIER tOP_ASGN arg_rhs
                     {
                       $$ = driver.build.op_assign(self, driver.build.call_method(self, $1, $2, $3, nullptr, nullptr, nullptr), $4, $5);
+                      DIAGCHECK();
                     }
                 | primary_value tCOLON2 tCONSTANT tOP_ASGN arg_rhs
                     {
                       auto const_ = driver.build.const_op_assignable(self, driver.build.const_fetch(self, $1, $2, $3));
                       $$ = driver.build.op_assign(self, const_, $4, $5);
+                      DIAGCHECK();
                     }
                 | tCOLON3 tCONSTANT tOP_ASGN arg_rhs
                     {
                       auto const_ = driver.build.const_op_assignable(self, driver.build.const_global(self, $1, $2));
                       $$ = driver.build.op_assign(self, const_, $3, $4);
+                      DIAGCHECK();
                     }
                 | backref tOP_ASGN arg_rhs
                     {
                       $$ = driver.build.op_assign(self, $1, $2, $3);
+                      DIAGCHECK();
                     }
                 | arg tDOT2 arg
                     {
@@ -1087,6 +1122,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | arg tMATCH arg
                     {
                       $$ = driver.build.match_op(self, $1, $2, $3);
+                      DIAGCHECK();
                     }
                 | arg tNMATCH arg
                     {
@@ -1349,15 +1385,18 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | kYIELD tLPAREN2 call_args rparen
                     {
                       $$ = driver.build.keyword_yield(self, $1, $2, $3, $4);
+                      DIAGCHECK();
                     }
                 | kYIELD tLPAREN2 rparen
                     {
                       node_list tmp;
                       $$ = driver.build.keyword_yield(self, $1, $2, &tmp, $3);
+                      DIAGCHECK();
                     }
                 | kYIELD
                     {
                       $$ = driver.build.keyword_yield(self, $1, nullptr, nullptr, nullptr);
+                      DIAGCHECK();
                     }
                 | kDEFINED opt_nl tLPAREN2 expr rparen
                     {
@@ -1381,6 +1420,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                         delimited_block->args,
                         delimited_block->body,
                         delimited_block->end);
+                      DIAGCHECK();
                     }
                 | method_call
                 | method_call brace_block
@@ -1391,6 +1431,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                         delimited_block->args,
                         delimited_block->body,
                         delimited_block->end);
+                      DIAGCHECK();
                     }
                 | tLAMBDA lambda
                     {
@@ -1401,6 +1442,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                         lambda->args,
                         lambda->body,
                         lambda->end);
+                      DIAGCHECK();
                     }
                 | kIF expr_value then compstmt if_tail kEND
                     {
@@ -1482,8 +1524,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       auto end_tok = $6;
 
                       if (driver.def_level > 0) {
-                        driver.diagnostics.emplace_back(
-			  diagnostic_level::ERROR, "class definition in method body"s, class_tok);
+                        driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ClassInDef, class_tok);
                         YYERROR;
                       }
 
@@ -1524,8 +1565,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       auto end_tok = $5;
 
                       if (driver.def_level > 0) {
-                        driver.diagnostics.emplace_back(
-			  diagnostic_level::ERROR, "module definition in method body"s, module_tok);
+                        driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ModuleInDef, module_tok);
                         YYERROR;
                       }
 
@@ -1561,6 +1601,8 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     f_arglist bodystmt kEND
                     {
                       $$ = driver.build.def_singleton(self, $1, $2, $3, $5, $7, $8, $9);
+					  DIAGCHECK();
+
                       driver.replace_stack($<stack>6);
                       driver.lex.unextend();
                       driver.def_level--;
@@ -1827,6 +1869,7 @@ opt_block_args_tail:
  opt_block_param: // nothing
                     {
                       $$ = driver.build.args(self, nullptr, nullptr, nullptr, true);
+					  DIAGCHECK();
                     }
                 | block_param_def
                     {
@@ -1847,16 +1890,19 @@ opt_block_args_tail:
  block_param_def: tPIPE opt_bv_decl tPIPE
                     {
                       $$ = driver.build.args(self, $1, $2, $3, true);
+					  DIAGCHECK();
                     }
                 | tOROP
                     {
                       $$ = driver.build.args(self, $1, nullptr, $1, true);
+					  DIAGCHECK();
                     }
                 | tPIPE block_param opt_bv_decl tPIPE
                     {
                       auto &params = $2;
                       params->concat($3);
                       $$ = driver.build.args(self, $1, params, $4, true);
+					  DIAGCHECK();
                     }
 
      opt_bv_decl: opt_nl
@@ -1886,9 +1932,6 @@ opt_block_args_tail:
                       $$ = driver.build.shadowarg(self, ident);
                     }
                 | f_bad_arg
-                    {
-                      $$ = nullptr;
-                    }
 
           lambda:   {
                       driver.lex.extend_dynamic();
@@ -1914,10 +1957,12 @@ opt_block_args_tail:
                       auto &args = $2;
                       args->concat($3);
                       $$ = driver.build.args(self, $1, args, $4, true);
+					  DIAGCHECK();
                     }
                 | f_args
                     {
                       $$ = driver.build.args(self, nullptr, $1, nullptr, true);
+					  DIAGCHECK();
                     }
 
      lambda_body: tLAMBEG compstmt tRCURLY
@@ -1946,6 +1991,7 @@ opt_block_args_tail:
                           delimited_block->body,
                           delimited_block->end
                         );
+                      DIAGCHECK();
                     }
                 | block_call dot_or_colon operation2 opt_paren_args
                     {
@@ -1968,12 +2014,14 @@ opt_block_args_tail:
                           block->args,
                           block->body,
                           block->end);
+                      DIAGCHECK();
                     }
                 | block_call dot_or_colon operation2 command_args do_block
                     {
                       auto method_call = driver.build.call_method(self, $1, $2, $3, nullptr, $4, nullptr);
                       auto &block = $5;
                       $$ = driver.build.block(self, method_call, block->begin, block->args, block->body, block->end);
+                      DIAGCHECK();
                     }
 
      method_call: fcall paren_args
@@ -2189,6 +2237,7 @@ opt_block_args_tail:
                     {
                       auto opts = driver.build.regexp_options(self, $4);
                       $$ = driver.build.regexp_compose(self, $1, $2, $3, opts);
+                      DIAGCHECK();
                     }
 
            words: tWORDS_BEG word_list tSTRING_END
@@ -2448,10 +2497,12 @@ keyword_variable: kNIL
          var_lhs: user_variable
                     {
                       $$ = driver.build.assignable(self, $1);
+					  DIAGCHECK();
                     }
                 | keyword_variable
                     {
                       $$ = driver.build.assignable(self, $1);
+					  DIAGCHECK();
                     }
 
          backref: tNTH_REF
@@ -2492,8 +2543,9 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                   tr_returnsig
                     {
                       auto genargs = $1;
-                      auto args = driver.build.args(self, $2, $3, $4, true);
                       auto returnsig = $6;
+                      auto args = driver.build.args(self, $2, $3, $4, true);
+					  DIAGCHECK();
 
                       if (genargs || returnsig) {
                         $$ = driver.build.prototype(self, genargs, args, returnsig);
@@ -2511,8 +2563,9 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       driver.lex.in_kwarg = $<boolean>2;
 
                       auto genargs = $1;
-                      auto args = driver.build.args(self, nullptr, $3, nullptr, true);
                       auto returnsig = $4;
+                      auto args = driver.build.args(self, nullptr, $3, nullptr, true);
+					  DIAGCHECK();
 
                       if (genargs || returnsig) {
                         $$ = driver.build.prototype(self, genargs, args, returnsig);
@@ -2658,22 +2711,24 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       $$ = driver.alloc.node_list();
                     }
 
-       f_bad_arg: tIVAR
+       f_bad_arg: tCONSTANT
                     {
-                      driver.diagnostics.emplace_back(
-			diagnostic_level::ERROR, "formal argument cannot be an instance variable"s, $1);
+                      driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ArgumentConst, $1);
+                      YYERROR;
+                    }
+                | tIVAR
+                    {
+                      driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ArgumentIvar, $1);
                       YYERROR;
                     }
                 | tGVAR
                     {
-                      driver.diagnostics.emplace_back(
-			diagnostic_level::ERROR, "formal argument cannot be a global variable"s, $1);
+                      driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ArgumentGvar, $1);
                       YYERROR;
                     }
                 | tCVAR
                     {
-                      driver.diagnostics.emplace_back(
-			diagnostic_level::ERROR, "formal argument cannot be a class variable"s, $1);
+                      driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ArgumentCvar, $1);
                       YYERROR;
                     }
 
@@ -2720,7 +2775,10 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
          f_label: tLABEL
                     {
                       auto label = $1;
-                      driver.check_kwarg_name(label);
+                      if (!driver.valid_kwarg_name(label)) {
+                        driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ArgumentConst, label);
+                        YYERROR;
+                      }
                       driver.lex.declare(label->string());
                       $$ = label;
                     }
@@ -3078,8 +3136,8 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       } else if ($1->string() == "self") {
                         $$ = driver.build.tr_self(self, $1);
                       } else {
-                        driver.diagnostics.emplace_back(
-			  diagnostic_level::ERROR, "bad type: " + $1->string(), $1);
+                        driver.diagnostics.emplace_back(dlevel::ERROR,
+			  dclass::UnexpectedToken, $1, "bad type: " + $1->string());
                         YYERROR;
                       }
                     }
