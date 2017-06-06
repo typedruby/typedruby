@@ -109,7 +109,7 @@ pub enum Node {
     Lvar            (Loc,   String),
     LvarAsgn        (Loc,   Id, Rc<Node>),
     LvarLhs         (Loc,   Id),
-    MatchAsgn       (Loc,   Rc<Node>, Vec<Rc<Node>>),
+    MatchAsgn       (Loc,   Rc<Node>, Rc<Node>),
     MatchCurLine    (Loc,   Rc<Node>),
     Masgn           (Loc,   Rc<Node>, Rc<Node>),
     Mlhs            (Loc,   Vec<Rc<Node>>),
