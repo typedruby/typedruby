@@ -25,8 +25,8 @@ typedruby24::typedruby24(const std::string& source, const struct builder& builde
 	: base_driver(ruby_version::RUBY_24, source, builder)
 {}
 
-foreign_ptr typedruby24::parse() {
-	bison::typedruby24::parser p(*this);
+foreign_ptr typedruby24::parse(self_ptr self) {
+	bison::typedruby24::parser p(*this, self);
 	p.parse();
 	return ast;
 }

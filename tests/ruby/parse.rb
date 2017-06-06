@@ -23,6 +23,17 @@ def escape_rb(str)
   end.join
 end
 
+def astprint(obj)
+  case obj
+  when String
+    "\"#{escape_rb(obj)}\""
+  when Rational
+    obj.to_f.inspect
+  else
+    obj.inspect
+  end
+end
+
 class AST::Node
   def to_sexp(indent=0)
     indented = "  " * indent
@@ -35,10 +46,8 @@ class AST::Node
     children.each_with_index do |child, idx|
       if child.is_a?(AST::Node) && idx >= first_node_child
         sexp += "\n#{child.to_sexp(indent + 1)}"
-      elsif child.is_a?(String)
-        sexp += " \"#{escape_rb(child)}\""
       else
-        sexp += " #{child.inspect}"
+        sexp += " #{astprint(child)}"
       end
     end
 
