@@ -588,7 +588,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             };
 
             result = result.and_then(|(), locals| {
-                self.extract_results(self.process_node(node, locals), expr.loc())
+                self.eval_node(node, locals)
             }).map(|ty| {
                 if splat {
                     match *ty {
@@ -815,13 +815,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_and_extract(&self, node: &Node, locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
-    {
-        let comp = self.process_node(node, locals);
-        self.extract_results(comp, node.loc())
-    }
-
     fn extract_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>> {
         let mut merges = Vec::new();
         let result = comp.extract_results(loc, &self.tyenv, &mut merges);
@@ -841,7 +834,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Splat(_, ref n) => {
                 let splat_node = n.as_ref().expect("splat in call arg must have node");
 
-                self.process_and_extract(splat_node, locals).map(|ty|
+                self.eval_node(splat_node, locals).map(|ty|
                     match *self.tyenv.prune(ty) {
                         Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
                             CallArg::Splat(node.loc().clone(), type_parameters[0])
@@ -856,7 +849,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 )
             }
             _ =>
-                self.process_and_extract(node, locals).map(|ty|
+                self.eval_node(node, locals).map(|ty|
                     CallArg::Pass(node.loc().clone(), ty)
                 ),
         }
@@ -1068,16 +1061,16 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     {
         match *recv {
             Some(ref recv_node) => {
-                let comp = self.converge_results(self.process_node(recv_node, locals), recv_node.loc());
+                let ev = self.eval_node(recv_node, locals);
 
-                if !comp.has_results() {
+                if let EvalResult::NonResult(_) = ev {
                     self.warning("Useless method call", &[
                         Detail::Loc("here", &id.0),
                         Detail::Loc("receiver never evaluates to a result", recv_node.loc()),
                     ]);
                 }
 
-                self.extract_results(comp, recv_node.loc())
+                ev
             },
             None => EvalResult::Ok(self.type_context.self_type(&self.tyenv, id.0.clone()), locals),
         }
@@ -1390,6 +1383,20 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
+    fn eval_node(&self, node: &Node, locals: Locals<'ty, 'object>)
+        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
+    {
+        let comp = self.process_node(node, locals);
+        self.extract_results(comp, node.loc())
+    }
+
+    fn eval_option_node(&self, loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>)
+        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
+    {
+        let comp = self.process_option_node(loc, node, locals);
+        self.extract_results(comp, loc)
+    }
+
     fn process_option_node(&self, loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match node {
             Some(node) => self.process_node(node, locals),
@@ -1409,7 +1416,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     {
         nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |ev, n| {
             ev.and_then(|mut tys, l| {
-                self.extract_results(self.process_node(n, l), n.loc()).and_then(|ty, l| {
+                self.eval_node(n, l).and_then(|ty, l| {
                     tys.push(ty);
                     EvalResult::Ok(tys, l)
                 })
@@ -1417,7 +1424,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
-    fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+    fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
         match *node {
             Node::Array(ref loc, ref elements) => {
                 self.process_seq_exprs(elements, locals).map(|tys| {
@@ -1578,13 +1587,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     match **pair {
                         Node::Pair(_, ref key, ref value) => {
                             result = result.and_then(|(), locals|
-                                self.extract_results(self.process_node(key, locals), loc).if_not(|| {
+                                self.eval_node(key, locals).if_not(|| {
                                     self.warning("Expression never evalutes to a result", &[
                                         Detail::Loc("here", key.loc()),
                                     ])
                                 })
                             ).and_then(|key_ty, locals| {
-                                self.extract_results(self.process_node(value, locals), loc).if_not(|| {
+                                self.eval_node(value, locals).if_not(|| {
                                     self.warning("Expression never evalutes to a result", &[
                                         Detail::Loc("here", value.loc()),
                                     ])
@@ -1601,7 +1610,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         },
                         Node::Kwsplat(_, ref splat) => {
                             result = result.and_then(|(), locals|
-                                self.extract_results(self.process_node(splat, locals), loc).if_not(|| {
+                                self.eval_node(splat, locals).if_not(|| {
                                     self.warning("Expression never evalutes to a result", &[
                                         Detail::Loc("here", splat.loc()),
                                     ]);
