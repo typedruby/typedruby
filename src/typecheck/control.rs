@@ -139,14 +139,6 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         self.clone()
     }
 
-    pub fn has_results(&self) -> bool {
-        match *self.0 {
-            Computation_::Result(..) => true,
-            Computation_::Divergent(ref a, ref b) => a.has_results() || b.has_results(),
-            _ => false,
-        }
-    }
-
     pub fn converge_results<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(..) |

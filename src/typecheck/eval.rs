@@ -1440,13 +1440,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         self.extract_results(comp, node.loc())
     }
 
-    fn eval_option_node(&self, loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
-    {
-        let comp = self.process_option_node(loc, node, locals);
-        self.extract_results(comp, loc)
-    }
-
     fn process_option_node(&self, loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         match node {
             Some(node) => self.process_node(node, locals),
