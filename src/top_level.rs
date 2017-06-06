@@ -780,7 +780,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::Ensure(_, ref body, ref ensure) => {
                 self.eval_maybe_node(body);
-                self.eval_node(ensure);
+                self.eval_maybe_node(ensure);
             }
             Node::Array(_, ref exprs) |
             Node::Break(_, ref exprs) |

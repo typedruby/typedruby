@@ -1788,7 +1788,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 body_result.seq(&|ty, l| {
                     let uncertain_locals = self.merge_locals(locals.clone(), l);
 
-                    self.process_node(ensure, uncertain_locals).seq(&|_, l| {
+                    self.process_option_node(loc, ensure.as_ref().map(Rc::as_ref), uncertain_locals).seq(&|_, l| {
                         Computation::result(ty, l)
                     })
                 })
