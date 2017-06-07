@@ -1,0 +1,2 @@
+class BigDecimal < Numeric
+end

@@ -1,0 +1,2 @@
+class Delegator < BasicObject
+end
