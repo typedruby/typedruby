@@ -36,6 +36,17 @@ impl<'ty, 'object> ComputationPredicate<'ty, 'object> {
             non_result: Computation::divergent_option(self.non_result, other.non_result),
         }
     }
+
+    pub fn seq_falsy<F>(self, f: F) -> ComputationPredicate<'ty, 'object>
+        where F: FnOnce(Computation<'ty, 'object>) -> ComputationPredicate<'ty, 'object>
+    {
+        if let Some(falsy) = self.falsy {
+            ComputationPredicate { truthy: self.truthy, falsy: None, non_result: self.non_result }
+                .append(f(falsy))
+        } else {
+            self
+        }
+    }
 }
 
 #[derive(Debug)]
