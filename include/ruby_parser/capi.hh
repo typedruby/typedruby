@@ -11,7 +11,7 @@ extern "C" {
 struct cdiagnostic {
 	ruby_parser::dlevel level;
 	ruby_parser::dclass type;
-	const char *message;
+	const char *data;
 	size_t begin_pos;
 	size_t end_pos;
 };

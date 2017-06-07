@@ -1932,6 +1932,10 @@ opt_block_args_tail:
                       $$ = driver.build.shadowarg(self, ident);
                     }
                 | f_bad_arg
+                    {
+                      driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ArgumentConst, $1);
+                      YYERROR;
+                    }
 
           lambda:   {
                       driver.lex.extend_dynamic();
@@ -2711,12 +2715,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       $$ = driver.alloc.node_list();
                     }
 
-       f_bad_arg: tCONSTANT
-                    {
-                      driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ArgumentConst, $1);
-                      YYERROR;
-                    }
-                | tIVAR
+       f_bad_arg: tIVAR
                     {
                       driver.diagnostics.emplace_back(dlevel::ERROR, dclass::ArgumentIvar, $1);
                       YYERROR;
@@ -3136,8 +3135,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       } else if ($1->string() == "self") {
                         $$ = driver.build.tr_self(self, $1);
                       } else {
-                        driver.diagnostics.emplace_back(dlevel::ERROR,
-			  dclass::UnexpectedToken, $1, "bad type: " + $1->string());
+                        driver.diagnostics.emplace_back(dlevel::ERROR, dclass::UnexpectedToken, $1, $1->string());
                         YYERROR;
                       }
                     }

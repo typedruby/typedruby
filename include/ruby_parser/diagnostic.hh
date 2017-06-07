@@ -34,21 +34,21 @@ private:
 	dlevel level_;
 	dclass type_;
 	range location_;
-	std::string message_;
+	std::string data_;
 
 public:
-	diagnostic(dlevel lvl, dclass type, range location, const std::string& message = "")
+	diagnostic(dlevel lvl, dclass type, range location, const std::string& data = "")
 		: level_(lvl)
 		  , type_(type)
 		  , location_(location)
-		  , message_(message)
+		  , data_(data)
 	{}
 
-	diagnostic(dlevel lvl, dclass type, const token *token, const std::string& message = "")
+	diagnostic(dlevel lvl, dclass type, const token *token, const std::string& data = "")
 		: level_(lvl)
 		  , type_(type)
 		  , location_(token->start(), token->end())
-		  , message_(message)
+		  , data_(data)
 	{}
 
 	dlevel level() const {
@@ -59,8 +59,8 @@ public:
 		return type_;
 	}
 
-	const std::string& message() const {
-		return message_;
+	const std::string& data() const {
+		return data_;
 	}
 
 	const range& location() const {

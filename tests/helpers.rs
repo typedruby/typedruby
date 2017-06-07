@@ -30,7 +30,7 @@ mod helpers {
 
     #[macro_export]
     macro_rules! assert_diag {
-        ($code:expr , $expect_level:expr , $expect_class:expr , $opts:expr) => ({
+        ($code:expr , $expect_level:expr , $expect_error:expr , $opts:expr) => ({
             let code = $code;
             let src = Rc::new(ruby_parser::SourceFile::new(
                     PathBuf::from("(assert_diagnostics)"), code.to_owned()));
@@ -39,7 +39,7 @@ mod helpers {
 
             let err = ast.diagnostics.first().unwrap();
             assert_eq!(err.level, $expect_level);
-            assert_eq!(err.class, $expect_class);
+            assert_eq!(err.error, $expect_error);
         })
     }
 

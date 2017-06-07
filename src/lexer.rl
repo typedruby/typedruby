@@ -511,15 +511,18 @@ void lexer::emit_num(const std::string& num) {
   }
 }
 
-void lexer::diagnostic_(dlevel level, dclass type) {
-  diagnostic_(level, type, ts, te);
-}
-
-void lexer::diagnostic_(dlevel level, dclass type, const char* start, const char* end) {
+diagnostic::range lexer::range(const char *start, const char *end) {
   size_t token_start = (size_t)(start - source_buffer.data());
   size_t token_end = (size_t)(end - source_buffer.data());
+  return diagnostic::range(token_start, token_end);
+}
 
-  diagnostics.emplace_back(level, type, diagnostic::range(token_start, token_end));
+void lexer::diagnostic_(dlevel level, dclass type, const std::string &data) {
+  diagnostics.emplace_back(level, type, range(ts, te), data);
+}
+
+void lexer::diagnostic_(dlevel level, dclass type, diagnostic::range &&range, const std::string &data) {
+  diagnostics.emplace_back(level, type, range, data);
 }
 
 //
@@ -778,7 +781,7 @@ void lexer::set_state_expr_value() {
     } else {
       auto codepoint_s = escape_s + 2;
       diagnostic_(dlevel::ERROR, dclass::UnicodePointTooLarge,
-	codepoint_s, codepoint_s + codepoint_str.size());
+        range(codepoint_s, codepoint_s + codepoint_str.size()));
     }
   }
 
@@ -843,7 +846,7 @@ void lexer::set_state_expr_value() {
       # %q[\x]
     | 'x' ( c_any - xdigit )
       % {
-        diagnostic_(dlevel::FATAL, dclass::InvalidHexEscape, escape_s - 1, p + 2);
+        diagnostic_(dlevel::FATAL, dclass::InvalidHexEscape, range(escape_s - 1, p + 2));
       }
 
       # %q[\u123] %q[\u{12]
@@ -855,7 +858,7 @@ void lexer::set_state_expr_value() {
             )
           )
       % {
-        diagnostic_(dlevel::FATAL, dclass::InvalidUnicodeEscape, escape_s - 1, p);
+        diagnostic_(dlevel::FATAL, dclass::InvalidUnicodeEscape, range(escape_s - 1, p));
       }
 
       # \u{123 456}
@@ -866,7 +869,7 @@ void lexer::set_state_expr_value() {
         | ( c_any - '}' )* c_eof
         | xdigit{7,}
         ) % {
-          diagnostic_(dlevel::FATAL, dclass::UnterminatedUnicode, p - 1, p);
+          diagnostic_(dlevel::FATAL, dclass::UnterminatedUnicode, range(p - 1, p));
         }
       )
 
@@ -892,7 +895,7 @@ void lexer::set_state_expr_value() {
     | ( c_any - [0-7xuCMc] ) %unescape_char
 
     | c_eof % {
-      diagnostic_(dlevel::FATAL, dclass::EscapeEOF, p - 1, p);
+      diagnostic_(dlevel::FATAL, dclass::EscapeEof, range(p - 1, p));
     }
   );
 
@@ -1042,7 +1045,7 @@ void lexer::set_state_expr_value() {
     auto& current_literal = literal_();
 
     if (te == pe) {
-      diagnostic_(dlevel::FATAL, dclass::EscapeEOF, current_literal.str_s, current_literal.str_s + 1);
+      diagnostic_(dlevel::FATAL, dclass::EscapeEof, range(current_literal.str_s, current_literal.str_s + 1));
     }
 
     if (current_literal.heredoc()) {
@@ -1277,7 +1280,7 @@ void lexer::set_state_expr_value() {
         }
 
         if (!unknown_options.empty()) {
-          diagnostic_(dlevel::ERROR, dclass::RegexpOptions);
+          diagnostic_(dlevel::ERROR, dclass::RegexpOptions, unknown_options);
         }
 
         emit(token_type::tREGEXP_OPT, options);
@@ -1430,7 +1433,7 @@ void lexer::set_state_expr_value() {
       class_var_v
       => {
         if (ts[2] >= '0' && ts[2] <= '9') {
-          diagnostic_(dlevel::ERROR, dclass::CVarName); // TODO
+          diagnostic_(dlevel::ERROR, dclass::CvarName, ts);
         }
 
         emit(token_type::tCVAR);
@@ -1440,7 +1443,7 @@ void lexer::set_state_expr_value() {
       instance_var_v
       => {
         if (ts[1] >= '0' && ts[1] <= '9') {
-          diagnostic_(dlevel::ERROR, dclass::IVarName); // TODO
+          diagnostic_(dlevel::ERROR, dclass::IvarName, ts);
         }
 
         emit(token_type::tIVAR);
@@ -1631,7 +1634,7 @@ void lexer::set_state_expr_value() {
       => {
         if (*tm == '/') {
           // Ambiguous regexp literal.
-          diagnostic_(dlevel::WARNING, dclass::AmbiguousLiteral, tm, tm + 1);
+          diagnostic_(dlevel::WARNING, dclass::AmbiguousLiteral, range(tm, tm + 1));
         }
 
         p = tm - 1;
@@ -1642,7 +1645,7 @@ void lexer::set_state_expr_value() {
       # Ambiguous splat, kwsplat or block-pass.
       w_space+ %{ tm = p; } ( '+' | '-' | '*' | '&' | '**' )
       => {
-        diagnostic_(dlevel::WARNING, dclass::AmbiguousPrefix, tm, te);
+        diagnostic_(dlevel::WARNING, dclass::AmbiguousPrefix, range(tm, te), tok(tm, te));
 
         p = tm - 1;
         fgoto expr_beg;
@@ -1868,7 +1871,7 @@ void lexer::set_state_expr_value() {
           type = literal_type::LOWERX_XSTRING;
         } else {
           type = literal_type::PERCENT_STRING;
-          diagnostic_(dlevel::ERROR, dclass::UnexpectedPercentStr, ts, te - 1);
+          diagnostic_(dlevel::ERROR, dclass::UnexpectedPercentStr, range(ts, te - 1), tok(ts, te-1));
         }
 
         fgoto *push_literal(type, std::string(te - 1, 1), ts);
@@ -1876,7 +1879,7 @@ void lexer::set_state_expr_value() {
 
       '%' c_eof
       => {
-        diagnostic_(dlevel::FATAL, dclass::StringEOF, ts, ts + 1);
+        diagnostic_(dlevel::FATAL, dclass::StringEof, range(ts, ts + 1));
       };
 
       # Heredoc start.
@@ -1999,7 +2002,6 @@ void lexer::set_state_expr_value() {
 
       '?' c_space_nl
       => {
-		/*
         static const std::map<char, std::string> escape_map {
           { ' ',  "\\s" },
           { '\r', "\\r" },
@@ -2010,9 +2012,7 @@ void lexer::set_state_expr_value() {
         };
 
         auto& escape = escape_map.at(ts[1]);
-		*/
-		// TODO
-        diagnostic_(dlevel::WARNING, dclass::InvalidEscapeUse);
+        diagnostic_(dlevel::WARNING, dclass::InvalidEscapeUse, escape);
 
         p = ts - 1;
         fgoto expr_end;
@@ -2020,7 +2020,7 @@ void lexer::set_state_expr_value() {
 
       '?' c_eof
       => {
-        diagnostic_(dlevel::FATAL, dclass::IncompleteEscape, ts, ts + 1);
+        diagnostic_(dlevel::FATAL, dclass::IncompleteEscape, range(ts, ts + 1));
       };
 
       # f ?aa : b: Disambiguate with a character literal.
@@ -2305,7 +2305,7 @@ void lexer::set_state_expr_value() {
         auto digits = tok(num_digits_s, num_suffix_s);
 
         if (num_suffix_s[-1] == '_') {
-          diagnostic_(dlevel::ERROR, dclass::TrailingInNumber, te - 1, te);
+          diagnostic_(dlevel::ERROR, dclass::TrailingInNumber, range(te - 1, te), "_");
         } else if (num_digits_s == num_suffix_s && num_base == 8 && version == ruby_version::RUBY_18) {
           // 1.8 did not raise an error on 0o.
         } else if (num_digits_s == num_suffix_s) {
@@ -2314,7 +2314,7 @@ void lexer::set_state_expr_value() {
           for (const char* digit_p = num_digits_s; digit_p < num_suffix_s; digit_p++) {
             if (*digit_p == '8' || *digit_p == '9') {
               diagnostic_(dlevel::ERROR, dclass::InvalidOctal,
-                digit_p, digit_p + 1);
+                range(digit_p, digit_p + 1));
             }
           }
         }
@@ -2336,7 +2336,7 @@ void lexer::set_state_expr_value() {
       flo_int [eE]
       => {
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          diagnostic_(dlevel::ERROR, dclass::TrailingInNumber, te - 1, te);
+          diagnostic_(dlevel::ERROR, dclass::TrailingInNumber, range(te - 1, te), tok(te-1, te));
         } else {
           emit(token_type::tINTEGER, tok(ts, te - 1), ts, te - 1);
           fhold; fbreak;
@@ -2346,7 +2346,7 @@ void lexer::set_state_expr_value() {
       flo_int flo_frac [eE]
       => {
         if (version == ruby_version::RUBY_18 || version == ruby_version::RUBY_19 || version == ruby_version::RUBY_20) {
-          diagnostic_(dlevel::ERROR, dclass::TrailingInNumber, te - 1, te);
+          diagnostic_(dlevel::ERROR, dclass::TrailingInNumber, range(te - 1, te), tok(te - 1, te));
         } else {
           emit(token_type::tFLOAT, tok(ts, te - 1), ts, te - 1);
           fhold; fbreak;
@@ -2484,13 +2484,13 @@ void lexer::set_state_expr_value() {
            fnext expr_value; fbreak; };
 
       '\\' c_line {
-        diagnostic_(dlevel::ERROR, dclass::BareBackslash, ts, ts + 1);
+        diagnostic_(dlevel::ERROR, dclass::BareBackslash, range(ts, ts + 1));
         fhold;
       };
 
       c_any
       => {
-        diagnostic_(dlevel::ERROR, dclass::Unexpected);
+        diagnostic_(dlevel::ERROR, dclass::Unexpected, tok());
       };
 
       c_eof => do_eof;
@@ -2523,7 +2523,8 @@ void lexer::set_state_expr_value() {
 
       c_line* zlen
       => {
-        diagnostic_(dlevel::FATAL, dclass::EmbeddedDocument, eq_begin_s, eq_begin_s + "=begin"s.size());
+        diagnostic_(dlevel::FATAL, dclass::EmbeddedDocument,
+          range(eq_begin_s, eq_begin_s + "=begin"s.size()));
       };
   *|;
 
