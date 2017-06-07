@@ -1969,7 +1969,52 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         Computation::divergent_option(case_exit_comp, Some(else_comp)).unwrap()
                     })
                 } else {
-                    panic!("fuk");
+                    let nil_ty = self.tyenv.nil(loc.clone());
+                    let init_comp = ComputationPredicate::result(None, Some(Computation::result(nil_ty, locals)));
+
+                    let (else_comp, out_comp) = whens.iter().fold((init_comp, None), |(comp, out_comp), when| {
+                        let (when_exprs, then) =
+                            if let Node::When(_, ref when_exprs, ref then) = **when {
+                                (when_exprs, then.as_ref().map(Rc::as_ref))
+                            } else {
+                                panic!("expected When in Case whens");
+                            };
+
+                        let when_exprs_loc = when_exprs[0].loc().join(when_exprs.last().unwrap().loc());
+
+                        let when_comp = when_exprs.iter().fold(comp, |comp, when_expr| {
+                            comp.seq_falsy(|falsy_comp| {
+                                falsy_comp.seq(&|_, l| self.process_node(when_expr, l))
+                                    .predicate(when_expr.loc(), &self.tyenv)
+                            })
+                        });
+
+                        let comp = ComputationPredicate { truthy: None, falsy: when_comp.falsy, non_result: when_comp.non_result };
+
+                        let then_comp = when_comp.truthy.map(|truthy_comp| {
+                            self.converge_results(truthy_comp, &when_exprs_loc).seq(&|_, l| {
+                                self.process_option_node(when.loc(), then, l)
+                            })
+                        });
+
+                        (comp, Computation::divergent_option(out_comp, then_comp))
+                    });
+
+                    assert!(else_comp.truthy.is_none());
+
+                    let non_result_comp = else_comp.non_result;
+
+                    let else_comp = else_comp.falsy.map(|comp|
+                        self.extract_results(comp, loc).and_then(|_, l|
+                            match *else_ {
+                                None => EvalResult::Ok(None, l),
+                                Some(ref else_) => self.eval_node(&else_, l).map(Some),
+                            }))
+                        .map(|ev| ev.map(|ty| ty.unwrap_or_else(|| self.tyenv.nil(loc.clone()))))
+                        .map(|ev| ev.into_computation());
+
+                    Computation::divergent_option(out_comp,
+                        Computation::divergent_option(non_result_comp, else_comp)).unwrap()
                 }
             }
             Node::IRange(ref loc, ref begin, ref end) |
