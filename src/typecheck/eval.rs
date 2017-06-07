@@ -1910,8 +1910,67 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 })
             }
             Node::Case(ref loc, ref cond, ref whens, ref else_) => {
-                self.error("TODO - implement case statements", &[]);
-                Computation::result(self.tyenv.new_var(loc.clone()), locals)
+                if let Some(ref cond) = *cond {
+                    self.eval_node(cond, locals).and_then_comp(|cond_ty, locals| {
+                        let mut case_exit_comp = None;
+
+                        let mut locals = locals;
+
+                        for when in whens {
+                            let mut truthy_comp = None;
+
+                            let (when_exprs, then) =
+                                if let Node::When(_, ref when_exprs, ref then) = **when {
+                                    (when_exprs, then.as_ref().map(Rc::as_ref))
+                                } else {
+                                    panic!("expected When in Case whens");
+                                };
+
+                            for when_expr in when_exprs {
+                                let when_expr_loc = when_expr.loc();
+
+                                let cmp_comp = self.eval_node(when_expr, locals.clone()).and_then_comp(|when_expr_ty, locals| {
+                                    self.process_send_dispatch(when_expr_loc, when_expr_ty,
+                                        &Id(when_expr_loc.clone(), "===".to_owned()),
+                                        vec![CallArg::Pass(cond.loc().clone(), cond_ty)],
+                                        None, locals)
+                                });
+
+                                let pred = cmp_comp.predicate(when_expr_loc, &self.tyenv);
+
+                                truthy_comp = Computation::divergent_option(truthy_comp, pred.truthy);
+
+                                case_exit_comp = Computation::divergent_option(case_exit_comp, pred.non_result);
+
+                                if let Some(falsy_comp) = pred.falsy {
+                                    if let EvalResult::Ok(_, l) = self.extract_results(falsy_comp, when_expr_loc) {
+                                        locals = l;
+                                    } else {
+                                        panic!("falsy comp should not have non-result comps");
+                                    }
+                                } else {
+                                    break;
+                                }
+                            }
+
+                            if let Some(truthy_comp) = truthy_comp {
+                                let when_exprs_loc = when_exprs[0].loc().join(when_exprs.last().unwrap().loc());
+
+                                let then_comp = self.extract_results(truthy_comp, &when_exprs_loc).and_then_comp(|_, locals| {
+                                    self.process_option_node(when.loc(), then, locals)
+                                });
+
+                                case_exit_comp = Computation::divergent_option(case_exit_comp, Some(then_comp));
+                            }
+                        }
+
+                        let else_comp = self.process_option_node(loc, else_.as_ref().map(Rc::as_ref), locals);
+
+                        Computation::divergent_option(case_exit_comp, Some(else_comp)).unwrap()
+                    })
+                } else {
+                    panic!("fuk");
+                }
             }
             Node::IRange(ref loc, ref begin, ref end) |
             Node::ERange(ref loc, ref begin, ref end) => {
