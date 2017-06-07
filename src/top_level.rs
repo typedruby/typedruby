@@ -796,6 +796,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Next(_, ref exprs) |
             Node::Return(_, ref exprs) |
             Node::Super(_, ref exprs) |
+            Node::XString(_, ref exprs) |
             Node::Yield(_, ref exprs) => {
                 for expr in exprs {
                     self.eval_node(expr);
