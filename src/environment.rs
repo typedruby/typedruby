@@ -76,14 +76,14 @@ impl<'object> Environment<'object> {
                 DiagnosticLevel::Note => {},
                 DiagnosticLevel::Warning => {
                     if self.config.warning {
-                        self.error_sink.borrow_mut().warning(&diag.message, &[
+                        self.error_sink.borrow_mut().warning(&format!("{}", diag), &[
                             Detail::Loc("here", &diag.loc),
                         ]);
                     }
                 },
                 DiagnosticLevel::Error |
                 DiagnosticLevel::Fatal => {
-                    self.error_sink.borrow_mut().error(&diag.message, &[
+                    self.error_sink.borrow_mut().error(&format!("{}", diag), &[
                         Detail::Loc("here", &diag.loc),
                     ]);
                 }
