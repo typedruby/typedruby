@@ -1601,7 +1601,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     f_arglist bodystmt kEND
                     {
                       $$ = driver.build.def_singleton(self, $1, $2, $3, $5, $7, $8, $9);
-					  DIAGCHECK();
+                      DIAGCHECK();
 
                       driver.replace_stack($<stack>6);
                       driver.lex.unextend();
@@ -1869,7 +1869,7 @@ opt_block_args_tail:
  opt_block_param: // nothing
                     {
                       $$ = driver.build.args(self, nullptr, nullptr, nullptr, true);
-					  DIAGCHECK();
+                      DIAGCHECK();
                     }
                 | block_param_def
                     {
@@ -1890,19 +1890,19 @@ opt_block_args_tail:
  block_param_def: tPIPE opt_bv_decl tPIPE
                     {
                       $$ = driver.build.args(self, $1, $2, $3, true);
-					  DIAGCHECK();
+                      DIAGCHECK();
                     }
                 | tOROP
                     {
                       $$ = driver.build.args(self, $1, nullptr, $1, true);
-					  DIAGCHECK();
+                      DIAGCHECK();
                     }
                 | tPIPE block_param opt_bv_decl tPIPE
                     {
                       auto &params = $2;
                       params->concat($3);
                       $$ = driver.build.args(self, $1, params, $4, true);
-					  DIAGCHECK();
+                      DIAGCHECK();
                     }
 
      opt_bv_decl: opt_nl
@@ -1961,12 +1961,12 @@ opt_block_args_tail:
                       auto &args = $2;
                       args->concat($3);
                       $$ = driver.build.args(self, $1, args, $4, true);
-					  DIAGCHECK();
+                      DIAGCHECK();
                     }
                 | f_args
                     {
                       $$ = driver.build.args(self, nullptr, $1, nullptr, true);
-					  DIAGCHECK();
+                      DIAGCHECK();
                     }
 
      lambda_body: tLAMBEG compstmt tRCURLY
@@ -2501,12 +2501,12 @@ keyword_variable: kNIL
          var_lhs: user_variable
                     {
                       $$ = driver.build.assignable(self, $1);
-					  DIAGCHECK();
+                      DIAGCHECK();
                     }
                 | keyword_variable
                     {
                       $$ = driver.build.assignable(self, $1);
-					  DIAGCHECK();
+                      DIAGCHECK();
                     }
 
          backref: tNTH_REF
@@ -2549,7 +2549,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto genargs = $1;
                       auto returnsig = $6;
                       auto args = driver.build.args(self, $2, $3, $4, true);
-					  DIAGCHECK();
+                      DIAGCHECK();
 
                       if (genargs || returnsig) {
                         $$ = driver.build.prototype(self, genargs, args, returnsig);
@@ -2569,7 +2569,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                       auto genargs = $1;
                       auto returnsig = $4;
                       auto args = driver.build.args(self, nullptr, $3, nullptr, true);
-					  DIAGCHECK();
+                      DIAGCHECK();
 
                       if (genargs || returnsig) {
                         $$ = driver.build.prototype(self, genargs, args, returnsig);
