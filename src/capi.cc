@@ -21,6 +21,12 @@ rbdriver_parse(ruby_parser::base_driver* driver, ruby_parser::self_ptr self)
 }
 
 bool
+rbdriver_in_definition(const ruby_parser::base_driver *driver)
+{
+	return driver->def_level > 0;
+}
+
+bool
 rbdriver_env_is_declared(const ruby_parser::base_driver *driver, const char* name, size_t length)
 {
 	std::string id { name, length };
@@ -71,28 +77,25 @@ rbdriver_diag_get_length(const ruby_parser::base_driver* driver)
 	return driver->diagnostics.size();
 }
 
-ruby_parser::diagnostic_level
-rbdriver_diag_get_level(const ruby_parser::base_driver* driver, size_t index)
+void
+rbdriver_diag_get(const ruby_parser::base_driver* driver, size_t index, struct cdiagnostic *diag)
 {
-	return driver->diagnostics.at(index).level();
+	auto &cppdiag = driver->diagnostics.at(index);
+	diag->level = cppdiag.level();
+	diag->type = cppdiag.error_class();
+	diag->data = cppdiag.data().c_str();
+	diag->begin_pos = cppdiag.location().begin_pos;
+	diag->end_pos = cppdiag.location().end_pos;
 }
 
-size_t
-rbdriver_diag_get_message(const ruby_parser::base_driver* driver, size_t index, const char** out_ptr)
+void
+rbdriver_diag_report(ruby_parser::base_driver* driver, const struct cdiagnostic *diag)
 {
-	auto& message = driver->diagnostics.at(index).message();
-	*out_ptr = message.data();
-	return message.size();
-}
-
-size_t
-rbdriver_diag_get_begin(const ruby_parser::base_driver* driver, size_t index)
-{
-	return driver->diagnostics.at(index).location().begin_pos;
-}
-
-size_t
-rbdriver_diag_get_end(const ruby_parser::base_driver* driver, size_t index)
-{
-  return driver->diagnostics.at(index).location().end_pos;
+	driver->external_diagnostic(
+		diag->level,
+		diag->type,
+		diag->begin_pos,
+		diag->end_pos,
+		diag->data ? std::string(diag->data) : ""
+	);
 }

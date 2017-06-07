@@ -6,6 +6,11 @@ build = "build.rs"
 
 [dependencies]
 libc = "0.2.0"
+onig = { version = "1.2", optional = true }
+
+[features]
+default = []
+regex = ["onig"]
 
 [dev-dependencies]
 glob = "0.2"
