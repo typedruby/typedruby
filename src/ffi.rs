@@ -2,12 +2,12 @@
 
 extern crate libc;
 
-use ::ast::{Node, Loc, SourceFile, Diagnostic};
+use ::ast::{Node, Loc, SourceFile, Diagnostic, Level};
 use ::builder::Builder;
 use ::parser::ParserOptions;
-use ::diagnostics::DiagClass;
+use ::diagnostics::Error;
 use self::libc::{size_t, c_char};
-use std::ffi::CStr;
+use std::ffi::{CStr, CString};
 use std::vec::Vec;
 use std::rc::Rc;
 use std::ptr;
@@ -89,21 +89,11 @@ pub enum DriverPtr {}
 pub enum TokenPtr {}
 pub enum NodeListPtr {}
 
-#[derive(Debug)]
-#[derive(PartialEq)]
-#[repr(C)]
-pub enum DiagLevel {
-	Note    = 1,
-	Warning = 2,
-	Error   = 3,
-	Fatal   = 4,
-}
-
 #[repr(C)]
 struct CDiagnostic {
-    level: DiagLevel,
-    class: DiagClass,
-    message: *const c_char,
+    level: Level,
+    class: Error,
+    data: *const c_char,
     begin_pos: size_t,
     end_pos: size_t,
 }
@@ -195,11 +185,11 @@ impl Driver {
         }
     }
 
-    pub fn error(&mut self, class: DiagClass, loc: Loc) {
+    fn diagnostic(&mut self, level: Level, err: Error, loc: Loc, data: *const c_char) {
         let diag = CDiagnostic {
-            level: DiagLevel::Error,
-            class: class,
-            message: ptr::null(),
+            level: level,
+            class: err,
+            data: data,
             begin_pos: loc.begin_pos,
             end_pos: loc.end_pos,
         };
@@ -207,6 +197,16 @@ impl Driver {
         unsafe {
             rbdriver_diag_report(self.ptr, &diag);
         }
+    }
+
+    pub fn error(&mut self, err: Error, loc: Loc) {
+        self.diagnostic(Level::Error, err, loc, ptr::null())
+    }
+
+    #[allow(dead_code)]
+    pub fn error_with_data(&mut self, err: Error, loc: Loc, data: &str) {
+        let data = CString::new(data.to_owned()).unwrap();
+        self.diagnostic(Level::Error, err, loc, data.as_ptr())
     }
 
     pub fn is_in_definition(&self) -> bool {
@@ -232,22 +232,24 @@ impl Driver {
                 diag
             };
 
-            let message = unsafe {
-                CStr::from_ptr(cdiag.message)
-            }.to_str().unwrap();
-
-            let diag = Diagnostic {
-                level: cdiag.level,
-                class: cdiag.class,
-                message: message.to_owned(),
-                loc: Loc { 
-                    file: self.current_file.clone(),
-                    begin_pos: cdiag.begin_pos,
-                    end_pos: cdiag.end_pos
-                },
+            let loc = Loc { 
+                file: self.current_file.clone(),
+                begin_pos: cdiag.begin_pos,
+                end_pos: cdiag.end_pos
             };
 
-            vec.push(diag);
+            let cstr = unsafe { CStr::from_ptr(cdiag.data) }.to_str();
+            let data = match cstr {
+                Ok(msg) => if msg.len() > 0 { Some(msg.to_owned()) } else { None },
+                Err(_) => None,
+            };
+
+            vec.push(Diagnostic {
+                error: cdiag.class,
+                level: cdiag.level,
+                loc: loc,
+                data: data,
+            });
         }
 
         vec

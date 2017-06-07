@@ -2,7 +2,7 @@ use ffi::{Token, Driver};
 use std::rc::Rc;
 use ast::{Node, Id, Loc, SourceFile};
 use std::collections::HashSet;
-use diagnostics::DiagClass;
+use diagnostics::Error;
 
 #[cfg(feature = "regex")]
 use onig::Regex;
@@ -258,7 +258,7 @@ impl<'a> Builder<'a> {
         }
 
         if names.contains(name.as_str()) {
-            self.driver.error(DiagClass::DuplicateArgument, arg.loc().clone());
+            self.driver.error(Error::DuplicateArgument, arg.loc().clone());
             return;
         }
 
@@ -281,9 +281,9 @@ impl<'a> Builder<'a> {
         if build_static_string(&mut st, parts) {
             match Regex::new(&st) {
                 Ok(re) => Some(re),
-                Err(_) => {
-                    // TODO: report message
-                    self.driver.error(DiagClass::InvalidRegexp, loc.clone());
+                Err(err) => {
+                    self.driver.error_with_data(
+                        Error::InvalidRegexp, loc.clone(), err.description());
                     None
                 }
             }
@@ -421,7 +421,7 @@ impl<'a> Builder<'a> {
                 Node::IvarLhs(loc.clone(), Id(loc.clone(), name)),
             Node::Const(loc, lhs, name) => {
                 if self.driver.is_in_definition() {
-                    self.driver.error(DiagClass::DynamicConst, loc.clone());
+                    self.driver.error(Error::DynamicConst, loc.clone());
                 }
                 Node::ConstLhs(loc.clone(), lhs, name)
             },
@@ -431,12 +431,12 @@ impl<'a> Builder<'a> {
                 Node::GvarLhs(loc.clone(), Id(loc.clone(), name)),
             Node::Backref(loc, _) |
             Node::NthRef(loc, _) => {
-                self.driver.error(DiagClass::BackrefAssignment, loc.clone());
+                self.driver.error(Error::BackrefAssignment, loc.clone());
                 Node::Nil(loc)
             },
             _ => {
                 let loc = node.loc().clone();
-                self.driver.error(DiagClass::InvalidAssignment, loc.clone());
+                self.driver.error(Error::InvalidAssignment, loc.clone());
                 Node::Nil(loc)
             },
         }
@@ -577,7 +577,7 @@ impl<'a> Builder<'a> {
         let args = args.unwrap();
 
         if let Node::Yield(ref loc, _) = *method_call {
-            self.driver.error(DiagClass::BlockGivenToYield, loc.clone());
+            self.driver.error(Error::BlockGivenToYield, loc.clone());
             return Node::Yield(loc.clone(), vec![]);
         }
 
@@ -587,7 +587,7 @@ impl<'a> Builder<'a> {
                 Node::Super(_, ref args) => {
                     if let Some(ref last_arg) = args.last() {
                         if let Node::BlockPass(ref loc, _) = ***last_arg {
-                            self.driver.error(DiagClass::BlockAndBlockarg, loc.clone());
+                            self.driver.error(Error::BlockAndBlockarg, loc.clone());
                         }
                     }
                 },
@@ -809,7 +809,7 @@ impl<'a> Builder<'a> {
             Node::Regexp(_, _, _) |
             Node::Array(_, _) |
             Node::Hash(_, _) => {
-                self.driver.error(DiagClass::SingletonLiteral, loc.clone());
+                self.driver.error(Error::SingletonLiteral, loc.clone());
             },
             _ => {},
         };
@@ -951,7 +951,7 @@ impl<'a> Builder<'a> {
         if args.len() > 0 {
             match **args.last().unwrap() {
                 Node::BlockPass(ref loc, _) => {
-                    self.driver.error(DiagClass::BlockGivenToYield, loc.clone());
+                    self.driver.error(Error::BlockGivenToYield, loc.clone());
                 },
                 _ => ()
             };
@@ -1129,7 +1129,7 @@ impl<'a> Builder<'a> {
         match *lhs {
             Node::Backref(ref loc, _)|
             Node::NthRef(ref loc, _) => {
-                self.driver.error(DiagClass::BackrefAssignment, loc.clone());
+                self.driver.error(Error::BackrefAssignment, loc.clone());
             },
             _ => {}
         }
