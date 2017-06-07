@@ -29,7 +29,7 @@ pub struct Environment<'object> {
     inflector: Inflector,
 }
 
-static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/stdlib.rb");
+static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
 
 static REQUIRE_EXTS: &'static [&'static str] = &["", ".rb"];
 
