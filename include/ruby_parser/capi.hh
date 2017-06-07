@@ -8,6 +8,14 @@
 
 extern "C" {
 
+struct cdiagnostic {
+	ruby_parser::dlevel level;
+	ruby_parser::dclass type;
+	const char *data;
+	size_t begin_pos;
+	size_t end_pos;
+};
+
 ruby_parser::typedruby24*
 rbdriver_typedruby24_new(const char* source, size_t source_length, const ruby_parser::builder* builder);
 
@@ -16,6 +24,9 @@ rbdriver_typedruby24_free(ruby_parser::typedruby24* parser);
 
 const void*
 rbdriver_parse(ruby_parser::base_driver* parser, ruby_parser::self_ptr self);
+
+bool
+rbdriver_in_definition(const ruby_parser::base_driver *driver);
 
 bool
 rbdriver_env_is_declared(const ruby_parser::base_driver *p, const char* name, size_t length);
@@ -41,17 +52,11 @@ rblist_index(ruby_parser::node_list* list, size_t index);
 size_t
 rbdriver_diag_get_length(const ruby_parser::base_driver* parser);
 
-ruby_parser::diagnostic_level
-rbdriver_diag_get_level(const ruby_parser::base_driver* parser, size_t index);
+void
+rbdriver_diag_get(const ruby_parser::base_driver* parser, size_t index, struct cdiagnostic *diag);
 
-size_t
-rbdriver_diag_get_message(const ruby_parser::base_driver* parser, size_t index, const char** out_ptr);
-
-size_t
-rbdriver_diag_get_begin(const ruby_parser::base_driver* parser, size_t index);
-
-size_t
-rbdriver_diag_get_end(const ruby_parser::base_driver* parser, size_t index);
+void
+rbdriver_diag_report(ruby_parser::base_driver* driver, const struct cdiagnostic *diag);
 
 }
 

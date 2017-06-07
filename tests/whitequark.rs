@@ -18,7 +18,7 @@ ruby_parser::ParserOptions {
 
 
 #[test]
-fn test_preexe() {
+fn parse_preexe() {
 	let code = "BEGIN { 1 }";
 	let sexp = r##"
 (preexe
@@ -28,7 +28,7 @@ fn test_preexe() {
 }
 
 #[test]
-fn test_for_mlhs() {
+fn parse_for_mlhs() {
 	let code = "for a, b in foo; p a, b; end";
 	let sexp = r##"
 (for
@@ -44,7 +44,7 @@ fn test_for_mlhs() {
 }
 
 #[test]
-fn test_send_binary_op() {
+fn parse_send_binary_op() {
 	let code = "foo + 1";
 	let sexp = r##"
 (send
@@ -55,7 +55,7 @@ fn test_send_binary_op() {
 }
 
 #[test]
-fn test_send_binary_op_1() {
+fn parse_send_binary_op_1() {
 	let code = "foo - 1";
 	let sexp = r##"
 (send
@@ -66,7 +66,7 @@ fn test_send_binary_op_1() {
 }
 
 #[test]
-fn test_send_binary_op_2() {
+fn parse_send_binary_op_2() {
 	let code = "foo * 1";
 	let sexp = r##"
 (send
@@ -77,7 +77,7 @@ fn test_send_binary_op_2() {
 }
 
 #[test]
-fn test_send_binary_op_3() {
+fn parse_send_binary_op_3() {
 	let code = "foo / 1";
 	let sexp = r##"
 (send
@@ -88,7 +88,7 @@ fn test_send_binary_op_3() {
 }
 
 #[test]
-fn test_send_binary_op_4() {
+fn parse_send_binary_op_4() {
 	let code = "foo % 1";
 	let sexp = r##"
 (send
@@ -99,7 +99,7 @@ fn test_send_binary_op_4() {
 }
 
 #[test]
-fn test_send_binary_op_5() {
+fn parse_send_binary_op_5() {
 	let code = "foo ** 1";
 	let sexp = r##"
 (send
@@ -110,7 +110,7 @@ fn test_send_binary_op_5() {
 }
 
 #[test]
-fn test_send_binary_op_6() {
+fn parse_send_binary_op_6() {
 	let code = "foo | 1";
 	let sexp = r##"
 (send
@@ -121,7 +121,7 @@ fn test_send_binary_op_6() {
 }
 
 #[test]
-fn test_send_binary_op_7() {
+fn parse_send_binary_op_7() {
 	let code = "foo ^ 1";
 	let sexp = r##"
 (send
@@ -132,7 +132,7 @@ fn test_send_binary_op_7() {
 }
 
 #[test]
-fn test_send_binary_op_8() {
+fn parse_send_binary_op_8() {
 	let code = "foo & 1";
 	let sexp = r##"
 (send
@@ -143,7 +143,7 @@ fn test_send_binary_op_8() {
 }
 
 #[test]
-fn test_send_binary_op_9() {
+fn parse_send_binary_op_9() {
 	let code = "foo <=> 1";
 	let sexp = r##"
 (send
@@ -154,7 +154,7 @@ fn test_send_binary_op_9() {
 }
 
 #[test]
-fn test_send_binary_op_10() {
+fn parse_send_binary_op_10() {
 	let code = "foo < 1";
 	let sexp = r##"
 (send
@@ -165,7 +165,7 @@ fn test_send_binary_op_10() {
 }
 
 #[test]
-fn test_send_binary_op_11() {
+fn parse_send_binary_op_11() {
 	let code = "foo <= 1";
 	let sexp = r##"
 (send
@@ -176,7 +176,7 @@ fn test_send_binary_op_11() {
 }
 
 #[test]
-fn test_send_binary_op_12() {
+fn parse_send_binary_op_12() {
 	let code = "foo > 1";
 	let sexp = r##"
 (send
@@ -187,7 +187,7 @@ fn test_send_binary_op_12() {
 }
 
 #[test]
-fn test_send_binary_op_13() {
+fn parse_send_binary_op_13() {
 	let code = "foo >= 1";
 	let sexp = r##"
 (send
@@ -198,7 +198,7 @@ fn test_send_binary_op_13() {
 }
 
 #[test]
-fn test_send_binary_op_14() {
+fn parse_send_binary_op_14() {
 	let code = "foo == 1";
 	let sexp = r##"
 (send
@@ -209,7 +209,7 @@ fn test_send_binary_op_14() {
 }
 
 #[test]
-fn test_send_binary_op_15() {
+fn parse_send_binary_op_15() {
 	let code = "foo != 1";
 	let sexp = r##"
 (send
@@ -220,7 +220,7 @@ fn test_send_binary_op_15() {
 }
 
 #[test]
-fn test_send_binary_op_16() {
+fn parse_send_binary_op_16() {
 	let code = "foo === 1";
 	let sexp = r##"
 (send
@@ -231,7 +231,7 @@ fn test_send_binary_op_16() {
 }
 
 #[test]
-fn test_send_binary_op_17() {
+fn parse_send_binary_op_17() {
 	let code = "foo =~ 1";
 	let sexp = r##"
 (send
@@ -242,7 +242,7 @@ fn test_send_binary_op_17() {
 }
 
 #[test]
-fn test_send_binary_op_18() {
+fn parse_send_binary_op_18() {
 	let code = "foo !~ 1";
 	let sexp = r##"
 (send
@@ -253,7 +253,7 @@ fn test_send_binary_op_18() {
 }
 
 #[test]
-fn test_send_binary_op_19() {
+fn parse_send_binary_op_19() {
 	let code = "foo << 1";
 	let sexp = r##"
 (send
@@ -264,7 +264,7 @@ fn test_send_binary_op_19() {
 }
 
 #[test]
-fn test_send_binary_op_20() {
+fn parse_send_binary_op_20() {
 	let code = "foo >> 1";
 	let sexp = r##"
 (send
@@ -275,7 +275,7 @@ fn test_send_binary_op_20() {
 }
 
 #[test]
-fn test_space_args_arg_newline() {
+fn parse_space_args_arg_newline() {
 	let code = "fun (1\n)";
 	let sexp = r##"
 (send nil :fun
@@ -286,7 +286,7 @@ fn test_space_args_arg_newline() {
 }
 
 #[test]
-fn test_array_symbols() {
+fn parse_array_symbols() {
 	let code = "%i[foo bar]";
 	let sexp = r##"
 (array
@@ -297,7 +297,7 @@ fn test_array_symbols() {
 }
 
 #[test]
-fn test_float() {
+fn parse_float() {
 	let code = "1.33";
 	let sexp = r##"
 (float 1.33)
@@ -306,7 +306,7 @@ fn test_float() {
 }
 
 #[test]
-fn test_float_1() {
+fn parse_float_1() {
 	let code = "-1.33";
 	let sexp = r##"
 (float -1.33)
@@ -315,7 +315,7 @@ fn test_float_1() {
 }
 
 #[test]
-fn test_restarg_unnamed() {
+fn parse_restarg_unnamed() {
 	let code = "def f(*); end";
 	let sexp = r##"
 (def :f
@@ -326,7 +326,7 @@ fn test_restarg_unnamed() {
 }
 
 #[test]
-fn test_ternary() {
+fn parse_ternary() {
 	let code = "foo ? 1 : 2";
 	let sexp = r##"
 (if
@@ -338,7 +338,7 @@ fn test_ternary() {
 }
 
 #[test]
-fn test_until_mod() {
+fn parse_until_mod() {
 	let code = "meth until foo";
 	let sexp = r##"
 (until
@@ -349,7 +349,7 @@ fn test_until_mod() {
 }
 
 #[test]
-fn test_empty_stmt() {
+fn parse_empty_stmt() {
 	let code = "";
 	let sexp = r##"
 
@@ -358,7 +358,7 @@ fn test_empty_stmt() {
 }
 
 #[test]
-fn test_send_attr_asgn() {
+fn parse_send_attr_asgn() {
 	let code = "foo.a = 1";
 	let sexp = r##"
 (send
@@ -369,7 +369,7 @@ fn test_send_attr_asgn() {
 }
 
 #[test]
-fn test_send_attr_asgn_1() {
+fn parse_send_attr_asgn_1() {
 	let code = "foo::a = 1";
 	let sexp = r##"
 (send
@@ -380,7 +380,7 @@ fn test_send_attr_asgn_1() {
 }
 
 #[test]
-fn test_send_attr_asgn_2() {
+fn parse_send_attr_asgn_2() {
 	let code = "foo.A = 1";
 	let sexp = r##"
 (send
@@ -391,7 +391,7 @@ fn test_send_attr_asgn_2() {
 }
 
 #[test]
-fn test_send_attr_asgn_3() {
+fn parse_send_attr_asgn_3() {
 	let code = "foo::A = 1";
 	let sexp = r##"
 (casgn
@@ -402,7 +402,7 @@ fn test_send_attr_asgn_3() {
 }
 
 #[test]
-fn test_kwrestarg_named() {
+fn parse_kwrestarg_named() {
 	let code = "def f(**foo); end";
 	let sexp = r##"
 (def :f
@@ -413,7 +413,7 @@ fn test_kwrestarg_named() {
 }
 
 #[test]
-fn test_send_call() {
+fn parse_send_call() {
 	let code = "foo.(1)";
 	let sexp = r##"
 (send
@@ -424,7 +424,7 @@ fn test_send_call() {
 }
 
 #[test]
-fn test_send_call_1() {
+fn parse_send_call_1() {
 	let code = "foo::(1)";
 	let sexp = r##"
 (send
@@ -435,7 +435,7 @@ fn test_send_call_1() {
 }
 
 #[test]
-fn test_case_expr_else() {
+fn parse_case_expr_else() {
 	let code = "case foo; when 'bar'; bar; else baz; end";
 	let sexp = r##"
 (case
@@ -449,7 +449,7 @@ fn test_case_expr_else() {
 }
 
 #[test]
-fn test_array_symbols_interp() {
+fn parse_array_symbols_interp() {
 	let code = "%I[foo #{bar}]";
 	let sexp = r##"
 (array
@@ -462,7 +462,7 @@ fn test_array_symbols_interp() {
 }
 
 #[test]
-fn test_array_symbols_interp_1() {
+fn parse_array_symbols_interp_1() {
 	let code = "%I[foo#{bar}]";
 	let sexp = r##"
 (array
@@ -475,7 +475,7 @@ fn test_array_symbols_interp_1() {
 }
 
 #[test]
-fn test_lvasgn() {
+fn parse_lvasgn() {
 	let code = "var = 10; var";
 	let sexp = r##"
 (begin
@@ -487,7 +487,7 @@ fn test_lvasgn() {
 }
 
 #[test]
-fn test_cvasgn() {
+fn parse_cvasgn() {
 	let code = "@@var = 10";
 	let sexp = r##"
 (cvasgn :@@var
@@ -497,7 +497,7 @@ fn test_cvasgn() {
 }
 
 #[test]
-fn test_nil_expression() {
+fn parse_nil_expression() {
 	let code = "()";
 	let sexp = r##"
 (begin)
@@ -506,7 +506,7 @@ fn test_nil_expression() {
 }
 
 #[test]
-fn test_nil_expression_1() {
+fn parse_nil_expression_1() {
 	let code = "begin end";
 	let sexp = r##"
 (kwbegin)
@@ -515,7 +515,7 @@ fn test_nil_expression_1() {
 }
 
 #[test]
-fn test_unless_mod() {
+fn parse_unless_mod() {
 	let code = "bar unless foo";
 	let sexp = r##"
 (if
@@ -570,7 +570,7 @@ fn assert_parses_blockargs_2() {
 }
 
 #[test]
-fn test_bug_interp_single() {
+fn parse_bug_interp_single() {
 	let code = "\"#{1}\"";
 	let sexp = r##"
 (dstr
@@ -581,7 +581,7 @@ fn test_bug_interp_single() {
 }
 
 #[test]
-fn test_bug_interp_single_1() {
+fn parse_bug_interp_single_1() {
 	let code = "%W\"#{1}\"";
 	let sexp = r##"
 (array
@@ -593,7 +593,7 @@ fn test_bug_interp_single_1() {
 }
 
 #[test]
-fn test_bug_do_block_in_call_args() {
+fn parse_bug_do_block_in_call_args() {
 	let code = "bar def foo; self.each do end end";
 	let sexp = r##"
 (send nil :bar
@@ -608,7 +608,7 @@ fn test_bug_do_block_in_call_args() {
 }
 
 #[test]
-fn test_ensure() {
+fn parse_ensure() {
 	let code = "begin; meth; ensure; bar; end";
 	let sexp = r##"
 (kwbegin
@@ -620,7 +620,7 @@ fn test_ensure() {
 }
 
 #[test]
-fn test_pow_precedence() {
+fn parse_pow_precedence() {
 	let code = "-2 ** 10";
 	let sexp = r##"
 (send
@@ -632,7 +632,7 @@ fn test_pow_precedence() {
 }
 
 #[test]
-fn test_pow_precedence_1() {
+fn parse_pow_precedence_1() {
 	let code = "-2.0 ** 10";
 	let sexp = r##"
 (send
@@ -644,7 +644,7 @@ fn test_pow_precedence_1() {
 }
 
 #[test]
-fn test_rescue_ensure() {
+fn parse_rescue_ensure() {
 	let code = "begin; meth; rescue; baz; ensure; bar; end";
 	let sexp = r##"
 (kwbegin
@@ -659,7 +659,7 @@ fn test_rescue_ensure() {
 }
 
 #[test]
-fn test_super() {
+fn parse_super() {
 	let code = "super(foo)";
 	let sexp = r##"
 (super
@@ -669,7 +669,7 @@ fn test_super() {
 }
 
 #[test]
-fn test_super_1() {
+fn parse_super_1() {
 	let code = "super foo";
 	let sexp = r##"
 (super
@@ -679,7 +679,7 @@ fn test_super_1() {
 }
 
 #[test]
-fn test_super_2() {
+fn parse_super_2() {
 	let code = "super()";
 	let sexp = r##"
 (super)
@@ -688,7 +688,7 @@ fn test_super_2() {
 }
 
 #[test]
-fn test_and_asgn() {
+fn parse_and_asgn() {
 	let code = "foo.a &&= 1";
 	let sexp = r##"
 (and-asgn
@@ -700,7 +700,7 @@ fn test_and_asgn() {
 }
 
 #[test]
-fn test_and_asgn_1() {
+fn parse_and_asgn_1() {
 	let code = "foo[0, 1] &&= 2";
 	let sexp = r##"
 (and-asgn
@@ -714,7 +714,7 @@ fn test_and_asgn_1() {
 }
 
 #[test]
-fn test_cvar() {
+fn parse_cvar() {
 	let code = "@@foo";
 	let sexp = r##"
 (cvar :@@foo)
@@ -723,7 +723,7 @@ fn test_cvar() {
 }
 
 #[test]
-fn test_nil() {
+fn parse_nil() {
 	let code = "nil";
 	let sexp = r##"
 (nil)
@@ -732,7 +732,7 @@ fn test_nil() {
 }
 
 #[test]
-fn test_ruby_bug_12073() {
+fn parse_ruby_bug_12073() {
 	let code = "a = 1; a b: 1";
 	let sexp = r##"
 (begin
@@ -748,7 +748,7 @@ fn test_ruby_bug_12073() {
 }
 
 #[test]
-fn test_ruby_bug_12073_1() {
+fn parse_ruby_bug_12073_1() {
 	let code = "def foo raise; raise A::B, ''; end";
 	let sexp = r##"
 (def :foo
@@ -763,7 +763,7 @@ fn test_ruby_bug_12073_1() {
 }
 
 #[test]
-fn test_send_index_cmd() {
+fn parse_send_index_cmd() {
 	let code = "foo[m bar]";
 	let sexp = r##"
 (send
@@ -775,7 +775,7 @@ fn test_send_index_cmd() {
 }
 
 #[test]
-fn test_true() {
+fn parse_true() {
 	let code = "true";
 	let sexp = r##"
 (true)
@@ -784,7 +784,7 @@ fn test_true() {
 }
 
 #[test]
-fn test_masgn_attr() {
+fn parse_masgn_attr() {
 	let code = "self.a, self[1, 2] = foo";
 	let sexp = r##"
 (masgn
@@ -801,7 +801,7 @@ fn test_masgn_attr() {
 }
 
 #[test]
-fn test_masgn_attr_1() {
+fn parse_masgn_attr_1() {
 	let code = "self::a, foo = foo";
 	let sexp = r##"
 (masgn
@@ -815,7 +815,7 @@ fn test_masgn_attr_1() {
 }
 
 #[test]
-fn test_masgn_attr_2() {
+fn parse_masgn_attr_2() {
 	let code = "self.A, foo = foo";
 	let sexp = r##"
 (masgn
@@ -829,7 +829,7 @@ fn test_masgn_attr_2() {
 }
 
 #[test]
-fn test_masgn() {
+fn parse_masgn() {
 	let code = "foo, bar = 1, 2";
 	let sexp = r##"
 (masgn
@@ -844,7 +844,7 @@ fn test_masgn() {
 }
 
 #[test]
-fn test_masgn_1() {
+fn parse_masgn_1() {
 	let code = "(foo, bar) = 1, 2";
 	let sexp = r##"
 (masgn
@@ -859,7 +859,7 @@ fn test_masgn_1() {
 }
 
 #[test]
-fn test_masgn_2() {
+fn parse_masgn_2() {
 	let code = "foo, bar, baz = 1, 2";
 	let sexp = r##"
 (masgn
@@ -875,7 +875,7 @@ fn test_masgn_2() {
 }
 
 #[test]
-fn test_array_splat() {
+fn parse_array_splat() {
 	let code = "[1, *foo, 2]";
 	let sexp = r##"
 (array
@@ -888,7 +888,7 @@ fn test_array_splat() {
 }
 
 #[test]
-fn test_array_splat_1() {
+fn parse_array_splat_1() {
 	let code = "[1, *foo]";
 	let sexp = r##"
 (array
@@ -900,7 +900,7 @@ fn test_array_splat_1() {
 }
 
 #[test]
-fn test_array_splat_2() {
+fn parse_array_splat_2() {
 	let code = "[*foo]";
 	let sexp = r##"
 (array
@@ -911,7 +911,7 @@ fn test_array_splat_2() {
 }
 
 #[test]
-fn test_ruby_bug_10279() {
+fn parse_ruby_bug_10279() {
 	let code = "{a: if true then 42 end}";
 	let sexp = r##"
 (hash
@@ -925,7 +925,7 @@ fn test_ruby_bug_10279() {
 }
 
 #[test]
-fn test_encoding_() {
+fn parse_encoding_() {
 	let code = "__ENCODING__";
 	let sexp = r##"
 (const
@@ -935,7 +935,7 @@ fn test_encoding_() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a() {
+fn parse_ruby_bug_11873_a() {
 	let code = "a b{c d}, :e do end";
 	let sexp = r##"
 (block
@@ -952,7 +952,7 @@ fn test_ruby_bug_11873_a() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_1() {
+fn parse_ruby_bug_11873_a_1() {
 	let code = "a b{c(d)}, :e do end";
 	let sexp = r##"
 (block
@@ -969,7 +969,7 @@ fn test_ruby_bug_11873_a_1() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_2() {
+fn parse_ruby_bug_11873_a_2() {
 	let code = "a b(c d), :e do end";
 	let sexp = r##"
 (block
@@ -984,7 +984,7 @@ fn test_ruby_bug_11873_a_2() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_3() {
+fn parse_ruby_bug_11873_a_3() {
 	let code = "a b(c(d)), :e do end";
 	let sexp = r##"
 (block
@@ -999,7 +999,7 @@ fn test_ruby_bug_11873_a_3() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_4() {
+fn parse_ruby_bug_11873_a_4() {
 	let code = "a b{c d}, 1 do end";
 	let sexp = r##"
 (block
@@ -1016,7 +1016,7 @@ fn test_ruby_bug_11873_a_4() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_5() {
+fn parse_ruby_bug_11873_a_5() {
 	let code = "a b{c(d)}, 1 do end";
 	let sexp = r##"
 (block
@@ -1033,7 +1033,7 @@ fn test_ruby_bug_11873_a_5() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_6() {
+fn parse_ruby_bug_11873_a_6() {
 	let code = "a b(c d), 1 do end";
 	let sexp = r##"
 (block
@@ -1048,7 +1048,7 @@ fn test_ruby_bug_11873_a_6() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_7() {
+fn parse_ruby_bug_11873_a_7() {
 	let code = "a b(c(d)), 1 do end";
 	let sexp = r##"
 (block
@@ -1063,7 +1063,7 @@ fn test_ruby_bug_11873_a_7() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_8() {
+fn parse_ruby_bug_11873_a_8() {
 	let code = "a b{c d}, 1.0 do end";
 	let sexp = r##"
 (block
@@ -1080,7 +1080,7 @@ fn test_ruby_bug_11873_a_8() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_9() {
+fn parse_ruby_bug_11873_a_9() {
 	let code = "a b{c(d)}, 1.0 do end";
 	let sexp = r##"
 (block
@@ -1097,7 +1097,7 @@ fn test_ruby_bug_11873_a_9() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_10() {
+fn parse_ruby_bug_11873_a_10() {
 	let code = "a b(c d), 1.0 do end";
 	let sexp = r##"
 (block
@@ -1112,7 +1112,7 @@ fn test_ruby_bug_11873_a_10() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_11() {
+fn parse_ruby_bug_11873_a_11() {
 	let code = "a b(c(d)), 1.0 do end";
 	let sexp = r##"
 (block
@@ -1127,7 +1127,7 @@ fn test_ruby_bug_11873_a_11() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_12() {
+fn parse_ruby_bug_11873_a_12() {
 	let code = "a b{c d}, 1.0r do end";
 	let sexp = r##"
 (block
@@ -1144,7 +1144,7 @@ fn test_ruby_bug_11873_a_12() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_13() {
+fn parse_ruby_bug_11873_a_13() {
 	let code = "a b{c(d)}, 1.0r do end";
 	let sexp = r##"
 (block
@@ -1161,7 +1161,7 @@ fn test_ruby_bug_11873_a_13() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_14() {
+fn parse_ruby_bug_11873_a_14() {
 	let code = "a b(c d), 1.0r do end";
 	let sexp = r##"
 (block
@@ -1176,7 +1176,7 @@ fn test_ruby_bug_11873_a_14() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_15() {
+fn parse_ruby_bug_11873_a_15() {
 	let code = "a b(c(d)), 1.0r do end";
 	let sexp = r##"
 (block
@@ -1191,7 +1191,7 @@ fn test_ruby_bug_11873_a_15() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_16() {
+fn parse_ruby_bug_11873_a_16() {
 	let code = "a b{c d}, 1.0i do end";
 	let sexp = r##"
 (block
@@ -1208,7 +1208,7 @@ fn test_ruby_bug_11873_a_16() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_17() {
+fn parse_ruby_bug_11873_a_17() {
 	let code = "a b{c(d)}, 1.0i do end";
 	let sexp = r##"
 (block
@@ -1225,7 +1225,7 @@ fn test_ruby_bug_11873_a_17() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_18() {
+fn parse_ruby_bug_11873_a_18() {
 	let code = "a b(c d), 1.0i do end";
 	let sexp = r##"
 (block
@@ -1240,7 +1240,7 @@ fn test_ruby_bug_11873_a_18() {
 }
 
 #[test]
-fn test_ruby_bug_11873_a_19() {
+fn parse_ruby_bug_11873_a_19() {
 	let code = "a b(c(d)), 1.0i do end";
 	let sexp = r##"
 (block
@@ -1255,7 +1255,7 @@ fn test_ruby_bug_11873_a_19() {
 }
 
 #[test]
-fn test_send_conditional() {
+fn parse_send_conditional() {
 	let code = "a&.b";
 	let sexp = r##"
 (csend
@@ -1265,7 +1265,7 @@ fn test_send_conditional() {
 }
 
 #[test]
-fn test_and_or_masgn() {
+fn parse_and_or_masgn() {
 	let code = "foo && (a, b = bar)";
 	let sexp = r##"
 (and
@@ -1281,7 +1281,7 @@ fn test_and_or_masgn() {
 }
 
 #[test]
-fn test_and_or_masgn_1() {
+fn parse_and_or_masgn_1() {
 	let code = "foo || (a, b = bar)";
 	let sexp = r##"
 (or
@@ -1297,7 +1297,7 @@ fn test_and_or_masgn_1() {
 }
 
 #[test]
-fn test_if_elsif() {
+fn parse_if_elsif() {
 	let code = "if foo; bar; elsif baz; 1; else 2; end";
 	let sexp = r##"
 (if
@@ -1312,7 +1312,7 @@ fn test_if_elsif() {
 }
 
 #[test]
-fn test_if_masgn_24() {
+fn parse_if_masgn_24() {
 	let code = "if (a, b = foo); end";
 	let sexp = r##"
 (if
@@ -1327,7 +1327,7 @@ fn test_if_masgn_24() {
 }
 
 #[test]
-fn test_defined() {
+fn parse_defined() {
 	let code = "defined? foo";
 	let sexp = r##"
 (defined?
@@ -1337,7 +1337,7 @@ fn test_defined() {
 }
 
 #[test]
-fn test_defined_1() {
+fn parse_defined_1() {
 	let code = "defined?(foo)";
 	let sexp = r##"
 (defined?
@@ -1347,7 +1347,7 @@ fn test_defined_1() {
 }
 
 #[test]
-fn test_defined_2() {
+fn parse_defined_2() {
 	let code = "defined? @foo";
 	let sexp = r##"
 (defined?
@@ -1487,7 +1487,7 @@ fn assert_parses_args_9() {
 }
 
 #[test]
-fn test_const_op_asgn() {
+fn parse_const_op_asgn() {
 	let code = "A += 1";
 	let sexp = r##"
 (op-asgn
@@ -1498,7 +1498,7 @@ fn test_const_op_asgn() {
 }
 
 #[test]
-fn test_const_op_asgn_1() {
+fn parse_const_op_asgn_1() {
 	let code = "::A += 1";
 	let sexp = r##"
 (op-asgn
@@ -1510,7 +1510,7 @@ fn test_const_op_asgn_1() {
 }
 
 #[test]
-fn test_const_op_asgn_2() {
+fn parse_const_op_asgn_2() {
 	let code = "B::A += 1";
 	let sexp = r##"
 (op-asgn
@@ -1522,7 +1522,7 @@ fn test_const_op_asgn_2() {
 }
 
 #[test]
-fn test_const_op_asgn_3() {
+fn parse_const_op_asgn_3() {
 	let code = "def x; self::A ||= 1; end";
 	let sexp = r##"
 (def :x
@@ -1536,7 +1536,7 @@ fn test_const_op_asgn_3() {
 }
 
 #[test]
-fn test_const_op_asgn_4() {
+fn parse_const_op_asgn_4() {
 	let code = "def x; ::A ||= 1; end";
 	let sexp = r##"
 (def :x
@@ -1550,7 +1550,7 @@ fn test_const_op_asgn_4() {
 }
 
 #[test]
-fn test_args_args_assocs_comma() {
+fn parse_args_args_assocs_comma() {
 	let code = "foo[bar, :baz => 1,]";
 	let sexp = r##"
 (send
@@ -1565,7 +1565,7 @@ fn test_args_args_assocs_comma() {
 }
 
 #[test]
-fn test_hash_kwsplat() {
+fn parse_hash_kwsplat() {
 	let code = "{ foo: 2, **bar }";
 	let sexp = r##"
 (hash
@@ -1579,7 +1579,7 @@ fn test_hash_kwsplat() {
 }
 
 #[test]
-fn test_args_args_comma() {
+fn parse_args_args_comma() {
 	let code = "foo[bar,]";
 	let sexp = r##"
 (send
@@ -1590,7 +1590,7 @@ fn test_args_args_comma() {
 }
 
 #[test]
-fn test_postexe() {
+fn parse_postexe() {
 	let code = "END { 1 }";
 	let sexp = r##"
 (postexe
@@ -1600,7 +1600,7 @@ fn test_postexe() {
 }
 
 #[test]
-fn test_send_lambda_args() {
+fn parse_send_lambda_args() {
 	let code = "->(a) { }";
 	let sexp = r##"
 (block
@@ -1612,7 +1612,7 @@ fn test_send_lambda_args() {
 }
 
 #[test]
-fn test_send_lambda_args_1() {
+fn parse_send_lambda_args_1() {
 	let code = "-> (a) { }";
 	let sexp = r##"
 (block
@@ -1624,7 +1624,7 @@ fn test_send_lambda_args_1() {
 }
 
 #[test]
-fn test_string_plain() {
+fn parse_string_plain() {
 	let code = "'foobar'";
 	let sexp = r##"
 (str "foobar")
@@ -1633,7 +1633,7 @@ fn test_string_plain() {
 }
 
 #[test]
-fn test_string_plain_1() {
+fn parse_string_plain_1() {
 	let code = "%q(foobar)";
 	let sexp = r##"
 (str "foobar")
@@ -1642,7 +1642,7 @@ fn test_string_plain_1() {
 }
 
 #[test]
-fn test_casgn_unscoped() {
+fn parse_casgn_unscoped() {
 	let code = "Foo = 10";
 	let sexp = r##"
 (casgn nil :Foo
@@ -1652,7 +1652,7 @@ fn test_casgn_unscoped() {
 }
 
 #[test]
-fn test_cond_eflipflop() {
+fn parse_cond_eflipflop() {
 	let code = "if foo...bar; end";
 	let sexp = r##"
 (if
@@ -1664,7 +1664,7 @@ fn test_cond_eflipflop() {
 }
 
 #[test]
-fn test_range_inclusive() {
+fn parse_range_inclusive() {
 	let code = "1..2";
 	let sexp = r##"
 (irange
@@ -1675,7 +1675,7 @@ fn test_range_inclusive() {
 }
 
 #[test]
-fn test_restarg_named() {
+fn parse_restarg_named() {
 	let code = "def f(*foo); end";
 	let sexp = r##"
 (def :f
@@ -1686,7 +1686,7 @@ fn test_restarg_named() {
 }
 
 #[test]
-fn test_space_args_arg_block() {
+fn parse_space_args_arg_block() {
 	let code = "fun (1) {}";
 	let sexp = r##"
 (block
@@ -1699,7 +1699,7 @@ fn test_space_args_arg_block() {
 }
 
 #[test]
-fn test_space_args_arg_block_1() {
+fn parse_space_args_arg_block_1() {
 	let code = "foo.fun (1) {}";
 	let sexp = r##"
 (block
@@ -1713,7 +1713,7 @@ fn test_space_args_arg_block_1() {
 }
 
 #[test]
-fn test_space_args_arg_block_2() {
+fn parse_space_args_arg_block_2() {
 	let code = "foo::fun (1) {}";
 	let sexp = r##"
 (block
@@ -1727,7 +1727,7 @@ fn test_space_args_arg_block_2() {
 }
 
 #[test]
-fn test_module() {
+fn parse_module() {
 	let code = "module Foo; end";
 	let sexp = r##"
 (module
@@ -1737,7 +1737,7 @@ fn test_module() {
 }
 
 #[test]
-fn test_parser_bug_198() {
+fn parse_parser_bug_198() {
 	let code = "[/()\\1/, ?#]";
 	let sexp = r##"
 (array
@@ -1750,7 +1750,7 @@ fn test_parser_bug_198() {
 }
 
 #[test]
-fn test_back_ref() {
+fn parse_back_ref() {
 	let code = "$+";
 	let sexp = r##"
 (back-ref :$+)
@@ -1759,7 +1759,7 @@ fn test_back_ref() {
 }
 
 #[test]
-fn test_args_assocs() {
+fn parse_args_assocs() {
 	let code = "fun(:foo => 1)";
 	let sexp = r##"
 (send nil :fun
@@ -1772,7 +1772,7 @@ fn test_args_assocs() {
 }
 
 #[test]
-fn test_args_assocs_1() {
+fn parse_args_assocs_1() {
 	let code = "fun(:foo => 1, &baz)";
 	let sexp = r##"
 (send nil :fun
@@ -1787,7 +1787,7 @@ fn test_args_assocs_1() {
 }
 
 #[test]
-fn test_unless_else() {
+fn parse_unless_else() {
 	let code = "unless foo then bar; else baz; end";
 	let sexp = r##"
 (if
@@ -1799,7 +1799,7 @@ fn test_unless_else() {
 }
 
 #[test]
-fn test_unless_else_1() {
+fn parse_unless_else_1() {
 	let code = "unless foo; bar; else baz; end";
 	let sexp = r##"
 (if
@@ -1811,7 +1811,7 @@ fn test_unless_else_1() {
 }
 
 #[test]
-fn test_range_exclusive() {
+fn parse_range_exclusive() {
 	let code = "1...2";
 	let sexp = r##"
 (erange
@@ -1822,7 +1822,7 @@ fn test_range_exclusive() {
 }
 
 #[test]
-fn test_masgn_nested() {
+fn parse_masgn_nested() {
 	let code = "a, (b, c) = foo";
 	let sexp = r##"
 (masgn
@@ -1837,7 +1837,7 @@ fn test_masgn_nested() {
 }
 
 #[test]
-fn test_masgn_nested_1() {
+fn parse_masgn_nested_1() {
 	let code = "((b, )) = foo";
 	let sexp = r##"
 (masgn
@@ -1849,7 +1849,7 @@ fn test_masgn_nested_1() {
 }
 
 #[test]
-fn test_send_self() {
+fn parse_send_self() {
 	let code = "fun";
 	let sexp = r##"
 (send nil :fun)
@@ -1858,7 +1858,7 @@ fn test_send_self() {
 }
 
 #[test]
-fn test_send_self_1() {
+fn parse_send_self_1() {
 	let code = "fun!";
 	let sexp = r##"
 (send nil :fun!)
@@ -1867,7 +1867,7 @@ fn test_send_self_1() {
 }
 
 #[test]
-fn test_send_self_2() {
+fn parse_send_self_2() {
 	let code = "fun(1)";
 	let sexp = r##"
 (send nil :fun
@@ -1877,7 +1877,7 @@ fn test_send_self_2() {
 }
 
 #[test]
-fn test_masgn_const() {
+fn parse_masgn_const() {
 	let code = "self::A, foo = foo";
 	let sexp = r##"
 (masgn
@@ -1891,7 +1891,7 @@ fn test_masgn_const() {
 }
 
 #[test]
-fn test_masgn_const_1() {
+fn parse_masgn_const_1() {
 	let code = "::A, foo = foo";
 	let sexp = r##"
 (masgn
@@ -1905,7 +1905,7 @@ fn test_masgn_const_1() {
 }
 
 #[test]
-fn test_var_op_asgn() {
+fn parse_var_op_asgn() {
 	let code = "a += 1";
 	let sexp = r##"
 (op-asgn
@@ -1916,7 +1916,7 @@ fn test_var_op_asgn() {
 }
 
 #[test]
-fn test_var_op_asgn_1() {
+fn parse_var_op_asgn_1() {
 	let code = "@a |= 1";
 	let sexp = r##"
 (op-asgn
@@ -1927,7 +1927,7 @@ fn test_var_op_asgn_1() {
 }
 
 #[test]
-fn test_var_op_asgn_2() {
+fn parse_var_op_asgn_2() {
 	let code = "@@var |= 10";
 	let sexp = r##"
 (op-asgn
@@ -1938,7 +1938,7 @@ fn test_var_op_asgn_2() {
 }
 
 #[test]
-fn test_var_op_asgn_3() {
+fn parse_var_op_asgn_3() {
 	let code = "def a; @@var |= 10; end";
 	let sexp = r##"
 (def :a
@@ -1951,7 +1951,7 @@ fn test_var_op_asgn_3() {
 }
 
 #[test]
-fn test_ruby_bug_11380() {
+fn parse_ruby_bug_11380() {
 	let code = "p -> { :hello }, a: 1 do end";
 	let sexp = r##"
 (block
@@ -1970,7 +1970,7 @@ fn test_ruby_bug_11380() {
 }
 
 #[test]
-fn test_bug_heredoc_do() {
+fn parse_bug_heredoc_do() {
 	let code = "f <<-TABLE do\nTABLE\nend";
 	let sexp = r##"
 (block
@@ -1982,7 +1982,7 @@ fn test_bug_heredoc_do() {
 }
 
 #[test]
-fn test_while() {
+fn parse_while() {
 	let code = "while foo do meth end";
 	let sexp = r##"
 (while
@@ -1993,7 +1993,7 @@ fn test_while() {
 }
 
 #[test]
-fn test_while_1() {
+fn parse_while_1() {
 	let code = "while foo; meth end";
 	let sexp = r##"
 (while
@@ -2004,7 +2004,7 @@ fn test_while_1() {
 }
 
 #[test]
-fn test_args_args_assocs() {
+fn parse_args_args_assocs() {
 	let code = "fun(foo, :foo => 1)";
 	let sexp = r##"
 (send nil :fun
@@ -2018,7 +2018,7 @@ fn test_args_args_assocs() {
 }
 
 #[test]
-fn test_args_args_assocs_1() {
+fn parse_args_args_assocs_1() {
 	let code = "fun(foo, :foo => 1, &baz)";
 	let sexp = r##"
 (send nil :fun
@@ -2034,7 +2034,7 @@ fn test_args_args_assocs_1() {
 }
 
 #[test]
-fn test_rescue_else_useless() {
+fn parse_rescue_else_useless() {
 	let code = "begin; else; 2; end";
 	let sexp = r##"
 (kwbegin
@@ -2045,7 +2045,7 @@ fn test_rescue_else_useless() {
 }
 
 #[test]
-fn test_rescue_else_useless_1() {
+fn parse_rescue_else_useless_1() {
 	let code = "begin; 1; else; 2; end";
 	let sexp = r##"
 (kwbegin
@@ -2057,7 +2057,7 @@ fn test_rescue_else_useless_1() {
 }
 
 #[test]
-fn test_rescue_else_useless_2() {
+fn parse_rescue_else_useless_2() {
 	let code = "begin; 1; 2; else; 3; end";
 	let sexp = r##"
 (kwbegin
@@ -2070,7 +2070,7 @@ fn test_rescue_else_useless_2() {
 }
 
 #[test]
-fn test_space_args_arg() {
+fn parse_space_args_arg() {
 	let code = "fun (1)";
 	let sexp = r##"
 (send nil :fun
@@ -2081,7 +2081,7 @@ fn test_space_args_arg() {
 }
 
 #[test]
-fn test_ruby_bug_9669() {
+fn parse_ruby_bug_9669() {
 	let code = "def a b:\nreturn\nend";
 	let sexp = r##"
 (def :a
@@ -2093,7 +2093,7 @@ fn test_ruby_bug_9669() {
 }
 
 #[test]
-fn test_ruby_bug_9669_1() {
+fn parse_ruby_bug_9669_1() {
 	let code = "o = {\na:\n1\n}";
 	let sexp = r##"
 (lvasgn :o
@@ -2106,7 +2106,7 @@ fn test_ruby_bug_9669_1() {
 }
 
 #[test]
-fn test_cond_begin_masgn() {
+fn parse_cond_begin_masgn() {
 	let code = "if (bar; a, b = foo); end";
 	let sexp = r##"
 (if
@@ -2122,7 +2122,7 @@ fn test_cond_begin_masgn() {
 }
 
 #[test]
-fn test_super_block() {
+fn parse_super_block() {
 	let code = "super foo, bar do end";
 	let sexp = r##"
 (block
@@ -2135,7 +2135,7 @@ fn test_super_block() {
 }
 
 #[test]
-fn test_super_block_1() {
+fn parse_super_block_1() {
 	let code = "super do end";
 	let sexp = r##"
 (block
@@ -2146,7 +2146,7 @@ fn test_super_block_1() {
 }
 
 #[test]
-fn test_arg_scope() {
+fn parse_arg_scope() {
 	let code = "def f(var = defined?(var)) var end";
 	let sexp = r##"
 (def :f
@@ -2160,7 +2160,7 @@ fn test_arg_scope() {
 }
 
 #[test]
-fn test_arg_scope_1() {
+fn parse_arg_scope_1() {
 	let code = "def f(var: defined?(var)) var end";
 	let sexp = r##"
 (def :f
@@ -2174,7 +2174,7 @@ fn test_arg_scope_1() {
 }
 
 #[test]
-fn test_arg_scope_2() {
+fn parse_arg_scope_2() {
 	let code = "lambda{|;a|a}";
 	let sexp = r##"
 (block
@@ -2187,7 +2187,7 @@ fn test_arg_scope_2() {
 }
 
 #[test]
-fn test_bug_rescue_empty_else() {
+fn parse_bug_rescue_empty_else() {
 	let code = "begin; rescue LoadError; else; end";
 	let sexp = r##"
 (kwbegin
@@ -2200,7 +2200,7 @@ fn test_bug_rescue_empty_else() {
 }
 
 #[test]
-fn test_args_args_star() {
+fn parse_args_args_star() {
 	let code = "fun(foo, *bar)";
 	let sexp = r##"
 (send nil :fun
@@ -2212,7 +2212,7 @@ fn test_args_args_star() {
 }
 
 #[test]
-fn test_args_args_star_1() {
+fn parse_args_args_star_1() {
 	let code = "fun(foo, *bar, &baz)";
 	let sexp = r##"
 (send nil :fun
@@ -2226,7 +2226,7 @@ fn test_args_args_star_1() {
 }
 
 #[test]
-fn test_send_index_asgn() {
+fn parse_send_index_asgn() {
 	let code = "foo[1, 2] = 3";
 	let sexp = r##"
 (send
@@ -2239,7 +2239,7 @@ fn test_send_index_asgn() {
 }
 
 #[test]
-fn test_array_words_interp() {
+fn parse_array_words_interp() {
 	let code = "%W[foo #{bar}]";
 	let sexp = r##"
 (array
@@ -2252,7 +2252,7 @@ fn test_array_words_interp() {
 }
 
 #[test]
-fn test_array_words_interp_1() {
+fn parse_array_words_interp_1() {
 	let code = "%W[foo #{bar}foo#@baz]";
 	let sexp = r##"
 (array
@@ -2267,7 +2267,7 @@ fn test_array_words_interp_1() {
 }
 
 #[test]
-fn test_ruby_bug_12686() {
+fn parse_ruby_bug_12686() {
 	let code = "f (g rescue nil)";
 	let sexp = r##"
 (send nil :f
@@ -2281,7 +2281,7 @@ fn test_ruby_bug_12686() {
 }
 
 #[test]
-fn test_not_cmd() {
+fn parse_not_cmd() {
 	let code = "not m foo";
 	let sexp = r##"
 (send
@@ -2315,7 +2315,7 @@ fn assert_parses_args_11() {
 }
 
 #[test]
-fn test_send_lambda_args_shadow() {
+fn parse_send_lambda_args_shadow() {
 	let code = "->(a; foo, bar) { }";
 	let sexp = r##"
 (block
@@ -2329,7 +2329,7 @@ fn test_send_lambda_args_shadow() {
 }
 
 #[test]
-fn test_if_else() {
+fn parse_if_else() {
 	let code = "if foo then bar; else baz; end";
 	let sexp = r##"
 (if
@@ -2341,7 +2341,7 @@ fn test_if_else() {
 }
 
 #[test]
-fn test_if_else_1() {
+fn parse_if_else_1() {
 	let code = "if foo; bar; else baz; end";
 	let sexp = r##"
 (if
@@ -2353,7 +2353,7 @@ fn test_if_else_1() {
 }
 
 #[test]
-fn test_rescue_mod() {
+fn parse_rescue_mod() {
 	let code = "meth rescue bar";
 	let sexp = r##"
 (rescue
@@ -2365,7 +2365,7 @@ fn test_rescue_mod() {
 }
 
 #[test]
-fn test_regexp_encoding() {
+fn parse_regexp_encoding() {
 	let code = "/\\xa8/n =~ \"\"";
 	let sexp = r##"
 (match-with-lvasgn
@@ -2378,7 +2378,7 @@ fn test_regexp_encoding() {
 }
 
 #[test]
-fn test_bug_ascii_8bit_in_literal() {
+fn parse_bug_ascii_8bit_in_literal() {
 	let code = "# coding:utf-8\n         \"\\xD0\\xBF\\xD1\\x80\\xD0\\xBE\\xD0\\xB2\\xD0\\xB5\\xD1\\x80\\xD0\\xBA\\xD0\\xB0\"";
 	let sexp = r##"
 (str "\u{43f}\u{440}\u{43e}\u{432}\u{435}\u{440}\u{43a}\u{430}")
@@ -2387,7 +2387,7 @@ fn test_bug_ascii_8bit_in_literal() {
 }
 
 #[test]
-fn test_resbody_list_var() {
+fn parse_resbody_list_var() {
 	let code = "begin; meth; rescue foo => ex; bar; end";
 	let sexp = r##"
 (kwbegin
@@ -2403,7 +2403,7 @@ fn test_resbody_list_var() {
 }
 
 #[test]
-fn test_rescue_else_ensure() {
+fn parse_rescue_else_ensure() {
 	let code = "begin; meth; rescue; baz; else foo; ensure; bar end";
 	let sexp = r##"
 (kwbegin
@@ -2419,7 +2419,7 @@ fn test_rescue_else_ensure() {
 }
 
 #[test]
-fn test_self() {
+fn parse_self() {
 	let code = "self";
 	let sexp = r##"
 (self)
@@ -2428,7 +2428,7 @@ fn test_self() {
 }
 
 #[test]
-fn test_rescue() {
+fn parse_rescue() {
 	let code = "begin; meth; rescue; foo; end";
 	let sexp = r##"
 (kwbegin
@@ -2441,7 +2441,7 @@ fn test_rescue() {
 }
 
 #[test]
-fn test_ternary_ambiguous_symbol() {
+fn parse_ternary_ambiguous_symbol() {
 	let code = "t=1;(foo)?t:T";
 	let sexp = r##"
 (begin
@@ -2470,7 +2470,7 @@ fn assert_parses_blockargs_3() {
 }
 
 #[test]
-fn test_send_block_conditional() {
+fn parse_send_block_conditional() {
 	let code = "foo&.bar {}";
 	let sexp = r##"
 (block
@@ -2482,7 +2482,7 @@ fn test_send_block_conditional() {
 }
 
 #[test]
-fn test_send_plain_cmd() {
+fn parse_send_plain_cmd() {
 	let code = "foo.fun bar";
 	let sexp = r##"
 (send
@@ -2493,7 +2493,7 @@ fn test_send_plain_cmd() {
 }
 
 #[test]
-fn test_send_plain_cmd_1() {
+fn parse_send_plain_cmd_1() {
 	let code = "foo::fun bar";
 	let sexp = r##"
 (send
@@ -2504,7 +2504,7 @@ fn test_send_plain_cmd_1() {
 }
 
 #[test]
-fn test_send_plain_cmd_2() {
+fn parse_send_plain_cmd_2() {
 	let code = "foo::Fun bar";
 	let sexp = r##"
 (send
@@ -2515,7 +2515,7 @@ fn test_send_plain_cmd_2() {
 }
 
 #[test]
-fn test_array_assocs() {
+fn parse_array_assocs() {
 	let code = "[ 1 => 2 ]";
 	let sexp = r##"
 (array
@@ -2528,7 +2528,7 @@ fn test_array_assocs() {
 }
 
 #[test]
-fn test_array_assocs_1() {
+fn parse_array_assocs_1() {
 	let code = "[ 1, 2 => 3 ]";
 	let sexp = r##"
 (array
@@ -2554,7 +2554,7 @@ fn assert_parses_blockargs_4() {
 }
 
 #[test]
-fn test_ruby_bug_10653() {
+fn parse_ruby_bug_10653() {
 	let code = "true ? 1.tap do |n| p n end : 0";
 	let sexp = r##"
 (if
@@ -2572,7 +2572,7 @@ fn test_ruby_bug_10653() {
 }
 
 #[test]
-fn test_ruby_bug_10653_1() {
+fn parse_ruby_bug_10653_1() {
 	let code = "false ? raise {} : tap {}";
 	let sexp = r##"
 (if
@@ -2588,7 +2588,7 @@ fn test_ruby_bug_10653_1() {
 }
 
 #[test]
-fn test_ruby_bug_10653_2() {
+fn parse_ruby_bug_10653_2() {
 	let code = "false ? raise do end : tap do end";
 	let sexp = r##"
 (if
@@ -2604,7 +2604,7 @@ fn test_ruby_bug_10653_2() {
 }
 
 #[test]
-fn test_kwrestarg_unnamed() {
+fn parse_kwrestarg_unnamed() {
 	let code = "def f(**); end";
 	let sexp = r##"
 (def :f
@@ -2615,7 +2615,7 @@ fn test_kwrestarg_unnamed() {
 }
 
 #[test]
-fn test_retry() {
+fn parse_retry() {
 	let code = "retry";
 	let sexp = r##"
 (retry)
@@ -2624,7 +2624,7 @@ fn test_retry() {
 }
 
 #[test]
-fn test_redo() {
+fn parse_redo() {
 	let code = "redo";
 	let sexp = r##"
 (redo)
@@ -2633,7 +2633,7 @@ fn test_redo() {
 }
 
 #[test]
-fn test_defs() {
+fn parse_defs() {
 	let code = "def self.foo; end";
 	let sexp = r##"
 (defs
@@ -2644,7 +2644,7 @@ fn test_defs() {
 }
 
 #[test]
-fn test_defs_1() {
+fn parse_defs_1() {
 	let code = "def self::foo; end";
 	let sexp = r##"
 (defs
@@ -2655,7 +2655,7 @@ fn test_defs_1() {
 }
 
 #[test]
-fn test_defs_2() {
+fn parse_defs_2() {
 	let code = "def (foo).foo; end";
 	let sexp = r##"
 (defs
@@ -2666,7 +2666,7 @@ fn test_defs_2() {
 }
 
 #[test]
-fn test_defs_3() {
+fn parse_defs_3() {
 	let code = "def String.foo; end";
 	let sexp = r##"
 (defs
@@ -2677,7 +2677,7 @@ fn test_defs_3() {
 }
 
 #[test]
-fn test_defs_4() {
+fn parse_defs_4() {
 	let code = "def String::foo; end";
 	let sexp = r##"
 (defs
@@ -2688,7 +2688,7 @@ fn test_defs_4() {
 }
 
 #[test]
-fn test_gvar() {
+fn parse_gvar() {
 	let code = "$foo";
 	let sexp = r##"
 (gvar :$foo)
@@ -2697,7 +2697,7 @@ fn test_gvar() {
 }
 
 #[test]
-fn test_bug_cmd_string_lookahead() {
+fn parse_bug_cmd_string_lookahead() {
 	let code = "desc \"foo\" do end";
 	let sexp = r##"
 (block
@@ -2709,7 +2709,7 @@ fn test_bug_cmd_string_lookahead() {
 }
 
 #[test]
-fn test_hash_label_end() {
+fn parse_hash_label_end() {
 	let code = "{ 'foo': 2 }";
 	let sexp = r##"
 (hash
@@ -2721,7 +2721,7 @@ fn test_hash_label_end() {
 }
 
 #[test]
-fn test_hash_label_end_1() {
+fn parse_hash_label_end_1() {
 	let code = "{ 'foo': 2, 'bar': {}}";
 	let sexp = r##"
 (hash
@@ -2736,7 +2736,7 @@ fn test_hash_label_end_1() {
 }
 
 #[test]
-fn test_hash_label_end_2() {
+fn parse_hash_label_end_2() {
 	let code = "f(a ? \"a\":1)";
 	let sexp = r##"
 (send nil :f
@@ -2749,7 +2749,7 @@ fn test_hash_label_end_2() {
 }
 
 #[test]
-fn test_send_lambda_args_noparen() {
+fn parse_send_lambda_args_noparen() {
 	let code = "-> a: 1 { }";
 	let sexp = r##"
 (block
@@ -2762,7 +2762,7 @@ fn test_send_lambda_args_noparen() {
 }
 
 #[test]
-fn test_send_lambda_args_noparen_1() {
+fn parse_send_lambda_args_noparen_1() {
 	let code = "-> a: { }";
 	let sexp = r##"
 (block
@@ -2774,7 +2774,7 @@ fn test_send_lambda_args_noparen_1() {
 }
 
 #[test]
-fn test_break() {
+fn parse_break() {
 	let code = "break(foo)";
 	let sexp = r##"
 (break
@@ -2785,7 +2785,7 @@ fn test_break() {
 }
 
 #[test]
-fn test_break_1() {
+fn parse_break_1() {
 	let code = "break foo";
 	let sexp = r##"
 (break
@@ -2795,7 +2795,7 @@ fn test_break_1() {
 }
 
 #[test]
-fn test_break_2() {
+fn parse_break_2() {
 	let code = "break()";
 	let sexp = r##"
 (break
@@ -2805,7 +2805,7 @@ fn test_break_2() {
 }
 
 #[test]
-fn test_break_3() {
+fn parse_break_3() {
 	let code = "break";
 	let sexp = r##"
 (break)
@@ -2814,7 +2814,7 @@ fn test_break_3() {
 }
 
 #[test]
-fn test_masgn_splat() {
+fn parse_masgn_splat() {
 	let code = "@foo, @@bar = *foo";
 	let sexp = r##"
 (masgn
@@ -2829,7 +2829,7 @@ fn test_masgn_splat() {
 }
 
 #[test]
-fn test_masgn_splat_1() {
+fn parse_masgn_splat_1() {
 	let code = "a, b = *foo, bar";
 	let sexp = r##"
 (masgn
@@ -2845,7 +2845,7 @@ fn test_masgn_splat_1() {
 }
 
 #[test]
-fn test_masgn_splat_2() {
+fn parse_masgn_splat_2() {
 	let code = "a, *b = bar";
 	let sexp = r##"
 (masgn
@@ -2859,7 +2859,7 @@ fn test_masgn_splat_2() {
 }
 
 #[test]
-fn test_masgn_splat_3() {
+fn parse_masgn_splat_3() {
 	let code = "a, *b, c = bar";
 	let sexp = r##"
 (masgn
@@ -2874,7 +2874,7 @@ fn test_masgn_splat_3() {
 }
 
 #[test]
-fn test_masgn_splat_4() {
+fn parse_masgn_splat_4() {
 	let code = "a, * = bar";
 	let sexp = r##"
 (masgn
@@ -2887,7 +2887,7 @@ fn test_masgn_splat_4() {
 }
 
 #[test]
-fn test_masgn_splat_5() {
+fn parse_masgn_splat_5() {
 	let code = "a, *, c = bar";
 	let sexp = r##"
 (masgn
@@ -2901,7 +2901,7 @@ fn test_masgn_splat_5() {
 }
 
 #[test]
-fn test_masgn_splat_6() {
+fn parse_masgn_splat_6() {
 	let code = "*b = bar";
 	let sexp = r##"
 (masgn
@@ -2914,7 +2914,7 @@ fn test_masgn_splat_6() {
 }
 
 #[test]
-fn test_masgn_splat_7() {
+fn parse_masgn_splat_7() {
 	let code = "*b, c = bar";
 	let sexp = r##"
 (masgn
@@ -2928,7 +2928,7 @@ fn test_masgn_splat_7() {
 }
 
 #[test]
-fn test_masgn_splat_8() {
+fn parse_masgn_splat_8() {
 	let code = "* = bar";
 	let sexp = r##"
 (masgn
@@ -2940,7 +2940,7 @@ fn test_masgn_splat_8() {
 }
 
 #[test]
-fn test_masgn_splat_9() {
+fn parse_masgn_splat_9() {
 	let code = "*, c, d = bar";
 	let sexp = r##"
 (masgn
@@ -2954,7 +2954,7 @@ fn test_masgn_splat_9() {
 }
 
 #[test]
-fn test_kwbegin_compstmt() {
+fn parse_kwbegin_compstmt() {
 	let code = "begin foo!; bar! end";
 	let sexp = r##"
 (kwbegin
@@ -2965,7 +2965,7 @@ fn test_kwbegin_compstmt() {
 }
 
 #[test]
-fn test_non_lvar_injecting_match() {
+fn parse_non_lvar_injecting_match() {
 	let code = "/#{1}(?<match>bar)/ =~ 'bar'";
 	let sexp = r##"
 (send
@@ -2980,7 +2980,7 @@ fn test_non_lvar_injecting_match() {
 }
 
 #[test]
-fn test_array_plain() {
+fn parse_array_plain() {
 	let code = "[1, 2]";
 	let sexp = r##"
 (array
@@ -2991,7 +2991,7 @@ fn test_array_plain() {
 }
 
 #[test]
-fn test_or_asgn() {
+fn parse_or_asgn() {
 	let code = "foo.a ||= 1";
 	let sexp = r##"
 (or-asgn
@@ -3003,7 +3003,7 @@ fn test_or_asgn() {
 }
 
 #[test]
-fn test_or_asgn_1() {
+fn parse_or_asgn_1() {
 	let code = "foo[0, 1] ||= 2";
 	let sexp = r##"
 (or-asgn
@@ -3017,7 +3017,7 @@ fn test_or_asgn_1() {
 }
 
 #[test]
-fn test_parser_bug_272() {
+fn parse_parser_bug_272() {
 	let code = "a @b do |c|;end";
 	let sexp = r##"
 (block
@@ -3030,7 +3030,7 @@ fn test_parser_bug_272() {
 }
 
 #[test]
-fn test_undef() {
+fn parse_undef() {
 	let code = "undef foo, :bar, :\"foo#{1}\"";
 	let sexp = r##"
 (undef
@@ -3045,7 +3045,7 @@ fn test_undef() {
 }
 
 #[test]
-fn test_var_or_asgn() {
+fn parse_var_or_asgn() {
 	let code = "a ||= 1";
 	let sexp = r##"
 (or-asgn
@@ -3056,7 +3056,7 @@ fn test_var_or_asgn() {
 }
 
 #[test]
-fn test_bug_lambda_leakage() {
+fn parse_bug_lambda_leakage() {
 	let code = "->(scope) {}; scope";
 	let sexp = r##"
 (begin
@@ -3070,7 +3070,7 @@ fn test_bug_lambda_leakage() {
 }
 
 #[test]
-fn test_cond_match_current_line() {
+fn parse_cond_match_current_line() {
 	let code = "if /wat/; end";
 	let sexp = r##"
 (if
@@ -3083,7 +3083,7 @@ fn test_cond_match_current_line() {
 }
 
 #[test]
-fn test_hash_hashrocket() {
+fn parse_hash_hashrocket() {
 	let code = "{ 1 => 2 }";
 	let sexp = r##"
 (hash
@@ -3095,7 +3095,7 @@ fn test_hash_hashrocket() {
 }
 
 #[test]
-fn test_hash_hashrocket_1() {
+fn parse_hash_hashrocket_1() {
 	let code = "{ 1 => 2, :foo => \"bar\" }";
 	let sexp = r##"
 (hash
@@ -3110,7 +3110,7 @@ fn test_hash_hashrocket_1() {
 }
 
 #[test]
-fn test_rational() {
+fn parse_rational() {
 	let code = "42r";
 	let sexp = r##"
 (rational 42)
@@ -3119,7 +3119,7 @@ fn test_rational() {
 }
 
 #[test]
-fn test_rational_1() {
+fn parse_rational_1() {
 	let code = "42.1r";
 	let sexp = r##"
 (rational 42.1)
@@ -3128,7 +3128,7 @@ fn test_rational_1() {
 }
 
 #[test]
-fn test_case_cond() {
+fn parse_case_cond() {
 	let code = "case; when foo; 'foo'; end";
 	let sexp = r##"
 (case nil
@@ -3140,7 +3140,7 @@ fn test_case_cond() {
 }
 
 #[test]
-fn test_array_symbols_empty() {
+fn parse_array_symbols_empty() {
 	let code = "%i[]";
 	let sexp = r##"
 (array)
@@ -3149,7 +3149,7 @@ fn test_array_symbols_empty() {
 }
 
 #[test]
-fn test_array_symbols_empty_1() {
+fn parse_array_symbols_empty_1() {
 	let code = "%I()";
 	let sexp = r##"
 (array)
@@ -3158,7 +3158,7 @@ fn test_array_symbols_empty_1() {
 }
 
 #[test]
-fn test_case_expr() {
+fn parse_case_expr() {
 	let code = "case foo; when 'bar'; bar; end";
 	let sexp = r##"
 (case
@@ -3171,7 +3171,7 @@ fn test_case_expr() {
 }
 
 #[test]
-fn test_for() {
+fn parse_for() {
 	let code = "for a in foo do p a; end";
 	let sexp = r##"
 (for
@@ -3184,7 +3184,7 @@ fn test_for() {
 }
 
 #[test]
-fn test_for_1() {
+fn parse_for_1() {
 	let code = "for a in foo; p a; end";
 	let sexp = r##"
 (for
@@ -3197,7 +3197,7 @@ fn test_for_1() {
 }
 
 #[test]
-fn test_resbody_var() {
+fn parse_resbody_var() {
 	let code = "begin; meth; rescue => ex; bar; end";
 	let sexp = r##"
 (kwbegin
@@ -3211,7 +3211,7 @@ fn test_resbody_var() {
 }
 
 #[test]
-fn test_resbody_var_1() {
+fn parse_resbody_var_1() {
 	let code = "begin; meth; rescue => @ex; bar; end";
 	let sexp = r##"
 (kwbegin
@@ -3225,7 +3225,7 @@ fn test_resbody_var_1() {
 }
 
 #[test]
-fn test_casgn_toplevel() {
+fn parse_casgn_toplevel() {
 	let code = "::Foo = 10";
 	let sexp = r##"
 (casgn
@@ -3236,7 +3236,7 @@ fn test_casgn_toplevel() {
 }
 
 #[test]
-fn test_gvasgn() {
+fn parse_gvasgn() {
 	let code = "$var = 10";
 	let sexp = r##"
 (gvasgn :$var
@@ -3246,7 +3246,7 @@ fn test_gvasgn() {
 }
 
 #[test]
-fn test_hash_label() {
+fn parse_hash_label() {
 	let code = "{ foo: 2 }";
 	let sexp = r##"
 (hash
@@ -3258,7 +3258,7 @@ fn test_hash_label() {
 }
 
 #[test]
-fn test_arg_duplicate_ignored() {
+fn parse_arg_duplicate_ignored() {
 	let code = "def foo(_, _); end";
 	let sexp = r##"
 (def :foo
@@ -3270,7 +3270,7 @@ fn test_arg_duplicate_ignored() {
 }
 
 #[test]
-fn test_arg_duplicate_ignored_1() {
+fn parse_arg_duplicate_ignored_1() {
 	let code = "def foo(_a, _a); end";
 	let sexp = r##"
 (def :foo
@@ -3282,7 +3282,7 @@ fn test_arg_duplicate_ignored_1() {
 }
 
 #[test]
-fn test_send_lambda_legacy() {
+fn parse_send_lambda_legacy() {
   let opts = ruby_parser::ParserOptions {
     emit_file_vars_as_literals: true,
     emit_lambda: false,
@@ -3299,7 +3299,7 @@ fn test_send_lambda_legacy() {
 }
 
 #[test]
-fn test_begin_cmdarg() {
+fn parse_begin_cmdarg() {
 	let code = "p begin 1.times do 1 end end";
 	let sexp = r##"
 (send nil :p
@@ -3314,7 +3314,7 @@ fn test_begin_cmdarg() {
 }
 
 #[test]
-fn test_send_attr_asgn_conditional() {
+fn parse_send_attr_asgn_conditional() {
 	let code = "a&.b = 1";
 	let sexp = r##"
 (csend
@@ -3325,7 +3325,7 @@ fn test_send_attr_asgn_conditional() {
 }
 
 #[test]
-fn test_ruby_bug_11873_b() {
+fn parse_ruby_bug_11873_b() {
 	let code = "p p{p(p);p p}, tap do end";
 	let sexp = r##"
 (block
@@ -3345,7 +3345,7 @@ fn test_ruby_bug_11873_b() {
 }
 
 #[test]
-fn test_var_and_asgn() {
+fn parse_var_and_asgn() {
 	let code = "a &&= 1";
 	let sexp = r##"
 (and-asgn
@@ -3356,7 +3356,7 @@ fn test_var_and_asgn() {
 }
 
 #[test]
-fn test_send_plain() {
+fn parse_send_plain() {
 	let code = "foo.fun";
 	let sexp = r##"
 (send
@@ -3366,7 +3366,7 @@ fn test_send_plain() {
 }
 
 #[test]
-fn test_send_plain_1() {
+fn parse_send_plain_1() {
 	let code = "foo::fun";
 	let sexp = r##"
 (send
@@ -3376,7 +3376,7 @@ fn test_send_plain_1() {
 }
 
 #[test]
-fn test_send_plain_2() {
+fn parse_send_plain_2() {
 	let code = "foo::Fun()";
 	let sexp = r##"
 (send
@@ -3386,7 +3386,7 @@ fn test_send_plain_2() {
 }
 
 #[test]
-fn test_return() {
+fn parse_return() {
 	let code = "return(foo)";
 	let sexp = r##"
 (return
@@ -3397,7 +3397,7 @@ fn test_return() {
 }
 
 #[test]
-fn test_return_1() {
+fn parse_return_1() {
 	let code = "return foo";
 	let sexp = r##"
 (return
@@ -3407,7 +3407,7 @@ fn test_return_1() {
 }
 
 #[test]
-fn test_return_2() {
+fn parse_return_2() {
 	let code = "return()";
 	let sexp = r##"
 (return
@@ -3417,7 +3417,7 @@ fn test_return_2() {
 }
 
 #[test]
-fn test_return_3() {
+fn parse_return_3() {
 	let code = "return";
 	let sexp = r##"
 (return)
@@ -3426,7 +3426,7 @@ fn test_return_3() {
 }
 
 #[test]
-fn test_xstring_interp() {
+fn parse_xstring_interp() {
 	let code = "`foo#{bar}baz`";
 	let sexp = r##"
 (xstr
@@ -3439,7 +3439,7 @@ fn test_xstring_interp() {
 }
 
 #[test]
-fn test_send_unary_op() {
+fn parse_send_unary_op() {
 	let code = "-foo";
 	let sexp = r##"
 (send
@@ -3449,7 +3449,7 @@ fn test_send_unary_op() {
 }
 
 #[test]
-fn test_send_unary_op_1() {
+fn parse_send_unary_op_1() {
 	let code = "+foo";
 	let sexp = r##"
 (send
@@ -3459,7 +3459,7 @@ fn test_send_unary_op_1() {
 }
 
 #[test]
-fn test_send_unary_op_2() {
+fn parse_send_unary_op_2() {
 	let code = "~foo";
 	let sexp = r##"
 (send
@@ -3469,7 +3469,7 @@ fn test_send_unary_op_2() {
 }
 
 #[test]
-fn test_cpath() {
+fn parse_cpath() {
 	let code = "module ::Foo; end";
 	let sexp = r##"
 (module
@@ -3480,7 +3480,7 @@ fn test_cpath() {
 }
 
 #[test]
-fn test_cpath_1() {
+fn parse_cpath_1() {
 	let code = "module Bar::Foo; end";
 	let sexp = r##"
 (module
@@ -3491,7 +3491,7 @@ fn test_cpath_1() {
 }
 
 #[test]
-fn test_int() {
+fn parse_int() {
 	let code = "42";
 	let sexp = r##"
 (int 42)
@@ -3500,7 +3500,7 @@ fn test_int() {
 }
 
 #[test]
-fn test_int_1() {
+fn parse_int_1() {
 	let code = "-42";
 	let sexp = r##"
 (int -42)
@@ -3509,7 +3509,7 @@ fn test_int_1() {
 }
 
 #[test]
-fn test_array_words() {
+fn parse_array_words() {
 	let code = "%w[foo bar]";
 	let sexp = r##"
 (array
@@ -3520,7 +3520,7 @@ fn test_array_words() {
 }
 
 #[test]
-fn test_xstring_plain() {
+fn parse_xstring_plain() {
 	let code = "`foobar`";
 	let sexp = r##"
 (xstr
@@ -3530,7 +3530,7 @@ fn test_xstring_plain() {
 }
 
 #[test]
-fn test_send_index() {
+fn parse_send_index() {
 	let code = "foo[1, 2]";
 	let sexp = r##"
 (send
@@ -3542,7 +3542,7 @@ fn test_send_index() {
 }
 
 #[test]
-fn test_symbol_interp() {
+fn parse_symbol_interp() {
 	let code = ":\"foo#{bar}baz\"";
 	let sexp = r##"
 (dsym
@@ -3555,7 +3555,7 @@ fn test_symbol_interp() {
 }
 
 #[test]
-fn test_bang() {
+fn parse_bang() {
 	let code = "!foo";
 	let sexp = r##"
 (send
@@ -3565,7 +3565,7 @@ fn test_bang() {
 }
 
 #[test]
-fn test_hash_empty() {
+fn parse_hash_empty() {
 	let code = "{ }";
 	let sexp = r##"
 (hash)
@@ -3574,7 +3574,7 @@ fn test_hash_empty() {
 }
 
 #[test]
-fn test_cond_begin() {
+fn parse_cond_begin() {
 	let code = "if (bar); foo; end";
 	let sexp = r##"
 (if
@@ -3586,7 +3586,7 @@ fn test_cond_begin() {
 }
 
 #[test]
-fn test_arg() {
+fn parse_arg() {
 	let code = "def f(foo); end";
 	let sexp = r##"
 (def :f
@@ -3597,7 +3597,7 @@ fn test_arg() {
 }
 
 #[test]
-fn test_arg_1() {
+fn parse_arg_1() {
 	let code = "def f(foo, bar); end";
 	let sexp = r##"
 (def :f
@@ -3810,7 +3810,7 @@ fn assert_parses_args_26() {
 }
 
 #[test]
-fn test_zsuper() {
+fn parse_zsuper() {
 	let code = "super";
 	let sexp = r##"
 (zsuper)
@@ -3819,7 +3819,7 @@ fn test_zsuper() {
 }
 
 #[test]
-fn test_when_multi() {
+fn parse_when_multi() {
 	let code = "case foo; when 'bar', 'baz'; bar; end";
 	let sexp = r##"
 (case
@@ -3833,7 +3833,7 @@ fn test_when_multi() {
 }
 
 #[test]
-fn test_asgn_mrhs() {
+fn parse_asgn_mrhs() {
 	let code = "foo = bar, 1";
 	let sexp = r##"
 (lvasgn :foo
@@ -3845,7 +3845,7 @@ fn test_asgn_mrhs() {
 }
 
 #[test]
-fn test_asgn_mrhs_1() {
+fn parse_asgn_mrhs_1() {
 	let code = "foo = *bar";
 	let sexp = r##"
 (lvasgn :foo
@@ -3857,7 +3857,7 @@ fn test_asgn_mrhs_1() {
 }
 
 #[test]
-fn test_asgn_mrhs_2() {
+fn parse_asgn_mrhs_2() {
 	let code = "foo = baz, *bar";
 	let sexp = r##"
 (lvasgn :foo
@@ -3870,7 +3870,7 @@ fn test_asgn_mrhs_2() {
 }
 
 #[test]
-fn test_kwarg() {
+fn parse_kwarg() {
 	let code = "def f(foo:); end";
 	let sexp = r##"
 (def :f
@@ -3881,7 +3881,7 @@ fn test_kwarg() {
 }
 
 #[test]
-fn test_next() {
+fn parse_next() {
 	let code = "next(foo)";
 	let sexp = r##"
 (next
@@ -3892,7 +3892,7 @@ fn test_next() {
 }
 
 #[test]
-fn test_next_1() {
+fn parse_next_1() {
 	let code = "next foo";
 	let sexp = r##"
 (next
@@ -3902,7 +3902,7 @@ fn test_next_1() {
 }
 
 #[test]
-fn test_next_2() {
+fn parse_next_2() {
 	let code = "next()";
 	let sexp = r##"
 (next
@@ -3912,7 +3912,7 @@ fn test_next_2() {
 }
 
 #[test]
-fn test_next_3() {
+fn parse_next_3() {
 	let code = "next";
 	let sexp = r##"
 (next)
@@ -3974,7 +3974,7 @@ fn assert_parses_args_30() {
 }
 
 #[test]
-fn test_rescue_mod_op_assign() {
+fn parse_rescue_mod_op_assign() {
 	let code = "foo += meth rescue bar";
 	let sexp = r##"
 (op-asgn
@@ -3988,7 +3988,7 @@ fn test_rescue_mod_op_assign() {
 }
 
 #[test]
-fn test_return_block() {
+fn parse_return_block() {
 	let code = "return fun foo do end";
 	let sexp = r##"
 (return
@@ -4001,7 +4001,7 @@ fn test_return_block() {
 }
 
 #[test]
-fn test_break_block() {
+fn parse_break_block() {
 	let code = "break fun foo do end";
 	let sexp = r##"
 (break
@@ -4014,7 +4014,7 @@ fn test_break_block() {
 }
 
 #[test]
-fn test_asgn_cmd() {
+fn parse_asgn_cmd() {
 	let code = "foo = m foo";
 	let sexp = r##"
 (lvasgn :foo
@@ -4025,7 +4025,7 @@ fn test_asgn_cmd() {
 }
 
 #[test]
-fn test_asgn_cmd_1() {
+fn parse_asgn_cmd_1() {
 	let code = "foo = bar = m foo";
 	let sexp = r##"
 (lvasgn :foo
@@ -4037,7 +4037,7 @@ fn test_asgn_cmd_1() {
 }
 
 #[test]
-fn test_args_star() {
+fn parse_args_star() {
 	let code = "fun(*bar)";
 	let sexp = r##"
 (send nil :fun
@@ -4048,7 +4048,7 @@ fn test_args_star() {
 }
 
 #[test]
-fn test_args_star_1() {
+fn parse_args_star_1() {
 	let code = "fun(*bar, &baz)";
 	let sexp = r##"
 (send nil :fun
@@ -4061,7 +4061,7 @@ fn test_args_star_1() {
 }
 
 #[test]
-fn test_until_post() {
+fn parse_until_post() {
 	let code = "begin meth end until foo";
 	let sexp = r##"
 (until-post
@@ -4091,7 +4091,7 @@ fn assert_parses_blockargs_5() {
 }
 
 #[test]
-fn test_when_splat() {
+fn parse_when_splat() {
 	let code = "case foo; when 1, *baz; bar; when *foo; end";
 	let sexp = r##"
 (case
@@ -4109,7 +4109,7 @@ fn test_when_splat() {
 }
 
 #[test]
-fn test_op_asgn_index_cmd() {
+fn parse_op_asgn_index_cmd() {
 	let code = "foo[0, 1] += m foo";
 	let sexp = r##"
 (op-asgn
@@ -4124,7 +4124,7 @@ fn test_op_asgn_index_cmd() {
 }
 
 #[test]
-fn test_ivar() {
+fn parse_ivar() {
 	let code = "@foo";
 	let sexp = r##"
 (ivar :@foo)
@@ -4133,7 +4133,7 @@ fn test_ivar() {
 }
 
 #[test]
-fn test_space_args_arg_call() {
+fn parse_space_args_arg_call() {
 	let code = "fun (1).to_i";
 	let sexp = r##"
 (send nil :fun
@@ -4145,7 +4145,7 @@ fn test_space_args_arg_call() {
 }
 
 #[test]
-fn test_bug_def_no_paren_eql_begin() {
+fn parse_bug_def_no_paren_eql_begin() {
 	let code = "def foo\n=begin\n=end\nend";
 	let sexp = r##"
 (def :foo
@@ -4155,7 +4155,7 @@ fn test_bug_def_no_paren_eql_begin() {
 }
 
 #[test]
-fn test_args_cmd() {
+fn parse_args_cmd() {
 	let code = "fun(f bar)";
 	let sexp = r##"
 (send nil :fun
@@ -4166,7 +4166,7 @@ fn test_args_cmd() {
 }
 
 #[test]
-fn test_string_file_() {
+fn parse_string_file_() {
 	let code = "__FILE__";
 	let sexp = r##"
 (str "(assert_parses)")
@@ -4175,7 +4175,7 @@ fn test_string_file_() {
 }
 
 #[test]
-fn test_blockarg() {
+fn parse_blockarg() {
 	let code = "def f(&block); end";
 	let sexp = r##"
 (def :f
@@ -4186,7 +4186,7 @@ fn test_blockarg() {
 }
 
 #[test]
-fn test_const_toplevel() {
+fn parse_const_toplevel() {
 	let code = "::Foo";
 	let sexp = r##"
 (const
@@ -4196,7 +4196,7 @@ fn test_const_toplevel() {
 }
 
 #[test]
-fn test_send_block_chain_cmd() {
+fn parse_send_block_chain_cmd() {
 	let code = "meth 1 do end.fun bar";
 	let sexp = r##"
 (send
@@ -4210,7 +4210,7 @@ fn test_send_block_chain_cmd() {
 }
 
 #[test]
-fn test_send_block_chain_cmd_1() {
+fn parse_send_block_chain_cmd_1() {
 	let code = "meth 1 do end.fun(bar)";
 	let sexp = r##"
 (send
@@ -4224,7 +4224,7 @@ fn test_send_block_chain_cmd_1() {
 }
 
 #[test]
-fn test_send_block_chain_cmd_2() {
+fn parse_send_block_chain_cmd_2() {
 	let code = "meth 1 do end::fun bar";
 	let sexp = r##"
 (send
@@ -4238,7 +4238,7 @@ fn test_send_block_chain_cmd_2() {
 }
 
 #[test]
-fn test_send_block_chain_cmd_3() {
+fn parse_send_block_chain_cmd_3() {
 	let code = "meth 1 do end::fun(bar)";
 	let sexp = r##"
 (send
@@ -4252,7 +4252,7 @@ fn test_send_block_chain_cmd_3() {
 }
 
 #[test]
-fn test_send_block_chain_cmd_4() {
+fn parse_send_block_chain_cmd_4() {
 	let code = "meth 1 do end.fun bar do end";
 	let sexp = r##"
 (block
@@ -4268,7 +4268,7 @@ fn test_send_block_chain_cmd_4() {
 }
 
 #[test]
-fn test_send_block_chain_cmd_5() {
+fn parse_send_block_chain_cmd_5() {
 	let code = "meth 1 do end.fun(bar) {}";
 	let sexp = r##"
 (block
@@ -4284,7 +4284,7 @@ fn test_send_block_chain_cmd_5() {
 }
 
 #[test]
-fn test_send_block_chain_cmd_6() {
+fn parse_send_block_chain_cmd_6() {
 	let code = "meth 1 do end.fun {}";
 	let sexp = r##"
 (block
@@ -4299,7 +4299,7 @@ fn test_send_block_chain_cmd_6() {
 }
 
 #[test]
-fn test_ruby_bug_11990() {
+fn parse_ruby_bug_11990() {
 	let code = "p <<~E \"  y\"\n  x\nE";
 	let sexp = r##"
 (send nil :p
@@ -4311,7 +4311,7 @@ fn test_ruby_bug_11990() {
 }
 
 #[test]
-fn test_ruby_bug_12402() {
+fn parse_ruby_bug_12402() {
 	let code = "foo = raise(bar) rescue nil";
 	let sexp = r##"
 (lvasgn :foo
@@ -4325,7 +4325,7 @@ fn test_ruby_bug_12402() {
 }
 
 #[test]
-fn test_ruby_bug_12402_1() {
+fn parse_ruby_bug_12402_1() {
 	let code = "foo += raise(bar) rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4340,7 +4340,7 @@ fn test_ruby_bug_12402_1() {
 }
 
 #[test]
-fn test_ruby_bug_12402_2() {
+fn parse_ruby_bug_12402_2() {
 	let code = "foo[0] += raise(bar) rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4357,7 +4357,7 @@ fn test_ruby_bug_12402_2() {
 }
 
 #[test]
-fn test_ruby_bug_12402_3() {
+fn parse_ruby_bug_12402_3() {
 	let code = "foo.m += raise(bar) rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4373,7 +4373,7 @@ fn test_ruby_bug_12402_3() {
 }
 
 #[test]
-fn test_ruby_bug_12402_4() {
+fn parse_ruby_bug_12402_4() {
 	let code = "foo::m += raise(bar) rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4389,7 +4389,7 @@ fn test_ruby_bug_12402_4() {
 }
 
 #[test]
-fn test_ruby_bug_12402_5() {
+fn parse_ruby_bug_12402_5() {
 	let code = "foo.C += raise(bar) rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4405,7 +4405,7 @@ fn test_ruby_bug_12402_5() {
 }
 
 #[test]
-fn test_ruby_bug_12402_6() {
+fn parse_ruby_bug_12402_6() {
 	let code = "foo::C ||= raise(bar) rescue nil";
 	let sexp = r##"
 (or-asgn
@@ -4421,7 +4421,7 @@ fn test_ruby_bug_12402_6() {
 }
 
 #[test]
-fn test_ruby_bug_12402_7() {
+fn parse_ruby_bug_12402_7() {
 	let code = "foo = raise bar rescue nil";
 	let sexp = r##"
 (lvasgn :foo
@@ -4435,7 +4435,7 @@ fn test_ruby_bug_12402_7() {
 }
 
 #[test]
-fn test_ruby_bug_12402_8() {
+fn parse_ruby_bug_12402_8() {
 	let code = "foo += raise bar rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4450,7 +4450,7 @@ fn test_ruby_bug_12402_8() {
 }
 
 #[test]
-fn test_ruby_bug_12402_9() {
+fn parse_ruby_bug_12402_9() {
 	let code = "foo[0] += raise bar rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4467,7 +4467,7 @@ fn test_ruby_bug_12402_9() {
 }
 
 #[test]
-fn test_ruby_bug_12402_10() {
+fn parse_ruby_bug_12402_10() {
 	let code = "foo.m += raise bar rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4483,7 +4483,7 @@ fn test_ruby_bug_12402_10() {
 }
 
 #[test]
-fn test_ruby_bug_12402_11() {
+fn parse_ruby_bug_12402_11() {
 	let code = "foo::m += raise bar rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4499,7 +4499,7 @@ fn test_ruby_bug_12402_11() {
 }
 
 #[test]
-fn test_ruby_bug_12402_12() {
+fn parse_ruby_bug_12402_12() {
 	let code = "foo.C += raise bar rescue nil";
 	let sexp = r##"
 (op-asgn
@@ -4515,7 +4515,7 @@ fn test_ruby_bug_12402_12() {
 }
 
 #[test]
-fn test_ruby_bug_12402_13() {
+fn parse_ruby_bug_12402_13() {
 	let code = "foo::C ||= raise bar rescue nil";
 	let sexp = r##"
 (or-asgn
@@ -4531,7 +4531,7 @@ fn test_ruby_bug_12402_13() {
 }
 
 #[test]
-fn test_and() {
+fn parse_and() {
 	let code = "foo and bar";
 	let sexp = r##"
 (and
@@ -4542,7 +4542,7 @@ fn test_and() {
 }
 
 #[test]
-fn test_and_1() {
+fn parse_and_1() {
 	let code = "foo && bar";
 	let sexp = r##"
 (and
@@ -4553,7 +4553,7 @@ fn test_and_1() {
 }
 
 #[test]
-fn test_op_asgn() {
+fn parse_op_asgn() {
 	let code = "foo.a += 1";
 	let sexp = r##"
 (op-asgn
@@ -4565,7 +4565,7 @@ fn test_op_asgn() {
 }
 
 #[test]
-fn test_op_asgn_1() {
+fn parse_op_asgn_1() {
 	let code = "foo::a += 1";
 	let sexp = r##"
 (op-asgn
@@ -4577,7 +4577,7 @@ fn test_op_asgn_1() {
 }
 
 #[test]
-fn test_op_asgn_2() {
+fn parse_op_asgn_2() {
 	let code = "foo.A += 1";
 	let sexp = r##"
 (op-asgn
@@ -4589,7 +4589,7 @@ fn test_op_asgn_2() {
 }
 
 #[test]
-fn test_string_concat() {
+fn parse_string_concat() {
 	let code = "\"foo#@a\" \"bar\"";
 	let sexp = r##"
 (dstr
@@ -4602,7 +4602,7 @@ fn test_string_concat() {
 }
 
 #[test]
-fn test_send_self_block() {
+fn parse_send_self_block() {
 	let code = "fun { }";
 	let sexp = r##"
 (block
@@ -4613,7 +4613,7 @@ fn test_send_self_block() {
 }
 
 #[test]
-fn test_send_self_block_1() {
+fn parse_send_self_block_1() {
 	let code = "fun() { }";
 	let sexp = r##"
 (block
@@ -4624,7 +4624,7 @@ fn test_send_self_block_1() {
 }
 
 #[test]
-fn test_send_self_block_2() {
+fn parse_send_self_block_2() {
 	let code = "fun(1) { }";
 	let sexp = r##"
 (block
@@ -4636,7 +4636,7 @@ fn test_send_self_block_2() {
 }
 
 #[test]
-fn test_send_self_block_3() {
+fn parse_send_self_block_3() {
 	let code = "fun do end";
 	let sexp = r##"
 (block
@@ -4647,7 +4647,7 @@ fn test_send_self_block_3() {
 }
 
 #[test]
-fn test_send_lambda() {
+fn parse_send_lambda() {
 	let code = "->{ }";
 	let sexp = r##"
 (block
@@ -4658,7 +4658,7 @@ fn test_send_lambda() {
 }
 
 #[test]
-fn test_send_lambda_1() {
+fn parse_send_lambda_1() {
 	let code = "-> * { }";
 	let sexp = r##"
 (block
@@ -4670,7 +4670,7 @@ fn test_send_lambda_1() {
 }
 
 #[test]
-fn test_send_lambda_2() {
+fn parse_send_lambda_2() {
 	let code = "-> do end";
 	let sexp = r##"
 (block
@@ -4681,7 +4681,7 @@ fn test_send_lambda_2() {
 }
 
 #[test]
-fn test_const_unscoped() {
+fn parse_const_unscoped() {
 	let code = "Foo";
 	let sexp = r##"
 (const nil :Foo)
@@ -4690,7 +4690,8 @@ fn test_const_unscoped() {
 }
 
 #[test]
-fn test_lvar_injecting_match() {
+#[cfg(feature = "regex")]
+fn parse_lvar_injecting_match() {
 	let code = "/(?<match>bar)/ =~ 'bar'; match";
 	let sexp = r##"
 (begin
@@ -4705,7 +4706,7 @@ fn test_lvar_injecting_match() {
 }
 
 #[test]
-fn test_alias() {
+fn parse_alias() {
 	let code = "alias :foo bar";
 	let sexp = r##"
 (alias
@@ -4716,7 +4717,7 @@ fn test_alias() {
 }
 
 #[test]
-fn test_while_post() {
+fn parse_while_post() {
 	let code = "begin meth end while foo";
 	let sexp = r##"
 (while-post
@@ -4728,7 +4729,7 @@ fn test_while_post() {
 }
 
 #[test]
-fn test_heredoc() {
+fn parse_heredoc() {
 	let code = "<<HERE\nfoo\nbar\nHERE";
 	let sexp = r##"
 (dstr
@@ -4739,7 +4740,7 @@ fn test_heredoc() {
 }
 
 #[test]
-fn test_heredoc_1() {
+fn parse_heredoc_1() {
 	let code = "<<'HERE'\nfoo\nbar\nHERE";
 	let sexp = r##"
 (dstr
@@ -4750,7 +4751,7 @@ fn test_heredoc_1() {
 }
 
 #[test]
-fn test_heredoc_2() {
+fn parse_heredoc_2() {
 	let code = "<<`HERE`\nfoo\nbar\nHERE";
 	let sexp = r##"
 (xstr
@@ -4761,7 +4762,7 @@ fn test_heredoc_2() {
 }
 
 #[test]
-fn test_int_line_() {
+fn parse_int_line_() {
 	let code = "__LINE__";
 	let sexp = r##"
 (int 1)
@@ -4770,7 +4771,7 @@ fn test_int_line_() {
 }
 
 #[test]
-fn test_symbol_plain() {
+fn parse_symbol_plain() {
 	let code = ":foo";
 	let sexp = r##"
 (sym :foo)
@@ -4779,7 +4780,7 @@ fn test_symbol_plain() {
 }
 
 #[test]
-fn test_symbol_plain_1() {
+fn parse_symbol_plain_1() {
 	let code = ":'foo'";
 	let sexp = r##"
 (sym :foo)
@@ -4788,7 +4789,7 @@ fn test_symbol_plain_1() {
 }
 
 #[test]
-fn test_dedenting_heredoc() {
+fn parse_dedenting_heredoc() {
 	let code = "p <<~E\nE";
 	let sexp = r##"
 (send nil :p
@@ -4798,7 +4799,7 @@ fn test_dedenting_heredoc() {
 }
 
 #[test]
-fn test_dedenting_heredoc_1() {
+fn parse_dedenting_heredoc_1() {
 	let code = "p <<~E\n  E";
 	let sexp = r##"
 (send nil :p
@@ -4808,7 +4809,7 @@ fn test_dedenting_heredoc_1() {
 }
 
 #[test]
-fn test_dedenting_heredoc_2() {
+fn parse_dedenting_heredoc_2() {
 	let code = "p <<~E\n  x\nE";
 	let sexp = r##"
 (send nil :p
@@ -4818,7 +4819,7 @@ fn test_dedenting_heredoc_2() {
 }
 
 #[test]
-fn test_dedenting_heredoc_3() {
+fn parse_dedenting_heredoc_3() {
 	let code = "p <<~E\n  x\n    y\nE";
 	let sexp = r##"
 (send nil :p
@@ -4830,7 +4831,7 @@ fn test_dedenting_heredoc_3() {
 }
 
 #[test]
-fn test_dedenting_heredoc_4() {
+fn parse_dedenting_heredoc_4() {
 	let code = "p <<~E\n\tx\n    y\nE";
 	let sexp = r##"
 (send nil :p
@@ -4842,7 +4843,7 @@ fn test_dedenting_heredoc_4() {
 }
 
 #[test]
-fn test_dedenting_heredoc_5() {
+fn parse_dedenting_heredoc_5() {
 	let code = "p <<~E\n\tx\n        y\nE";
 	let sexp = r##"
 (send nil :p
@@ -4854,7 +4855,7 @@ fn test_dedenting_heredoc_5() {
 }
 
 #[test]
-fn test_dedenting_heredoc_6() {
+fn parse_dedenting_heredoc_6() {
 	let code = "p <<~E\n    \tx\n        y\nE";
 	let sexp = r##"
 (send nil :p
@@ -4866,7 +4867,7 @@ fn test_dedenting_heredoc_6() {
 }
 
 #[test]
-fn test_dedenting_heredoc_7() {
+fn parse_dedenting_heredoc_7() {
 	let code = "p <<~E\n        \tx\n\ty\nE";
 	let sexp = r##"
 (send nil :p
@@ -4878,7 +4879,7 @@ fn test_dedenting_heredoc_7() {
 }
 
 #[test]
-fn test_dedenting_heredoc_8() {
+fn parse_dedenting_heredoc_8() {
 	let code = "p <<~E\n  x\n\ny\nE";
 	let sexp = r##"
 (send nil :p
@@ -4891,7 +4892,7 @@ fn test_dedenting_heredoc_8() {
 }
 
 #[test]
-fn test_dedenting_heredoc_9() {
+fn parse_dedenting_heredoc_9() {
 	let code = "p <<~E\n  x\n    \n  y\nE";
 	let sexp = r##"
 (send nil :p
@@ -4904,7 +4905,7 @@ fn test_dedenting_heredoc_9() {
 }
 
 #[test]
-fn test_dedenting_heredoc_10() {
+fn parse_dedenting_heredoc_10() {
 	let code = "p <<~E\n    x\n  \\  y\nE";
 	let sexp = r##"
 (send nil :p
@@ -4916,7 +4917,7 @@ fn test_dedenting_heredoc_10() {
 }
 
 #[test]
-fn test_dedenting_heredoc_11() {
+fn parse_dedenting_heredoc_11() {
 	let code = "p <<~E\n    x\n  \\\ty\nE";
 	let sexp = r##"
 (send nil :p
@@ -4928,7 +4929,7 @@ fn test_dedenting_heredoc_11() {
 }
 
 #[test]
-fn test_dedenting_heredoc_12() {
+fn parse_dedenting_heredoc_12() {
 	let code = "p <<~\"E\"\n    x\n  #{foo}\nE";
 	let sexp = r##"
 (send nil :p
@@ -4943,7 +4944,7 @@ fn test_dedenting_heredoc_12() {
 }
 
 #[test]
-fn test_dedenting_heredoc_13() {
+fn parse_dedenting_heredoc_13() {
 	let code = "p <<~`E`\n    x\n  #{foo}\nE";
 	let sexp = r##"
 (send nil :p
@@ -4958,7 +4959,7 @@ fn test_dedenting_heredoc_13() {
 }
 
 #[test]
-fn test_dedenting_heredoc_14() {
+fn parse_dedenting_heredoc_14() {
 	let code = "p <<~\"E\"\n    x\n  #{\"  y\"}\nE";
 	let sexp = r##"
 (send nil :p
@@ -4973,7 +4974,7 @@ fn test_dedenting_heredoc_14() {
 }
 
 #[test]
-fn test_false() {
+fn parse_false() {
 	let code = "false";
 	let sexp = r##"
 (false)
@@ -4982,7 +4983,7 @@ fn test_false() {
 }
 
 #[test]
-fn test_if() {
+fn parse_if() {
 	let code = "if foo then bar; end";
 	let sexp = r##"
 (if
@@ -4993,7 +4994,7 @@ fn test_if() {
 }
 
 #[test]
-fn test_if_1() {
+fn parse_if_1() {
 	let code = "if foo; bar; end";
 	let sexp = r##"
 (if
@@ -5004,7 +5005,7 @@ fn test_if_1() {
 }
 
 #[test]
-fn test_regex_interp() {
+fn parse_regex_interp() {
 	let code = "/foo#{bar}baz/";
 	let sexp = r##"
 (regexp
@@ -5018,7 +5019,7 @@ fn test_regex_interp() {
 }
 
 #[test]
-fn test_bug_while_not_parens_do() {
+fn parse_bug_while_not_parens_do() {
 	let code = "while not (true) do end";
 	let sexp = r##"
 (while
@@ -5030,7 +5031,7 @@ fn test_bug_while_not_parens_do() {
 }
 
 #[test]
-fn test_string_dvar() {
+fn parse_string_dvar() {
 	let code = "\"#@a #@@a #$a\"";
 	let sexp = r##"
 (dstr
@@ -5044,7 +5045,7 @@ fn test_string_dvar() {
 }
 
 #[test]
-fn test_cond_iflipflop() {
+fn parse_cond_iflipflop() {
 	let code = "if foo..bar; end";
 	let sexp = r##"
 (if
@@ -5056,7 +5057,7 @@ fn test_cond_iflipflop() {
 }
 
 #[test]
-fn test_arg_label() {
+fn parse_arg_label() {
 	let code = "def foo() a:b end";
 	let sexp = r##"
 (def :foo
@@ -5068,7 +5069,7 @@ fn test_arg_label() {
 }
 
 #[test]
-fn test_arg_label_1() {
+fn parse_arg_label_1() {
 	let code = "def foo\n a:b end";
 	let sexp = r##"
 (def :foo
@@ -5080,7 +5081,7 @@ fn test_arg_label_1() {
 }
 
 #[test]
-fn test_arg_label_2() {
+fn parse_arg_label_2() {
 	let code = "f { || a:b }";
 	let sexp = r##"
 (block
@@ -5093,7 +5094,7 @@ fn test_arg_label_2() {
 }
 
 #[test]
-fn test_class_super_label() {
+fn parse_class_super_label() {
 	let code = "class Foo < a:b; end";
 	let sexp = r##"
 (class
@@ -5105,7 +5106,7 @@ fn test_class_super_label() {
 }
 
 #[test]
-fn test_op_asgn_cmd() {
+fn parse_op_asgn_cmd() {
 	let code = "foo.a += m foo";
 	let sexp = r##"
 (op-asgn
@@ -5118,7 +5119,7 @@ fn test_op_asgn_cmd() {
 }
 
 #[test]
-fn test_op_asgn_cmd_1() {
+fn parse_op_asgn_cmd_1() {
 	let code = "foo::a += m foo";
 	let sexp = r##"
 (op-asgn
@@ -5131,7 +5132,7 @@ fn test_op_asgn_cmd_1() {
 }
 
 #[test]
-fn test_op_asgn_cmd_2() {
+fn parse_op_asgn_cmd_2() {
 	let code = "foo.A += m foo";
 	let sexp = r##"
 (op-asgn
@@ -5144,7 +5145,7 @@ fn test_op_asgn_cmd_2() {
 }
 
 #[test]
-fn test_op_asgn_cmd_3() {
+fn parse_op_asgn_cmd_3() {
 	let code = "foo::A += m foo";
 	let sexp = r##"
 (op-asgn
@@ -5157,7 +5158,7 @@ fn test_op_asgn_cmd_3() {
 }
 
 #[test]
-fn test_casgn_scoped() {
+fn parse_casgn_scoped() {
 	let code = "Bar::Foo = 10";
 	let sexp = r##"
 (casgn
@@ -5168,7 +5169,7 @@ fn test_casgn_scoped() {
 }
 
 #[test]
-fn test_bang_cmd() {
+fn parse_bang_cmd() {
 	let code = "!m foo";
 	let sexp = r##"
 (send
@@ -5179,7 +5180,7 @@ fn test_bang_cmd() {
 }
 
 #[test]
-fn test_complex() {
+fn parse_complex() {
 	let code = "42i";
 	let sexp = r##"
 (complex 42)
@@ -5188,7 +5189,7 @@ fn test_complex() {
 }
 
 #[test]
-fn test_complex_1() {
+fn parse_complex_1() {
 	let code = "42ri";
 	let sexp = r##"
 (complex 42)
@@ -5197,7 +5198,7 @@ fn test_complex_1() {
 }
 
 #[test]
-fn test_complex_2() {
+fn parse_complex_2() {
 	let code = "42.1i";
 	let sexp = r##"
 (complex 42.1)
@@ -5206,7 +5207,7 @@ fn test_complex_2() {
 }
 
 #[test]
-fn test_complex_3() {
+fn parse_complex_3() {
 	let code = "42.1ri";
 	let sexp = r##"
 (complex 42.1)
@@ -5215,7 +5216,7 @@ fn test_complex_3() {
 }
 
 #[test]
-fn test_if_nl_then() {
+fn parse_if_nl_then() {
 	let code = "if foo\nthen bar end";
 	let sexp = r##"
 (if
@@ -5226,7 +5227,7 @@ fn test_if_nl_then() {
 }
 
 #[test]
-fn test_ivasgn() {
+fn parse_ivasgn() {
 	let code = "@var = 10";
 	let sexp = r##"
 (ivasgn :@var
@@ -5236,7 +5237,7 @@ fn test_ivasgn() {
 }
 
 #[test]
-fn test_optarg() {
+fn parse_optarg() {
 	let code = "def f foo = 1; end";
 	let sexp = r##"
 (def :f
@@ -5248,7 +5249,7 @@ fn test_optarg() {
 }
 
 #[test]
-fn test_optarg_1() {
+fn parse_optarg_1() {
 	let code = "def f(foo=1, bar=2); end";
 	let sexp = r##"
 (def :f
@@ -5262,7 +5263,7 @@ fn test_optarg_1() {
 }
 
 #[test]
-fn test_send_op_asgn_conditional() {
+fn parse_send_op_asgn_conditional() {
 	let code = "a&.b &&= 1";
 	let sexp = r##"
 (and-asgn
@@ -5652,7 +5653,7 @@ fn assert_parses_blockargs_33() {
 }
 
 #[test]
-fn test_not() {
+fn parse_not() {
 	let code = "not foo";
 	let sexp = r##"
 (send
@@ -5662,7 +5663,7 @@ fn test_not() {
 }
 
 #[test]
-fn test_not_1() {
+fn parse_not_1() {
 	let code = "not(foo)";
 	let sexp = r##"
 (send
@@ -5672,7 +5673,7 @@ fn test_not_1() {
 }
 
 #[test]
-fn test_not_2() {
+fn parse_not_2() {
 	let code = "not()";
 	let sexp = r##"
 (send
@@ -5682,7 +5683,7 @@ fn test_not_2() {
 }
 
 #[test]
-fn test_nth_ref() {
+fn parse_nth_ref() {
 	let code = "$10";
 	let sexp = r##"
 (nth-ref 10)
@@ -5691,7 +5692,7 @@ fn test_nth_ref() {
 }
 
 #[test]
-fn test_unless() {
+fn parse_unless() {
 	let code = "unless foo then bar; end";
 	let sexp = r##"
 (if
@@ -5702,7 +5703,7 @@ fn test_unless() {
 }
 
 #[test]
-fn test_unless_1() {
+fn parse_unless_1() {
 	let code = "unless foo; bar; end";
 	let sexp = r##"
 (if
@@ -5713,7 +5714,7 @@ fn test_unless_1() {
 }
 
 #[test]
-fn test_var_op_asgn_cmd() {
+fn parse_var_op_asgn_cmd() {
 	let code = "foo += m foo";
 	let sexp = r##"
 (op-asgn
@@ -5725,7 +5726,7 @@ fn test_var_op_asgn_cmd() {
 }
 
 #[test]
-fn test_yield() {
+fn parse_yield() {
 	let code = "yield(foo)";
 	let sexp = r##"
 (yield
@@ -5735,7 +5736,7 @@ fn test_yield() {
 }
 
 #[test]
-fn test_yield_1() {
+fn parse_yield_1() {
 	let code = "yield foo";
 	let sexp = r##"
 (yield
@@ -5745,7 +5746,7 @@ fn test_yield_1() {
 }
 
 #[test]
-fn test_yield_2() {
+fn parse_yield_2() {
 	let code = "yield()";
 	let sexp = r##"
 (yield)
@@ -5754,7 +5755,7 @@ fn test_yield_2() {
 }
 
 #[test]
-fn test_yield_3() {
+fn parse_yield_3() {
 	let code = "yield";
 	let sexp = r##"
 (yield)
@@ -5763,7 +5764,7 @@ fn test_yield_3() {
 }
 
 #[test]
-fn test_rescue_else() {
+fn parse_rescue_else() {
 	let code = "begin; meth; rescue; foo; else; bar; end";
 	let sexp = r##"
 (kwbegin
@@ -5777,7 +5778,7 @@ fn test_rescue_else() {
 }
 
 #[test]
-fn test_bug_regex_verification() {
+fn parse_bug_regex_verification() {
 	let code = "/#)/x";
 	let sexp = r##"
 (regexp
@@ -5788,7 +5789,7 @@ fn test_bug_regex_verification() {
 }
 
 #[test]
-fn test_sclass() {
+fn parse_sclass() {
 	let code = "class << foo; nil; end";
 	let sexp = r##"
 (sclass
@@ -5799,7 +5800,7 @@ fn test_sclass() {
 }
 
 #[test]
-fn test_while_mod() {
+fn parse_while_mod() {
 	let code = "meth while foo";
 	let sexp = r##"
 (while
@@ -5810,7 +5811,7 @@ fn test_while_mod() {
 }
 
 #[test]
-fn test_bug_cmdarg() {
+fn parse_bug_cmdarg() {
 	let code = "assert dogs";
 	let sexp = r##"
 (send nil :assert
@@ -5820,7 +5821,7 @@ fn test_bug_cmdarg() {
 }
 
 #[test]
-fn test_bug_cmdarg_1() {
+fn parse_bug_cmdarg_1() {
 	let code = "assert do: true";
 	let sexp = r##"
 (send nil :assert
@@ -5833,7 +5834,7 @@ fn test_bug_cmdarg_1() {
 }
 
 #[test]
-fn test_bug_cmdarg_2() {
+fn parse_bug_cmdarg_2() {
 	let code = "f x: -> do meth do end end";
 	let sexp = r##"
 (send nil :f
@@ -5851,7 +5852,7 @@ fn test_bug_cmdarg_2() {
 }
 
 #[test]
-fn test_character() {
+fn parse_character() {
 	let code = "?a";
 	let sexp = r##"
 (str "a")
@@ -5860,7 +5861,7 @@ fn test_character() {
 }
 
 #[test]
-fn test_class() {
+fn parse_class() {
 	let code = "class Foo; end";
 	let sexp = r##"
 (class
@@ -5870,7 +5871,7 @@ fn test_class() {
 }
 
 #[test]
-fn test_class_1() {
+fn parse_class_1() {
 	let code = "class Foo end";
 	let sexp = r##"
 (class
@@ -5880,7 +5881,7 @@ fn test_class_1() {
 }
 
 #[test]
-fn test_masgn_cmd() {
+fn parse_masgn_cmd() {
 	let code = "foo, bar = m foo";
 	let sexp = r##"
 (masgn
@@ -5894,7 +5895,7 @@ fn test_masgn_cmd() {
 }
 
 #[test]
-fn test_rescue_mod_asgn() {
+fn parse_rescue_mod_asgn() {
 	let code = "foo = meth rescue bar";
 	let sexp = r##"
 (lvasgn :foo
@@ -5907,7 +5908,7 @@ fn test_rescue_mod_asgn() {
 }
 
 #[test]
-fn test_until() {
+fn parse_until() {
 	let code = "until foo do meth end";
 	let sexp = r##"
 (until
@@ -5918,7 +5919,7 @@ fn test_until() {
 }
 
 #[test]
-fn test_until_1() {
+fn parse_until_1() {
 	let code = "until foo; meth end";
 	let sexp = r##"
 (until
@@ -5929,7 +5930,7 @@ fn test_until_1() {
 }
 
 #[test]
-fn test_next_block() {
+fn parse_next_block() {
 	let code = "next fun foo do end";
 	let sexp = r##"
 (next
@@ -5942,7 +5943,7 @@ fn test_next_block() {
 }
 
 #[test]
-fn test_space_args_cmd() {
+fn parse_space_args_cmd() {
 	let code = "fun (f bar)";
 	let sexp = r##"
 (send nil :fun
@@ -5954,7 +5955,7 @@ fn test_space_args_cmd() {
 }
 
 #[test]
-fn test_op_asgn_index() {
+fn parse_op_asgn_index() {
 	let code = "foo[0, 1] += 2";
 	let sexp = r##"
 (op-asgn
@@ -5968,7 +5969,7 @@ fn test_op_asgn_index() {
 }
 
 #[test]
-fn test_string_interp() {
+fn parse_string_interp() {
 	let code = "\"foo#{bar}baz\"";
 	let sexp = r##"
 (dstr
@@ -5981,7 +5982,7 @@ fn test_string_interp() {
 }
 
 #[test]
-fn test_ruby_bug_11989() {
+fn parse_ruby_bug_11989() {
 	let code = "p <<~\"E\"\n  x\\n   y\nE";
 	let sexp = r##"
 (send nil :p
@@ -5991,7 +5992,7 @@ fn test_ruby_bug_11989() {
 }
 
 #[test]
-fn test_ensure_empty() {
+fn parse_ensure_empty() {
 	let code = "begin ensure end";
 	let sexp = r##"
 (kwbegin
@@ -6001,7 +6002,7 @@ fn test_ensure_empty() {
 }
 
 #[test]
-fn test_ruby_bug_12669() {
+fn parse_ruby_bug_12669() {
 	let code = "a = b = raise :x";
 	let sexp = r##"
 (lvasgn :a
@@ -6013,7 +6014,7 @@ fn test_ruby_bug_12669() {
 }
 
 #[test]
-fn test_ruby_bug_12669_1() {
+fn parse_ruby_bug_12669_1() {
 	let code = "a += b = raise :x";
 	let sexp = r##"
 (op-asgn
@@ -6026,7 +6027,7 @@ fn test_ruby_bug_12669_1() {
 }
 
 #[test]
-fn test_ruby_bug_12669_2() {
+fn parse_ruby_bug_12669_2() {
 	let code = "a = b += raise :x";
 	let sexp = r##"
 (lvasgn :a
@@ -6039,7 +6040,7 @@ fn test_ruby_bug_12669_2() {
 }
 
 #[test]
-fn test_ruby_bug_12669_3() {
+fn parse_ruby_bug_12669_3() {
 	let code = "a += b += raise :x";
 	let sexp = r##"
 (op-asgn
@@ -6053,7 +6054,7 @@ fn test_ruby_bug_12669_3() {
 }
 
 #[test]
-fn test_case_cond_else() {
+fn parse_case_cond_else() {
 	let code = "case; when foo; 'foo'; else 'bar'; end";
 	let sexp = r##"
 (case nil
@@ -6066,7 +6067,7 @@ fn test_case_cond_else() {
 }
 
 #[test]
-fn test_alias_gvar() {
+fn parse_alias_gvar() {
 	let code = "alias $a $b";
 	let sexp = r##"
 (alias
@@ -6077,7 +6078,7 @@ fn test_alias_gvar() {
 }
 
 #[test]
-fn test_alias_gvar_1() {
+fn parse_alias_gvar_1() {
 	let code = "alias $a $+";
 	let sexp = r##"
 (alias
@@ -6088,7 +6089,7 @@ fn test_alias_gvar_1() {
 }
 
 #[test]
-fn test_resbody_list() {
+fn parse_resbody_list() {
 	let code = "begin; meth; rescue Exception; bar; end";
 	let sexp = r##"
 (kwbegin
@@ -6103,7 +6104,7 @@ fn test_resbody_list() {
 }
 
 #[test]
-fn test_or() {
+fn parse_or() {
 	let code = "foo or bar";
 	let sexp = r##"
 (or
@@ -6114,7 +6115,7 @@ fn test_or() {
 }
 
 #[test]
-fn test_or_1() {
+fn parse_or_1() {
 	let code = "foo || bar";
 	let sexp = r##"
 (or
@@ -6125,7 +6126,7 @@ fn test_or_1() {
 }
 
 #[test]
-fn test_const_scoped() {
+fn parse_const_scoped() {
 	let code = "Bar::Foo";
 	let sexp = r##"
 (const
@@ -6135,7 +6136,7 @@ fn test_const_scoped() {
 }
 
 #[test]
-fn test_lvar() {
+fn parse_lvar() {
 	let code = "foo";
 	let sexp = r##"
 (lvar :foo)
@@ -6144,7 +6145,7 @@ fn test_lvar() {
 }
 
 #[test]
-fn test_space_args_block() {
+fn parse_space_args_block() {
 	let code = "fun () {}";
 	let sexp = r##"
 (block
@@ -6156,7 +6157,7 @@ fn test_space_args_block() {
 }
 
 #[test]
-fn test_args_assocs_comma() {
+fn parse_args_assocs_comma() {
 	let code = "foo[:baz => 1,]";
 	let sexp = r##"
 (send
@@ -6170,7 +6171,7 @@ fn test_args_assocs_comma() {
 }
 
 #[test]
-fn test_bug_do_block_in_cmdarg() {
+fn parse_bug_do_block_in_cmdarg() {
 	let code = "tap (proc do end)";
 	let sexp = r##"
 (send nil :tap
@@ -6183,7 +6184,7 @@ fn test_bug_do_block_in_cmdarg() {
 }
 
 #[test]
-fn test_class_super() {
+fn parse_class_super() {
 	let code = "class Foo < Bar; end";
 	let sexp = r##"
 (class
@@ -6194,7 +6195,7 @@ fn test_class_super() {
 }
 
 #[test]
-fn test_regex_plain() {
+fn parse_regex_plain() {
 	let code = "/source/im";
 	let sexp = r##"
 (regexp
@@ -6205,7 +6206,7 @@ fn test_regex_plain() {
 }
 
 #[test]
-fn test_def() {
+fn parse_def() {
 	let code = "def foo; end";
 	let sexp = r##"
 (def :foo
@@ -6215,7 +6216,7 @@ fn test_def() {
 }
 
 #[test]
-fn test_def_1() {
+fn parse_def_1() {
 	let code = "def String; end";
 	let sexp = r##"
 (def :String
@@ -6225,7 +6226,7 @@ fn test_def_1() {
 }
 
 #[test]
-fn test_def_2() {
+fn parse_def_2() {
 	let code = "def String=; end";
 	let sexp = r##"
 (def :String=
@@ -6235,7 +6236,7 @@ fn test_def_2() {
 }
 
 #[test]
-fn test_def_3() {
+fn parse_def_3() {
 	let code = "def until; end";
 	let sexp = r##"
 (def :until
@@ -6245,7 +6246,7 @@ fn test_def_3() {
 }
 
 #[test]
-fn test_ruby_bug_11107() {
+fn parse_ruby_bug_11107() {
 	let code = "p ->() do a() do end end";
 	let sexp = r##"
 (send nil :p
@@ -6260,7 +6261,7 @@ fn test_ruby_bug_11107() {
 }
 
 #[test]
-fn test_array_words_empty() {
+fn parse_array_words_empty() {
 	let code = "%w[]";
 	let sexp = r##"
 (array)
@@ -6269,7 +6270,7 @@ fn test_array_words_empty() {
 }
 
 #[test]
-fn test_array_words_empty_1() {
+fn parse_array_words_empty_1() {
 	let code = "%W()";
 	let sexp = r##"
 (array)
@@ -6278,7 +6279,7 @@ fn test_array_words_empty_1() {
 }
 
 #[test]
-fn test_space_args_hash_literal_then_block() {
+fn parse_space_args_hash_literal_then_block() {
 	let code = "f 1, {1 => 2} {1}";
 	let sexp = r##"
 (block
@@ -6295,7 +6296,7 @@ fn test_space_args_hash_literal_then_block() {
 }
 
 #[test]
-fn test_if_mod() {
+fn parse_if_mod() {
 	let code = "bar if foo";
 	let sexp = r##"
 (if
@@ -6306,7 +6307,7 @@ fn test_if_mod() {
 }
 
 #[test]
-fn test_args_block_pass() {
+fn parse_args_block_pass() {
 	let code = "fun(&bar)";
 	let sexp = r##"
 (send nil :fun
@@ -6317,7 +6318,7 @@ fn test_args_block_pass() {
 }
 
 #[test]
-fn test_kwoptarg() {
+fn parse_kwoptarg() {
 	let code = "def f(foo: 1); end";
 	let sexp = r##"
 (def :f
@@ -6329,7 +6330,7 @@ fn test_kwoptarg() {
 }
 
 #[test]
-fn test_resbody_list_mrhs() {
+fn parse_resbody_list_mrhs() {
 	let code = "begin; meth; rescue Exception, foo; bar; end";
 	let sexp = r##"
 (kwbegin
@@ -6345,7 +6346,7 @@ fn test_resbody_list_mrhs() {
 }
 
 #[test]
-fn test_when_then() {
+fn parse_when_then() {
 	let code = "case foo; when 'bar' then bar; end";
 	let sexp = r##"
 (case

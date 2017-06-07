@@ -130,6 +130,7 @@ public:
 	lexer lex;
 	mempool alloc;
 
+	bool pending_error;
 	size_t def_level;
 	foreign_ptr ast;
 
@@ -137,7 +138,10 @@ public:
 	virtual ~base_driver() {}
 	virtual foreign_ptr parse(self_ptr self) = 0;
 
-	void check_kwarg_name(const token *name);
+	bool valid_kwarg_name(const token *name) {
+		char c = name->string().at(0);
+		return !(c >= 'A' && c <= 'Z');
+	}
 
 	ruby_parser::state_stack *copy_stack() {
 		return alloc._stacks.alloc(lex.cmdarg);
@@ -145,6 +149,13 @@ public:
 
 	void replace_stack(ruby_parser::state_stack *stack) {
 		lex.cmdarg = *stack;
+	}
+
+	void external_diagnostic(dlevel lvl, dclass cls, size_t begin, size_t end, const std::string &msg) {
+		diagnostics.emplace_back(lvl, cls, diagnostic::range(begin, end), msg);
+		if (lvl == dlevel::ERROR) {
+			pending_error = true;
+		}
 	}
 };
 
