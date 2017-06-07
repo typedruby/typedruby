@@ -87,7 +87,7 @@ when "rs"
   puts "        match self.error {"
   MESSAGES.each do |err, msg|
     args = ", arg1" if msg.include? '{}'
-    puts "            Error::#{camelize(err)} => write!(f, \"{:?}: #{msg}\", self.level#{args}),"
+    puts "            Error::#{camelize(err)} => write!(f, #{msg.inspect}#{args}),"
   end
   puts "        }"
   puts "    }"
