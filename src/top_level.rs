@@ -719,6 +719,11 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Restarg(..) => {}
             Node::Kwrestarg(..) => {}
             Node::Blockarg(..) => {}
+            Node::Kwarg => {}
+            Node::Optarg(_, _, ref expr) |
+            Node::Kwoptarg(_, _, ref expr) => {
+                self.eval_node(expr);
+            }
             Node::If(_, ref cond, ref then, ref else_) => {
                 self.eval_node(cond);
                 self.eval_maybe_node(then);
