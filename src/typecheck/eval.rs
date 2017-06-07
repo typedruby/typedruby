@@ -1195,28 +1195,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         )
     }
 
-    fn cond_asgn<T>(&self, lhs: &Rc<Node>, rhs: &Rc<Node>, locals: Locals<'ty, 'object>, f: T) -> Computation<'ty, 'object>
-        where T : Fn(ComputationPredicate<'ty, 'object>, &Node) -> ComputationPredicate<'ty, 'object>
-    {
-        let asgn_node = match **lhs {
-            Node::LvarLhs(ref loc, ref id) =>
-                Node::LvarAsgn(loc.join(rhs.loc()), id.clone(), rhs.clone()),
-            Node::IvarLhs(ref loc, ref id) =>
-                Node::IvarAsgn(loc.join(rhs.loc()), id.clone(), rhs.clone()),
-            _ =>
-                panic!("unknown lhs in cond_asgn: {:?}", lhs),
-        };
-
-        let lhs_pred = self.process_node(lhs, locals).predicate(lhs.loc(), &self.tyenv);
-
-        let asgn_pred = f(lhs_pred, &asgn_node);
-
-        Computation::divergent_option(
-            Computation::divergent_option(asgn_pred.truthy, asgn_pred.falsy),
-            asgn_pred.non_result,
-        ).expect("at least one of the computations must be Some")
-    }
-
     fn lookup_ivar(&self, name: &str, type_context: &TypeContext<'ty, 'object>) -> Option<&'ty Type<'ty, 'object>> {
         self.env.object.lookup_ivar(type_context.class, name).map(|ivar|
             self.resolve_type(&ivar.type_node, type_context, ivar.scope.clone()))
@@ -1751,16 +1729,48 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     predicate.non_result,
                 ).expect("at least one of the computations must be Some")
             }
-            Node::OrAsgn(_, ref lhs, ref rhs) => {
-                self.cond_asgn(lhs, rhs, locals, |pred, asgn_node| ComputationPredicate {
-                    falsy: pred.falsy.map(|comp| self.seq_process(comp, asgn_node)),
-                    ..pred
+            Node::OrAsgn(ref loc, ref lhs_node, ref rhs) => {
+                self.process_lhs(lhs_node, locals).and_then_comp(|lhs, locals| {
+                    let lhs_comp = match lhs {
+                        Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
+                        Lhs::Simple(_, ty) => Computation::result(ty, locals),
+                        Lhs::Send(ref lhs_loc, ref recv_ty, ref id, ref args) => {
+                            self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
+                        }
+                    };
+
+                    let lhs_pred = lhs_comp.predicate(lhs_node.loc(), &self.tyenv);
+
+                    let asgn_comp = lhs_pred.falsy.map(|comp|
+                        self.extract_results(self.seq_process(comp, rhs), rhs.loc()).and_then(|rhs_ty, locals| {
+                            self.assign(lhs, rhs_ty, locals, loc).map(|()| rhs_ty)
+                        }).into_computation()
+                    );
+
+                    Computation::divergent_option(lhs_pred.truthy,
+                        Computation::divergent_option(asgn_comp, lhs_pred.non_result)).unwrap()
                 })
             }
-            Node::AndAsgn(_, ref lhs, ref rhs) => {
-                self.cond_asgn(lhs, rhs, locals, |pred, asgn_node| ComputationPredicate {
-                    truthy: pred.truthy.map(|comp| self.seq_process(comp, asgn_node)),
-                    ..pred
+            Node::AndAsgn(ref loc, ref lhs_node, ref rhs) => {
+                self.process_lhs(lhs_node, locals).and_then_comp(|lhs, locals| {
+                    let lhs_comp = match lhs {
+                        Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
+                        Lhs::Simple(_, ty) => Computation::result(ty, locals),
+                        Lhs::Send(ref lhs_loc, ref recv_ty, ref id, ref args) => {
+                            self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
+                        }
+                    };
+
+                    let lhs_pred = lhs_comp.predicate(lhs_node.loc(), &self.tyenv);
+
+                    let asgn_comp = lhs_pred.truthy.map(|comp|
+                        self.extract_results(self.seq_process(comp, rhs), rhs.loc()).and_then(|rhs_ty, locals| {
+                            self.assign(lhs, rhs_ty, locals, loc).map(|()| rhs_ty)
+                        }).into_computation()
+                    );
+
+                    Computation::divergent_option(lhs_pred.falsy,
+                        Computation::divergent_option(asgn_comp, lhs_pred.non_result)).unwrap()
                 })
             }
             Node::OpAsgn(ref loc, ref lhs_node, ref op, ref rhs) => {
