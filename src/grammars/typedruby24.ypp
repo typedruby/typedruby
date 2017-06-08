@@ -2850,15 +2850,31 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
 
      kwrest_mark: tPOW | tDSTAR
 
-        f_kwrest: kwrest_mark tIDENTIFIER
+        f_kwrest: tr_argsig kwrest_mark tIDENTIFIER
                     {
-                      auto ident = $2;
+                      auto argsig = $1;
+                      auto ident = $3;
+
                       driver.lex.declare(ident->string());
-                      $$ = driver.alloc.node_list(driver.build.kwrestarg(self, $1, ident));
+
+                      auto kwrestarg = driver.build.kwrestarg(self, $2, ident);
+
+                      if (argsig) {
+                        kwrestarg = driver.build.typed_arg(self, argsig, kwrestarg);
+                      }
+
+                      $$ = driver.alloc.node_list(kwrestarg);
                     }
-                | kwrest_mark
+                | tr_argsig kwrest_mark
                     {
-                      $$ = driver.alloc.node_list(driver.build.kwrestarg(self, $1, nullptr));
+                      auto argsig = $1;
+                      auto kwrestarg = driver.build.kwrestarg(self, $2, nullptr);
+
+                      if (argsig) {
+                        kwrestarg = driver.build.typed_arg(self, argsig, kwrestarg);
+                      }
+
+                      $$ = driver.alloc.node_list(kwrestarg);
                     }
 
            f_opt: tr_argsig f_arg_asgn tEQL arg_value
