@@ -7,7 +7,7 @@ use std::fs;
 
 use typed_arena::Arena;
 
-use ast::{parse, SourceFile, Node, Id, DiagnosticLevel};
+use ast::{parse, SourceFile, Node, Id, Level};
 use config::Config;
 use errors::{ErrorSink, Detail};
 use inflect::Inflector;
@@ -73,16 +73,16 @@ impl<'object> Environment<'object> {
 
         for diag in ast.diagnostics {
             match diag.level {
-                DiagnosticLevel::Note => {},
-                DiagnosticLevel::Warning => {
+                Level::Note => {},
+                Level::Warning => {
                     if self.config.warning {
                         self.error_sink.borrow_mut().warning(&format!("{}", diag), &[
                             Detail::Loc("here", &diag.loc),
                         ]);
                     }
                 },
-                DiagnosticLevel::Error |
-                DiagnosticLevel::Fatal => {
+                Level::Error |
+                Level::Fatal => {
                     self.error_sink.borrow_mut().error(&format!("{}", diag), &[
                         Detail::Loc("here", &diag.loc),
                     ]);

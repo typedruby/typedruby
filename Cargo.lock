@@ -113,7 +113,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 [[package]]
 name = "ruby_parser"
 version = "0.1.0"
-source = "git+ssh://git@github.com/github/ruby_parser.git#0c75cbd7ce2dfc2b82e6a7e595959b43b3f4666e"
+source = "git+ssh://git@github.com/github/ruby_parser.git#732f08acf5d1d8ca454ad643b9b8b5c2ec9af40b"
 dependencies = [
  "libc 0.2.22 (registry+https://github.com/rust-lang/crates.io-index)",
 ]

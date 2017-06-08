@@ -832,10 +832,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::OrAsgn(_, ref lhs, ref rhs) |
             Node::AndAsgn(_, ref lhs, ref rhs) |
             Node::OpAsgn(_, ref lhs, _, ref rhs) |
-            Node::Masgn(_, ref lhs, ref rhs) => {
-                self.eval_node(lhs);
-                self.eval_node(rhs);
-            }
+            Node::Masgn(_, ref lhs, ref rhs) |
             Node::MatchAsgn(_, ref lhs, ref rhs) => {
                 self.eval_node(lhs);
                 self.eval_node(rhs);
