@@ -45,6 +45,12 @@ module Kernel
   def block_given? => Boolean; end
 
   def respond_to?((String|Symbol) mid) => Boolean; end
+
+  def nil? => Boolean; end
+
+  def frozen? => Boolean; end
+
+  def ===(:any other) => Boolean; end
 end
 
 class ENVClass
@@ -677,6 +683,8 @@ class String < Object
 
   def +(String other) => String; end
 
+  def <<(String other) => String; end
+
   def %(Object arg) => String; end
 
   def *(Integer times) => String; end
@@ -699,6 +707,8 @@ class String < Object
 
   def capitalize => String; end
 
+  def strip => String; end
+
   def []((Integer | Range::[Integer, Integer]) idx) => String; end
 
   def =~(Regexp pattern) => ~Integer; end
@@ -708,6 +718,14 @@ class String < Object
   def chomp => String; end
 
   def split(String delim) => [String]; end
+
+  def unpack(String format) => [:any]; end
+
+  def empty? => Boolean; end
+
+  def to_sym => Symbol; end
+
+  def intern => Symbol; end
 end
 
 class Array::[ElementType] < Object
@@ -719,6 +737,9 @@ class Array::[ElementType] < Object
 
   def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
   alias :collect :map
+
+  def map!({ |ElementType element| => ElementType } &) => :self; end
+  alias :collect! :map!
 
   def select({ |ElementType x| => Boolean } &) => [ElementType]; end
 
@@ -761,6 +782,10 @@ class Array::[ElementType] < Object
   def find({ |ElementType element| => Boolean } &) => ~ElementType; end
 
   def drop(Integer n) => [ElementType]; end
+
+  def [](Integer index) => ~ElementType; end
+
+  def []=(Integer index, ElementType value) => ElementType; end
 end
 
 class Hash::[KeyType, ValueType] < Object
@@ -769,6 +794,8 @@ class Hash::[KeyType, ValueType] < Object
   include Enumerable
 
   def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
+
+  def merge!(Hash::[KeyType, ValueType] other) => :self; end
 
   def select({ |KeyType k, ValueType v| => Boolean } &) => Hash::[KeyType, ValueType]; end
 
@@ -782,6 +809,8 @@ class Hash::[KeyType, ValueType] < Object
 
   def key?(KeyType k) => Boolean; end
   alias :has_key? :key?
+
+  def include?(KeyType k) => Boolean; end
 
   def empty? => Boolean; end
 
@@ -801,6 +830,7 @@ class Hash::[KeyType, ValueType] < Object
 end
 
 class NilClass < Object
+  def nil? => TrueClass; end
 end
 
 class ArgumentError < StandardError
@@ -1386,6 +1416,8 @@ class Regexp < Object
   def initialize(String pattern, (Integer | Boolean | nil) options = nil) => nil; end
 
   def match(String str, Integer pos = 0) => ~MatchData; end
+
+  def ===(String str) => Boolean; end
 end
 
 class StdlibDumper < Object
