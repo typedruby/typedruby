@@ -11,6 +11,7 @@ use typed_arena::Arena;
 use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
 use itertools::Itertools;
+use util::IterExt;
 
 pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     env: &'env Environment<'object>,
@@ -1146,6 +1147,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                                     Detail::Loc("for this prototype", proto_loc),
                                 ])
                             }
+                            ArgError::UnexpectedSplat(ref loc) => {
+                                self.error("Unexpected splat in keyword arguments", &[
+                                    Detail::Loc("here", loc),
+                                    Detail::Loc("in this invocation", &id.0),
+                                    Detail::Loc("for this prototype", proto_loc),
+                                ])
+                            }
                         }
                     }
 
@@ -1618,37 +1626,34 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 let is_keyword_hash = entries.len() > 0 && entries.iter().all(|entry| {
                     match *entry {
                         HashEntry::Symbol(..) => true,
-                        HashEntry::Kwsplat(ty) => {
-                            if let Type::KeywordHash { .. } = *self.tyenv.prune(ty) {
-                                true
-                            } else {
-                                false
-                            }
-                        },
+                        HashEntry::Kwsplat(ty) => self.tyenv.is_keyword_hash(ty),
                         HashEntry::Pair(..) => false,
                     }
                 });
 
                 let hash_ty = if is_keyword_hash {
                     let mut keywords = Vec::new();
+                    let mut splat_ty = None;
 
                     for entry in entries {
                         match entry {
                             HashEntry::Symbol(Id(_, key), value) => keywords.push((key, value)),
-                            HashEntry::Kwsplat(kw_ty) => {
-                                if let Type::KeywordHash { keywords: ref splat_keywords, .. } = *self.tyenv.prune(kw_ty) {
-                                    for &(ref key, value) in splat_keywords {
-                                        keywords.push((key.clone(), value));
-                                    }
-                                } else {
-                                    panic!()
+                            HashEntry::Kwsplat(kw_ty) => match self.tyenv.to_keyword_hash(kw_ty) {
+                                Some(&Type::KeywordHash { keywords: ref splat_keywords, splat, .. }) => {
+                                    keywords.extend(splat_keywords.iter().cloned());
+                                    splat_ty = match (splat_ty, splat) {
+                                        (None, None) => None,
+                                        (Some(t), None) | (None, Some(t)) => Some(t),
+                                        (Some(a), Some(b)) => Some(self.tyenv.union(loc, a, b)),
+                                    };
                                 }
+                                _ => panic!("should not happen"),
                             },
-                            _ => panic!(),
+                            _ => panic!("should not happen"),
                         }
                     }
 
-                    self.tyenv.keyword_hash(loc.clone(), keywords)
+                    self.tyenv.keyword_hash(loc.clone(), keywords, splat_ty)
                 } else {
                     let (key_ty, value_ty) =
                         entries.into_iter().map(|hash_entry| {
@@ -1657,8 +1662,27 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                                     (self.tyenv.instance0(sym_loc, self.env.object.Symbol), value),
                                 HashEntry::Pair(key, value) =>
                                     (key, value),
-                                HashEntry::Kwsplat(_) =>
-                                    panic!("TODO"),
+                                HashEntry::Kwsplat(ty) => {
+                                    match *self.tyenv.prune(ty) {
+                                        Type::KeywordHash { ref keywords, ref loc, splat, .. } =>
+                                            (self.tyenv.instance0(loc.clone(), self.env.object.Symbol),
+                                                keywords.iter()
+                                                    .map(|&(_,v)| v)
+                                                    .concat(splat)
+                                                    .fold1(|a, b| self.tyenv.union(loc, a, b))
+                                                    .unwrap_or_else(|| self.tyenv.new_var(loc.clone()))),
+                                        Type::Instance { class, ref type_parameters, .. }
+                                                if class == self.env.object.hash_class() =>
+                                            (type_parameters[0], type_parameters[1]),
+                                        _ => {
+                                            self.error("TODO - cannot splat this", &[
+                                                Detail::Loc(&self.tyenv.describe(ty), ty.loc()),
+                                            ]);
+                                            (self.tyenv.new_var(ty.loc().clone()),
+                                                self.tyenv.new_var(ty.loc().clone()))
+                                        }
+                                    }
+                                }
                             }
                         }).fold1(|(k1, v1), (k2, v2)|
                             (self.tyenv.union(loc, k1, k2), self.tyenv.union(loc, v1, v2))

@@ -24,6 +24,7 @@ pub enum ArgError {
     TooManyArguments(Loc),
     MissingKeyword(String),
     UnknownKeyword(String),
+    UnexpectedSplat(Loc),
 }
 
 #[derive(Debug)]
@@ -60,7 +61,7 @@ fn consume_remaining_keywords<'a, 'ty: 'a, 'object: 'ty>(
 }
 
 enum KeywordHashArgument<'a, 'ty: 'a, 'object: 'ty> {
-    Keywords(&'a [(String, &'ty Type<'ty, 'object>)]),
+    Keywords(&'a [(String, &'ty Type<'ty, 'object>)], Option<&'ty Type<'ty, 'object>>),
     Hash(&'ty Type<'ty, 'object>),
     None
 }
@@ -84,9 +85,9 @@ fn keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
 
     if let Some(&CallArg::Pass(_, ty)) = args.last() {
         match *tyenv.prune(ty) {
-            Type::KeywordHash { ref keywords, .. } => {
+            Type::KeywordHash { ref keywords, splat, .. } => {
                 args.consume_back();
-                KeywordHashArgument::Keywords(keywords)
+                KeywordHashArgument::Keywords(keywords, splat)
             }
             Type::Instance { ref class, .. } => {
                 if class.is_a(tyenv.object.hash_class()) {
@@ -117,7 +118,7 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
     };
 
     match keyword_hash_argument(tyenv, prototype_args, args) {
-        KeywordHashArgument::Keywords(ref keywords) => {
+        KeywordHashArgument::Keywords(keywords, splat) => {
             let mut keywords = keywords.iter().cloned().collect::<HashMap<_,_>>();
             let mut kwrest_ty = None;
 
@@ -151,14 +152,23 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
                 for (_, passed_ty) in keywords {
                     match_argument(kwrest_ty, passed_ty, result);
                 }
+
+                if let Some(splat_ty) = splat {
+                    match_argument(kwrest_ty, splat_ty, result);
+                }
             } else {
                 let unknown_keywords = keywords.iter().map(|(name,_)| ArgError::UnknownKeyword(name.clone()));
                 result.errors.extend(unknown_keywords);
+
+                if let Some(splat_ty) = splat {
+                    result.errors.push(ArgError::UnexpectedSplat(splat_ty.loc().clone()));
+                }
             }
         }
         KeywordHashArgument::Hash(ref hash_ty) => {
             let mut potential_keywords = Vec::new();
             let mut keyword_hash_loc = kw_loc.clone();
+            let mut kwrest_ty = None;
 
             loop {
                 match prototype_args.last() {
@@ -170,16 +180,15 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
 
                         potential_keywords.push((name.clone(), proto_ty));
                     }
-                    Some(&Arg::Kwrest { .. }) => {
-                        // TODO need to match the value type of the hash
-                        // against the type of the kwrest arg
+                    Some(&Arg::Kwrest { ty: proto_ty, .. }) => {
                         prototype_args.consume_back();
+                        kwrest_ty = Some(proto_ty);
                     }
                     _ => break
                 }
             }
 
-            let proto_hash_ty = tyenv.keyword_hash(keyword_hash_loc, potential_keywords);
+            let proto_hash_ty = tyenv.keyword_hash(keyword_hash_loc, potential_keywords, kwrest_ty);
 
             result.matches.push((proto_hash_ty, hash_ty));
         }

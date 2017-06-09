@@ -4,7 +4,7 @@ use ast::{Loc, Node};
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
 use immutable_map::TreeMap;
-use util::Or;
+use util::{Or, IterExt};
 use itertools::Itertools;
 
 pub type TypeVarId = usize;
@@ -108,10 +108,13 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         })
     }
 
-    pub fn keyword_hash(&self, loc: Loc, keywords: Vec<(String, &'ty Type<'ty, 'object>)>) -> &'ty Type<'ty, 'object> {
+    pub fn keyword_hash(&self, loc: Loc, keywords: Vec<(String, &'ty Type<'ty, 'object>)>, splat: Option<&'ty Type<'ty, 'object>>)
+        -> &'ty Type<'ty, 'object>
+    {
         self.alloc(Type::KeywordHash {
             loc: loc,
             keywords: keywords,
+            splat: splat,
             id: self.new_id(),
         })
     }
@@ -540,7 +543,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             Type::TypeParameter { ref name, .. } => {
                 write!(buffer, "type parameter {}", name).unwrap();
             },
-            Type::KeywordHash { ref keywords, .. } => {
+            Type::KeywordHash { ref keywords, splat, .. } => {
                 let mut print_comma = false;
 
                 write!(buffer, "{{").unwrap();
@@ -550,6 +553,12 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                     write!(buffer, "{}: ", kw_name).unwrap();
                     self.describe_rec(kw_ty, buffer);
                     print_comma = true;
+                }
+
+                if let Some(splat) = splat {
+                    if print_comma { write!(buffer, ", ").unwrap(); }
+                    write!(buffer, "**").unwrap();
+                    self.describe_rec(splat, buffer);
                 }
 
                 write!(buffer, "}}").unwrap();
@@ -569,14 +578,14 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
     pub fn degrade_to_instance(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
         match self.prune(ty) {
-            &Type::KeywordHash { id, ref loc, ref keywords } => {
+            &Type::KeywordHash { id, ref loc, ref keywords, splat } => {
                 let hash_class = self.object.hash_class();
 
                 // degrade keyword hash to instance type:
                 let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
                 let value_ty = keywords.iter().map(|&(_, keyword_ty)|
                     keyword_ty
-                ).fold1(|ty1, ty2|
+                ).concat(splat).fold1(|ty1, ty2|
                     self.union(loc, ty1, ty2)
                 ).unwrap_or_else(||
                     self.new_var(loc.clone())
@@ -682,6 +691,33 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             _ => false,
         }
     }
+
+    pub fn to_keyword_hash(&self, ty: &'ty Type<'ty, 'object>) -> Option<&'ty Type<'ty, 'object>> {
+        match self.prune(ty) {
+            kw_ty@&Type::KeywordHash { .. } => Some(kw_ty),
+            &Type::Instance { class, ref type_parameters, .. }
+                if class.is_a(self.object.hash_class()) =>
+                    match *self.prune(type_parameters[0]) {
+                        Type::Instance { class, .. } if class == self.object.Symbol =>
+                            Some(self.keyword_hash(ty.loc().clone(), vec![], Some(type_parameters[1]))),
+                        _ => None,
+                    },
+            _ => None,
+        }
+    }
+
+    pub fn is_keyword_hash(&self, ty: &'ty Type<'ty, 'object>) -> bool {
+        match *self.prune(ty) {
+            Type::KeywordHash { .. } => true,
+            Type::Instance { class, ref type_parameters, .. }
+                if class.is_a(self.object.hash_class()) =>
+                    match *self.prune(type_parameters[0]) {
+                        Type::Instance { class, .. } if class == self.object.Symbol => true,
+                        _ => false,
+                    },
+            _ => false,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -711,6 +747,7 @@ pub enum Type<'ty, 'object: 'ty> {
     KeywordHash {
         loc: Loc,
         keywords: Vec<(String, &'ty Type<'ty, 'object>)>,
+        splat: Option<&'ty Type<'ty, 'object>>,
         // keyword hash types can degrade to normal hash instances
         // when they do, there will be an entry in the instance_map for this
         // id:
