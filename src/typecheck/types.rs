@@ -204,6 +204,28 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (&Type::Instance { .. }, &Type::KeywordHash { .. }) => {
                 self.compatible(to, self.degrade_to_instance(from))
             },
+            (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
+                if !class.is_a(self.object.hash_class()) {
+                    return Err((to, from));
+                }
+
+                let key_ty = type_parameters[0];
+                let value_ty = type_parameters[1];
+
+                match *self.prune(key_ty) {
+                    Type::Instance { class, .. } if class.is_a(self.object.Symbol) => {
+                        // ok!
+                    },
+                    _ => return Err((to, from)),
+                }
+
+                keywords.iter()
+                    .map(|&(_, kw_ty)| kw_ty)
+                    .concat(splat)
+                    .fold(Ok(()), |res, ty| {
+                        res.and_then(|()| self.compatible(ty, value_ty))
+                    })
+            }
             (&Type::Proc { proto: ref to_proto, .. }, &Type::Proc { proto: ref from_proto, .. }) => {
                 self.compatible_prototype(to_proto, from_proto).unwrap_or(Err((to, from)))
             }
