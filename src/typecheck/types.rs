@@ -170,13 +170,11 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 }
 
                 if to_tp.len() > 0 {
-                    // typedruby has no covariance, so we simply unify here
-                    // rather than checking compatibility:
-                    match self.unify_slice(to_tp, from_tp) {
-                        None => Err((to, from)),
-                        Some(e@Err(..)) => e,
-                        Some(Ok(())) => Ok(())
-                    }
+                    // because an object could be mutated after coercion, we
+                    // require invariance in type parameters:
+                    to_tp.iter().zip(from_tp).fold(Ok(()), |res, (to_ty, from_ty)|
+                        res.and_then(|()| self.compatible(to_ty, from_ty))
+                           .and_then(|()| self.compatible(from_ty, to_ty)))
                 } else {
                     Ok(())
                 }
