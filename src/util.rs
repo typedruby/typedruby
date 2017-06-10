@@ -29,13 +29,13 @@ impl<L, R> Or<L, R> {
     }
 }
 
-pub struct ConcatIter<I: Sized, J: Sized> {
+pub struct ConcatIter<I, J> {
     i: I,
     j: J,
 }
 
 impl<I, J, T> Iterator for ConcatIter<I, J>
-    where I: Sized + Iterator<Item=T>, J: Sized + Iterator<Item=T>
+    where I: Iterator<Item=T>, J: Iterator<Item=T>
 {
     type Item = T;
 
