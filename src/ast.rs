@@ -144,7 +144,7 @@ pub enum Node {
     Postexe         (Loc,   Option<Rc<Node>>),
     Preexe          (Loc,   Option<Rc<Node>>),
     Procarg0        (Loc,   Rc<Node>),
-    Prototype       (Loc,   Option<Rc<Node>>, Rc<Node>, Option<Rc<Node>>),
+    Prototype       (Loc,   Option<Rc<Node>>, Option<Rc<Node>>, Option<Rc<Node>>),
     Rational        (Loc,   String),
     Redo            (Loc),
     Regexp          (Loc,   Vec<Rc<Node>>, Option<Rc<Node>>),

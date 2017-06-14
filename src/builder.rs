@@ -156,6 +156,13 @@ fn join_exprs(exprs: &[Rc<Node>]) -> Loc {
     a.loc().join(b.loc())
 }
 
+fn join_option_exprs(nodes: &[Option<Rc<Node>>]) -> Option<Loc> {
+    nodes.iter().filter_map(Option::as_ref).map(|n| n.loc()).fold(None, |a, b| {
+        a.map(|a| a.join(b)).or_else(|| Some(b.clone()))
+    })
+}
+
+
 enum CallType {
     Send,
     CSend,
@@ -363,9 +370,13 @@ impl<'a> Builder<'a> {
         Node::Arg(loc, id)
     }
 
-    pub fn args(&mut self, begin: Option<Token>, args: Vec<Rc<Node>>, end: Option<Token>, check_args: bool) -> Node {
+    pub fn args(&mut self, begin: Option<Token>, args: Vec<Rc<Node>>, end: Option<Token>, check_args: bool) -> Option<Node> {
         if check_args {
             self.check_duplicate_args(args.as_slice());
+        }
+
+        if begin.is_none() && args.is_empty() && end.is_none() {
+            return None;
         }
 
         let loc = self.collection_map(begin, args.as_slice(), end).unwrap_or(
@@ -373,7 +384,7 @@ impl<'a> Builder<'a> {
             Loc { file: self.current_file(), begin_pos: 0, end_pos: 0 }
         );
 
-        Node::Args(loc, args)
+        Some(Node::Args(loc, args))
     }
 
     pub fn array(&self, begin: Option<Token>, elements: Vec<Rc<Node>>, end: Option<Token>) -> Node {
@@ -1184,16 +1195,8 @@ impl<'a> Builder<'a> {
     }
 
     pub fn prototype(&self, genargs: Option<Rc<Node>>, args: Option<Rc<Node>>, return_type: Option<Rc<Node>>) -> Node {
-        let args = args.unwrap();
-        let mut loc = args.loc().clone();
-
-        if let Some(ref genargs_) = genargs {
-            loc = loc.join(genargs_.loc());
-        }
-
-        if let Some(ref return_type_) = return_type {
-            loc = loc.join(return_type_.loc());
-        }
+        let loc = join_option_exprs(&[genargs.clone(), args.clone(), return_type.clone()])
+            .expect("at least one argument to prototype must be Some");
 
         Node::Prototype(loc, genargs, args, return_type)
     }
