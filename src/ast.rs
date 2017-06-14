@@ -27,6 +27,18 @@ pub struct Loc {
     pub end_pos: usize,
 }
 
+#[derive(Clone)]
+pub struct Coords {
+    pub line: usize,
+    pub col: usize,
+}
+
+impl fmt::Display for Coords {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}:{}", self.line, self.col)
+    }
+}
+
 #[derive(Debug)]
 #[derive(PartialEq)]
 #[repr(C)]
@@ -62,6 +74,19 @@ impl Loc {
             begin_pos: min(self.begin_pos, other.begin_pos),
             end_pos: max(self.end_pos, other.end_pos),
         }
+    }
+
+    fn coords_for_pos(&self, pos: usize) -> Coords {
+        let line = self.file.line_for_pos(pos);
+        Coords { line: line.number, col: pos - line.begin_pos + 1 }
+    }
+
+    pub fn begin(&self) -> Coords {
+        self.coords_for_pos(self.begin_pos)
+    }
+
+    pub fn end(&self) -> Coords {
+        self.coords_for_pos(self.end_pos)
     }
 }
 
