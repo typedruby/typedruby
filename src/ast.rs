@@ -57,9 +57,15 @@ pub struct Diagnostic {
     pub data: Option<String>,
 }
 
+impl fmt::Display for Loc {
+    fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
+        write!(f, "{}:{}-{}", self.file.filename.display(), self.begin(), self.end())
+    }
+}
+
 impl fmt::Debug for Loc {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
-        write!(f, "{}:{}-{}", self.file.filename.display(), self.begin_pos, self.end_pos)
+        (self as &fmt::Display).fmt(f)
     }
 }
 
