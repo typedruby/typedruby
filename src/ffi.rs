@@ -98,11 +98,8 @@ struct CDiagnostic {
     end_pos: size_t,
 }
 
-include!("ffi_builder.rsinc");
+include!("ffi_builder.rs");
 
-#[link(name="rubyparser")]
-#[cfg_attr(target_os="linux", link(name="stdc++"))]
-#[cfg_attr(target_os="macos", link(name="c++"))]
 extern "C" {
     fn rbdriver_typedruby24_new(source: *const u8, source_length: size_t, builder: *const BuilderInterface) -> *mut DriverPtr;
     fn rbdriver_typedruby24_free(driver: *mut DriverPtr);
@@ -232,7 +229,7 @@ impl Driver {
                 diag
             };
 
-            let loc = Loc { 
+            let loc = Loc {
                 file: self.current_file.clone(),
                 begin_pos: cdiag.begin_pos,
                 end_pos: cdiag.end_pos

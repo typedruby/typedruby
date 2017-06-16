@@ -8,4 +8,5 @@ set -eu
 [ -f /etc/github/in-container ] && exit 0
 
 cd "$(dirname "$0")/.."
+make all
 docker build -t ruby_parser-build .

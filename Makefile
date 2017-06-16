@@ -1,38 +1,23 @@
-CXXFLAGS += -Wall -Wextra -pedantic -std=c++14 -I include -fPIC
-
-ifeq ($(PROFILE),release)
-	CXXFLAGS += -O3
-else
-	CXXFLAGS += -ggdb3 -O0
-endif
-
-OBJECTS = \
-	src/capi.o \
-	src/lexer.o \
-	src/literal.o \
-	src/driver.o \
-	src/state_stack.o \
-	src/token.o \
-	src/grammars/typedruby24.o \
-
 RAGEL ?= ragel
 BISON ?= bison
-
-LIB_PATH ?= librubyparser.a
 
 .SUFFIXES:
 .PHONY: all clean
 
-all: $(LIB_PATH) src/ffi_builder.rsinc
+all: cc/lexer.cc \
+	cc/grammars/typedruby24.cc \
+	include/ruby_parser/diagnostic_class.hh \
+	src/ffi_builder.rs \
+	src/diagnostics.rs
 
 clean:
-	rm -f librubyparser.a $(OBJECTS) src/grammars/*.cc src/grammars/*.hh
-
-$(LIB_PATH): $(OBJECTS)
-	$(AR) rcs $@ $^
-
-%.o: %.cc include/ruby_parser/*.hh src/grammars/typedruby24.hh
-	$(CXX) -o $@ $(CXXFLAGS) -c $<
+	rm -f \
+	cc/lexer.cc \
+	cc/grammars/*.cc \
+	cc/grammars/*.hh \
+	include/ruby_parser/diagnostic_class.hh \
+	src/ffi_builder.rs \
+	src/diagnostics.rs
 
 %.cc: %.rl
 	$(RAGEL) -o $@ -C $<
@@ -40,11 +25,11 @@ $(LIB_PATH): $(OBJECTS)
 %.cc %.hh: %.ypp
 	$(BISON) --defines=$*.hh -o $*.cc $*.ypp
 
-src/ffi_builder.rsinc: include/ruby_parser/builder.hh
+src/ffi_builder.rs: include/ruby_parser/builder.hh
 	script/mkbuilder $< > $@
 
-.clang_complete: Makefile
-	echo $(CXXFLAGS) > $@
+src/diagnostics.rs: script/mkdiagnostics
+	script/mkdiagnostics rs > $@
 
-# Do not remove generated Bison output
-.PRECIOUS: %.cc %.hh
+include/ruby_parser/diagnostic_class.hh: script/mkdiagnostics
+	script/mkdiagnostics cpp > $@
