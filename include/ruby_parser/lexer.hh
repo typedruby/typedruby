@@ -13,7 +13,7 @@
 #include "token.hh"
 #include "state_stack.hh"
 #include "pool.hh"
-#include "optional.hpp"
+#include "optional.hh"
 
 namespace ruby_parser {
   enum class ruby_version {
