@@ -112,6 +112,12 @@ enum Lhs<'ty, 'object: 'ty> {
     Send(Loc, &'ty Type<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
 }
 
+#[derive(Debug)]
+enum TupleElement<'ty, 'object: 'ty> {
+    Value(&'ty Type<'ty, 'object>),
+    Splat(&'ty Type<'ty, 'object>),
+}
+
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     pub fn process(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) {
         let class_type_parameters = class.type_parameters().iter().map(|&Id(ref loc, _)|
@@ -573,14 +579,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn process_array_tuple(&self, loc: &Loc, exprs: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
-        use slice_util::View;
-
-        #[derive(Debug)]
-        enum TupleElement<'ty, 'object: 'ty> {
-            Value(&'ty Type<'ty, 'object>),
-            Splat(&'ty Type<'ty, 'object>),
-        };
-
         let mut elements = Vec::new();
         let mut result = EvalResult::Ok((), locals);
 
@@ -626,7 +624,16 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
 
         result.map(|()| {
-            let mut v = View(elements.as_slice());
+            self.tuple_from_elements(loc.clone(), &elements)
+        }).into_computation()
+    }
+
+    fn tuple_from_elements(&self, loc: Loc, elements: &[TupleElement<'ty, 'object>]) -> &'ty Type<'ty, 'object> {
+        use slice_util::View;
+
+        assert!(!elements.is_empty());
+
+        let mut v = View(elements);
 
             let mut lead_types = Vec::new();
             let mut post_types = Vec::new();
@@ -651,12 +658,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             };
 
             self.tyenv.alloc(Type::Tuple {
-                loc: loc.clone(),
+            loc: loc,
                 lead: lead_types,
                 splat: splat_type,
                 post: post_types,
             })
-        }).into_computation()
     }
 
     fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, mut type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
@@ -1116,6 +1122,22 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let (proto_block, proto_args) = match proto_args.last() {
                         Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
                         Some(_) | None => (None, proto_args.as_slice()),
+                    };
+
+                    let args = match proto_args.first() {
+                        Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
+                            let tuple_elements = args.iter().map(|call_arg| match *call_arg {
+                                CallArg::Pass(_, ty) => TupleElement::Value(ty),
+                                CallArg::Splat(_, ty) => TupleElement::Splat(ty),
+                            }).collect::<Vec<_>>();
+
+                            let args_loc = args[0].loc().join(args.last().unwrap().loc());
+
+                            let arg_ty = self.tuple_from_elements(args_loc.clone(), &tuple_elements);
+
+                            vec![CallArg::Pass(args_loc, arg_ty)]
+                        }
+                        _ => args.clone(),
                     };
 
                     let match_result = call::match_prototype_with_invocation(&self.tyenv, proto_args, &args);

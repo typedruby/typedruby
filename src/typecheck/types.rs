@@ -888,4 +888,12 @@ impl<'ty, 'object> Arg<'ty, 'object> {
             Arg::Kwrest { ref loc, .. } => loc,
         }
     }
+
+    pub fn unwrap_procarg0(&self) -> &Self {
+        if let Arg::Procarg0 { ref arg, .. } = *self {
+            &**arg
+        } else {
+            self
+        }
+    }
 }
