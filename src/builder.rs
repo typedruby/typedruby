@@ -379,10 +379,7 @@ impl<'a> Builder<'a> {
             return None;
         }
 
-        let loc = self.collection_map(begin, args.as_slice(), end).unwrap_or(
-            // FIXME - we don't have any location information to work with here:
-            Loc { file: self.current_file(), begin_pos: 0, end_pos: 0 }
-        );
+        let loc = self.collection_map(begin, args.as_slice(), end).unwrap();
 
         Some(Node::Args(loc, args))
     }
