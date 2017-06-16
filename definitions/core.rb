@@ -51,6 +51,8 @@ module Kernel
   def frozen? => Boolean; end
 
   def ===(:any other) => Boolean; end
+
+  def object_id => Integer; end
 end
 
 class ENVClass
@@ -717,6 +719,8 @@ class String < Object
 
   def chomp => String; end
 
+  def chomp! => ~String; end
+
   def split(String delim) => [String]; end
 
   def unpack(String format) => [:any]; end
@@ -786,6 +790,10 @@ class Array::[ElementType] < Object
   def [](Integer index) => ~ElementType; end
 
   def []=(Integer index, ElementType value) => ElementType; end
+
+  def fetch(Integer index) => ElementType; end
+
+  def to_h[K, V : ElementType = [K, V]] => { K => V }; end
 end
 
 class Hash::[KeyType, ValueType] < Object

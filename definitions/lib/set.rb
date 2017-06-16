@@ -11,3 +11,8 @@ class Set::[ElementType]
 
   def include?(ElementType element) => Boolean; end
 end
+
+# TODO to_set is actually defined on Enumerable:
+class Array::[ElementType]
+  def to_set => Set::[ElementType]; end
+end
