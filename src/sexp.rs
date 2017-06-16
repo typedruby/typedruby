@@ -62,9 +62,15 @@ fn escape_rb(f: &mut SexpFormatter, s: &String) -> fmt::Result {
 
 impl<'a, 'b: 'a> SexpNode<'a, 'b> {
     pub fn field(&mut self, value: &Sexp) -> &mut SexpNode<'a, 'b> {
+        self.field_with(|fmt| value.sexp(fmt))
+    }
+
+    pub fn field_with<F>(&mut self, f: F) -> &mut SexpNode<'a, 'b>
+        where F: FnOnce(&mut SexpFormatter) -> fmt::Result
+    {
         self.result = self.result.and_then(|_| {
             self.fmt.indent += 1;
-            let res = value.sexp(self.fmt);
+            let res = f(self.fmt);
             self.fmt.indent -= 1;
             res
         });
@@ -195,6 +201,18 @@ impl Sexp for Option<Id> {
     }
 }
 
+fn args_sexp(node: Option<Rc<Node>>, w: &mut SexpFormatter) -> fmt::Result {
+    match node {
+        None => {
+            if w.indent > 0 {
+                write!(w, "\n")?;
+            }
+            w.new_node("args").finish()
+        }
+        Some(node) => node.sexp(w),
+    }
+}
+
 impl Sexp for Node {
     fn sexp(&self, __arg_0: &mut SexpFormatter) -> fmt::Result {
         match (&*self,) {
@@ -249,13 +267,13 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Block(ref __self_0, ref __self_1, ref __self_2,
-                          ref __self_3),) => {
+            (&Node::Block(ref loc, ref send, ref block_args,
+                          ref block_body),) => {
                 let mut builder = __arg_0.new_node("block");
-                let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
-                let _ = builder.field(__self_3);
+                let _ = builder.field(loc);
+                let _ = builder.field(send);
+                let _ = builder.field_with(|fmt| args_sexp(block_args.clone(), fmt));
+                let _ = builder.field(block_body);
                 builder.finish()
             }
             (&Node::Blockarg(ref __self_0, ref __self_1),) => {
@@ -356,13 +374,12 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Def(ref __self_0, ref __self_1, ref __self_2,
-                        ref __self_3),) => {
+            (&Node::Def(ref loc, ref id, ref args, ref body),) => {
                 let mut builder = __arg_0.new_node("def");
-                let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
-                let _ = builder.field(__self_3);
+                let _ = builder.field(loc);
+                let _ = builder.field(id);
+                let _ = builder.field_with(|fmt| args_sexp(args.clone(), fmt));
+                let _ = builder.field(body);
                 builder.finish()
             }
             (&Node::Defined(ref __self_0, ref __self_1),) => {
@@ -371,14 +388,14 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::Defs(ref __self_0, ref __self_1, ref __self_2,
-                         ref __self_3, ref __self_4),) => {
+            (&Node::Defs(ref loc, ref definee, ref id,
+                         ref args, ref body),) => {
                 let mut builder = __arg_0.new_node("defs");
-                let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
-                let _ = builder.field(__self_3);
-                let _ = builder.field(__self_4);
+                let _ = builder.field(loc);
+                let _ = builder.field(definee);
+                let _ = builder.field(id);
+                let _ = builder.field_with(|fmt| args_sexp(args.clone(), fmt));
+                let _ = builder.field(body);
                 builder.finish()
             }
             (&Node::DString(ref __self_0, ref __self_1),) => {
