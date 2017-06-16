@@ -232,7 +232,9 @@ fn match_required_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
         PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
 {
     while let Some(..) = args.peek() {
-        if let Some(&Arg::Required { ty: proto_ty, .. }) = prototype_args.peek() {
+        let proto_arg = prototype_args.peek().map(|a| a.unwrap_procarg0());
+
+        if let Some(&Arg::Required { ty: proto_ty, .. }) = proto_arg {
             match_prototype_argument(proto_ty, prototype_args, args, result)
         } else {
             break
@@ -248,7 +250,9 @@ fn match_optional_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
         PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
 {
     while let Some(..) = args.peek() {
-        if let Some(&Arg::Optional { ty: proto_ty, .. }) = prototype_args.peek() {
+        let proto_arg = prototype_args.peek().map(|a| a.unwrap_procarg0());
+
+        if let Some(&Arg::Optional { ty: proto_ty, .. }) = proto_arg {
             match_prototype_argument(proto_ty, prototype_args, args, result)
         } else {
             break
