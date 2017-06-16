@@ -185,7 +185,10 @@ impl<'ty, 'object> Locals<'ty, 'object> {
 
     pub fn refine(&self, name: String, ty: &'ty Type<'ty, 'object>) -> Locals<'ty, 'object> {
         match self.get_var_direct(&name) {
-            LocalEntry::Unbound => panic!("should not happen"),
+            LocalEntry::Unbound => {
+                // TODO - can't refine type of variable not in the immediate scope
+                self.clone()
+            }
             LocalEntry::Bound(_) => self.insert_var(name, LocalEntry::Bound(ty)),
             LocalEntry::Pinned(_) => self.clone(),
             LocalEntry::ConditionallyPinned(_) => self.clone(),
