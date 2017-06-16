@@ -5,7 +5,7 @@
 #include <utility>
 
 #include "token.hh"
-#include "optional.hpp"
+#include "optional.hh"
 
 namespace ruby_parser {
   enum class literal_type {
