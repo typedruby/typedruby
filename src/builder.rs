@@ -585,7 +585,6 @@ impl<'a> Builder<'a> {
 
     pub fn block(&mut self, method_call: Option<Rc<Node>>, _begin: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let method_call = method_call.unwrap();
-        let args = args.unwrap();
 
         if let Node::Yield(ref loc, _) = *method_call {
             self.driver.error(Error::BlockGivenToYield, loc.clone());

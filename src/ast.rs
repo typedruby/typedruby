@@ -78,7 +78,7 @@ pub enum Node {
     Array           (Loc,   Vec<Rc<Node>>),
     Backref         (Loc,   String),
     Begin           (Loc,   Vec<Rc<Node>>),
-    Block           (Loc,   Rc<Node>, Rc<Node>, Option<Rc<Node>>),
+    Block           (Loc,   Rc<Node>, Option<Rc<Node>>, Option<Rc<Node>>),
     Blockarg        (Loc,   Option<Id>),
     BlockPass       (Loc,   Rc<Node>),
     Break           (Loc,   Vec<Rc<Node>>),
