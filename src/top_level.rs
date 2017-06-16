@@ -707,6 +707,12 @@ impl<'env, 'object> Eval<'env, 'object> {
                 // try to autoload this const, but ignore any errors
                 let _ = self.resolve_cpath(node);
             }
+            Node::ConstLhs(_, ref base, _) => {
+                if let Some(ref base) = *base {
+                    // try to autoload this const, but ignore any errors
+                    let _ = self.resolve_cpath(base);
+                }
+            }
             Node::Args(_, ref args) => {
                 for arg in args {
                     self.eval_node(arg);
