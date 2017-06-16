@@ -217,9 +217,3 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         self.update_vars(vars)
     }
 }
-
-impl<'ty, 'object> PartialEq for Locals<'ty, 'object> {
-    fn eq(&self, other: &Locals<'ty, 'object>) -> bool {
-        (&*self.0 as *const _) == (&*other.0 as *const _)
-    }
-}
