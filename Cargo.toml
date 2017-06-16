@@ -3,10 +3,21 @@ name = "ruby_parser"
 version = "0.1.0"
 authors = ["Hailey Somerville <hailey@hailey.lol>"]
 build = "build.rs"
+include = [
+	"cc/**/*.cc",
+	"cc/**/*.hh",
+	"include/**/*.hh",
+	"src/*.rs",
+	"Cargo.toml",
+	"build.rs",
+]
 
 [dependencies]
 libc = "0.2.0"
 onig = { version = "1.2", optional = true }
+
+[build-dependencies]
+gcc = "0.3"
 
 [features]
 default = []

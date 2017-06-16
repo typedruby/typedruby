@@ -1,17 +1,19 @@
-use std::env;
-use std::process;
-use std::process::Command;
+extern crate gcc;
 
 fn main() {
-    let out_dir = env::var("OUT_DIR").unwrap();
-
-    let mut cmd = Command::new("make");
-
-    cmd.env("LIB_PATH", out_dir.clone() + "/librubyparser.a");
-
-    if !cmd.status().unwrap().success() {
-        process::exit(1);
-    }
-
-    println!("cargo:rustc-link-search=native={}", out_dir);
+    gcc::Config::new()
+		.cpp(true)
+		.flag("-std=c++14")
+		.flag("-Wall")
+		.flag("-Wextra")
+		.flag("-Wpedantic")
+		.include("include")
+		.file("cc/capi.cc")
+		.file("cc/lexer.cc")
+		.file("cc/literal.cc")
+		.file("cc/driver.cc")
+		.file("cc/state_stack.cc")
+		.file("cc/token.cc")
+		.file("cc/grammars/typedruby24.cc")
+		.compile("librubyparser.a")
 }

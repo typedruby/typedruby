@@ -1,9 +1,6 @@
 /.cargo-in-container
 /librubyparser.a
 /main
-/src/lexer.cc
 /target
 *.o
 Cargo.lock
-/src/grammars/*.cc
-/src/grammars/*.hh
