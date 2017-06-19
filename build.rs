@@ -7,6 +7,7 @@ fn main() {
 		.flag("-Wall")
 		.flag("-Wextra")
 		.flag("-Wpedantic")
+		.flag("-Wno-unused-const-variable")
 		.include("include")
 		.file("cc/capi.cc")
 		.file("cc/lexer.cc")

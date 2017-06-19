@@ -1,6 +1,14 @@
 /.cargo-in-container
+/Cargo.lock
+/cc
+/include/ruby_parser/diagnostic_class.hh
 /librubyparser.a
-/main
+/src/diagnostics.rs
+/src/ffi_builder.rs
+/src/grammars/stack.hh
+/src/grammars/typedruby24.cc
+/src/grammars/typedruby24.hh
+/src/lexer.cc
 /target
+
 *.o
-Cargo.lock
