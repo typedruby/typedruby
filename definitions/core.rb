@@ -717,9 +717,9 @@ class String < Object
 
   def lines => [String]; end
 
-  def chomp => String; end
+  def chomp(String suffix = "") => String; end
 
-  def chomp! => ~String; end
+  def chomp!(String suffix = "") => ~String; end
 
   def split(String delim) => [String]; end
 
