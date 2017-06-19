@@ -732,6 +732,8 @@ class String < Object
   def to_sym => Symbol; end
 
   def intern => Symbol; end
+
+  def to_i => Integer; end
 end
 
 class Array::[ElementType] < Object
