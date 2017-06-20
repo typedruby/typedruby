@@ -700,7 +700,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::Block(_, ref send_node, ref block_args, ref block_body) => {
                 self.eval_node(send_node);
-                self.eval_node(block_args);
+                self.eval_maybe_node(block_args);
                 self.eval_maybe_node(block_body);
             }
             Node::Const(..) => {

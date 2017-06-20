@@ -93,7 +93,7 @@ impl AnnotationStatus {
 
 enum BlockArg {
     Pass { loc: Loc, node: Rc<Node> },
-    Literal { loc: Loc, args: Rc<Node>, body: Option<Rc<Node>> },
+    Literal { loc: Loc, args: Option<Rc<Node>>, body: Option<Rc<Node>> },
 }
 
 impl BlockArg {
@@ -128,29 +128,35 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let mut eval = Eval { env: env, tyenv: tyenv, scope: scope.clone(), type_context: type_context.clone() };
 
-        let (prototype_node, body) = match *node {
-            // just ignore method definitions that have no args or prototype:
-            Node::Def(_, _, None, _) => return,
-            Node::Defs(_, _, _, None, _) => return,
-
-            Node::Def(_, _, Some(ref proto), ref body) =>
-                (proto, body),
-            Node::Defs(_, _, _, Some(ref proto), ref body) =>
-                (proto, body),
+        let (id, prototype_node, body) = match *node {
+            Node::Def(_, ref id, ref proto, ref body) =>
+                (id, proto, body),
+            Node::Defs(_, _, ref id, ref proto, ref body) =>
+                (id, proto, body),
             _ =>
                 panic!("unknown node: {:?}", node),
         };
 
-        let (annotation_status, prototype, locals) =
-            eval.resolve_prototype(prototype_node, Locals::new(), &mut type_context, scope.clone());
+        let (annotation_status, prototype, locals) = {
+            let proto_node = prototype_node.as_ref().map(Rc::as_ref);
+            let proto_loc = proto_node.map(|n| n.loc().join(&id.0)).unwrap_or_else(|| id.0.clone());
+            eval.resolve_prototype(
+                &proto_loc,
+                proto_node,
+                Locals::new(),
+                &mut type_context,
+                scope.clone())
+        };
 
         match annotation_status {
             AnnotationStatus::Empty |
             AnnotationStatus::Untyped =>
                 return,
             AnnotationStatus::Partial => {
+                let loc = prototype_node.as_ref().expect("prototype node must exist when annotation status is partial").loc();
+
                 eval.error("Partial type signatures are not permitted in method definitions", &[
-                    Detail::Loc("all arguments and return value must be annotated", prototype_node.loc()),
+                    Detail::Loc("all arguments and return value must be annotated", loc),
                 ]);
                 return;
             },
@@ -361,7 +367,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 self.tyenv.alloc(Type::Proc {
                     loc: loc.clone(),
-                    proto: self.resolve_prototype(prototype, Locals::new(), &mut context, scope).1,
+                    proto: self.resolve_prototype(loc, Some(prototype), Locals::new(), &mut context, scope).1,
                 })
             },
             Node::TyClass(ref loc) => {
@@ -478,11 +484,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn resolve_prototype(&self, node: &Node, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
+    fn resolve_prototype(&self, proto_loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
         -> (AnnotationStatus, Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
     {
-        let (mut status, args_node, return_type) = match *node {
-            Node::Prototype(_, ref genargs, ref args, ref ret) => {
+        let (mut status, args_node, return_type) = match node {
+            Some(&Node::Prototype(_, ref genargs, ref args, ref ret)) => {
                 let mut status = AnnotationStatus::empty();
 
                 if let Some(ref genargs_) = *genargs {
@@ -513,36 +519,39 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     status.append_into(AnnotationStatus::Typed);
                 }
 
+                let args = args.as_ref().map(Rc::as_ref);
+
                 match *ret {
                     Some(ref type_node) =>
-                        (status.append(AnnotationStatus::Typed), &**args, self.resolve_type(type_node, &context, scope.clone())),
+                        (status.append(AnnotationStatus::Typed), args, self.resolve_type(type_node, &context, scope.clone())),
                     None =>
-                        (status.append(AnnotationStatus::Untyped), &**args, self.tyenv.new_var(node.loc().clone())),
+                        (status.append(AnnotationStatus::Untyped), args, self.tyenv.new_var(proto_loc.clone())),
                 }
             },
-            Node::Args(..) => {
-                (AnnotationStatus::Untyped, node, self.tyenv.new_var(node.loc().clone()))
+            Some(&Node::Args(..)) | None => {
+                (AnnotationStatus::Untyped, node, self.tyenv.new_var(proto_loc.clone()))
             },
             _ => panic!("unexpected {:?}", node),
-        };
-
-        let arg_nodes = if let Node::Args(_, ref arg_nodes) = *args_node {
-            arg_nodes
-        } else {
-            panic!("expected args_node to be Node::Args")
         };
 
         let mut args = Vec::new();
         let mut locals = locals;
 
-        for arg_node in arg_nodes {
-            let (arg_status, arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
-            status.append_into(arg_status);
-            args.push(arg);
-            locals = locals_;
-        }
+        match args_node {
+            Some(&Node::Args(_, ref arg_nodes)) => {
+                for arg_node in arg_nodes {
+                    let (arg_status, arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
+                    status.append_into(arg_status);
+                    args.push(arg);
+                    locals = locals_;
+                }
+            }
+            Some(_) =>
+                panic!("expected args_node to be Node::Args"),
+            None => {},
+        };
 
-        (status, Rc::new(Prototype::Typed { loc: node.loc().clone(), args: args, retn: ReturnType::Value(return_type) }), locals)
+        (status, Rc::new(Prototype::Typed { loc: proto_loc.clone(), args: args, retn: ReturnType::Value(return_type) }), locals)
     }
 
     fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
@@ -668,15 +677,17 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, mut type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
         match *impl_ {
             MethodImpl::Ruby { ref node, ref scope, .. } => {
-                let prototype_node = match **node {
-                    Node::Def(_, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
-                    Node::Defs(_, _, _, None, _) => return self.tyenv.any_prototype(loc.clone()),
-                    Node::Def(_, _, Some(ref proto), _) => proto,
-                    Node::Defs(_, _, _, Some(ref proto), _) => proto,
+                let (id, prototype_node) = match **node {
+                    Node::Def(_, ref id, ref proto, _) => (id, proto),
+                    Node::Defs(_, _, ref id, ref proto, _) => (id, proto),
                     _ => panic!("unexpected node in MethodEntry::Ruby: {:?}", node),
                 };
 
-                self.resolve_prototype(&prototype_node, Locals::new(), &mut type_context, scope.clone()).1
+                let prototype_node = prototype_node.as_ref().map(Rc::as_ref);
+
+                let prototype_loc = prototype_node.map(|n| n.loc().join(&id.0)).unwrap_or_else(|| id.0.clone());
+
+                self.resolve_prototype(&prototype_loc, prototype_node, Locals::new(), &mut type_context, scope.clone()).1
             }
             MethodImpl::AttrReader { ref ivar, .. } => {
                 Rc::new(match self.lookup_ivar(ivar, &type_context) {
@@ -1016,7 +1027,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 let mut block_type_context = self.type_context.clone();
 
-                let (_, block_prototype, block_locals) = self.resolve_prototype(args, block_locals, &mut block_type_context, self.scope.clone());
+                let (_, block_prototype, block_locals) = self.resolve_prototype(loc, args.as_ref().map(Rc::as_ref), block_locals, &mut block_type_context, self.scope.clone());
 
                 let block_return_type = if let Prototype::Typed { retn, .. } = *block_prototype {
                     retn
@@ -1587,12 +1598,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 self.process_send(loc, recv, mid, args, block, locals)
             }
             Node::Block(ref loc, ref send, ref block_args, ref block_body) => {
-                if let Node::Send(_, ref recv, ref mid, ref args) = **send {
-                    let mut block_loc = block_args.loc().clone();
-
-                    if let Some(ref block_body) = *block_body {
-                        block_loc = block_loc.join(block_body.loc());
-                    }
+                if let Node::Send(ref send_loc, ref recv, ref mid, ref args) = **send {
+                    let mut block_loc = loc.clone();
+                    block_loc.begin_pos = send_loc.end_pos + 1;
 
                     let block = BlockArg::Literal { loc: block_loc, args: block_args.clone(), body: block_body.clone() };
 
