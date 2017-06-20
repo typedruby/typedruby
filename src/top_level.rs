@@ -603,6 +603,12 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::Defs(_, ref singleton, Id(_, ref name), _, ref body) => {
                 match self.resolve_static(singleton) {
+                    Ok(&RubyObject::Object { .. }) => {
+                        self.error("Defs on Object", &[
+                            Detail::Loc("here", singleton.loc()),
+                        ]);
+                        // panic!("Defs on Object");
+                    }
                     Ok(metaclass) => {
                         let metaclass = self.env.object.metaclass(metaclass);
                         self.decl_method(metaclass, name, node, MethodVisibility::Public);
