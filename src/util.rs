@@ -1,5 +1,3 @@
-use std::iter::Fuse;
-
 pub enum Or<L, R> {
     Left(L),
     Right(R),
@@ -28,28 +26,3 @@ impl<L, R> Or<L, R> {
         }
     }
 }
-
-pub struct ConcatIter<I, J> {
-    i: I,
-    j: J,
-}
-
-impl<I, J, T> Iterator for ConcatIter<I, J>
-    where I: Iterator<Item=T>, J: Iterator<Item=T>
-{
-    type Item = T;
-
-    fn next(&mut self) -> Option<T> {
-        self.i.next().or_else(|| self.j.next())
-    }
-}
-
-pub trait IterExt : Iterator {
-    fn concat<J>(self, other: J) -> ConcatIter<Fuse<Self>, J::IntoIter>
-        where Self: Sized, J: IntoIterator<Item=Self::Item>
-    {
-        ConcatIter { i: self.fuse(), j: other.into_iter() }
-    }
-}
-
-impl<T: ?Sized> IterExt for T where T: Iterator {}
