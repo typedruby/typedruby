@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::collections::HashMap;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, Type, Prototype, ReturnType};
+use typecheck::types::{Arg, TypeEnv, Type, Prototype, ReturnType, KwsplatResult};
 use object::{Scope, RubyObject, MethodImpl};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -1686,33 +1686,28 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     self.tyenv.keyword_hash(loc.clone(), keywords, splat_ty)
                 } else {
                     let (key_ty, value_ty) =
-                        entries.into_iter().map(|hash_entry| {
+                        entries.into_iter().filter_map(|hash_entry| {
                             match hash_entry {
                                 HashEntry::Symbol(Id(sym_loc, _), value) =>
-                                    (self.tyenv.instance0(sym_loc, self.env.object.Symbol), value),
+                                    Some((self.tyenv.instance0(sym_loc, self.env.object.Symbol), value)),
                                 HashEntry::Pair(key, value) =>
-                                    (key, value),
-                                HashEntry::Kwsplat(ty) => {
-                                    match *self.tyenv.prune(ty) {
-                                        Type::KeywordHash { ref keywords, ref loc, splat, .. } =>
-                                            (self.tyenv.instance0(loc.clone(), self.env.object.Symbol),
-                                                keywords.iter()
-                                                    .map(|&(_,v)| v)
-                                                    .concat(splat)
-                                                    .fold1(|a, b| self.tyenv.union(loc, a, b))
-                                                    .unwrap_or_else(|| self.tyenv.new_var(loc.clone()))),
-                                        Type::Instance { class, ref type_parameters, .. }
-                                                if class == self.env.object.hash_class() =>
-                                            (type_parameters[0], type_parameters[1]),
-                                        _ => {
-                                            self.error("TODO - cannot splat this", &[
+                                    Some((key, value)),
+                                HashEntry::Kwsplat(ty) =>
+                                    match self.tyenv.kwsplat_to_hash(ty) {
+                                        KwsplatResult::Err(err_ty) => {
+                                            self.error(&format!("Cannot keyword splat {}", self.tyenv.describe(err_ty)), &[
                                                 Detail::Loc(&self.tyenv.describe(ty), ty.loc()),
                                             ]);
-                                            (self.tyenv.new_var(ty.loc().clone()),
-                                                self.tyenv.new_var(ty.loc().clone()))
+                                            None
                                         }
-                                    }
-                                }
+                                        KwsplatResult::None => {
+                                            Some((self.tyenv.instance0(ty.loc().clone(), self.env.object.Symbol),
+                                                self.tyenv.new_var(ty.loc().clone())))
+                                        }
+                                        KwsplatResult::Ok(value_ty) =>
+                                            Some((self.tyenv.instance0(ty.loc().clone(), self.env.object.Symbol),
+                                                value_ty))
+                                    },
                             }
                         }).fold1(|(k1, v1), (k2, v2)|
                             (self.tyenv.union(loc, k1, k2), self.tyenv.union(loc, v1, v2))
