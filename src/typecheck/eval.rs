@@ -11,7 +11,6 @@ use typed_arena::Arena;
 use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
 use itertools::Itertools;
-use util::IterExt;
 
 pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     env: &'env Environment<'object>,
