@@ -1,6 +1,13 @@
 extern crate gcc;
 
+use std::fs;
+use std::process::Command;
+
 fn main() {
+    if fs::metadata("Makefile").is_ok() {
+        Command::new("make").status().unwrap();
+    }
+
     gcc::Config::new()
 		.cpp(true)
 		.flag("-std=c++14")
