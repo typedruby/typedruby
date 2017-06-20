@@ -4,7 +4,7 @@ use ast::{Loc, Node};
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
 use immutable_map::TreeMap;
-use util::{Or, IterExt};
+use util::Or;
 use itertools::Itertools;
 
 pub type TypeVarId = usize;
@@ -219,7 +219,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
                 keywords.iter()
                     .map(|&(_, kw_ty)| kw_ty)
-                    .concat(splat)
+                    .chain(splat)
                     .fold(Ok(()), |res, ty| {
                         res.and_then(|()| self.compatible(ty, value_ty))
                     })
@@ -613,7 +613,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
                 let value_ty = keywords.iter().map(|&(_, keyword_ty)|
                     keyword_ty
-                ).concat(splat).fold1(|ty1, ty2|
+                ).chain(splat).fold1(|ty1, ty2|
                     self.union(loc, ty1, ty2)
                 ).unwrap_or_else(||
                     self.new_var(loc.clone())
