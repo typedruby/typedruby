@@ -589,10 +589,13 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                 self.enter_scope(metaclass, body);
             }
-            Node::Def(_, _, _, ref body) if self.in_def => {
+            Node::Def(_, _, ref proto, ref body) if self.in_def => {
+                self.eval_maybe_node(proto);
                 self.enter_def(body);
             }
-            Node::Def(_, Id(_, ref name), _, ref body) => {
+            Node::Def(_, Id(_, ref name), ref proto, ref body) => {
+                self.eval_maybe_node(proto);
+
                 self.decl_method(&self.scope.module, name, node, self.def_visibility.get());
 
                 if self.module_function.get() {
@@ -602,11 +605,12 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                 self.enter_def(body);
             }
-            Node::Defs(_, ref singleton, _, _, ref body) if self.in_def => {
+            Node::Defs(_, ref singleton, _, ref proto, ref body) if self.in_def => {
                 self.eval_node(singleton);
+                self.eval_maybe_node(proto);
                 self.enter_def(body);
             }
-            Node::Defs(_, ref singleton, Id(_, ref name), _, ref body) => {
+            Node::Defs(_, ref singleton, Id(_, ref name), ref proto, ref body) => {
                 match self.resolve_static(singleton) {
                     Ok(&RubyObject::Object { .. }) => {
                         self.error("Defs on Object", &[
@@ -623,6 +627,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     }
                 }
 
+                self.eval_maybe_node(proto);
                 self.enter_def(body);
             }
             Node::Undef(_, ref names) => {
@@ -741,6 +746,15 @@ impl<'env, 'object> Eval<'env, 'object> {
                 for arg in args {
                     self.eval_node(arg);
                 }
+            }
+            Node::Prototype(_, ref genargs, ref args, ref retn) => {
+                self.eval_maybe_node(genargs);
+                self.eval_maybe_node(args);
+                self.eval_maybe_node(retn);
+            }
+            Node::TypedArg(_, ref ty, ref arg) => {
+                self.eval_node(ty);
+                self.eval_node(arg);
             }
             Node::Procarg0(_, ref arg) => {
                 self.eval_node(arg);
@@ -909,7 +923,28 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_node(key);
                 self.eval_node(value);
             }
+            Node::TyNil(..) |
+            Node::TySelf(..) |
+            Node::TyClass(..) |
+            Node::TyInstance(..) |
             Node::TyAny(..) => {}
+            Node::TyGenargs(_, ref genargs) => {
+                for genarg in genargs {
+                    self.eval_node(genarg);
+                }
+            }
+            Node::TyGendeclarg(_, _, ref constraint) => {
+                self.eval_maybe_node(constraint);
+            }
+            Node::TyConUnify(_, ref a, ref b) |
+            Node::TyConSubtype(_, ref a, ref b) |
+            Node::TyOr(_, ref a, ref b) => {
+                self.eval_node(a);
+                self.eval_node(b);
+            }
+            Node::TyProc(_, ref proto) => {
+                self.eval_node(proto);
+            }
             _ => panic!("unknown node: {:?}", node),
         }
     }
