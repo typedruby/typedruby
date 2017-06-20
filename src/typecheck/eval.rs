@@ -644,34 +644,34 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let mut v = View(elements);
 
-            let mut lead_types = Vec::new();
-            let mut post_types = Vec::new();
+        let mut lead_types = Vec::new();
+        let mut post_types = Vec::new();
 
-            while let Some(&TupleElement::Value(ty)) = v.first() {
-                lead_types.push(ty);
-                v.consume_front();
-            }
+        while let Some(&TupleElement::Value(ty)) = v.first() {
+            lead_types.push(ty);
+            v.consume_front();
+        }
 
-            while let Some(&TupleElement::Value(ty)) = v.last() {
-                post_types.push(ty);
-                v.consume_back();
-            }
+        while let Some(&TupleElement::Value(ty)) = v.last() {
+            post_types.push(ty);
+            v.consume_back();
+        }
 
-            post_types.reverse();
+        post_types.reverse();
 
-            let splat_type = if !v.is_empty() {
-                // first tuple remaining at this point must be a splat:
-                panic!("splats unsupported for now");
-            } else {
-                None
-            };
+        let splat_type = if !v.is_empty() {
+            // first tuple remaining at this point must be a splat:
+            panic!("splats unsupported for now");
+        } else {
+            None
+        };
 
-            self.tyenv.alloc(Type::Tuple {
+        self.tyenv.alloc(Type::Tuple {
             loc: loc,
-                lead: lead_types,
-                splat: splat_type,
-                post: post_types,
-            })
+            lead: lead_types,
+            splat: splat_type,
+            post: post_types,
+        })
     }
 
     fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, mut type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
