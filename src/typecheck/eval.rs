@@ -1743,7 +1743,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             &RubyObject::Object { ref type_node, ref type_scope, .. } => {
                                 let scope_self = self.env.object.metaclass(type_scope.module);
                                 let type_context = TypeContext::new(scope_self, vec![]);
-                                self.resolve_type(type_node, &type_context, type_scope.clone())
+                                let ty = self.resolve_type(type_node, &type_context, type_scope.clone());
+                                self.tyenv.update_loc(ty, node.loc().clone())
                             }
                             _ => {
                                 self.tyenv.instance0(node.loc().clone(), self.env.object.metaclass(object))
