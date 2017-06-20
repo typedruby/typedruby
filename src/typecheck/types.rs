@@ -336,6 +336,14 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
+    pub fn is_instance(&self, ty: &'ty Type<'ty, 'object>, class: &'object RubyObject<'object>) -> bool {
+        if let Type::Instance { class: ty_class, .. } = *self.prune(ty) {
+            ty_class.is_a(class)
+        } else {
+            false
+        }
+    }
+
     pub fn unify(&self, t1: &'ty Type<'ty, 'object>, t2: &'ty Type<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let t1 = self.prune(t1);
         let t2 = self.prune(t2);
@@ -717,10 +725,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             kw_ty@&Type::KeywordHash { .. } => Some(kw_ty),
             &Type::Instance { class, ref type_parameters, .. }
                 if class.is_a(self.object.hash_class()) =>
-                    match *self.prune(type_parameters[0]) {
-                        Type::Instance { class, .. } if class == self.object.Symbol =>
-                            Some(self.keyword_hash(ty.loc().clone(), vec![], Some(type_parameters[1]))),
-                        _ => None,
+                    if self.is_instance(type_parameters[0], self.object.Symbol) {
+                        Some(self.keyword_hash(ty.loc().clone(), vec![], Some(type_parameters[1])))
+                    } else {
+                        None
                     },
             _ => None,
         }
@@ -731,11 +739,61 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             Type::KeywordHash { .. } => true,
             Type::Instance { class, ref type_parameters, .. }
                 if class.is_a(self.object.hash_class()) =>
-                    match *self.prune(type_parameters[0]) {
-                        Type::Instance { class, .. } if class == self.object.Symbol => true,
-                        _ => false,
-                    },
+                    self.is_instance(type_parameters[0], self.object.Symbol),
             _ => false,
+        }
+    }
+
+    pub fn kwsplat_to_hash(&self, ty: &'ty Type<'ty, 'object>)
+        -> KwsplatResult<'ty, 'object>
+    {
+        match *self.prune(ty) {
+            Type::KeywordHash { ref keywords, splat, .. } =>
+                keywords.iter()
+                    .map(|&(_,v)| v)
+                    .chain(splat)
+                    .fold(KwsplatResult::None, |res, ty| res.append_ty(self, ty.loc(), ty)),
+            Type::Instance { class, ref type_parameters, .. }
+                if class.is_a(self.object.hash_class())
+                && self.is_instance(type_parameters[0], self.object.Symbol)
+                =>
+                    KwsplatResult::Ok(type_parameters[1]),
+            Type::Union { ref types, .. } =>
+                types.iter()
+                    .map(|union_ty| self.kwsplat_to_hash(union_ty))
+                    .fold(KwsplatResult::None, |a, b| a.append(self, ty.loc(), b)),
+            _ if self.is_instance(ty, self.object.NilClass) =>
+                KwsplatResult::None,
+            _ =>
+                KwsplatResult::Err(ty),
+        }
+    }
+}
+
+pub enum KwsplatResult<'ty, 'object: 'ty> {
+    Err(&'ty Type<'ty, 'object>),
+    None,
+    Ok(&'ty Type<'ty, 'object>),
+}
+
+impl<'ty, 'object: 'ty> KwsplatResult<'ty, 'object> {
+    fn append_ty<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, loc: &Loc, ty: &'ty Type<'ty, 'object>)
+        -> KwsplatResult<'ty, 'object>
+    {
+        self.append(tyenv, loc, KwsplatResult::Ok(ty))
+    }
+
+    fn append<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, loc: &Loc, other: KwsplatResult<'ty, 'object>)
+        -> KwsplatResult<'ty, 'object>
+    {
+        match *self {
+            KwsplatResult::Err(ty) => KwsplatResult::Err(ty),
+            KwsplatResult::None => other,
+            KwsplatResult::Ok(ty) => match other {
+                KwsplatResult::Err(err_ty) => KwsplatResult::Err(err_ty),
+                KwsplatResult::None => KwsplatResult::Ok(ty),
+                KwsplatResult::Ok(other_ty) => KwsplatResult::Ok(tyenv.union(loc, ty, other_ty)),
+            },
         }
     }
 }
