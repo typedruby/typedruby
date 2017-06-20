@@ -1,4 +1,4 @@
-use ast::{Id, Node, Loc};
+use ast::{Id, Node, Loc, SourceFile};
 use environment::Environment;
 use errors::Detail;
 use object::{RubyObject, Scope, MethodEntry, MethodVisibility, MethodImpl, IvarEntry, ConstantEntry};
@@ -10,10 +10,17 @@ type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 struct Eval<'env, 'object: 'env> {
     pub env: &'env Environment<'object>,
     pub scope: Rc<Scope<'object>>,
+    source_file: Rc<SourceFile>,
+    source_type: SourceType,
     in_def: bool,
-    emit_errors: bool,
     def_visibility: Cell<MethodVisibility>,
     module_function: Cell<bool>,
+}
+
+#[derive(Copy,Clone,Eq,PartialEq)]
+pub enum SourceType {
+    TypedRuby,
+    Ruby,
 }
 
 #[derive(Copy,Clone)]
@@ -45,25 +52,31 @@ enum RequireType {
 }
 
 impl<'env, 'object> Eval<'env, 'object> {
-    fn new(env: &'env Environment<'object>, scope: Rc<Scope<'object>>, in_def: bool, emit_errors: bool) -> Eval<'env, 'object> {
+    fn new(env: &'env Environment<'object>, scope: Rc<Scope<'object>>, source_file: Rc<SourceFile>, source_type: SourceType, in_def: bool) -> Eval<'env, 'object> {
         Eval {
             env: env,
             scope: scope,
+            source_file: source_file,
+            source_type: source_type,
             in_def: in_def,
-            emit_errors: emit_errors,
             def_visibility: Cell::new(MethodVisibility::Public),
             module_function: Cell::new(false),
         }
     }
 
+    fn emit_errors(&self) -> bool {
+        self.source_type == SourceType::TypedRuby &&
+            self.env.should_emit_errors(self.source_file.filename())
+    }
+
     fn error(&self, message: &str, details: &[Detail]) {
-        if self.emit_errors {
+        if self.emit_errors() {
             self.env.error_sink.borrow_mut().error(message, details)
         }
     }
 
     fn warning(&self, message: &str, details: &[Detail]) {
-        if self.emit_errors {
+        if self.emit_errors() {
             self.env.error_sink.borrow_mut().warning(message, details)
         }
     }
@@ -100,7 +113,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn enter_scope(&self, module: &'object RubyObject<'object>, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let eval = Eval::new(self.env, Scope::spawn(&self.scope, module), self.in_def, self.emit_errors);
+            let eval = Eval::new(self.env, Scope::spawn(&self.scope, module), self.source_file.clone(), self.source_type, self.in_def);
 
             eval.eval_node(node)
         }
@@ -108,7 +121,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn enter_def(&self, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let eval = Eval::new(self.env, self.scope.clone(), true, self.emit_errors);
+            let eval = Eval::new(self.env, self.scope.clone(), self.source_file.clone(), self.source_type, true);
 
             eval.eval_node(node)
         }
@@ -891,10 +904,25 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 }
 
+fn source_type_for_file(source_file: &SourceFile) -> SourceType {
+    let is_typedruby = source_file.source()
+        .lines()
+        .take_while(|line| line.starts_with("#"))
+        .any(|line| line.contains("@typedruby"));
+
+    if is_typedruby {
+        SourceType::TypedRuby
+    } else {
+        SourceType::Ruby
+    }
+}
+
 pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>) {
     let scope = Rc::new(Scope { parent: None, module: env.object.Object });
 
-    let emit_errors = env.should_emit_errors(node.loc().file.filename());
+    let source_file = node.loc().file.clone();
 
-    Eval::new(env, scope, false, emit_errors).eval_node(&node);
+    let source_type = source_type_for_file(&source_file);
+
+    Eval::new(env, scope, source_file, source_type, false).eval_node(&node);
 }
