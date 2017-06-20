@@ -320,6 +320,11 @@ impl<'env, 'object> Eval<'env, 'object> {
     fn symbol_name<'node>(&self, node: &'node Rc<Node>, msg: &str) -> Option<&'node str> {
         match **node {
             Node::Symbol(_, ref sym) => Some(sym),
+            Node::Def(_, Id(_, ref sym), _, _) |
+            Node::Defs(_, _, Id(_, ref sym), _, _) => {
+                self.eval_node(node);
+                Some(sym)
+            }
             _ => {
                 self.warning(&format!("Dynamic symbol {}", msg), &[
                     Detail::Loc("here", node.loc()),
