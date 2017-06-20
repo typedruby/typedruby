@@ -69,7 +69,8 @@ impl<'object> Environment<'object> {
     }
 
     fn load_source_file(&self, source_file: SourceFile) {
-        let ast = parse(Rc::new(source_file));
+        let source_file = Rc::new(source_file);
+        let ast = parse(source_file.clone());
 
         for diag in ast.diagnostics {
             match diag.level {
