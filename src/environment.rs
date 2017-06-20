@@ -1,6 +1,6 @@
 use std::io;
 use std::rc::Rc;
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 use std::collections::{HashMap, VecDeque};
 use std::fs;
@@ -20,10 +20,26 @@ enum LoadState {
     Loaded,
 }
 
+#[derive(Copy,Clone,Eq,PartialEq,Debug)]
+enum Phase {
+    Load,
+    TypeCheck,
+}
+
+impl Phase {
+    pub fn can_load(self) -> bool {
+        match self {
+            Phase::Load => true,
+            Phase::TypeCheck => false,
+        }
+    }
+}
+
 pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<Box<ErrorSink>>,
     pub config: Config,
+    phase: Cell<Phase>,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
     inflector: Inflector,
@@ -41,6 +57,7 @@ impl<'object> Environment<'object> {
             error_sink: RefCell::new(error_sink),
             object: ObjectGraph::new(&arena),
             config: config,
+            phase: Cell::new(Phase::Load),
             loaded_features: RefCell::new(HashMap::new()),
             method_queue: RefCell::new(VecDeque::new()),
             inflector: inflector,
@@ -69,6 +86,10 @@ impl<'object> Environment<'object> {
     }
 
     fn load_source_file(&self, source_file: SourceFile) {
+        if !self.phase.get().can_load() {
+            panic!("tried to load file in {:?} phase: {}", self.phase.get(), source_file.filename().display());
+        }
+
         let source_file = Rc::new(source_file);
         let ast = parse(source_file.clone());
 
@@ -203,6 +224,8 @@ impl<'object> Environment<'object> {
     }
 
     pub fn typecheck(&self) {
+        self.phase.set(Phase::TypeCheck);
+
         while let Some(method) = self.method_queue.borrow_mut().pop_front() {
             typecheck::check(self, method);
         }
