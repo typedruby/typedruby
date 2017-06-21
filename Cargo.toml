@@ -8,5 +8,5 @@ clap = "2.23"
 immutable-map = "0.1.2"
 itertools = "0.6"
 regex = "0.2"
-ruby_parser = { git = "ssh://git@github.com/typedruby/parser.git" }
+ruby_parser = { path = "parser" }
 typed-arena = "1.2.0"
