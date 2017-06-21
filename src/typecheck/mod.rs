@@ -1,6 +1,7 @@
 mod call;
-mod eval;
 mod control;
+mod errors;
+mod eval;
 mod locals;
 mod types;
 
