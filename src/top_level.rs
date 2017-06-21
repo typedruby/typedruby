@@ -575,8 +575,16 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_maybe_node(body);
             }
             Node::SClass(_, ref expr, ref body) => {
-                let singleton = match self.resolve_static(expr) {
-                    Ok(singleton) => singleton,
+                match self.resolve_static(expr) {
+                    Ok(&RubyObject::Object { .. }) => {
+                        self.warning("SClass on RubyObject (TODO)", &[
+                            Detail::Loc("here", expr.loc()),
+                        ]);
+                    },
+                    Ok(singleton) => {
+                        let metaclass = self.env.object.metaclass(singleton);
+                        self.enter_scope(metaclass, body);
+                    }
                     Err((node, message)) => {
                         self.warning("Could not statically resolve singleton expression", &[
                             Detail::Loc(message, node.loc()),
@@ -584,10 +592,6 @@ impl<'env, 'object> Eval<'env, 'object> {
                         return;
                     }
                 };
-
-                let metaclass = self.env.object.metaclass(singleton);
-
-                self.enter_scope(metaclass, body);
             }
             Node::Def(_, _, ref proto, ref body) if self.in_def => {
                 self.eval_maybe_node(proto);
@@ -613,10 +617,9 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Defs(_, ref singleton, Id(_, ref name), ref proto, ref body) => {
                 match self.resolve_static(singleton) {
                     Ok(&RubyObject::Object { .. }) => {
-                        self.error("Defs on Object", &[
+                        self.error("Defs on RubyObject (TODO)", &[
                             Detail::Loc("here", singleton.loc()),
                         ]);
-                        // panic!("Defs on Object");
                     }
                     Ok(metaclass) => {
                         let metaclass = self.env.object.metaclass(metaclass);
