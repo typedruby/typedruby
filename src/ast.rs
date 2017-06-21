@@ -6,12 +6,27 @@ use std::rc::Rc;
 use std::vec::Vec;
 use std::io::prelude::*;
 use std::fmt;
-use diagnostics::{Error};
+use std::hash::{Hash, Hasher};
+use diagnostics::Error;
 
 pub struct SourceFile {
     filename: PathBuf,
     source: String,
     line_map: Vec<usize>,
+}
+
+impl PartialEq for SourceFile {
+    fn eq(&self, other: &SourceFile) -> bool {
+        self.filename == other.filename
+    }
+}
+
+impl Eq for SourceFile {}
+
+impl Hash for SourceFile {
+    fn hash<H: Hasher>(&self, h: &mut H) {
+        self.filename.hash(h)
+    }
 }
 
 pub struct SourceLine {
@@ -20,7 +35,7 @@ pub struct SourceLine {
     pub end_pos: usize,
 }
 
-#[derive(Clone)]
+#[derive(Clone,Eq,PartialEq,Hash)]
 pub struct Loc {
     pub file: Rc<SourceFile>,
     pub begin_pos: usize,
