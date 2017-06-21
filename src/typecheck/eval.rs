@@ -10,6 +10,7 @@ use errors::Detail;
 use typed_arena::Arena;
 use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
+use typecheck::errors::Error;
 use itertools::Itertools;
 
 pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
@@ -154,7 +155,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             AnnotationStatus::Partial => {
                 let loc = prototype_node.as_ref().expect("prototype node must exist when annotation status is partial").loc();
 
-                eval.error("Partial type signatures are not permitted in method definitions", &[
+                eval.error_msg("Partial type signatures are not permitted in method definitions", &[
                     Detail::Loc("all arguments and return value must be annotated", loc),
                 ]);
                 return;
@@ -186,8 +187,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn error(&self, message: &str, details: &[Detail]) {
+    fn error_msg(&self, message: &str, details: &[Detail]) {
         self.env.error_sink.borrow_mut().error(message, details)
+    }
+
+    fn error(&self, error: Error) {
+        let sink = &mut **self.env.error_sink.borrow_mut();
+        error.emit(sink);
     }
 
     fn warning(&self, message: &str, details: &[Detail]) {
@@ -199,9 +205,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let expected_params = class.type_parameters().len();
 
         if supplied_params == 0 && expected_params > 0 {
-            self.error("Type referenced is generic but no type parameters were supplied", &[
-                Detail::Loc("here", loc),
-            ]);
+            self.error(Error::NoTypeParameters { loc: loc.clone() });
         } else if supplied_params < expected_params {
             let mut message = format!("{} also expects ", class.name());
 
@@ -213,17 +217,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 message += name;
             }
 
-            self.error("Too few type parameters supplied in instantiation of generic type", &[
-                Detail::Loc(&message, loc),
-            ]);
+            self.error(Error::TooFewTypeParameters { msg: message, loc: loc.clone() });
 
             for _ in 0..(expected_params - supplied_params) {
                 type_parameters.push(self.tyenv.new_var(loc.clone()))
             }
         } else if supplied_params > expected_params {
-            self.error("Too many type parameters supplied in instantiation of generic type", &[
-                Detail::Loc("from here", type_parameters[expected_params].loc()),
-            ]);
+            self.error(Error::TooManyTypeParameters { loc: type_parameters[expected_params].loc().clone() });
 
             for _ in 0..(supplied_params - expected_params) {
                 type_parameters.pop();
@@ -239,7 +239,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
 
         if type_parameters.len() > 1 {
-            self.error("Too many type parameters supplied in instantiation of metaclass", &[
+            self.error_msg("Too many type parameters supplied in instantiation of metaclass", &[
                 Detail::Loc("from here", type_parameters[1].loc()),
             ]);
         }
@@ -247,7 +247,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let cpath = if let Node::TyCpath(_, ref cpath) = *type_parameters[0] {
             cpath
         } else {
-            self.error("Type parameter in metaclass must be constant path", &[
+            self.error_msg("Type parameter in metaclass must be constant path", &[
                 Detail::Loc("here", type_parameters[0].loc()),
             ]);
 
@@ -274,13 +274,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             },
             Ok(&RubyObject::IClass { .. }) => panic!(),
             Ok(&RubyObject::Object { .. }) => {
-                self.error("Constant does not reference class/module", &[
+                self.error_msg("Constant does not reference class/module", &[
                     Detail::Loc("here", cpath.loc()),
                 ]);
                 self.tyenv.new_var(loc.clone())
             }
             Err((err_node, message)) => {
-                self.error(message, &[
+                self.error_msg(message, &[
                     Detail::Loc("here", err_node.loc()),
                 ]);
                 self.tyenv.new_var(loc.clone())
@@ -292,7 +292,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         if let Node::Const(_, None, Id(ref name_loc, ref name)) = *cpath {
             if let Some(ty) = context.type_names.get(name) {
                 if !type_parameters.is_empty() {
-                    self.error("Type parameters were supplied but type mentioned does not take any", &[
+                    self.error_msg("Type parameters were supplied but type mentioned does not take any", &[
                         Detail::Loc("here", name_loc),
                     ]);
                 }
@@ -306,7 +306,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 _ if class == self.env.object.Class =>
                     self.resolve_class_instance_type(loc, type_parameters, context, scope),
                 RubyObject::Object { .. } => {
-                    self.error("Constant mentioned in type name does not reference class/module", &[
+                    self.error_msg("Constant mentioned in type name does not reference class/module", &[
                         Detail::Loc("here", cpath.loc()),
                     ]);
 
@@ -324,7 +324,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 RubyObject::IClass { .. } => panic!("unexpected iclass"),
             },
             Err((err_node, message)) => {
-                self.error(message, &[
+                self.error_msg(message, &[
                     Detail::Loc("here", err_node.loc()),
                 ]);
 
@@ -387,7 +387,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     _ => {
                         // special case to allow the Class#allocate definition in the stdlib:
                         if context.class != self.env.object.Class {
-                            self.error("Cannot instatiate instance type", &[
+                            self.error_msg("Cannot instatiate instance type", &[
                                 Detail::Loc(&format!("Self here is {}, which is not a Class", context.class.name()), loc),
                             ]);
                         }
@@ -447,7 +447,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let arg_ty = if let Arg::Required { ty, .. } = arg {
                         ty
                     } else {
-                        self.error("Only required arguments are currently supported in destructuring arguments", &[
+                        self.error_msg("Only required arguments are currently supported in destructuring arguments", &[
                             Detail::Loc("here", arg.loc()),
                         ]);
                         break;
@@ -571,7 +571,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             details.push(Detail::Loc("in this expression", loc));
         }
 
-        self.error("Could not match types:", &details);
+        self.error_msg("Could not match types:", &details);
     }
 
     fn unify(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
@@ -620,7 +620,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             elements.push(TupleElement::Splat(type_parameters[0]));
                         }
                         _ => {
-                            self.error("Cannot splat non-array", &[
+                            self.error_msg("Cannot splat non-array", &[
                                 Detail::Loc(&self.tyenv.describe(ty), node.loc()),
                             ]);
                         }
@@ -708,7 +708,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         let initialize_method = match self.env.object.lookup_method(of, "initialize") {
                             Some(method) => method,
                             None => {
-                                self.error("Can't call #new on class with undefined #initialize method", &[
+                                self.error_msg("Can't call #new on class with undefined #initialize method", &[
                                     Detail::Loc("here", loc),
                                 ]);
 
@@ -736,7 +736,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         // #new on an unknown instance of Class, such as:
                         // def foo(Class x); x.new; end
                         // TODO - consider disallowing use of Class without type parameters
-                        self.error("Unknown class instance in call to #new, can't determine #initialize signature", &[
+                        self.error_msg("Unknown class instance in call to #new, can't determine #initialize signature", &[
                             Detail::Loc("here", loc),
                         ]);
 
@@ -784,7 +784,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                     if prototypes.is_empty() {
                         let message = format!("Union member {} does not respond to #{}", self.tyenv.describe(ty), &id.1);
-                        self.error(&message, &[
+                        self.error_msg(&message, &[
                             Detail::Loc(&self.tyenv.describe(recv_type), recv_type.loc()),
                         ]);
                     }
@@ -794,7 +794,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Type::Any { .. } => vec![self.tyenv.any_prototype(id.0.clone())],
             Type::TypeParameter { ref name, .. } => {
-                self.error(&format!("Type parameter {} is of unknown type", name), &[
+                self.error_msg(&format!("Type parameter {} is of unknown type", name), &[
                     Detail::Loc("in receiver", recv_type.loc()),
                     Detail::Loc("of this invocation", &id.0),
                 ]);
@@ -802,7 +802,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 vec![]
             }
             Type::Var { id: tyid, .. } => {
-                self.error(&format!("Type of receiver is not known at this point"), &[
+                self.error_msg(&format!("Type of receiver is not known at this point"), &[
                     Detail::Loc(&format!("t{}", tyid), recv_type.loc()),
                     Detail::Loc("in this invocation", &id.0),
                 ]);
@@ -856,7 +856,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             CallArg::Splat(node.loc().clone(), type_parameters[0])
                         }
                         _ => {
-                            self.error("Cannot splat non-array", &[
+                            self.error_msg("Cannot splat non-array", &[
                                 Detail::Loc(&self.tyenv.describe(ty), splat_node.loc()),
                             ]);
                             CallArg::Splat(node.loc().clone(), self.tyenv.new_var(node.loc().clone()))
@@ -905,7 +905,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Ok(proto) => proto,
             Err(None) => return self.tyenv.any(loc.clone()),
             Err(Some(msg)) => {
-                self.error("Can't infer type for symbol-as-proc", &[
+                self.error_msg("Can't infer type for symbol-as-proc", &[
                     Detail::Loc("passed here", loc),
                     Detail::Loc(msg, proto_block_ty.loc())
                 ]);
@@ -917,7 +917,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let (proto_args, proto_retn, proto_loc) = if let Prototype::Typed { ref args, retn, ref loc } = *proto {
             (args, retn, loc)
         } else {
-            self.error("Can't infer type for symbol-as-proc", &[
+            self.error_msg("Can't infer type for symbol-as-proc", &[
                 Detail::Loc("passed here", loc),
                 Detail::Loc("because the block defined in the method prototype is untyped", proto_block_ty.loc()),
             ]);
@@ -946,7 +946,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             let prototypes = self.prototypes_for_invocation(ty, &Id(loc.clone(), mid.to_owned()));
 
             if prototypes.is_empty() {
-                self.error(&format!("Could not resolve method #{}", mid), &[
+                self.error_msg(&format!("Could not resolve method #{}", mid), &[
                     Detail::Loc(&format!("on {}", &self.tyenv.describe(ty)), ty.loc()),
                     Detail::Loc("in symbol-as-proc", loc),
                 ]);
@@ -970,7 +970,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 proto: proto.clone(),
             })
         } else {
-            self.error("Can't infer type for symbol-as-proc", &[
+            self.error_msg("Can't infer type for symbol-as-proc", &[
                 Detail::Loc("passed here", loc),
                 Detail::Loc("because the block type defined in the method prototype has no required arguments", proto_block_ty.loc()),
             ]);
@@ -989,7 +989,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         let proc_ty = self.infer_symbol_as_proc_type(proto_block_ty, sym, node.loc());
                         Computation::result(proc_ty, l)
                     } else {
-                        self.error("Expected symbol literal in block pass", &[
+                        self.error_msg("Expected symbol literal in block pass", &[
                             Detail::Loc("but an expression evaluating to a Symbol instance was passed instead", node.loc()),
                         ]);
                         Computation::result(self.tyenv.new_var(node.loc().clone()), l)
@@ -1008,7 +1008,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 EvalResult::Ok((), locals)
             }
             (None, Some(block)) => {
-                self.error("Block passed in method invocation", &[
+                self.error_msg("Block passed in method invocation", &[
                     Detail::Loc("here", block.loc()),
                     Detail::Loc("but this method does not take a block", send_loc),
                     Detail::Loc("as defined here", proto_loc),
@@ -1061,7 +1061,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 let nil_block = self.tyenv.nil(send_loc.clone() /* just need a dummy location */);
 
                 if let Err(..) = self.tyenv.compatible(proto_block_ty, nil_block) {
-                    self.error("Expected block of type", &[
+                    self.error_msg("Expected block of type", &[
                         Detail::Loc(&self.tyenv.describe(proto_block_ty), proto_block_ty.loc()),
                         Detail::Loc("in this method invocation", send_loc),
                     ]);
@@ -1116,7 +1116,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let prototypes = self.prototypes_for_invocation(recv_type, id);
 
         if prototypes.is_empty() {
-            self.error(&format!("Could not resolve method #{}", &id.1), &[
+            self.error_msg(&format!("Could not resolve method #{}", &id.1), &[
                 Detail::Loc(&format!("on {}", &self.tyenv.describe(recv_type)), recv_type.loc()),
                 Detail::Loc("in this invocation", &id.0),
             ]);
@@ -1155,32 +1155,32 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     for match_error in match_result.errors {
                         match match_error {
                             ArgError::TooFewArguments => {
-                                self.error("Too few arguments supplied", &[
+                                self.error_msg("Too few arguments supplied", &[
                                     Detail::Loc("in this invocation", &id.0),
                                     Detail::Loc("for this prototype", proto_loc),
                                 ])
                             }
                             ArgError::TooManyArguments(ref loc) => {
-                                self.error("Too many arguments supplied", &[
+                                self.error_msg("Too many arguments supplied", &[
                                     Detail::Loc("from here", loc),
                                     Detail::Loc("in this invocation", &id.0),
                                     Detail::Loc("for this prototype", proto_loc),
                                 ])
                             }
                             ArgError::MissingKeyword(ref name) => {
-                                self.error(&format!("Missing keyword argument :{}", name), &[
+                                self.error_msg(&format!("Missing keyword argument :{}", name), &[
                                     Detail::Loc("in this invocation", &id.0),
                                     Detail::Loc("for this prototype", proto_loc),
                                 ])
                             }
                             ArgError::UnknownKeyword(ref name) => {
-                                self.error(&format!("Unknown keyword argument :{}", name), &[
+                                self.error_msg(&format!("Unknown keyword argument :{}", name), &[
                                     Detail::Loc("in this invocation", &id.0),
                                     Detail::Loc("for this prototype", proto_loc),
                                 ])
                             }
                             ArgError::UnexpectedSplat(ref loc) => {
-                                self.error("Unexpected splat in keyword arguments", &[
+                                self.error_msg("Unexpected splat in keyword arguments", &[
                                     Detail::Loc("here", loc),
                                     Detail::Loc("in this invocation", &id.0),
                                     Detail::Loc("for this prototype", proto_loc),
@@ -1242,7 +1242,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
     fn lookup_ivar_or_error(&self, id: &Id, type_context: &TypeContext<'ty, 'object>) -> &'ty Type<'ty, 'object> {
         self.lookup_ivar(&id.1, type_context).unwrap_or_else(|| {
-            self.error("Use of undeclared instance variable", &[
+            self.error_msg("Use of undeclared instance variable", &[
                 Detail::Loc("here", &id.0),
             ]);
 
@@ -1276,7 +1276,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     {
         self.lookup_lvar(loc, name, locals).map(|ty| {
             ty.unwrap_or_else(|| {
-                self.error("Use of uninitialised local variable", &[
+                self.error_msg("Use of uninitialised local variable", &[
                     Detail::Loc("here", loc),
                 ]);
 
@@ -1694,7 +1694,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                                 HashEntry::Kwsplat(ty) =>
                                     match self.tyenv.kwsplat_to_hash(ty) {
                                         KwsplatResult::Err(err_ty) => {
-                                            self.error(&format!("Cannot keyword splat {}", self.tyenv.describe(err_ty)), &[
+                                            self.error_msg(&format!("Cannot keyword splat {}", self.tyenv.describe(err_ty)), &[
                                                 Detail::Loc(&self.tyenv.describe(ty), ty.loc()),
                                             ]);
                                             None
@@ -1747,7 +1747,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         Computation::result(ty, locals)
                     }
                     Err((err_node, message)) => {
-                        self.error(message, &[
+                        self.error_msg(message, &[
                             Detail::Loc("here", err_node.loc()),
                         ]);
                         Computation::result(self.tyenv.any(node.loc().clone()), locals)
@@ -1941,7 +1941,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                                 if let Type::Instance { class: &RubyObject::Metaclass { of, .. }, .. } = *ty {
                                     Some(of)
                                 } else {
-                                    self.error("Expected class or module", &[
+                                    self.error_msg("Expected class or module", &[
                                         Detail::Loc(&self.tyenv.describe(ty), ty.loc()),
                                     ]);
                                     None
