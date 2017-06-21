@@ -238,11 +238,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (_, &Prototype::Untyped { .. }) => Some(Ok(())),
             (&Prototype::Typed { args: ref args1, retn: retn1, .. }, &Prototype::Typed { args: ref args2, retn: retn2, .. }) =>
                 self.compatible_args(args1, args2).map(|_| {
-                    match (retn1, retn2) {
-                        (ReturnType::Value(retn_ty1), ReturnType::Value(retn_ty2)) =>
-                            self.compatible(retn_ty1, retn_ty2),
-                        _ => Ok(()),
-                    }
+                    self.compatible(retn1, retn2)
                 }),
         }
     }
@@ -866,12 +862,6 @@ impl<'ty, 'object> Type<'ty, 'object> {
     }
 }
 
-#[derive(Debug,Copy,Clone)]
-pub enum ReturnType<'ty, 'object: 'ty> {
-    Value(&'ty Type<'ty, 'object>),
-    Raise,
-}
-
 #[derive(Debug)]
 pub enum Prototype<'ty, 'object: 'ty> {
     Untyped {
@@ -880,7 +870,7 @@ pub enum Prototype<'ty, 'object: 'ty> {
     Typed {
         loc: Loc,
         args: Vec<Arg<'ty, 'object>>,
-        retn: ReturnType<'ty, 'object>,
+        retn: &'ty Type<'ty, 'object>,
     },
 }
 
