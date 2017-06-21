@@ -104,6 +104,12 @@ impl BlockArg {
     }
 }
 
+struct Invokee<'ty, 'object: 'ty> {
+    recv_ty: &'ty Type<'ty, 'object>,
+    method: Rc<MethodImpl<'object>>,
+    prototype: Rc<Prototype<'ty, 'object>>,
+}
+
 #[derive(Debug)]
 enum Lhs<'ty, 'object: 'ty> {
     Lvar(Loc, String),
@@ -757,42 +763,57 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn prototypes_for_invocation(&self, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Rc<Prototype<'ty, 'object>>> {
+    fn resolve_invocation(&self, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Invokee<'ty, 'object>>
+    {
         let degraded_recv_type = self.tyenv.degrade_to_instance(recv_type);
 
         match *degraded_recv_type {
             Type::Instance { class, type_parameters: ref tp, .. } => {
                 match self.env.object.lookup_method(class, &id.1) {
-                    Some(method) => {
-                        vec![self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(class, tp.clone()))]
-                    }
-                    None => Vec::new(),
+                    Some(method) => vec![Invokee {
+                        recv_ty: degraded_recv_type,
+                        method: method.implementation.clone(),
+                        prototype: self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(class, tp.clone())),
+                    }],
+                    None => vec![],
                 }
             }
             Type::Proc { ref proto, .. } => {
                 match self.env.object.lookup_method(self.env.object.Proc, &id.1) {
                     Some(method) => match *method.implementation {
-                        MethodImpl::IntrinsicProcCall => vec![proto.clone()],
-                        _ => vec![self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(&self.env.object.Proc, Vec::new()))],
+                        MethodImpl::IntrinsicProcCall => vec![Invokee {
+                            recv_ty: degraded_recv_type,
+                            method: method.implementation.clone(),
+                            prototype: proto.clone(),
+                        }],
+                        _ => vec![Invokee {
+                            recv_ty: degraded_recv_type,
+                            method: method.implementation.clone(),
+                            prototype: self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(&self.env.object.Proc, Vec::new())),
+                        }],
                     },
-                    None => Vec::new(),
+                    None => vec![],
                 }
             }
             Type::Union { ref types, .. } => {
                 types.iter().flat_map(|ty| {
-                    let prototypes = self.prototypes_for_invocation(ty, id);
+                    let invokees = self.resolve_invocation(ty, id);
 
-                    if prototypes.is_empty() {
+                    if invokees.is_empty() {
                         let message = format!("Union member {} does not respond to #{}", self.tyenv.describe(ty), &id.1);
                         self.error(&message, &[
                             Detail::Loc(&self.tyenv.describe(recv_type), recv_type.loc()),
                         ]);
                     }
 
-                    prototypes
+                    invokees
                 }).collect()
             }
-            Type::Any { .. } => vec![self.tyenv.any_prototype(id.0.clone())],
+            Type::Any { .. } => vec![Invokee {
+                recv_ty: degraded_recv_type,
+                method: Rc::new(MethodImpl::Untyped),
+                prototype: self.tyenv.any_prototype(id.0.clone()),
+            }],
             Type::TypeParameter { ref name, .. } => {
                 self.error(&format!("Type parameter {} is of unknown type", name), &[
                     Detail::Loc("in receiver", recv_type.loc()),
@@ -943,9 +964,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 })
             });
 
-            let prototypes = self.prototypes_for_invocation(ty, &Id(loc.clone(), mid.to_owned()));
+            let invokees = self.resolve_invocation(ty, &Id(loc.clone(), mid.to_owned()));
 
-            if prototypes.is_empty() {
+            if invokees.is_empty() {
                 self.error(&format!("Could not resolve method #{}", mid), &[
                     Detail::Loc(&format!("on {}", &self.tyenv.describe(ty)), ty.loc()),
                     Detail::Loc("in symbol-as-proc", loc),
@@ -954,11 +975,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 return self.tyenv.any(loc.clone());
             }
 
-            if prototypes.len() > 0 {
-                for prototype in prototypes {
+            if invokees.len() > 0 {
+                for invokee in invokees {
                     let prototype_ty = self.tyenv.alloc(Type::Proc {
-                        loc: prototype.loc().clone(),
-                        proto: prototype.clone(),
+                        loc: invokee.prototype.loc().clone(),
+                        proto: invokee.prototype.clone(),
                     });
 
                     self.compatible(invokee_proc_ty, prototype_ty, Some(loc));
@@ -1113,9 +1134,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     fn process_send_dispatch(&self, loc: &Loc, recv_type: &'ty Type<'ty, 'object>, id: &Id, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
-        let prototypes = self.prototypes_for_invocation(recv_type, id);
+        let invokees = self.resolve_invocation(recv_type, id);
 
-        if prototypes.is_empty() {
+        if invokees.is_empty() {
             self.error(&format!("Could not resolve method #{}", &id.1), &[
                 Detail::Loc(&format!("on {}", &self.tyenv.describe(recv_type)), recv_type.loc()),
                 Detail::Loc("in this invocation", &id.0),
@@ -1126,8 +1147,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let mut result_comp = None;
 
-        for proto in prototypes {
-            let comp = match *proto {
+        for invokee in invokees {
+            let comp = match *invokee.prototype {
                 Prototype::Typed { args: ref proto_args, retn, loc: ref proto_loc } => {
                     let (proto_block, proto_args) = match proto_args.last() {
                         Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
@@ -1193,7 +1214,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         self.compatible(proto_ty, pass_ty, Some(loc));
                     }
 
-                    self.process_block(&id.0, block.as_ref(), locals.clone(), proto.loc(), proto_block).and_then(|(), locals| {
+                    self.process_block(&id.0, block.as_ref(), locals.clone(), invokee.prototype.loc(), proto_block).and_then(|(), locals| {
                         match retn {
                             ReturnType::Value(retn_ty) =>
                                 EvalResult::Ok(self.tyenv.update_loc(retn_ty, loc.clone()), locals),
