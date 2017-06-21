@@ -239,17 +239,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
 
         if type_parameters.len() > 1 {
-            self.error_msg("Too many type parameters supplied in instantiation of metaclass", &[
-                Detail::Loc("from here", type_parameters[1].loc()),
-            ]);
+            self.error(Error::TooManyMetaclassParameters { loc: type_parameters[1].loc().clone() });
         }
 
         let cpath = if let Node::TyCpath(_, ref cpath) = *type_parameters[0] {
             cpath
         } else {
-            self.error_msg("Type parameter in metaclass must be constant path", &[
-                Detail::Loc("here", type_parameters[0].loc()),
-            ]);
+            self.error(Error::MetaclassParameterMustBeCpath {
+                loc: type_parameters[0].loc().clone(),
+            });
 
             return self.tyenv.new_var(loc.clone());
         };
@@ -274,15 +272,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             },
             Ok(&RubyObject::IClass { .. }) => panic!(),
             Ok(&RubyObject::Object { .. }) => {
-                self.error_msg("Constant does not reference class/module", &[
-                    Detail::Loc("here", cpath.loc()),
-                ]);
+                self.error(Error::ConstantNotClassOrModule { loc: cpath.loc().clone() });
                 self.tyenv.new_var(loc.clone())
             }
             Err((err_node, message)) => {
-                self.error_msg(message, &[
-                    Detail::Loc("here", err_node.loc()),
-                ]);
+                self.error(Error::Arbitrary { msg: message.to_owned(), loc: err_node.loc().clone() });
                 self.tyenv.new_var(loc.clone())
             }
         }
@@ -292,9 +286,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         if let Node::Const(_, None, Id(ref name_loc, ref name)) = *cpath {
             if let Some(ty) = context.type_names.get(name) {
                 if !type_parameters.is_empty() {
-                    self.error_msg("Type parameters were supplied but type mentioned does not take any", &[
-                        Detail::Loc("here", name_loc),
-                    ]);
+                    self.error(Error::TypeParametersInNonGenericType { loc: name_loc.clone() });
                 }
 
                 return self.tyenv.update_loc(ty, name_loc.clone());
@@ -306,10 +298,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 _ if class == self.env.object.Class =>
                     self.resolve_class_instance_type(loc, type_parameters, context, scope),
                 RubyObject::Object { .. } => {
-                    self.error_msg("Constant mentioned in type name does not reference class/module", &[
-                        Detail::Loc("here", cpath.loc()),
-                    ]);
-
+                    self.error(Error::ConstantNotClassOrModule { loc: cpath.loc().clone() });
                     self.tyenv.new_var(cpath.loc().clone())
                 },
                 RubyObject::Module { .. } |
@@ -324,10 +313,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 RubyObject::IClass { .. } => panic!("unexpected iclass"),
             },
             Err((err_node, message)) => {
-                self.error_msg(message, &[
-                    Detail::Loc("here", err_node.loc()),
-                ]);
-
+                self.error(Error::Arbitrary { msg: message.to_owned(), loc: err_node.loc().clone() });
                 self.tyenv.new_var(cpath.loc().clone())
             }
         }
@@ -387,9 +373,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     _ => {
                         // special case to allow the Class#allocate definition in the stdlib:
                         if context.class != self.env.object.Class {
-                            self.error_msg("Cannot instatiate instance type", &[
-                                Detail::Loc(&format!("Self here is {}, which is not a Class", context.class.name()), loc),
-                            ]);
+                            self.error(Error::CannotInstantiateInstanceType { self_: context.class.name(), loc: loc.clone() });
                         }
 
                         self.tyenv.new_var(loc.clone())
