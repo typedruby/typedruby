@@ -1,0 +1,32 @@
+[package]
+name = "ruby_parser"
+version = "0.1.0"
+authors = ["Charlie Somerville <charlie@charlie.bz>"]
+build = "build.rs"
+include = [
+	"cc/**/*.cc",
+	"cc/**/*.hh",
+	"include/**/*.hh",
+	"src/*.rs",
+	"Cargo.toml",
+	"build.rs",
+]
+
+[dependencies]
+libc = "0.2.0"
+onig = { version = "1.2", optional = true }
+
+[build-dependencies]
+gcc = "0.3"
+
+[features]
+default = []
+regex = ["onig"]
+
+[dev-dependencies]
+glob = "0.2"
+difference = "1.0"
+
+[profile.dev]
+debug = true
+panic = "abort"
