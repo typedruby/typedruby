@@ -803,6 +803,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::Nil(..) |
             Node::NthRef(..) |
             Node::Regexp(..) |
+            Node::Redo(..) |
             Node::Retry(..) |
             Node::Self_(..) |
             Node::String(..) |
