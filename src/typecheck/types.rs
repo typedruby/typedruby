@@ -662,25 +662,38 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     pub fn partition_by_class(&self, ty: &'ty Type<'ty, 'object>, class: &'object RubyObject<'object>, class_loc: &Loc)
         -> Or<&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>>
     {
-        let partition_inner = |ty_class: &'object RubyObject<'object>| {
+        let partition_inner = |ty_class: &'object RubyObject<'object>, ty_params: Option<&[&'ty Type<'ty, 'object>]>| {
             if ty_class.is_a(class) {
                 Or::Left(ty)
             } else if class.is_a(ty_class) {
-                panic!("TODO")
+                let narrowed_ty = if let Some(ty_params) = ty_params {
+                    let mut instance_params = ty_params.to_vec();
+                    let expected_params = class.type_parameters().len();
+
+                    while instance_params.len() < expected_params {
+                        instance_params.push(self.new_var(class_loc.clone()));
+                    }
+
+                    self.instance(class_loc.clone(), class, instance_params)
+                } else {
+                    ty
+                };
+
+                Or::Both(narrowed_ty, ty)
             } else {
                 Or::Right(ty)
             }
         };
 
         match *self.prune(ty) {
-            Type::Instance { class: ty_class, .. } =>
-                partition_inner(ty_class),
+            Type::Instance { class: ty_class, type_parameters: ref ty_params, .. } =>
+                partition_inner(ty_class, Some(ty_params)),
             Type::Proc { .. } =>
-                partition_inner(self.object.Proc),
+                partition_inner(self.object.Proc, Some(&[])),
             Type::Tuple { .. } =>
-                partition_inner(self.object.array_class()),
+                partition_inner(self.object.array_class(), None),
             Type::KeywordHash { .. } =>
-                partition_inner(self.object.hash_class()),
+                partition_inner(self.object.hash_class(), None),
             Type::Union { ref types, ref loc, .. } => {
                 types.iter()
                     .map(|t| self.partition_by_class(t, class, class_loc))
