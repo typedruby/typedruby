@@ -760,6 +760,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     retn: any_ty,
                 })
             }
+            MethodImpl::IntrinsicKernelIsA => {
+                Rc::new(Prototype::Typed {
+                    loc: loc.clone(),
+                    args: vec![Arg::Required { loc: loc.clone(), ty: self.tyenv.instance0(loc.clone(), self.env.object.Kernel)}],
+                    retn: self.tyenv.instance0(loc.clone(), self.env.object.Boolean),
+                })
+            }
             MethodImpl::IntrinsicProcCall => panic!("should never happen"),
         }
     }
@@ -1220,14 +1227,41 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                         self.compatible(proto_ty, pass_ty, Some(loc));
                     }
 
-                    self.process_block(&id.0, block.as_ref(), locals.clone(), invokee.prototype.loc(), proto_block).and_then(|(), locals| {
-                        if let MethodImpl::IntrinsicKernelRaise = *invokee.method {
-                            EvalResult::NonResult(Computation::raise(locals))
-                        } else {
-                            let ty = self.tyenv.update_loc(retn, loc.clone());
-                            EvalResult::Ok(ty, locals)
+                    self.process_block(&id.0, block.as_ref(), locals.clone(), invokee.prototype.loc(), proto_block).and_then_comp(|(), locals| {
+                        match *invokee.method {
+                            MethodImpl::IntrinsicKernelRaise => {
+                                Computation::raise(locals)
+                            }
+                            MethodImpl::IntrinsicKernelIsA => {
+                                if let Some(&CallArg::Pass(ref instance_loc, &Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. })) = args.first() {
+                                    let refine = |retn_class, refine_ty| {
+                                        let retn_ty = self.tyenv.instance0(loc.clone(), retn_class);
+
+                                        let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
+                                            locals.refine(name, refine_ty)
+                                        } else {
+                                            locals.clone()
+                                        };
+
+                                        Computation::result(retn_ty, locals)
+                                    };
+
+                                    self.tyenv.partition_by_class(invokee.recv_ty, instance_class, instance_loc)
+                                        .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
+                                        .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
+                                        .flatten(Computation::divergent)
+                                } else {
+                                    let boolean_ty = self.tyenv.instance0(loc.clone(), self.env.object.Boolean);
+                                    Computation::result(boolean_ty, locals)
+                                }
+                            }
+                            _ => {
+                                let ty = self.tyenv.update_loc(retn, loc.clone());
+                                Computation::result(ty, locals)
+                            }
+
                         }
-                    }).into_computation()
+                    })
                 },
                 Prototype::Untyped { .. } =>
                     Computation::result(self.tyenv.any(loc.clone()), locals.clone()),
