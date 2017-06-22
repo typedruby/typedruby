@@ -527,6 +527,8 @@ impl<'env, 'object> Eval<'env, 'object> {
             "include" => self.process_module_inclusion(id, self.scope.module, args),
             "extend" => self.process_module_inclusion(id, self.env.object.metaclass(self.scope.module), args),
             "require" => self.process_require(id, args, RequireType::LoadPath),
+            // TODO guard require_dependency behind a rails-mode flag:
+            "require_dependency" => self.process_require(id, args, RequireType::LoadPath),
             "require_relative" => self.process_require(id, args, RequireType::Relative),
             "attr_reader" => self.process_attr(AttrType::Reader, args),
             "attr_writer" => self.process_attr(AttrType::Writer, args),
