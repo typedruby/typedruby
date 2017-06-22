@@ -212,7 +212,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
     pub fn predicate<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>) -> ComputationPredicate<'ty, 'object> {
         fn refine_computation<'ty, 'object: 'ty>(ty: &'ty Type<'ty, 'object>, refined_ty: &'ty Type<'ty, 'object>, locals: &Locals<'ty, 'object>) -> Computation<'ty, 'object> {
             let locals = if let Type::LocalVariable { ref name, .. } = *ty {
-                locals.refine(name.clone(), refined_ty)
+                locals.refine(name, refined_ty)
             } else {
                 locals.clone()
             };
