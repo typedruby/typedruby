@@ -1,0 +1,6 @@
+/.cargo-in-container
+/librubyparser.a
+/main
+/target
+*.o
+Cargo.lock
