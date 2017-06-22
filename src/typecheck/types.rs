@@ -641,15 +641,13 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 }
             }
             Type::Union { ref types, ref loc } => {
-                let mut preds = types.iter().map(|t| self.predicate(t));
-
-                let first_pred = preds.next().expect("types is non-empty");
-
-                preds.fold(first_pred, |a, b| {
-                    a.append(b,
-                        |a, b| self.union(loc, a, b),
-                        |a, b| self.union(loc, a, b))
-                })
+                types.iter()
+                    .map(|t| self.predicate(t))
+                    .fold1(|a, b|
+                        a.append(b,
+                            |a, b| self.union(loc, a, b),
+                            |a, b| self.union(loc, a, b)))
+                    .unwrap()
             }
             Type::Tuple { .. } |
             Type::KeywordHash { .. } |
@@ -658,6 +656,46 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             Type::TypeParameter { .. } |
             Type::Var { .. } => Or::Both(ty, ty),
             Type::LocalVariable { .. } => panic!("should never remain after prune"),
+        }
+    }
+
+    pub fn partition_by_class(&self, ty: &'ty Type<'ty, 'object>, class: &'object RubyObject<'object>, class_loc: &Loc)
+        -> Or<&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>>
+    {
+        let partition_inner = |ty_class: &'object RubyObject<'object>| {
+            if ty_class.is_a(class) {
+                Or::Left(ty)
+            } else if class.is_a(ty_class) {
+                panic!("TODO")
+            } else {
+                Or::Right(ty)
+            }
+        };
+
+        match *self.prune(ty) {
+            Type::Instance { class: ty_class, .. } =>
+                partition_inner(ty_class),
+            Type::Proc { .. } =>
+                partition_inner(self.object.Proc),
+            Type::Tuple { .. } =>
+                partition_inner(self.object.array_class()),
+            Type::KeywordHash { .. } =>
+                partition_inner(self.object.hash_class()),
+            Type::Union { ref types, ref loc, .. } => {
+                types.iter()
+                    .map(|t| self.partition_by_class(t, class, class_loc))
+                    .fold1(|a, b|
+                        a.append(b,
+                            |a, b| self.union(class_loc, a, b),
+                            |a, b| self.union(loc, a, b)))
+                    .unwrap()
+            }
+            Type::Any { .. } |
+            Type::TypeParameter { .. } |
+            Type::Var { .. } =>
+                Or::Both(ty, ty),
+            Type::LocalVariable { .. } =>
+                panic!("should never remain after prune"),
         }
     }
 
