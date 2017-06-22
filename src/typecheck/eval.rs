@@ -772,7 +772,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Type::Instance { class, type_parameters: ref tp, .. } => {
                 match self.env.object.lookup_method(class, &id.1) {
                     Some(method) => vec![Invokee {
-                        recv_ty: degraded_recv_type,
+                        recv_ty: recv_type,
                         method: method.implementation.clone(),
                         prototype: self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(class, tp.clone())),
                     }],
@@ -783,12 +783,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 match self.env.object.lookup_method(self.env.object.Proc, &id.1) {
                     Some(method) => match *method.implementation {
                         MethodImpl::IntrinsicProcCall => vec![Invokee {
-                            recv_ty: degraded_recv_type,
+                            recv_ty: recv_type,
                             method: method.implementation.clone(),
                             prototype: proto.clone(),
                         }],
                         _ => vec![Invokee {
-                            recv_ty: degraded_recv_type,
+                            recv_ty: recv_type,
                             method: method.implementation.clone(),
                             prototype: self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(&self.env.object.Proc, Vec::new())),
                         }],
@@ -798,6 +798,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Type::Union { ref types, .. } => {
                 types.iter().flat_map(|ty| {
+                    // XXX - this is a hack. instead of narrowing local variables we need to narrow types in the tyenv:
+                    let ty = if let Type::LocalVariable { ref name, ref loc, .. } = *recv_type {
+                        self.tyenv.local_variable(loc.clone(), name.clone(), ty)
+                    } else {
+                        ty
+                    };
+
                     let invokees = self.resolve_invocation(ty, id);
 
                     if invokees.is_empty() {
@@ -811,7 +818,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }).collect()
             }
             Type::Any { .. } => vec![Invokee {
-                recv_ty: degraded_recv_type,
+                recv_ty: recv_type,
                 method: Rc::new(MethodImpl::Untyped),
                 prototype: self.tyenv.any_prototype(id.0.clone()),
             }],
