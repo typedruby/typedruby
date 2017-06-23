@@ -5,6 +5,26 @@ pub enum Or<L, R> {
 }
 
 impl<L, R> Or<L, R> {
+    pub fn map_left<F, Lt>(self, mut f: F) -> Or<Lt, R>
+        where F : FnMut(L) -> Lt
+    {
+        match self {
+            Or::Left(l) => Or::Left(f(l)),
+            Or::Both(l, r) => Or::Both(f(l), r),
+            Or::Right(r) => Or::Right(r),
+        }
+    }
+
+    pub fn map_right<F, Rt>(self, mut f: F) -> Or<L, Rt>
+        where F : FnMut(R) -> Rt
+    {
+        match self {
+            Or::Left(l) => Or::Left(l),
+            Or::Both(l, r) => Or::Both(l, f(r)),
+            Or::Right(r) => Or::Right(f(r)),
+        }
+    }
+
     pub fn append<Lf, Rf>(self, other: Or<L, R>, mut lf: Lf, mut rf: Rf) -> Or<L, R>
         where Lf : FnMut(L, L) -> L,
               Rf : FnMut(R, R) -> R
@@ -23,6 +43,17 @@ impl<L, R> Or<L, R> {
             (Or::Right(r1), Or::Both(l, r2)) => Or::Both(l, rf(r1, r2)),
 
             (Or::Both(l1, r1), Or::Both(l2, r2)) => Or::Both(lf(l1, l2), rf(r1, r2)),
+        }
+    }
+}
+
+impl<T> Or<T, T> {
+    pub fn flatten<F>(self, mut f: F) -> T
+        where F : FnMut(T, T) -> T
+    {
+        match self {
+            Or::Left(val) | Or::Right(val) => val,
+            Or::Both(l, r) => f(l, r),
         }
     }
 }
