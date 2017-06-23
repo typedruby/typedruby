@@ -205,6 +205,7 @@ impl<'a> ObjectGraph<'a> {
             (o.Class,  "new",   Rc::new(MethodImpl::IntrinsicClassNew)),
             (o.Proc,   "call",  Rc::new(MethodImpl::IntrinsicProcCall)),
             (o.Kernel, "raise", Rc::new(MethodImpl::IntrinsicKernelRaise)),
+            (o.Kernel, "is_a?", Rc::new(MethodImpl::IntrinsicKernelIsA)),
         ].iter().cloned() {
             o.define_method(class, mid.to_owned(), Rc::new(MethodEntry {
                 owner: class,
@@ -624,6 +625,7 @@ pub enum MethodImpl<'object> {
     IntrinsicClassNew,
     IntrinsicProcCall,
     IntrinsicKernelRaise,
+    IntrinsicKernelIsA,
 }
 
 pub struct ConstantEntry<'object> {

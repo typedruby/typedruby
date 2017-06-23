@@ -26,8 +26,6 @@ module Kernel
 
   def __dir__ => String; end
 
-  def is_a?(Class k) => Boolean; end
-
   def proc[T](T &) => T; end
 
   def lambda[T](T &) => T; end
@@ -92,8 +90,6 @@ class Object < BasicObject
   def freeze => :self; end
 
   def send(Symbol method_name, :any *args) => :any; end
-
-  def is_a?(Module mod) => Boolean; end
 end
 
 module Enumerable
