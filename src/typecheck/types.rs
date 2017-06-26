@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::fmt;
 use ast::{Loc, Node};
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
@@ -506,98 +507,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         tyvar
     }
 
-    fn describe_rec(&self, ty: &'ty Type<'ty, 'object>, buffer: &mut String) {
-        use std::fmt::Write;
-
-        match *self.prune(ty) {
-            Type::Instance { ref class, ref type_parameters, .. } => {
-                write!(buffer, "{}", class.name()).unwrap();
-
-                if !type_parameters.is_empty() {
-                    let mut print_comma = false;
-                    write!(buffer, "::[").unwrap();
-
-                    for param in type_parameters.iter() {
-                        if print_comma { write!(buffer, ", ").unwrap(); }
-                        self.describe_rec(param, buffer);
-                        print_comma = true;
-                    }
-
-                    write!(buffer, "]").unwrap();
-                }
-            },
-            Type::Tuple { ref lead, ref splat, ref post, .. } => {
-                let mut print_comma = false;
-
-                write!(buffer, "[").unwrap();
-
-                for lead_ty in lead {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    self.describe_rec(lead_ty, buffer);
-                    print_comma = true;
-                }
-
-                if let Some(splat_ty) = *splat {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    write!(buffer, "*").unwrap();
-                    self.describe_rec(splat_ty, buffer);
-                    print_comma = true;
-                }
-
-                for post_ty in post {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    self.describe_rec(post_ty, buffer);
-                    print_comma = true;
-                }
-
-                write!(buffer, "]").unwrap();
-            },
-            Type::Union { ref types, .. } => {
-                let mut print_pipe = false;
-
-                for union_ty in types {
-                    if print_pipe { write!(buffer, " | ").unwrap(); }
-                    self.describe_rec(union_ty, buffer);
-                    print_pipe = true;
-                }
-            },
-            Type::Any { .. } => {
-                write!(buffer, ":any").unwrap();
-            },
-            Type::TypeParameter { ref name, .. } => {
-                write!(buffer, "type parameter {}", name).unwrap();
-            },
-            Type::KeywordHash { ref keywords, splat, .. } => {
-                let mut print_comma = false;
-
-                write!(buffer, "{{").unwrap();
-
-                for &(ref kw_name, ref kw_ty) in keywords {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    write!(buffer, "{}: ", kw_name).unwrap();
-                    self.describe_rec(kw_ty, buffer);
-                    print_comma = true;
-                }
-
-                if let Some(splat) = splat {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    write!(buffer, "**").unwrap();
-                    self.describe_rec(splat, buffer);
-                }
-
-                write!(buffer, "}}").unwrap();
-            },
-            Type::Proc { .. } => {
-                // TOOD
-                write!(buffer, "Proc(todo)").unwrap();
-            },
-            Type::Var { ref id, .. } => {
-                write!(buffer, "t{}", id).unwrap();
-            },
-            Type::LocalVariable { .. } => {
-                panic!("should never remain after prune")
-            },
-        }
+    pub fn describe(&self, ty: &'ty Type<'ty, 'object>) -> String {
+        let mut buffer = String::new();
+        ty.describe(self, &mut buffer).unwrap();
+        buffer
     }
 
     pub fn degrade_to_instance(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
@@ -621,12 +534,6 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             },
             pruned => pruned,
         }
-    }
-
-    pub fn describe(&self, ty: &'ty Type<'ty, 'object>) -> String {
-        let mut buffer = String::new();
-        self.describe_rec(ty, &mut buffer);
-        buffer
     }
 
     pub fn predicate(&self, ty: &'ty Type<'ty, 'object>) -> Or<&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>> {
@@ -911,6 +818,101 @@ impl<'ty, 'object> Type<'ty, 'object> {
     pub fn ref_eq(&self, other: &'ty Type<'ty, 'object>) -> bool {
         (self as *const _) == (other as *const _)
     }
+
+    pub fn describe<'env>(&'ty self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+        match *tyenv.prune(self) {
+            Type::Instance { ref class, ref type_parameters, .. } => {
+                write!(f, "{}", class.name())?;
+
+                if !type_parameters.is_empty() {
+                    let mut print_comma = false;
+                    write!(f, "::[")?;
+
+                    for param in type_parameters.iter() {
+                        if print_comma { write!(f, ", ")?; }
+                        param.describe(tyenv, f)?;
+                        print_comma = true;
+                    }
+
+                    write!(f, "]")?;
+                }
+            },
+            Type::Tuple { ref lead, ref splat, ref post, .. } => {
+                let mut print_comma = false;
+
+                write!(f, "[")?;
+
+                for lead_ty in lead {
+                    if print_comma { write!(f, ", ")?; }
+                    lead_ty.describe(tyenv, f)?;
+                    print_comma = true;
+                }
+
+                if let Some(splat_ty) = *splat {
+                    if print_comma { write!(f, ", ")?; }
+                    write!(f, "*")?;
+                    splat_ty.describe(tyenv, f)?;
+                    print_comma = true;
+                }
+
+                for post_ty in post {
+                    if print_comma { write!(f, ", ")?; }
+                    post_ty.describe(tyenv, f)?;
+                    print_comma = true;
+                }
+
+                write!(f, "]")?;
+            },
+            Type::Union { ref types, .. } => {
+                let mut print_pipe = false;
+
+                for union_ty in types {
+                    if print_pipe { write!(f, " | ")?; }
+                    union_ty.describe(tyenv, f)?;
+                    print_pipe = true;
+                }
+            },
+            Type::Any { .. } => {
+                write!(f, ":any")?;
+            },
+            Type::TypeParameter { ref name, .. } => {
+                write!(f, "type parameter {}", name)?;
+            },
+            Type::KeywordHash { ref keywords, splat, .. } => {
+                let mut print_comma = false;
+
+                write!(f, "{{")?;
+
+                for &(ref kw_name, ref kw_ty) in keywords {
+                    if print_comma { write!(f, ", ")?; }
+                    write!(f, "{}: ", kw_name)?;
+                    kw_ty.describe(tyenv, f)?;
+                    print_comma = true;
+                }
+
+                if let Some(splat) = splat {
+                    if print_comma { write!(f, ", ")?; }
+                    write!(f, "**")?;
+                    splat.describe(tyenv, f)?;
+                }
+
+                write!(f, "}}")?;
+            },
+            Type::Proc { ref proto, .. } => {
+                write!(f, "{{ ")?;
+                proto.describe(tyenv, f)?;
+                write!(f, " }}")?;
+            },
+            Type::Var { ref id, .. } => {
+                write!(f, "t{}", id)?;
+            },
+            Type::LocalVariable { .. } => {
+                panic!("should never remain after prune")
+            },
+        }
+
+        Ok(())
+    }
 }
 
 #[derive(Debug)]
@@ -930,6 +932,27 @@ impl<'ty, 'object> Prototype<'ty, 'object> {
         match *self {
             Prototype::Untyped { ref loc } => loc,
             Prototype::Typed { ref loc, .. } => loc,
+        }
+    }
+
+    pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+        match *self {
+            Prototype::Untyped { .. } => write!(f, "|*| => ?"),
+            Prototype::Typed { ref args, retn, .. } => {
+                let mut print_comma = false;
+
+                write!(f, "|")?;
+
+                for arg in args {
+                    if print_comma { write!(f, ", ")?; }
+                    arg.describe(tyenv, f)?;
+                    print_comma = true;
+                }
+
+                write!(f, "| => ")?;
+
+                retn.describe(tyenv, f)
+            }
         }
     }
 }
@@ -993,6 +1016,37 @@ impl<'ty, 'object> Arg<'ty, 'object> {
             &**arg
         } else {
             self
+        }
+    }
+
+    pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+        match *self {
+            Arg::Required { ty, .. } => ty.describe(tyenv, f),
+            Arg::Procarg0 { ref arg, .. } => arg.describe(tyenv, f),
+            Arg::Optional { ty, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " = ?")
+            }
+            Arg::Rest { ty, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " *")
+            }
+            Arg::Kwarg { ty, ref name, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " {}:", name)
+            }
+            Arg::Kwoptarg { ty, ref name, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " {}: ?", name)
+            }
+            Arg::Kwrest { ty, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " **")
+            }
+            Arg::Block { ty, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " &")
+            }
         }
     }
 }
