@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::fmt;
 use ast::{Loc, Node};
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
@@ -506,98 +507,106 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         tyvar
     }
 
-    fn describe_rec(&self, ty: &'ty Type<'ty, 'object>, buffer: &mut String) {
+    fn describe_rec(&self, ty: &'ty Type<'ty, 'object>, buffer: &mut String) -> fmt::Result {
         use std::fmt::Write;
 
         match *self.prune(ty) {
             Type::Instance { ref class, ref type_parameters, .. } => {
-                write!(buffer, "{}", class.name()).unwrap();
+                write!(buffer, "{}", class.name())?;
 
                 if !type_parameters.is_empty() {
                     let mut print_comma = false;
-                    write!(buffer, "::[").unwrap();
+                    write!(buffer, "::[")?;
 
                     for param in type_parameters.iter() {
-                        if print_comma { write!(buffer, ", ").unwrap(); }
-                        self.describe_rec(param, buffer);
+                        if print_comma { write!(buffer, ", ")?; }
+                        self.describe_rec(param, buffer)?;
                         print_comma = true;
                     }
 
-                    write!(buffer, "]").unwrap();
+                    write!(buffer, "]")?;
                 }
             },
             Type::Tuple { ref lead, ref splat, ref post, .. } => {
                 let mut print_comma = false;
 
-                write!(buffer, "[").unwrap();
+                write!(buffer, "[")?;
 
                 for lead_ty in lead {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    self.describe_rec(lead_ty, buffer);
+                    if print_comma { write!(buffer, ", ")?; }
+                    self.describe_rec(lead_ty, buffer)?;
                     print_comma = true;
                 }
 
                 if let Some(splat_ty) = *splat {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    write!(buffer, "*").unwrap();
-                    self.describe_rec(splat_ty, buffer);
+                    if print_comma { write!(buffer, ", ")?; }
+                    write!(buffer, "*")?;
+                    self.describe_rec(splat_ty, buffer)?;
                     print_comma = true;
                 }
 
                 for post_ty in post {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    self.describe_rec(post_ty, buffer);
+                    if print_comma { write!(buffer, ", ")?; }
+                    self.describe_rec(post_ty, buffer)?;
                     print_comma = true;
                 }
 
-                write!(buffer, "]").unwrap();
+                write!(buffer, "]")?;
             },
             Type::Union { ref types, .. } => {
                 let mut print_pipe = false;
 
                 for union_ty in types {
-                    if print_pipe { write!(buffer, " | ").unwrap(); }
-                    self.describe_rec(union_ty, buffer);
+                    if print_pipe { write!(buffer, " | ")?; }
+                    self.describe_rec(union_ty, buffer)?;
                     print_pipe = true;
                 }
             },
             Type::Any { .. } => {
-                write!(buffer, ":any").unwrap();
+                write!(buffer, ":any")?;
             },
             Type::TypeParameter { ref name, .. } => {
-                write!(buffer, "type parameter {}", name).unwrap();
+                write!(buffer, "type parameter {}", name)?;
             },
             Type::KeywordHash { ref keywords, splat, .. } => {
                 let mut print_comma = false;
 
-                write!(buffer, "{{").unwrap();
+                write!(buffer, "{{")?;
 
                 for &(ref kw_name, ref kw_ty) in keywords {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    write!(buffer, "{}: ", kw_name).unwrap();
-                    self.describe_rec(kw_ty, buffer);
+                    if print_comma { write!(buffer, ", ")?; }
+                    write!(buffer, "{}: ", kw_name)?;
+                    self.describe_rec(kw_ty, buffer)?;
                     print_comma = true;
                 }
 
                 if let Some(splat) = splat {
-                    if print_comma { write!(buffer, ", ").unwrap(); }
-                    write!(buffer, "**").unwrap();
-                    self.describe_rec(splat, buffer);
+                    if print_comma { write!(buffer, ", ")?; }
+                    write!(buffer, "**")?;
+                    self.describe_rec(splat, buffer)?;
                 }
 
-                write!(buffer, "}}").unwrap();
+                write!(buffer, "}}")?;
             },
             Type::Proc { .. } => {
                 // TOOD
-                write!(buffer, "Proc(todo)").unwrap();
+                write!(buffer, "Proc(todo)")?;
             },
             Type::Var { ref id, .. } => {
-                write!(buffer, "t{}", id).unwrap();
+                write!(buffer, "t{}", id)?;
             },
             Type::LocalVariable { .. } => {
                 panic!("should never remain after prune")
             },
         }
+
+        Ok(())
+    }
+
+    pub fn describe(&self, ty: &'ty Type<'ty, 'object>) -> String {
+        let mut buffer = String::new();
+        self.describe_rec(ty, &mut buffer).unwrap();
+        buffer
     }
 
     pub fn degrade_to_instance(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
@@ -621,12 +630,6 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             },
             pruned => pruned,
         }
-    }
-
-    pub fn describe(&self, ty: &'ty Type<'ty, 'object>) -> String {
-        let mut buffer = String::new();
-        self.describe_rec(ty, &mut buffer);
-        buffer
     }
 
     pub fn predicate(&self, ty: &'ty Type<'ty, 'object>) -> Or<&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>> {
