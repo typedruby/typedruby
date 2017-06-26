@@ -898,9 +898,10 @@ impl<'ty, 'object> Type<'ty, 'object> {
 
                 write!(f, "}}")?;
             },
-            Type::Proc { .. } => {
-                // TOOD
-                write!(f, "Proc(todo)")?;
+            Type::Proc { ref proto, .. } => {
+                write!(f, "{{ ")?;
+                proto.describe(tyenv, f)?;
+                write!(f, " }}")?;
             },
             Type::Var { ref id, .. } => {
                 write!(f, "t{}", id)?;
@@ -931,6 +932,27 @@ impl<'ty, 'object> Prototype<'ty, 'object> {
         match *self {
             Prototype::Untyped { ref loc } => loc,
             Prototype::Typed { ref loc, .. } => loc,
+        }
+    }
+
+    pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+        match *self {
+            Prototype::Untyped { .. } => write!(f, "|*| => ?"),
+            Prototype::Typed { ref args, retn, .. } => {
+                let mut print_comma = false;
+
+                write!(f, "|")?;
+
+                for arg in args {
+                    if print_comma { write!(f, ", ")?; }
+                    arg.describe(tyenv, f)?;
+                    print_comma = true;
+                }
+
+                write!(f, "| => ")?;
+
+                retn.describe(tyenv, f)
+            }
         }
     }
 }
@@ -994,6 +1016,37 @@ impl<'ty, 'object> Arg<'ty, 'object> {
             &**arg
         } else {
             self
+        }
+    }
+
+    pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+        match *self {
+            Arg::Required { ty, .. } => ty.describe(tyenv, f),
+            Arg::Procarg0 { ref arg, .. } => arg.describe(tyenv, f),
+            Arg::Optional { ty, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " = ?")
+            }
+            Arg::Rest { ty, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " *")
+            }
+            Arg::Kwarg { ty, ref name, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " {}:", name)
+            }
+            Arg::Kwoptarg { ty, ref name, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " {}: ?", name)
+            }
+            Arg::Kwrest { ty, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " **")
+            }
+            Arg::Block { ty, .. } => {
+                ty.describe(tyenv, f)?;
+                write!(f, " &")
+            }
         }
     }
 }
