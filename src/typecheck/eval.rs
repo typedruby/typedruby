@@ -692,7 +692,16 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 let prototype_loc = prototype_node.map(|n| n.loc().join(&id.0)).unwrap_or_else(|| id.0.clone());
 
-                self.resolve_prototype(&prototype_loc, prototype_node, Locals::new(), &mut type_context, scope.clone()).1
+                let (anno_status, prototype, _) = self.resolve_prototype(&prototype_loc, prototype_node, Locals::new(), &mut type_context, scope.clone());
+
+                if let AnnotationStatus::Untyped = anno_status {
+                    if let Prototype::Typed { retn, .. } = *prototype {
+                        self.tyenv.unify(retn, self.tyenv.any(retn.loc().clone()))
+                            .expect("retn is unresolved type var");
+                    }
+                }
+
+                prototype
             }
             MethodImpl::AttrReader { ref ivar, .. } => {
                 Rc::new(match self.lookup_ivar(ivar, &type_context) {
