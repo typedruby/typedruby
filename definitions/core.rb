@@ -657,7 +657,11 @@ class Integer < Numeric
 
   def +(Integer other) => Integer; end
 
+  def -(Integer other) => Integer; end
+
   def *(Integer other) => Integer; end
+
+  def /(Integer other) => Integer; end
 end
 
 class Float < Numeric
@@ -691,6 +695,10 @@ class String < Object
 
   def gsub((String | Regexp) pattern, { |String s| => String } &) => String; end
 
+  def sub!((String | Regexp) pattern, { |String s| => String } &) => ~String; end
+
+  def gsub!((String | Regexp) pattern, { |String s| => String } &) => ~String; end
+
   def size => Integer; end
 
   def length => Integer; end
@@ -701,6 +709,8 @@ class String < Object
 
   def start_with?(String prefix) => Boolean; end
 
+  def end_with?(String suffix) => Boolean; end
+
   def downcase => String; end
 
   def upcase => String; end
@@ -710,6 +720,8 @@ class String < Object
   def strip => String; end
 
   def []((Integer | Range::[Integer, Integer]) idx) => String; end
+
+  def []=((Integer | Range::[Integer, Integer]) idx, String replacement) => String; end
 
   def =~(Regexp pattern) => ~Integer; end
 
@@ -734,6 +746,8 @@ end
 
 class Array::[ElementType] < Object
   def each({ |ElementType element| => :any } &bk) => :self; end
+
+  def each_with_index({ |ElementType element, Integer index| => :any } &bk) => :self; end
 
   include Enumerable
 
