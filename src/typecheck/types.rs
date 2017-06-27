@@ -54,7 +54,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
         Rc::new(Prototype {
             loc: loc.clone(),
-            args: vec![Arg::Rest { loc: loc.clone(), ty: any_ty }],
+            args: vec![
+                Arg::Rest { loc: loc.clone(), ty: any_ty },
+                Arg::Block { loc: loc.clone(), ty: any_ty },
+            ],
             retn: any_ty,
         })
     }
