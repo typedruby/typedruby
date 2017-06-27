@@ -50,7 +50,13 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     }
 
     pub fn any_prototype(&self, loc: Loc) -> Rc<Prototype<'ty, 'object>> {
-        Rc::new(Prototype::Untyped { loc: loc })
+        let any_ty = self.any(loc.clone());
+
+        Rc::new(Prototype {
+            loc: loc.clone(),
+            args: vec![Arg::Rest { loc: loc.clone(), ty: any_ty }],
+            retn: any_ty,
+        })
     }
 
     pub fn instance(&self, loc: Loc, class: &'object RubyObject<'object>, type_parameters: Vec<&'ty Type<'ty, 'object>>)
@@ -234,14 +240,9 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
     }
 
     pub fn compatible_prototype(&self, to: &Prototype<'ty, 'object>, from: &Prototype<'ty, 'object>) -> Option<UnificationResult<'ty, 'object>> {
-        match (to, from) {
-            (&Prototype::Untyped { .. }, _) => Some(Ok(())),
-            (_, &Prototype::Untyped { .. }) => Some(Ok(())),
-            (&Prototype::Typed { args: ref args1, retn: retn1, .. }, &Prototype::Typed { args: ref args2, retn: retn2, .. }) =>
-                self.compatible_args(args1, args2).map(|_| {
-                    self.compatible(retn1, retn2)
-                }),
-        }
+        self.compatible_args(&to.args, &from.args).map(|result|
+            result.and_then(|()|
+                self.compatible(to.retn, from.retn)))
     }
 
     fn args_to_tuple_arg(&self, args: &[Arg<'ty, 'object>]) -> Option<Arg<'ty, 'object>> {
@@ -916,44 +917,31 @@ impl<'ty, 'object> Type<'ty, 'object> {
 }
 
 #[derive(Debug)]
-pub enum Prototype<'ty, 'object: 'ty> {
-    Untyped {
-        loc: Loc,
-    },
-    Typed {
-        loc: Loc,
-        args: Vec<Arg<'ty, 'object>>,
-        retn: &'ty Type<'ty, 'object>,
-    },
+pub struct Prototype<'ty, 'object: 'ty> {
+    pub loc: Loc,
+    pub args: Vec<Arg<'ty, 'object>>,
+    pub retn: &'ty Type<'ty, 'object>,
 }
 
 impl<'ty, 'object> Prototype<'ty, 'object> {
     pub fn loc(&self) -> &Loc {
-        match *self {
-            Prototype::Untyped { ref loc } => loc,
-            Prototype::Typed { ref loc, .. } => loc,
-        }
+        &self.loc
     }
 
     pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
-        match *self {
-            Prototype::Untyped { .. } => write!(f, "|*| => ?"),
-            Prototype::Typed { ref args, retn, .. } => {
-                let mut print_comma = false;
+        let mut print_comma = false;
 
-                write!(f, "|")?;
+        write!(f, "|")?;
 
-                for arg in args {
-                    if print_comma { write!(f, ", ")?; }
-                    arg.describe(tyenv, f)?;
-                    print_comma = true;
-                }
-
-                write!(f, "| => ")?;
-
-                retn.describe(tyenv, f)
-            }
+        for arg in &self.args {
+            if print_comma { write!(f, ", ")?; }
+            arg.describe(tyenv, f)?;
+            print_comma = true;
         }
+
+        write!(f, "| => ")?;
+
+        self.retn.describe(tyenv, f)
     }
 }
 
