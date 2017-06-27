@@ -776,7 +776,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             MethodImpl::IntrinsicKernelIsA => {
                 Rc::new(Prototype {
                     loc: loc.clone(),
-                    args: vec![Arg::Required { loc: loc.clone(), ty: self.tyenv.instance0(loc.clone(), self.env.object.Kernel)}],
+                    args: vec![Arg::Required { loc: loc.clone(), ty: self.tyenv.instance0(loc.clone(), self.env.object.Module) }],
                     retn: self.tyenv.instance0(loc.clone(), self.env.object.Boolean),
                 })
             }
