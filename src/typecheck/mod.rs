@@ -24,7 +24,8 @@ pub fn check<'env, 'object: 'env>(env: &'env Environment<'object>, method: Rc<Me
         MethodImpl::IntrinsicClassNew |
         MethodImpl::IntrinsicProcCall |
         MethodImpl::IntrinsicKernelRaise |
-        MethodImpl::IntrinsicKernelIsA =>
+        MethodImpl::IntrinsicKernelIsA |
+        MethodImpl::IntrinsicModuleEqq =>
             { /* pass */ }
     }
 }

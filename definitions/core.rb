@@ -2112,8 +2112,6 @@ class Module < Object
 end
 
 class Class < Module
-  def ===(Object instance) => Boolean; end
-
   def allocate => :instance; end
 end
 

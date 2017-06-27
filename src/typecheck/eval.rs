@@ -780,6 +780,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     retn: self.tyenv.instance0(loc.clone(), self.env.object.Boolean),
                 })
             }
+            MethodImpl::IntrinsicModuleEqq => {
+                Rc::new(Prototype {
+                    loc: loc.clone(),
+                    args: vec![Arg::Required { loc: loc.clone(), ty: self.tyenv.any(loc.clone()) }],
+                    retn: self.tyenv.instance0(loc.clone(), self.env.object.Boolean),
+                })
+            }
             MethodImpl::IntrinsicProcCall => panic!("should never happen"),
         }
     }
@@ -1142,6 +1149,27 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         )
     }
 
+    fn process_is_a_refinement(&self, loc: &Loc, locals: Locals<'ty, 'object>, scrutinee: &'ty Type<'ty, 'object>, class: &'object RubyObject<'object>, class_loc: &Loc)
+        -> Computation<'ty, 'object>
+    {
+        let refine = |retn_class, refine_ty| {
+            let retn_ty = self.tyenv.instance0(loc.clone(), retn_class);
+
+            let locals = if let Type::LocalVariable { ref name, .. } = *scrutinee {
+                locals.refine(name, refine_ty)
+            } else {
+                locals.clone()
+            };
+
+            Computation::result(retn_ty, locals)
+        };
+
+        self.tyenv.partition_by_class(scrutinee, class, class_loc)
+            .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
+            .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
+            .flatten(Computation::divergent)
+    }
+
     fn process_send_dispatch(&self, loc: &Loc, recv_type: &'ty Type<'ty, 'object>, id: &Id, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1228,38 +1256,39 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
 
             let comp = self.process_block(&id.0, block.as_ref(), locals.clone(), invokee.prototype.loc(), proto_block).and_then_comp(|(), locals| {
+                let refine_intrinsic = |scrutinee_ty: Option<&'ty Type<'ty, 'object>>, class_ty: Option<&'ty Type<'ty, 'object>>| {
+                    scrutinee_ty.and_then(|scrutinee_ty| {
+                        class_ty.and_then(|class_ty| {
+                            if let Type::Instance { class: &RubyObject::Metaclass { of: class, .. }, .. } = *self.tyenv.prune(class_ty) {
+                                Some((scrutinee_ty, class, class_ty.loc()))
+                            } else {
+                                None
+                            }
+                        })
+                    }).map(|(scrutinee_ty, class, class_loc)| {
+                        self.process_is_a_refinement(loc, locals.clone(), scrutinee_ty, class, class_loc)
+                    }).unwrap_or_else(|| {
+                        let boolean_ty = self.tyenv.instance0(loc.clone(), self.env.object.Boolean);
+                        Computation::result(boolean_ty, locals.clone())
+                    })
+                };
+
                 match *invokee.method {
                     MethodImpl::IntrinsicKernelRaise => {
-                        Computation::raise(locals)
+                        Computation::raise(locals.clone())
                     }
                     MethodImpl::IntrinsicKernelIsA => {
-                        if let Some(&CallArg::Pass(ref instance_loc, &Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. })) = args.first() {
-                            let refine = |retn_class, refine_ty| {
-                                let retn_ty = self.tyenv.instance0(loc.clone(), retn_class);
-
-                                let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
-                                    locals.refine(name, refine_ty)
-                                } else {
-                                    locals.clone()
-                                };
-
-                                Computation::result(retn_ty, locals)
-                            };
-
-                            self.tyenv.partition_by_class(invokee.recv_ty, instance_class, instance_loc)
-                                .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
-                                .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
-                                .flatten(Computation::divergent)
-                        } else {
-                            let boolean_ty = self.tyenv.instance0(loc.clone(), self.env.object.Boolean);
-                            Computation::result(boolean_ty, locals)
-                        }
+                        refine_intrinsic(Some(invokee.recv_ty),
+                            args.first().and_then(CallArg::passed_ty))
+                    }
+                    MethodImpl::IntrinsicModuleEqq => {
+                        refine_intrinsic(args.first().and_then(CallArg::passed_ty),
+                            Some(invokee.recv_ty))
                     }
                     _ => {
                         let ty = self.tyenv.update_loc(retn, loc.clone());
-                        Computation::result(ty, locals)
+                        Computation::result(ty, locals.clone())
                     }
-
                 }
             });
 

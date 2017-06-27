@@ -16,6 +16,14 @@ impl<'ty, 'object> CallArg<'ty, 'object> {
             CallArg::Splat(ref loc, _) => loc,
         }
     }
+
+    pub fn passed_ty(&self) -> Option<&'ty Type<'ty, 'object>> {
+        if let CallArg::Pass(_, ty) = *self {
+            Some(ty)
+        } else {
+            None
+        }
+    }
 }
 
 #[derive(Debug)]
