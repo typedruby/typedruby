@@ -185,9 +185,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
             eval.process_node(body_node, locals).terminate(&|ty|
-                if let Prototype::Typed { retn, .. } = *prototype {
-                    eval.compatible(retn, ty, None)
-                }
+                eval.compatible(prototype.retn, ty, None)
             );
         }
     }
@@ -556,7 +554,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             None => {},
         };
 
-        (status, Rc::new(Prototype::Typed { loc: proto_loc.clone(), args: args, retn: return_type }), locals)
+        (status, Rc::new(Prototype { loc: proto_loc.clone(), args: args, retn: return_type }), locals)
     }
 
     fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
@@ -695,25 +693,30 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 let (anno_status, prototype, _) = self.resolve_prototype(&prototype_loc, prototype_node, Locals::new(), &mut type_context, scope.clone());
 
                 if let AnnotationStatus::Untyped = anno_status {
-                    if let Prototype::Typed { retn, .. } = *prototype {
-                        self.tyenv.unify(retn, self.tyenv.any(retn.loc().clone()))
-                            .expect("retn is unresolved type var");
-                    }
+                    self.tyenv.unify(prototype.retn, self.tyenv.any(prototype.retn.loc().clone()))
+                        .expect("retn is unresolved type var");
                 }
 
                 prototype
             }
-            MethodImpl::AttrReader { ref ivar, .. } => {
-                Rc::new(match self.lookup_ivar(ivar, &type_context) {
-                    Some(ivar_type) => Prototype::Typed { loc: loc.clone(), args: vec![], retn: ivar_type },
-                    None => Prototype::Untyped { loc: loc.clone() },
+            MethodImpl::AttrReader { ref ivar, ref node } => {
+                let ivar_type = self.lookup_ivar(ivar, &type_context)
+                    .unwrap_or_else(|| self.tyenv.any(node.loc().clone()));
+
+                Rc::new(Prototype {
+                    loc: loc.clone(),
+                    args: vec![],
+                    retn: ivar_type,
                 })
             }
             MethodImpl::AttrWriter { ref ivar, ref node } => {
-                Rc::new(match self.lookup_ivar(ivar, &type_context) {
-                    Some(ivar_type) =>
-                        Prototype::Typed { loc: loc.clone(), args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }], retn: ivar_type },
-                    None => Prototype::Untyped { loc: loc.clone() },
+                let ivar_type = self.lookup_ivar(ivar, &type_context)
+                    .unwrap_or_else(|| self.tyenv.any(node.loc().clone()));
+
+                Rc::new(Prototype {
+                    loc: loc.clone(),
+                    args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }],
+                    retn: ivar_type,
                 })
             }
             MethodImpl::Untyped => self.tyenv.any_prototype(loc.clone()),
@@ -741,10 +744,11 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                         let proto = self.prototype_from_method_impl(loc, &initialize_method.implementation, initialize_type_context);
 
-                        match *proto {
-                            Prototype::Untyped { .. } => proto.clone(),
-                            Prototype::Typed { ref loc, ref args, .. } => Rc::new(Prototype::Typed { loc: loc.clone(), args: args.clone(), retn: instance_type }),
-                        }
+                        Rc::new(Prototype {
+                            loc: proto.loc.clone(),
+                            args: proto.args.clone(),
+                            retn: instance_type,
+                        })
                     },
                     RubyObject::Class { .. } => {
                         // the only way this case can be triggered is calling
@@ -763,14 +767,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             MethodImpl::IntrinsicKernelRaise => {
                 let any_ty = self.tyenv.any(loc.clone());
                 // TODO give Kernel#raise a proper prototype
-                Rc::new(Prototype::Typed {
+                Rc::new(Prototype {
                     loc: loc.clone(),
                     args: vec![Arg::Rest { loc: loc.clone(), ty: any_ty }],
                     retn: any_ty,
                 })
             }
             MethodImpl::IntrinsicKernelIsA => {
-                Rc::new(Prototype::Typed {
+                Rc::new(Prototype {
                     loc: loc.clone(),
                     args: vec![Arg::Required { loc: loc.clone(), ty: self.tyenv.instance0(loc.clone(), self.env.object.Kernel)}],
                     retn: self.tyenv.instance0(loc.clone(), self.env.object.Boolean),
@@ -959,17 +963,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
         };
 
-        let (proto_args, proto_retn, proto_loc) = if let Prototype::Typed { ref args, retn, ref loc } = *proto {
-            (args, retn, loc)
-        } else {
-            self.error("Can't infer type for symbol-as-proc", &[
-                Detail::Loc("passed here", loc),
-                Detail::Loc("because the block defined in the method prototype is untyped", proto_block_ty.loc()),
-            ]);
-
-            return self.tyenv.new_var(loc.clone());
-        };
-
         fn recv_ty_from_arg<'ty, 'object: 'ty>(arg: Option<&Arg<'ty, 'object>>) -> Option<&'ty Type<'ty, 'object>> {
             match arg {
                 Some(&Arg::Required { ty, .. }) => Some(ty),
@@ -978,13 +971,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
         }
 
-        if let Some(ty) = recv_ty_from_arg(proto_args.first()) {
+        if let Some(ty) = recv_ty_from_arg(proto.args.first()) {
             let invokee_proc_ty = self.tyenv.alloc(Type::Proc {
                 loc: proto_block_ty.loc().clone(),
-                proto: Rc::new(Prototype::Typed {
-                    loc: proto_loc.clone(),
-                    args: proto_args[1..].iter().cloned().collect(),
-                    retn: proto_retn,
+                proto: Rc::new(Prototype {
+                    loc: proto.loc.clone(),
+                    args: proto.args[1..].iter().cloned().collect(),
+                    retn: proto.retn,
                 })
             });
 
@@ -1073,11 +1066,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 let (_, block_prototype, block_locals) = self.resolve_prototype(loc, args.as_ref().map(Rc::as_ref), block_locals, &mut block_type_context, self.scope.clone());
 
-                let block_return_type = if let Prototype::Typed { retn, .. } = *block_prototype {
-                    retn
-                } else {
-                    self.tyenv.new_var(loc.clone())
-                };
+                let block_return_type = block_prototype.retn;
 
                 let block_proc_type = self.tyenv.alloc(Type::Proc {
                     loc: loc.clone(),
@@ -1170,111 +1159,109 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         let mut result_comp = None;
 
         for invokee in invokees {
-            let comp = match *invokee.prototype {
-                Prototype::Typed { args: ref proto_args, retn, loc: ref proto_loc } => {
-                    let (proto_block, proto_args) = match proto_args.last() {
-                        Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
-                        Some(_) | None => (None, proto_args.as_slice()),
-                    };
+            let ref proto_loc = invokee.prototype.loc;
+            let ref proto_args = invokee.prototype.args;
+            let retn = invokee.prototype.retn;
 
-                    let args = match proto_args.first() {
-                        Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
-                            let tuple_elements = args.iter().map(|call_arg| match *call_arg {
-                                CallArg::Pass(_, ty) => TupleElement::Value(ty),
-                                CallArg::Splat(_, ty) => TupleElement::Splat(ty),
-                            }).collect::<Vec<_>>();
-
-                            let args_loc = args[0].loc().join(args.last().unwrap().loc());
-
-                            let arg_ty = self.tuple_from_elements(args_loc.clone(), &tuple_elements);
-
-                            vec![CallArg::Pass(args_loc, arg_ty)]
-                        }
-                        _ => args.clone(),
-                    };
-
-                    let match_result = call::match_prototype_with_invocation(&self.tyenv, proto_args, &args);
-
-                    for match_error in match_result.errors {
-                        match match_error {
-                            ArgError::TooFewArguments => {
-                                self.error("Too few arguments supplied", &[
-                                    Detail::Loc("in this invocation", &id.0),
-                                    Detail::Loc("for this prototype", proto_loc),
-                                ])
-                            }
-                            ArgError::TooManyArguments(ref loc) => {
-                                self.error("Too many arguments supplied", &[
-                                    Detail::Loc("from here", loc),
-                                    Detail::Loc("in this invocation", &id.0),
-                                    Detail::Loc("for this prototype", proto_loc),
-                                ])
-                            }
-                            ArgError::MissingKeyword(ref name) => {
-                                self.error(&format!("Missing keyword argument :{}", name), &[
-                                    Detail::Loc("in this invocation", &id.0),
-                                    Detail::Loc("for this prototype", proto_loc),
-                                ])
-                            }
-                            ArgError::UnknownKeyword(ref name) => {
-                                self.error(&format!("Unknown keyword argument :{}", name), &[
-                                    Detail::Loc("in this invocation", &id.0),
-                                    Detail::Loc("for this prototype", proto_loc),
-                                ])
-                            }
-                            ArgError::UnexpectedSplat(ref loc) => {
-                                self.error("Unexpected splat in keyword arguments", &[
-                                    Detail::Loc("here", loc),
-                                    Detail::Loc("in this invocation", &id.0),
-                                    Detail::Loc("for this prototype", proto_loc),
-                                ])
-                            }
-                        }
-                    }
-
-                    for (proto_ty, pass_ty) in match_result.matches {
-                        self.compatible(proto_ty, pass_ty, Some(loc));
-                    }
-
-                    self.process_block(&id.0, block.as_ref(), locals.clone(), invokee.prototype.loc(), proto_block).and_then_comp(|(), locals| {
-                        match *invokee.method {
-                            MethodImpl::IntrinsicKernelRaise => {
-                                Computation::raise(locals)
-                            }
-                            MethodImpl::IntrinsicKernelIsA => {
-                                if let Some(&CallArg::Pass(ref instance_loc, &Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. })) = args.first() {
-                                    let refine = |retn_class, refine_ty| {
-                                        let retn_ty = self.tyenv.instance0(loc.clone(), retn_class);
-
-                                        let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
-                                            locals.refine(name, refine_ty)
-                                        } else {
-                                            locals.clone()
-                                        };
-
-                                        Computation::result(retn_ty, locals)
-                                    };
-
-                                    self.tyenv.partition_by_class(invokee.recv_ty, instance_class, instance_loc)
-                                        .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
-                                        .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
-                                        .flatten(Computation::divergent)
-                                } else {
-                                    let boolean_ty = self.tyenv.instance0(loc.clone(), self.env.object.Boolean);
-                                    Computation::result(boolean_ty, locals)
-                                }
-                            }
-                            _ => {
-                                let ty = self.tyenv.update_loc(retn, loc.clone());
-                                Computation::result(ty, locals)
-                            }
-
-                        }
-                    })
-                },
-                Prototype::Untyped { .. } =>
-                    Computation::result(self.tyenv.any(loc.clone()), locals.clone()),
+            let (proto_block, proto_args) = match proto_args.last() {
+                Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
+                Some(_) | None => (None, proto_args.as_slice()),
             };
+
+            let args = match proto_args.first() {
+                Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
+                    let tuple_elements = args.iter().map(|call_arg| match *call_arg {
+                        CallArg::Pass(_, ty) => TupleElement::Value(ty),
+                        CallArg::Splat(_, ty) => TupleElement::Splat(ty),
+                    }).collect::<Vec<_>>();
+
+                    let args_loc = args[0].loc().join(args.last().unwrap().loc());
+
+                    let arg_ty = self.tuple_from_elements(args_loc.clone(), &tuple_elements);
+
+                    vec![CallArg::Pass(args_loc, arg_ty)]
+                }
+                _ => args.clone(),
+            };
+
+            let match_result = call::match_prototype_with_invocation(&self.tyenv, proto_args, &args);
+
+            for match_error in match_result.errors {
+                match match_error {
+                    ArgError::TooFewArguments => {
+                        self.error("Too few arguments supplied", &[
+                            Detail::Loc("in this invocation", &id.0),
+                            Detail::Loc("for this prototype", proto_loc),
+                        ])
+                    }
+                    ArgError::TooManyArguments(ref loc) => {
+                        self.error("Too many arguments supplied", &[
+                            Detail::Loc("from here", loc),
+                            Detail::Loc("in this invocation", &id.0),
+                            Detail::Loc("for this prototype", proto_loc),
+                        ])
+                    }
+                    ArgError::MissingKeyword(ref name) => {
+                        self.error(&format!("Missing keyword argument :{}", name), &[
+                            Detail::Loc("in this invocation", &id.0),
+                            Detail::Loc("for this prototype", proto_loc),
+                        ])
+                    }
+                    ArgError::UnknownKeyword(ref name) => {
+                        self.error(&format!("Unknown keyword argument :{}", name), &[
+                            Detail::Loc("in this invocation", &id.0),
+                            Detail::Loc("for this prototype", proto_loc),
+                        ])
+                    }
+                    ArgError::UnexpectedSplat(ref loc) => {
+                        self.error("Unexpected splat in keyword arguments", &[
+                            Detail::Loc("here", loc),
+                            Detail::Loc("in this invocation", &id.0),
+                            Detail::Loc("for this prototype", proto_loc),
+                        ])
+                    }
+                }
+            }
+
+            for (proto_ty, pass_ty) in match_result.matches {
+                self.compatible(proto_ty, pass_ty, Some(loc));
+            }
+
+            let comp = self.process_block(&id.0, block.as_ref(), locals.clone(), invokee.prototype.loc(), proto_block).and_then_comp(|(), locals| {
+                match *invokee.method {
+                    MethodImpl::IntrinsicKernelRaise => {
+                        Computation::raise(locals)
+                    }
+                    MethodImpl::IntrinsicKernelIsA => {
+                        if let Some(&CallArg::Pass(ref instance_loc, &Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. })) = args.first() {
+                            let refine = |retn_class, refine_ty| {
+                                let retn_ty = self.tyenv.instance0(loc.clone(), retn_class);
+
+                                let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
+                                    locals.refine(name, refine_ty)
+                                } else {
+                                    locals.clone()
+                                };
+
+                                Computation::result(retn_ty, locals)
+                            };
+
+                            self.tyenv.partition_by_class(invokee.recv_ty, instance_class, instance_loc)
+                                .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
+                                .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
+                                .flatten(Computation::divergent)
+                        } else {
+                            let boolean_ty = self.tyenv.instance0(loc.clone(), self.env.object.Boolean);
+                            Computation::result(boolean_ty, locals)
+                        }
+                    }
+                    _ => {
+                        let ty = self.tyenv.update_loc(retn, loc.clone());
+                        Computation::result(ty, locals)
+                    }
+
+                }
+            });
 
             result_comp = Computation::divergent_option(result_comp, Some(comp));
         }
