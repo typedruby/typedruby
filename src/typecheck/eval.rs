@@ -1080,8 +1080,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Some(ref body_node) => self.process_node(body_node, block_locals),
                 };
 
-                self.extract_results(block_comp
-                    .capture_next(), loc)
+                self.extract_results(block_comp.terminate_next_scope(), loc)
                     .and_then(|ty, locals| {
                         self.compatible(block_return_type, ty, None);
                         EvalResult::Ok((), locals.unextend())

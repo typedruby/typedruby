@@ -144,7 +144,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         }
     }
 
-    pub fn capture_next(&self) -> Computation<'ty, 'object> {
+    pub fn terminate_next_scope(&self) -> Computation<'ty, 'object> {
         // TODO when Computation_::Next is implemented this needs to turn
         // Next computations into Result computations:
         self.clone()
