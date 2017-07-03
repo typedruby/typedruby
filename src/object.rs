@@ -552,6 +552,14 @@ impl<'a> ObjectGraph<'a> {
 
         true
     }
+
+    pub fn is_hash(&self, class: &'a RubyObject<'a>) -> bool {
+        class.is_a(self.hash_class())
+    }
+
+    pub fn is_array(&self, class: &'a RubyObject<'a>) -> bool {
+        class.is_a(self.array_class())
+    }
 }
 
 pub struct ScopeIter<'object> {
