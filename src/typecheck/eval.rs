@@ -1080,8 +1080,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Some(ref body_node) => self.process_node(body_node, block_locals),
                 };
 
-                self.extract_results(block_comp
-                    .capture_next(), loc)
+                self.extract_results(block_comp.terminate_next_scope(), loc)
                     .and_then(|ty, locals| {
                         self.compatible(block_return_type, ty, None);
                         EvalResult::Ok((), locals.unextend())
@@ -1262,6 +1261,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 }
             });
+
+            let comp = comp.terminate_break_scope();
 
             result_comp = Computation::divergent_option(result_comp, Some(comp));
         }
@@ -1539,6 +1540,19 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
+    fn process_command_args(&self, loc: &Loc, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        match nodes.len() {
+            0 => Computation::result(self.tyenv.nil(loc.clone()), locals),
+            1 => self.process_node(nodes.first().unwrap(), locals),
+            _ => {
+                let loc = nodes[0].loc().join(nodes.last().unwrap().loc());
+                self.process_array_tuple(&loc, nodes, locals)
+            }
+        }
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1614,16 +1628,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Float), locals)
             }
             Node::Return(ref loc, ref exprs) => {
-                let comp = match exprs.len() {
-                    0 => Computation::result(self.tyenv.nil(loc.clone()), locals),
-                    1 => self.process_node(exprs.first().unwrap(), locals),
-                    _ => {
-                        let loc = exprs[0].loc().join(exprs.last().unwrap().loc());
-                        self.process_array_tuple(&loc, exprs, locals)
-                    }
-                };
-
-                comp.seq(&|ty, _| Computation::return_(ty))
+                self.process_command_args(loc, exprs, locals).seq(&|ty, _|
+                    Computation::return_(ty))
             }
             Node::TyCast(ref loc, ref expr, ref type_node) => {
                 self.process_node(expr, locals).seq(&|_, l| {
@@ -1641,6 +1647,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Retry(_) => {
                 // TODO also needs to ensure soundness of locals (see above)
                 Computation::retry()
+            }
+            Node::Next(ref loc, ref exprs) => {
+                self.process_command_args(loc, exprs, locals).seq(&|ty, locals|
+                    Computation::next(ty, locals))
+            }
+            Node::Break(ref loc, ref exprs) => {
+                self.process_command_args(loc, exprs, locals).seq(&|ty, locals|
+                    Computation::break_(ty, locals))
             }
             Node::Send(ref loc, ref recv, ref mid, ref args) => {
                 let (block, args) = match args.last().map(|x| &**x) {
