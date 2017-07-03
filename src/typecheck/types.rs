@@ -209,9 +209,11 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             },
             (&Type::Any { .. }, _) => Ok(()),
             (_, &Type::Any { .. }) => Ok(()),
-            (&Type::Instance { .. }, &Type::KeywordHash { .. }) => {
+            (&Type::Instance { class, .. }, &Type::KeywordHash { .. })
+                if class.is_a(self.object.hash_class()) =>
+            {
                 self.compatible(to, self.degrade_to_instance(from))
-            },
+            }
             (&Type::Tuple { ref lead, ref splat, ref post, .. }, &Type::Instance { class, ref type_parameters, .. })
                 if class.is_a(self.object.array_class()) =>
             {
