@@ -210,12 +210,12 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (&Type::Any { .. }, _) => Ok(()),
             (_, &Type::Any { .. }) => Ok(()),
             (&Type::Instance { class, .. }, &Type::KeywordHash { .. })
-                if class.is_a(self.object.hash_class()) =>
+                if self.object.is_hash(class) =>
             {
                 self.compatible(to, self.degrade_to_instance(from))
             }
             (&Type::Tuple { ref lead, ref splat, ref post, .. }, &Type::Instance { class, ref type_parameters, .. })
-                if class.is_a(self.object.array_class()) =>
+                if self.object.is_array(class) =>
             {
                 // While very convenient, this compatibility rule is slightly
                 // unsound as it assumes that the array instance has enough
@@ -229,7 +229,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 })
             }
             (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
-                if !class.is_a(self.object.hash_class()) {
+                if !self.object.is_hash(class) {
                     return Err((to, from));
                 }
 
@@ -698,7 +698,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         match self.prune(ty) {
             kw_ty@&Type::KeywordHash { .. } => Some(kw_ty),
             &Type::Instance { class, ref type_parameters, .. }
-                if class.is_a(self.object.hash_class()) =>
+                if self.object.is_hash(class) =>
                     if self.is_instance(type_parameters[0], self.object.Symbol) {
                         Some(self.keyword_hash(ty.loc().clone(), vec![], Some(type_parameters[1])))
                     } else {
@@ -712,7 +712,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         match *self.prune(ty) {
             Type::KeywordHash { .. } => true,
             Type::Instance { class, ref type_parameters, .. }
-                if class.is_a(self.object.hash_class()) =>
+                if self.object.is_hash(class) =>
                     self.is_instance(type_parameters[0], self.object.Symbol),
             _ => false,
         }
@@ -728,7 +728,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                     .chain(splat)
                     .fold(KwsplatResult::None, |res, ty| res.append_ty(self, ty.loc(), ty)),
             Type::Instance { class, ref type_parameters, .. }
-                if class.is_a(self.object.hash_class())
+                if self.object.is_hash(class)
                 && self.is_instance(type_parameters[0], self.object.Symbol)
                 =>
                     KwsplatResult::Ok(type_parameters[1]),
