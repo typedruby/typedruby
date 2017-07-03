@@ -212,6 +212,20 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (&Type::Instance { .. }, &Type::KeywordHash { .. }) => {
                 self.compatible(to, self.degrade_to_instance(from))
             },
+            (&Type::Tuple { ref lead, ref splat, ref post, .. }, &Type::Instance { class, ref type_parameters, .. })
+                if class.is_a(self.object.array_class()) =>
+            {
+                // While very convenient, this compatibility rule is slightly
+                // unsound as it assumes that the array instance has enough
+                // elements to satisfy the tuple. In this case I think the
+                // trade off makes sense so let's allow this.
+
+                let array_element_ty = type_parameters[0];
+
+                lead.iter().chain(splat).chain(post).fold(Ok(()), |result, ty| {
+                    result.and_then(|()| self.compatible(ty, array_element_ty))
+                })
+            }
             (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
                 if !class.is_a(self.object.hash_class()) {
                     return Err((to, from));
