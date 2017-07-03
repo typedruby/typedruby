@@ -1538,6 +1538,19 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
+    fn process_command_args(&self, loc: &Loc, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        match nodes.len() {
+            0 => Computation::result(self.tyenv.nil(loc.clone()), locals),
+            1 => self.process_node(nodes.first().unwrap(), locals),
+            _ => {
+                let loc = nodes[0].loc().join(nodes.last().unwrap().loc());
+                self.process_array_tuple(&loc, nodes, locals)
+            }
+        }
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1613,16 +1626,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Float), locals)
             }
             Node::Return(ref loc, ref exprs) => {
-                let comp = match exprs.len() {
-                    0 => Computation::result(self.tyenv.nil(loc.clone()), locals),
-                    1 => self.process_node(exprs.first().unwrap(), locals),
-                    _ => {
-                        let loc = exprs[0].loc().join(exprs.last().unwrap().loc());
-                        self.process_array_tuple(&loc, exprs, locals)
-                    }
-                };
-
-                comp.seq(&|ty, _| Computation::return_(ty))
+                self.process_command_args(loc, exprs, locals).seq(&|ty, _|
+                    Computation::return_(ty))
             }
             Node::TyCast(ref loc, ref expr, ref type_node) => {
                 self.process_node(expr, locals).seq(&|_, l| {
