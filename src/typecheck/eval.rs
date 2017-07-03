@@ -1262,6 +1262,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
             });
 
+            let comp = comp.terminate_break_scope();
+
             result_comp = Computation::divergent_option(result_comp, Some(comp));
         }
 
@@ -1645,6 +1647,14 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Retry(_) => {
                 // TODO also needs to ensure soundness of locals (see above)
                 Computation::retry()
+            }
+            Node::Next(ref loc, ref exprs) => {
+                self.process_command_args(loc, exprs, locals).seq(&|ty, locals|
+                    Computation::next(ty, locals))
+            }
+            Node::Break(ref loc, ref exprs) => {
+                self.process_command_args(loc, exprs, locals).seq(&|ty, locals|
+                    Computation::break_(ty, locals))
             }
             Node::Send(ref loc, ref recv, ref mid, ref args) => {
                 let (block, args) = match args.last().map(|x| &**x) {
