@@ -56,6 +56,8 @@ enum Computation_<'ty, 'object: 'ty> {
     Raise(Locals<'ty, 'object>),
     Redo,
     Retry,
+    Next(&'ty Type<'ty, 'object>, Locals<'ty, 'object>),
+    Break(&'ty Type<'ty, 'object>, Locals<'ty, 'object>),
     Divergent(Computation<'ty, 'object>, Computation<'ty, 'object>),
 }
 
@@ -89,6 +91,14 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Retry))
     }
 
+    pub fn next(ty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        Computation(Rc::new(Computation_::Next(ty, locals)))
+    }
+
+    pub fn break_(ty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        Computation(Rc::new(Computation_::Break(ty, locals)))
+    }
+
     pub fn divergent(a: Computation<'ty, 'object>, b: Computation<'ty, 'object>) -> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Divergent(a, b)))
     }
@@ -110,7 +120,9 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             Computation_::Return(_) |
             Computation_::Raise(_) |
             Computation_::Redo |
-            Computation_::Retry => self.clone(),
+            Computation_::Retry |
+            Computation_::Next(..) |
+            Computation_::Break(..) => self.clone(),
             Computation_::Divergent(ref a, ref b) => Self::divergent(a.seq(f), b.seq(f)),
         }
     }
@@ -123,7 +135,9 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             Computation_::Raise(ref locals) => Self::raise(f(locals.clone())),
             Computation_::Return(_) |
             Computation_::Redo |
-            Computation_::Retry => self.clone(),
+            Computation_::Retry |
+            Computation_::Next(..) |
+            Computation_::Break(..) => self.clone(),
             Computation_::Divergent(ref a, ref b) => Self::divergent(a.map_locals(f), b.map_locals(f)),
         }
     }
@@ -136,7 +150,12 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             Computation_::Return(ref ty) => f(ty.clone()),
             Computation_::Raise(_) |
             Computation_::Redo |
-            Computation_::Retry => {},
+            Computation_::Retry |
+            Computation_::Next(..) |
+            Computation_::Break(..) => {
+                // illegal redo/retry/next/break!
+                // TODO - we should error on this in eval
+            },
             Computation_::Divergent(ref a, ref b) => {
                 a.terminate(f);
                 b.terminate(f);
@@ -145,9 +164,25 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
     }
 
     pub fn terminate_next_scope(&self) -> Computation<'ty, 'object> {
-        // TODO when Computation_::Next is implemented this needs to turn
-        // Next computations into Result computations:
-        self.clone()
+        match *self.0 {
+            Computation_::Next(ty, ref locals) =>
+                Computation::result(ty, locals.clone()),
+            Computation_::Divergent(ref a, ref b) =>
+                Computation::divergent(a.terminate_next_scope(), b.terminate_next_scope()),
+            _ =>
+                self.clone()
+        }
+    }
+
+    pub fn terminate_break_scope(&self) -> Computation<'ty, 'object> {
+        match *self.0 {
+            Computation_::Break(ty, ref locals) =>
+                Computation::result(ty, locals.clone()),
+            Computation_::Divergent(ref a, ref b) =>
+                Computation::divergent(a.terminate_break_scope(), b.terminate_break_scope()),
+            _ =>
+                self.clone()
+        }
     }
 
     pub fn converge_results<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Computation<'ty, 'object> {
@@ -156,7 +191,9 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             Computation_::Return(..) |
             Computation_::Raise(..) |
             Computation_::Redo |
-            Computation_::Retry => self.clone(),
+            Computation_::Retry |
+            Computation_::Next(..) |
+            Computation_::Break(..) => self.clone(),
 
             Computation_::Divergent(ref a, ref b) => {
                 let a = a.converge_results(loc, tyenv, merges);
@@ -194,7 +231,9 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             Computation_::Raise(..) |
             Computation_::Return(..) |
             Computation_::Redo |
-            Computation_::Retry => EvalResult::NonResult(converged.clone()),
+            Computation_::Retry |
+            Computation_::Next(..) |
+            Computation_::Break(..) => EvalResult::NonResult(converged.clone()),
 
             Computation_::Divergent(ref a, ref b) => {
                 // if there were any result computations, converge_results
@@ -238,7 +277,9 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
             Computation_::Raise(..) |
             Computation_::Return(..) |
             Computation_::Redo |
-            Computation_::Retry => {
+            Computation_::Retry |
+            Computation_::Next(..) |
+            Computation_::Break(..) => {
                 ComputationPredicate::non_result(self.clone())
             }
         }
