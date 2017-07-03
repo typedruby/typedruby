@@ -148,7 +148,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(ref ty, _) |
             Computation_::Return(ref ty) => f(ty.clone()),
-            Computation_::Raise(_) |
+            Computation_::Raise(_) => {},
             Computation_::Redo |
             Computation_::Retry |
             Computation_::Next(..) |
