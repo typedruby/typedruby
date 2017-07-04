@@ -222,7 +222,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                                 }
                             ).collect()
                         } else if type_parameters.is_empty() {
-                            Vec::new()
+                            superclass.type_parameters().to_vec()
                         } else {
                             let loc = type_parameters.first().unwrap().loc().join(
                                         type_parameters.last().unwrap().loc());
@@ -231,7 +231,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                                 Detail::Loc("here", &loc),
                             ]);
 
-                            Vec::new()
+                            superclass.type_parameters().to_vec()
                         };
 
                     let class = self.env.object.new_class(
