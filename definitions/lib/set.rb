@@ -10,6 +10,16 @@ class Set::[ElementType]
   def +((Set::[ElementType] | Array::[ElementType]) other) => :self; end
 
   def include?(ElementType element) => Boolean; end
+
+  def |((Set::[ElementType] | Array::[ElementType]) other) => :self; end
+
+  def &((Set::[ElementType] | Array::[ElementType]) other) => :self; end
+
+  # TODO this should be on Enumerable
+  def group_by[GroupKey]({ |ElementType element| => GroupKey } &) => { GroupKey => [ElementType] }; end
+end
+
+class SortedSet < Set
 end
 
 # TODO to_set is actually defined on Enumerable:

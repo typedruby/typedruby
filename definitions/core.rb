@@ -51,6 +51,10 @@ module Kernel
   def ===(:any other) => Boolean; end
 
   def object_id => Integer; end
+
+  def eql?(Object other) => Boolean; end
+
+  def <=>(Object other) => ~Integer; end
 end
 
 class ENVClass
@@ -63,10 +67,10 @@ end
 
 class Object < BasicObject
   include Kernel
-  STDOUT = nil
-  STDERR = nil
+  STDOUT = (nil : IO)
+  STDERR = (nil : IO)
   NIL = nil
-  STDIN = nil
+  STDIN = (nil : IO)
   ARGF = nil
   TRUE = nil
   FALSE = nil
@@ -808,6 +812,8 @@ class Array::[ElementType] < Object
   def fetch(Integer index) => ElementType; end
 
   def to_h[K, V : ElementType = [K, V]] => { K => V }; end
+
+  def group_by[GroupKey]({ |ElementType element| => GroupKey } &) => { GroupKey => [ElementType] }; end
 end
 
 class Hash::[KeyType, ValueType] < Object
