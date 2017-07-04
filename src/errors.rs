@@ -31,6 +31,20 @@ fn color_scheme(base: Color) -> (ColorSpec, ColorSpec, ColorSpec) {
     (main, high, low)
 }
 
+macro_rules! write_color {
+    ($color:expr, $io:expr, $fmt:expr) => ({
+        $io.set_color(&$color)?;
+        write!($io, $fmt)?;
+        $io.reset()?;
+    });
+
+    ($color:expr, $io:expr, $fmt:expr, $($arg:expr),*) => ({
+        $io.set_color(&$color)?;
+        write!($io, $fmt, $($arg),*)?;
+        $io.reset()?;
+    });
+}
+
 pub struct ErrorReporter<T: WriteColor> {
     io: T,
     need_newline_padding: bool,
@@ -49,17 +63,14 @@ impl<T: WriteColor> ErrorReporter<T> {
     }
 
     fn emit(&mut self, diagnostic_name: &str, color: Color, message: &str, details: &[Detail]) -> Result<()> {
-        let (color_err, color_high, color_low) = color_scheme(color);
+        let (err, high, low) = color_scheme(color);
 
         if self.need_newline_padding {
             write!(self.io, "\n")?;
         }
 
-        self.io.set_color(&color_err)?;
-        write!(self.io, "{}: ", diagnostic_name)?;
-
-        self.io.set_color(&color_high)?;
-        write!(self.io, "{}\n\n", message)?;
+        write_color!(err, self.io, "{}: ", diagnostic_name);
+        write_color!(high, self.io, "{}\n\n", message);
 
         self.io.reset()?;
 
@@ -69,78 +80,56 @@ impl<T: WriteColor> ErrorReporter<T> {
                     let begin = loc.file.line_for_pos(loc.begin_pos);
                     let end = loc.file.line_for_pos(loc.end_pos);
 
-                    self.io.set_color(&color_low)?;
-                    write!(self.io, "        @ {}:{}\n",
-                           loc.file.filename().display(),
-                           begin.number)?;
-                    self.io.reset()?;
+                    write_color!(low, self.io, "        @ {}:{}\n",
+                        loc.file.filename().display(),
+                        begin.number);
 
                     if begin.number == end.number {
                         // same line
                         let line_info = begin;
 
-                        self.io.set_color(&color_low)?;
-                        write!(self.io, "{:>7} | ", line_info.number)?;
+                        write_color!(low, self.io, "{:>7} | ", line_info.number);
 
-                        self.io.reset()?;
                         write!(self.io, " {}", 
                                &loc.file.source()[line_info.begin_pos..loc.begin_pos])?;
 
-                        self.io.set_color(&color_err)?;
-                        write!(self.io, "{}", 
-                               &loc.file.source()[loc.begin_pos..loc.end_pos])?;
+                        write_color!(err, self.io, "{}", 
+                                     &loc.file.source()[loc.begin_pos..loc.end_pos]);
 
-                        self.io.reset()?;
                         write!(self.io, "{}\n",
                                &loc.file.source()[loc.end_pos..line_info.end_pos].trim_right())?;
 
-                        self.io.set_color(&color_err)?;
-                        write!(self.io, "{pad:pad_len$}{marker}",
-                               pad = "", pad_len = 11 + loc.begin_pos - line_info.begin_pos,
-                               marker = "^".repeat(loc.end_pos - loc.begin_pos))?;
+                        write_color!(err, self.io, "{0:1$}{2}",
+                           "", 11 + loc.begin_pos - line_info.begin_pos,
+                           "^".repeat(loc.end_pos - loc.begin_pos)
+                        );
 
-                        self.io.set_color(&color_high)?;
-                        write!(self.io, " {}\n", message)?;
+                        write_color!(high, self.io, " {}\n", message);
                     } else {
                         let source = loc.file.source()[begin.begin_pos..end.end_pos].split("\n");
 
-                        self.io.set_color(&color_err)?;
-                        write!(self.io, "{pad:pad_len$}{marker}v\n",
-                            pad = "", pad_len = 10,
-                            marker = "-".repeat(loc.begin_pos - begin.begin_pos + 1)
-                        )?;
-                        self.io.reset()?;
+                        write_color!(err, self.io, "{0:1$}{2}v\n",
+                            "", 10, "-".repeat(loc.begin_pos - begin.begin_pos + 1)
+                        );
 
                         for (line_no, line) in (begin.number..(end.number + 1)).zip(source) {
-                            self.io.set_color(&color_low)?;
-                            write!(self.io, "{number:>7} | ", number = line_no)?;
-
-                            self.io.set_color(&color_err)?;
-                            write!(self.io, "|")?;
-
-                            self.io.reset()?;
+                            write_color!(low, self.io, "{:>7} | ", line_no);
+                            write_color!(err, self.io, "|");
                             write!(self.io, "{}\n", line.trim_right())?;
                         }
 
-                        self.io.set_color(&color_err)?;
-                        write!(self.io, "{pad:pad_len$}{marker}^",
-                            pad = "", pad_len = 10,
-                            marker = "-".repeat(loc.end_pos - end.begin_pos))?;
+                        write_color!(err, self.io, "{0:1$}{2}^",
+                            "", 10, "-".repeat(loc.end_pos - end.begin_pos)
+                        );
 
-                        self.io.set_color(&color_high)?;
-                        write!(self.io, " {}\n", message)?;
+                        write_color!(high, self.io, " {}\n", message);
                     }
                 },
                 Detail::Message(ref message) => {
-                    self.io.set_color(&color_low)?;
-                    write!(self.io, "\n        - ")?;
-                    
-                    self.io.set_color(&color_high)?;
-                    write!(self.io, "{}\n\n", message)?;
+                    write_color!(low, self.io, "\n        - ");
+                    write_color!(high, self.io, "{}\n\n", message);
                 }
             }
-
-            self.io.reset()?;
         }
 
         self.need_newline_padding = true;
