@@ -3,12 +3,13 @@ extern crate immutable_map;
 extern crate itertools;
 extern crate regex;
 extern crate typed_arena;
+extern crate termcolor;
 
-use std::io;
 use std::path::PathBuf;
 use std::fs;
 use clap::{App, Arg};
 use typed_arena::Arena;
+use termcolor::{ColorChoice, StandardStream};
 
 mod ast;
 mod config;
@@ -96,7 +97,7 @@ fn config() -> (Config, Vec<PathBuf>) {
 
 fn main() {
     let (config, files) = config();
-    let errors = ErrorReporter::new(io::stderr());
+    let errors = ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto));
     let arena = Arena::new();
     let env = Environment::new(&arena, Box::new(errors), config);
 
