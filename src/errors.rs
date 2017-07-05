@@ -32,15 +32,9 @@ fn color_scheme(base: Color) -> (ColorSpec, ColorSpec, ColorSpec) {
 }
 
 macro_rules! write_color {
-    ($color:expr, $io:expr, $fmt:expr) => ({
+    ($color:expr, $io:expr, $($arg:tt)*) => ({
         $io.set_color(&$color)?;
-        write!($io, $fmt)?;
-        $io.reset()?;
-    });
-
-    ($color:expr, $io:expr, $fmt:expr, $($arg:expr),*) => ({
-        $io.set_color(&$color)?;
-        write!($io, $fmt, $($arg),*)?;
+        write!($io, $($arg)*)?;
         $io.reset()?;
     });
 }
