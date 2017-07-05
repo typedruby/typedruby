@@ -1075,16 +1075,16 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
                 self.compatible(proto_block_ty, block_proc_type, None);
 
-                let block_comp = match *body {
+                let comp = match *body {
                     None => Computation::result(self.tyenv.nil(loc.clone()), block_locals),
                     Some(ref body_node) => self.process_node(body_node, block_locals),
                 };
 
-                self.extract_results(block_comp.terminate_next_scope(), loc)
-                    .and_then(|ty, locals| {
-                        self.compatible(block_return_type, ty, None);
-                        EvalResult::Ok((), locals.unextend())
-                    })
+                let comp = comp.terminate_next_scope()
+                    .map_locals(&|locals| locals.unextend());
+
+                self.extract_results(comp, loc)
+                    .map(|ty| self.compatible(block_return_type, ty, None))
             }
             (Some(proto_block_ty), None) => {
                 // intentionally calling tyenv.compatible so this
