@@ -24,7 +24,7 @@ fn color_scheme(base: Color) -> (ColorSpec, ColorSpec, ColorSpec) {
     high.set_bold(true);
 
     let mut low = ColorSpec::new();
-    low.set_fg(Some(Color::Cyan));
+    low.set_fg(Some(Color::Blue));
     low.set_intense(false);
     low.set_bold(true);
 
@@ -90,10 +90,10 @@ impl<T: WriteColor> ErrorReporter<T> {
 
                         write_color!(low, self.io, "{:>7} | ", line_info.number);
 
-                        write!(self.io, " {}", 
+                        write!(self.io, " {}",
                                &loc.file.source()[line_info.begin_pos..loc.begin_pos])?;
 
-                        write_color!(err, self.io, "{}", 
+                        write_color!(err, self.io, "{}",
                                      &loc.file.source()[loc.begin_pos..loc.end_pos]);
 
                         write!(self.io, "{}\n",
