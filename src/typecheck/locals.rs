@@ -1,3 +1,4 @@
+use std::fmt;
 use std::rc::Rc;
 use std::collections::HashSet;
 use immutable_map::TreeMap;
@@ -86,7 +87,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     }
 
     pub fn extend(&self) -> Locals<'ty, 'object> {
-        Self::new_(Locals_ { parent: Some(Locals(self.0.clone())), vars: TreeMap::new(), autopin: 0 })
+        Self::new_(Locals_ { parent: Some(self.clone()), vars: TreeMap::new(), autopin: 0 })
     }
 
     pub fn unextend(&self) -> Locals<'ty, 'object> {
@@ -174,15 +175,15 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         if let Some(ref parent) = self.0.parent {
             let (entry, locals) = parent.update_upvar(&name, &|local| {
                 match *local {
-                    LocalEntry::Bound(_) => LocalEntry::Pinned(ty),
-                    LocalEntry::Pinned(ty) => LocalEntry::Pinned(ty),
+                    LocalEntry::Bound(ty) |
+                    LocalEntry::Pinned(ty) |
                     LocalEntry::ConditionallyPinned(ty) => LocalEntry::Pinned(ty),
                     LocalEntry::Unbound => panic!("should not happen"),
                 }
             });
 
             if let LocalEntry::Pinned(pinned_ty) = entry {
-                return (Some(pinned_ty), locals.unwrap_or_else(|| self.clone()))
+                return (Some(pinned_ty), locals.map(|l| self.update_parent(Some(l))).unwrap_or_else(|| self.clone()))
             }
         }
 
