@@ -67,8 +67,14 @@ pub struct Locals_<'ty, 'object: 'ty> {
     autopin: usize,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Clone)]
 pub struct Locals<'ty, 'object: 'ty>(Rc<Locals_<'ty, 'object>>);
+
+impl<'ty, 'object> fmt::Debug for Locals<'ty, 'object> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
 impl<'ty, 'object> Locals<'ty, 'object> {
     fn new_(l: Locals_<'ty, 'object>) -> Locals<'ty, 'object>{
