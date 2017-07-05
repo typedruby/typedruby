@@ -767,6 +767,8 @@ class Array::[ElementType] < Object
 
   def reject({ |ElementType x| => Boolean } &) => [ElementType]; end
 
+  def reject!({ |ElementType element| => Boolean } &) => ~[ElementType]; end
+
   def include?(ElementType item) => Boolean; end
 
   def shift => ~ElementType; end
@@ -789,7 +791,11 @@ class Array::[ElementType] < Object
 
   def last => ~ElementType; end
 
+  def +([ElementType] other) => [ElementType]; end
+
   def -([ElementType] other) => [ElementType]; end
+
+  def concat([ElementType] other) => :self; end
 
   def size => Integer; end
 
@@ -799,7 +805,9 @@ class Array::[ElementType] < Object
 
   def empty? => Boolean; end
 
-  def uniq => [ElementType]; end
+  def uniq(~{ |ElementType element| => :any } &) => [ElementType]; end
+
+  def uniq!(~{ |ElementType element| => :any } &) => [ElementType]; end
 
   def find({ |ElementType element| => Boolean } &) => ~ElementType; end
 
@@ -814,6 +822,15 @@ class Array::[ElementType] < Object
   def to_h[K, V : ElementType = [K, V]] => { K => V }; end
 
   def group_by[GroupKey]({ |ElementType element| => GroupKey } &) => { GroupKey => [ElementType] }; end
+
+  def delete_if({ |ElementType element| => Boolean } &) => :self; end
+
+  # TODO enforce that SortKey must respond to <=>
+  # or perhaps that it's comparable?
+  def sort_by[SortKey]({ |ElementType element| => SortKey } &) => [ElementType]; end
+  def sort_by![SortKey]({ |ElementType element| => SortKey } &) => :self; end
+
+  def take(Integer count) => [ElementType]; end
 end
 
 class Hash::[KeyType, ValueType] < Object
@@ -855,6 +872,8 @@ class Hash::[KeyType, ValueType] < Object
 
   def reduce[T](T initial, { |T acc, [KeyType, ValueType] kv| => T } &) => T; end
   alias :inject :reduce
+
+  def delete_if({ |KeyType key, ValueType value| => Boolean } &) => :self; end
 end
 
 class NilClass < Object
