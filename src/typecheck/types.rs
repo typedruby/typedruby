@@ -656,8 +656,12 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    fn same_types(&self, tys1: &[&'ty Type<'ty, 'object>], tys2: &[&'ty Type<'ty, 'object>]) -> bool {
+    fn same_unordered_types(&self, tys1: &[&'ty Type<'ty, 'object>], tys2: &[&'ty Type<'ty, 'object>]) -> bool {
         tys1.iter().all(|ty1| tys2.iter().any(|ty2| self.same_type(ty1, ty2)))
+    }
+
+    fn same_types(&self, tys1: &[&'ty Type<'ty, 'object>], tys2: &[&'ty Type<'ty, 'object>]) -> bool {
+        tys1.len() == tys2.len() && tys1.iter().zip(tys2).all(|(t1, t2)| self.same_type(t1, t2))
     }
 
     pub fn same_type(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> bool {
@@ -667,10 +671,19 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 c1 == c2 && tp1.iter().zip(tp2).all(|(t1, t2)| self.same_type(t1, t2)),
 
             (&Type::Union { types: ref tys1, .. }, &Type::Union { types: ref tys2, .. }) =>
-                self.same_types(tys1, tys2) && self.same_types(tys2, tys1),
+                self.same_unordered_types(tys1, tys2) && self.same_unordered_types(tys2, tys1),
 
-            (&Type::Tuple { .. }, &Type::Tuple { .. }) =>
-                panic!("TODO"),
+            (&Type::Tuple { lead: ref lead1, splat: ref splat1, post: ref post1, .. },
+                &Type::Tuple { lead: ref lead2, splat: ref splat2, post: ref post2, .. }) =>
+            {
+                self.same_types(lead1, lead2) &&
+                    match (splat1, splat2) {
+                        (&Some(t1), &Some(t2)) => self.same_type(t1, t2),
+                        (&None, &None) => true,
+                        _ => false
+                    } &&
+                    self.same_types(post1, post2)
+            }
 
             (&Type::KeywordHash { .. }, &Type::KeywordHash { .. }) =>
                 panic!("TODO"),
