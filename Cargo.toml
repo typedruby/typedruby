@@ -10,3 +10,4 @@ itertools = "0.6"
 regex = "0.2"
 ruby_parser = { path = "parser" }
 typed-arena = "1.2.0"
+termcolor = "0.3"

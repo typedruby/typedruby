@@ -1,5 +1,5 @@
-use std::io::Write;
-
+use termcolor::{Color, ColorSpec, WriteColor};
+use std::io::{Result};
 use ast::Loc;
 
 pub enum Detail<'a> {
@@ -15,14 +15,44 @@ pub trait ErrorSink {
     fn warning_count(&self) -> usize;
 }
 
-pub struct ErrorReporter<T: Write> {
+fn color_scheme(base: Color) -> (ColorSpec, ColorSpec, ColorSpec) {
+    let mut main = ColorSpec::new();
+    main.set_fg(Some(base));
+    main.set_bold(true);
+
+    let mut high = ColorSpec::new();
+    high.set_bold(true);
+
+    let mut low = ColorSpec::new();
+    low.set_fg(Some(Color::Cyan));
+    low.set_intense(false);
+    low.set_bold(true);
+
+    (main, high, low)
+}
+
+macro_rules! write_color {
+    ($color:expr, $io:expr, $fmt:expr) => ({
+        $io.set_color(&$color)?;
+        write!($io, $fmt)?;
+        $io.reset()?;
+    });
+
+    ($color:expr, $io:expr, $fmt:expr, $($arg:expr),*) => ({
+        $io.set_color(&$color)?;
+        write!($io, $fmt, $($arg),*)?;
+        $io.reset()?;
+    });
+}
+
+pub struct ErrorReporter<T: WriteColor> {
     io: T,
     need_newline_padding: bool,
     error_count: usize,
     warning_count: usize,
 }
 
-impl<T: Write> ErrorReporter<T> {
+impl<T: WriteColor> ErrorReporter<T> {
     pub fn new(io: T) -> ErrorReporter<T> {
         ErrorReporter {
             io: io,
@@ -32,15 +62,17 @@ impl<T: Write> ErrorReporter<T> {
         }
     }
 
-    fn emit(&mut self, diagnostic_name: &str, diagnostic_color: usize, message: &str, details: &[Detail]) {
+    fn emit(&mut self, diagnostic_name: &str, color: Color, message: &str, details: &[Detail]) -> Result<()> {
+        let (err, high, low) = color_scheme(color);
+
         if self.need_newline_padding {
-            write!(self.io, "\n").unwrap();
+            write!(self.io, "\n")?;
         }
 
-        write!(self.io, "\x1b[3{diagnostic_color};1m{diagnostic_name}:\x1b[0;1m {message}\x1b[0m\n\n",
-            diagnostic_name = diagnostic_name,
-            diagnostic_color = diagnostic_color,
-            message = message).unwrap();
+        write_color!(err, self.io, "{}: ", diagnostic_name);
+        write_color!(high, self.io, "{}\n\n", message);
+
+        self.io.reset()?;
 
         for detail in details {
             match *detail {
@@ -48,65 +80,72 @@ impl<T: Write> ErrorReporter<T> {
                     let begin = loc.file.line_for_pos(loc.begin_pos);
                     let end = loc.file.line_for_pos(loc.end_pos);
 
-                    write!(self.io, "        \x1b[34;1m@ {}:{}\x1b[0m\n", loc.file.filename().display(), begin.number).unwrap();
+                    write_color!(low, self.io, "        @ {}:{}\n",
+                        loc.file.filename().display(),
+                        begin.number);
 
                     if begin.number == end.number {
                         // same line
                         let line_info = begin;
 
-                        write!(self.io, "\x1b[34;1m{number:>7} | \x1b[0m {line_prefix}\x1b[3{diagnostic_color};1m{highlight}\x1b[0m{line_suffix}\n",
-                            diagnostic_color = diagnostic_color,
-                            number = line_info.number,
-                            line_prefix = &loc.file.source()[line_info.begin_pos..loc.begin_pos],
-                            highlight = &loc.file.source()[loc.begin_pos..loc.end_pos],
-                            line_suffix = &loc.file.source()[loc.end_pos..line_info.end_pos].trim_right()).unwrap();
+                        write_color!(low, self.io, "{:>7} | ", line_info.number);
 
-                        write!(self.io, "{pad:pad_len$}\x1b[3{diagnostic_color};1m{marker}\x1b[0;1m {message}\x1b[0m\n",
-                            diagnostic_color = diagnostic_color,
-                            pad = "", pad_len = 11 + loc.begin_pos - line_info.begin_pos,
-                            marker = "^".repeat(loc.end_pos - loc.begin_pos),
-                            message = message).unwrap();
+                        write!(self.io, " {}", 
+                               &loc.file.source()[line_info.begin_pos..loc.begin_pos])?;
+
+                        write_color!(err, self.io, "{}", 
+                                     &loc.file.source()[loc.begin_pos..loc.end_pos]);
+
+                        write!(self.io, "{}\n",
+                               &loc.file.source()[loc.end_pos..line_info.end_pos].trim_right())?;
+
+                        write_color!(err, self.io, "{0:1$}{2}",
+                           "", 11 + loc.begin_pos - line_info.begin_pos,
+                           "^".repeat(loc.end_pos - loc.begin_pos)
+                        );
+
+                        write_color!(high, self.io, " {}\n", message);
                     } else {
                         let source = loc.file.source()[begin.begin_pos..end.end_pos].split("\n");
 
-                        write!(self.io, "{pad:pad_len$}\x1b[3{diagnostic_color};1m{marker}v\x1b[0m\n",
-                            diagnostic_color = diagnostic_color,
-                            pad = "", pad_len = 10,
-                            marker = "-".repeat(loc.begin_pos - begin.begin_pos + 1)).unwrap();
+                        write_color!(err, self.io, "{0:1$}{2}v\n",
+                            "", 10, "-".repeat(loc.begin_pos - begin.begin_pos + 1)
+                        );
 
                         for (line_no, line) in (begin.number..(end.number + 1)).zip(source) {
-                            write!(self.io, "\x1b[34;1m{number:>7} | \x1b[3{diagnostic_color};1m|\x1b[0m{line}\n",
-                                diagnostic_color = diagnostic_color,
-                                number = line_no,
-                                line = line.trim_right()).unwrap();
+                            write_color!(low, self.io, "{:>7} | ", line_no);
+                            write_color!(err, self.io, "|");
+                            write!(self.io, "{}\n", line.trim_right())?;
                         }
 
-                        write!(self.io, "{pad:pad_len$}\x1b[3{diagnostic_color};1m{marker}^\x1b[0;1m {message}\x1b[0m\n",
-                            diagnostic_color = diagnostic_color,
-                            pad = "", pad_len = 10,
-                            marker = "-".repeat(loc.end_pos - end.begin_pos),
-                            message = message).unwrap();
+                        write_color!(err, self.io, "{0:1$}{2}^",
+                            "", 10, "-".repeat(loc.end_pos - end.begin_pos)
+                        );
+
+                        write_color!(high, self.io, " {}\n", message);
                     }
                 },
                 Detail::Message(ref message) => {
-                    write!(self.io, "\n        \x1b[34;1m-\x1b[0;1m {}\x1b[0m\n\n", message).unwrap();
+                    write_color!(low, self.io, "\n        - ");
+                    write_color!(high, self.io, "{}\n\n", message);
                 }
             }
         }
 
         self.need_newline_padding = true;
+        Ok(())
     }
 }
 
-impl<T: Write> ErrorSink for ErrorReporter<T> {
+impl<T: WriteColor> ErrorSink for ErrorReporter<T> {
     fn error(&mut self, message: &str, details: &[Detail]) {
         self.error_count += 1;
-        self.emit("error", 1, message, details);
+        self.emit("error", Color::Red, message, details).unwrap();
     }
 
     fn warning(&mut self, message: &str, details: &[Detail]) {
         self.error_count += 1;
-        self.emit("warning", 3, message, details);
+        self.emit("warning", Color::Yellow, message, details).unwrap();
     }
 
     fn error_count(&self) -> usize {
