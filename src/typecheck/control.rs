@@ -133,11 +133,11 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(ty, ref locals) => Self::result(ty, f(locals.clone())),
             Computation_::Raise(ref locals) => Self::raise(f(locals.clone())),
+            Computation_::Next(ty, ref locals) => Self::next(ty, f(locals.clone())),
+            Computation_::Break(ty, ref locals) => Self::break_(ty, f(locals.clone())),
             Computation_::Return(_) |
             Computation_::Redo |
-            Computation_::Retry |
-            Computation_::Next(..) |
-            Computation_::Break(..) => self.clone(),
+            Computation_::Retry => self.clone(),
             Computation_::Divergent(ref a, ref b) => Self::divergent(a.map_locals(f), b.map_locals(f)),
         }
     }
