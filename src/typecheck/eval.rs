@@ -1517,19 +1517,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             self.converge_results(self.seq_process(comp, node), node.loc()))
     }
 
-    fn process_seq_exprs(&self, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, Vec<&'ty Type<'ty, 'object>>>
-    {
-        nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |ev, n| {
-            ev.and_then(|mut tys, l| {
-                self.eval_node(n, l).and_then(|ty, l| {
-                    tys.push(ty);
-                    EvalResult::Ok(tys, l)
-                })
-            })
-        })
-    }
-
     fn process_command_args(&self, loc: &Loc, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1548,15 +1535,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     {
         match *node {
             Node::Array(ref loc, ref elements) => {
-                self.process_seq_exprs(elements, locals).map(|tys| {
-                    tys.into_iter().fold1(|a, b| {
-                        let ab_loc = a.loc().join(b.loc());
-                        self.tyenv.union(&ab_loc, a, b)
-                    }).unwrap_or_else(||
-                        self.tyenv.new_var(loc.clone()))
-                }).map(|element_ty|
-                    self.create_array_type(loc, element_ty)
-                ).into_computation()
+                if elements.is_empty() {
+                    let elem_ty = self.tyenv.new_var(loc.clone());
+                    let array_ty = self.tyenv.instance(loc.clone(), self.env.object.array_class(), vec![elem_ty]);
+                    Computation::result(array_ty, locals)
+                } else {
+                    self.process_array_tuple(loc, elements, locals)
+                }
             }
             Node::Begin(ref loc, ref nodes) |
             Node::Kwbegin(ref loc, ref nodes) => {
