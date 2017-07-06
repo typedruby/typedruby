@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::collections::HashMap;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, Type, Prototype, KwsplatResult};
+use typecheck::types::{Arg, TypeEnv, Type, Prototype, KwsplatResult, TupleElement};
 use object::{Scope, RubyObject, MethodImpl};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -115,12 +115,6 @@ enum Lhs<'ty, 'object: 'ty> {
     Lvar(Loc, String),
     Simple(Loc, &'ty Type<'ty, 'object>),
     Send(Loc, &'ty Type<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
-}
-
-#[derive(Debug)]
-enum TupleElement<'ty, 'object: 'ty> {
-    Value(&'ty Type<'ty, 'object>),
-    Splat(&'ty Type<'ty, 'object>),
 }
 
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
