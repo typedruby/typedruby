@@ -109,12 +109,14 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn tuple(&self, loc: Loc, types: Vec<&'ty Type<'ty, 'object>>) -> &'ty Type<'ty, 'object> {
+    pub fn tuple(&self, loc: Loc, lead: Vec<&'ty Type<'ty, 'object>>, splat: Option<&'ty Type<'ty, 'object>>, post: Vec<&'ty Type<'ty, 'object>>)
+        -> &'ty Type<'ty, 'object>
+    {
         self.alloc(Type::Tuple {
             loc: loc,
-            lead: types,
-            splat: None,
-            post: Vec::new(),
+            lead: lead,
+            splat: splat,
+            post: post,
         })
     }
 
@@ -284,7 +286,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
         let args_loc = args[0].loc().join(args[args.len() - 1].loc());
 
-        Some(Arg::Required { loc: args_loc.clone(), ty: self.tuple(args_loc, arg_types) })
+        Some(Arg::Required { loc: args_loc.clone(), ty: self.tuple(args_loc, arg_types, None, vec![]) })
     }
 
     pub fn compatible_args(&self, to: &[Arg<'ty, 'object>], from: &[Arg<'ty, 'object>]) -> Option<UnificationResult<'ty, 'object>> {
