@@ -117,6 +117,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             lead: lead,
             splat: splat,
             post: post,
+            id: self.new_id(),
         })
     }
 
@@ -156,7 +157,8 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         match *ty {
             Type::Var { ref id, .. } |
             Type::LocalVariable { ref id, .. } |
-            Type::KeywordHash { ref id, .. } => {
+            Type::KeywordHash { ref id, .. } |
+            Type::Tuple { ref id, .. } => {
                 if let Some(instance) = { self.instance_map.borrow().get(id) } {
                     return self.prune(instance)
                 }
@@ -229,6 +231,9 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 lead.iter().chain(splat).chain(post).fold(Ok(()), |result, ty| {
                     result.and_then(|()| self.compatible(ty, array_element_ty))
                 })
+            }
+            (&Type::Instance { .. }, &Type::Tuple { .. }) => {
+                self.compatible(to, self.degrade_to_instance(from))
             }
             (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
                 if !self.object.is_hash(class) {
@@ -554,6 +559,20 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 self.set_var(id, instance_ty);
                 instance_ty
             },
+            &Type::Tuple { id, ref lead, ref splat, ref post, ref loc } => {
+                let array_class = self.object.array_class();
+
+                let element_ty = lead.iter()
+                    .chain(splat)
+                    .chain(post)
+                    .map(|&t| t)
+                    .fold1(|ty1, ty2| self.union(loc, ty1, ty2))
+                    .unwrap_or_else(|| self.new_var(loc.clone()));
+
+                let instance_ty = self.instance(loc.clone(), array_class, vec![element_ty]);
+                self.set_var(id, instance_ty);
+                instance_ty
+            }
             pruned => pruned,
         }
     }
@@ -799,6 +818,8 @@ pub enum Type<'ty, 'object: 'ty> {
         lead: Vec<&'ty Type<'ty, 'object>>,
         splat: Option<&'ty Type<'ty, 'object>>,
         post: Vec<&'ty Type<'ty, 'object>>,
+        // tuples can degrade to normal array instances:
+        id: TypeVarId,
     },
     Union {
         loc: Loc,
