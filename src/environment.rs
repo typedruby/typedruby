@@ -39,10 +39,10 @@ pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<Box<ErrorSink>>,
     pub config: Config,
+    pub inflector: Inflector,
     phase: Cell<Phase>,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
-    inflector: Inflector,
 }
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
@@ -229,6 +229,23 @@ impl<'object> Environment<'object> {
         while let Some(method) = self.method_queue.borrow_mut().pop_front() {
             typecheck::check(self, method);
         }
+    }
+
+    pub fn resolve_module_root<'p>(&self, filename: &'p Path) -> Option<&'p Path> {
+        let mut path = filename;
+
+        while let Some(d) = path.file_name() {
+            if d == "lib" {
+                return Some(path)
+            }
+
+            if let Some(parent) = path.parent() {
+                path = parent;
+            } else {
+                return None
+            }
+        }
+        return None
     }
 
     pub fn resolve_cpath<'node>(&self, node: &'node Node, scope: Rc<Scope<'object>>) -> Result<&'object RubyObject<'object>, (&'node Node, &'static str)> {
