@@ -235,6 +235,66 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             (&Type::Instance { .. }, &Type::Tuple { .. }) => {
                 self.compatible(to, self.degrade_to_instance(from))
             }
+            (&Type::Tuple { .. }, &Type::Tuple { .. }) => {
+                use slice_util::View;
+
+                let to_elems = self.elements_from_tuple(to);
+                let mut to_elems = View(&to_elems);
+
+                let from_elems = self.elements_from_tuple(from);
+                let mut from_elems = View(&from_elems);
+
+                while let Some(&TupleElement::Value(to_ty)) = to_elems.first() {
+                    match from_elems.first() {
+                        Some(&TupleElement::Value(from_ty)) => {
+                            to_elems.consume_front();
+                            from_elems.consume_front();
+                            self.compatible(to_ty, from_ty)?;
+                        }
+                        Some(&TupleElement::Splat(from_ty)) => {
+                            to_elems.consume_front();
+                            self.compatible(to_ty, from_ty)?;
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                }
+
+                while let Some(&TupleElement::Value(to_ty)) = to_elems.last() {
+                    match from_elems.last() {
+                        Some(&TupleElement::Value(from_ty)) => {
+                            to_elems.consume_back();
+                            from_elems.consume_back();
+                            self.compatible(to_ty, from_ty)?;
+                        }
+                        Some(&TupleElement::Splat(from_ty)) => {
+                            to_elems.consume_front();
+                            self.compatible(to_ty, from_ty)?;
+                        }
+                        None => {
+                            break;
+                        }
+                    }
+                }
+
+                if let Some(&TupleElement::Splat(from_ty)) = from_elems.first() {
+                    if let Some(&TupleElement::Splat(to_ty)) = to_elems.first() {
+                        to_elems.consume_front();
+                        from_elems.consume_front();
+                        self.compatible(to_ty, from_ty)?;
+                    } else {
+                        return Err((to, from));
+                    }
+                } else if let Some(&TupleElement::Splat(_)) = to_elems.first() {
+                    to_elems.consume_front();
+                }
+
+                assert!(to_elems.is_empty());
+                assert!(from_elems.is_empty());
+
+                Ok(())
+            }
             (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
                 if !self.object.is_hash(class) {
                     return Err((to, from));
@@ -776,6 +836,26 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 KwsplatResult::Err(ty),
         }
     }
+
+    fn elements_from_tuple(&self, tuple: &'ty Type<'ty, 'object>) -> Vec<TupleElement<'ty, 'object>> {
+        if let Type::Tuple { ref lead, splat, ref post, .. } = *self.prune(tuple) {
+            let mut elements = Vec::new();
+
+            elements.extend(lead.iter().map(|&ty| TupleElement::Value(ty)));
+            elements.extend(splat.iter().map(|&ty| TupleElement::Splat(ty)));
+            elements.extend(post.iter().map(|&ty| TupleElement::Value(ty)));
+
+            elements
+        } else {
+            panic!("type not a tuple")
+        }
+    }
+}
+
+#[derive(Debug)]
+pub enum TupleElement<'ty, 'object: 'ty> {
+    Value(&'ty Type<'ty, 'object>),
+    Splat(&'ty Type<'ty, 'object>),
 }
 
 pub enum KwsplatResult<'ty, 'object: 'ty> {
