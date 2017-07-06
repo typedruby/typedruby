@@ -411,7 +411,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::TyTuple(ref loc, ref ty_nodes) => {
                 let tys = ty_nodes.iter().map(|ty_node| self.resolve_type(ty_node, context, scope.clone())).collect();
 
-                self.tyenv.tuple(loc.clone(), tys)
+                self.tyenv.tuple(loc.clone(), tys, None, vec![])
             }
             _ => panic!("unknown type node: {:?}", node),
         }
@@ -461,7 +461,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     locals = l;
                 }
 
-                let tuple_ty = self.tyenv.tuple(loc.clone(), mlhs_types);
+                let tuple_ty = self.tyenv.tuple(loc.clone(), mlhs_types, None, vec![]);
 
                 let arg = Arg::Required { loc: loc.clone(), ty: tuple_ty };
 
@@ -669,12 +669,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             None
         };
 
-        self.tyenv.alloc(Type::Tuple {
-            loc: loc,
-            lead: lead_types,
-            splat: splat_type,
-            post: post_types,
-        })
+        self.tyenv.tuple(loc, lead_types, splat_type, post_types)
     }
 
     fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, mut type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
@@ -1449,12 +1444,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     }
                 }
 
-                let tuple = self.tyenv.alloc(Type::Tuple {
-                    loc: loc.clone(),
-                    lead: lead_types,
-                    splat: splat_type,
-                    post: post_types,
-                });
+                let tuple = self.tyenv.tuple(loc.clone(), lead_types, splat_type, post_types);
 
                 let lhs = Lhs::Simple(loc.clone(), tuple);
 
