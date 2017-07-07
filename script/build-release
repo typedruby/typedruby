@@ -1,0 +1,24 @@
+#!/bin/bash -e
+cd "$(dirname "$0")/.."
+
+cargo build --release
+
+mkdir -p tmp
+
+rm -rf tmp/stage
+mkdir tmp/stage
+
+mkdir tmp/stage/bin
+
+cp -r definitions tmp/stage/
+cp gem/typedruby.gemspec tmp/stage/
+cp target/release/typedruby tmp/stage/
+cp gem/bin/typedruby tmp/stage/bin/
+
+cd tmp/stage/
+
+gem build typedruby.gemspec
+
+GEM="$(echo *.gem)"
+
+mv "$GEM" ../..
