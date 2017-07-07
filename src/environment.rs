@@ -15,6 +15,18 @@ use object::{ObjectGraph, RubyObject, MethodEntry, Scope};
 use top_level;
 use typecheck;
 
+fn path_prefix_len(path: &Path, prefix: &Path) -> usize {
+    let mut a = path.components();
+    let mut b = prefix.components();
+    let mut len = 0;
+    loop {
+        match (a.next(), b.next()) {
+            (Some(ref x), Some(ref y)) if x == y => { len += 1 },
+            _ => return len,
+        }
+    }
+}
+
 enum LoadState {
     Loading,
     Loaded,
@@ -231,21 +243,18 @@ impl<'object> Environment<'object> {
         }
     }
 
-    pub fn resolve_module_root<'p>(&self, filename: &'p Path) -> Option<&'p Path> {
-        let mut path = filename;
+    pub fn resolve_module_root<'s>(&'s self, filename: &Path) -> Option<&'s Path> {
+        let mut best_match: Option<&'s Path> = None;
+        let mut best_len = 0;
 
-        while let Some(d) = path.file_name() {
-            if d == "lib" {
-                return Some(path)
-            }
-
-            if let Some(parent) = path.parent() {
-                path = parent;
-            } else {
-                return None
+        for path in &self.config.autoload_paths {
+            let len = path_prefix_len(path, filename);
+            if len > best_len {
+                best_len = len;
+                best_match = Some(&path);
             }
         }
-        return None
+        best_match
     }
 
     pub fn resolve_cpath<'node>(&self, node: &'node Node, scope: Rc<Scope<'object>>) -> Result<&'object RubyObject<'object>, (&'node Node, &'static str)> {

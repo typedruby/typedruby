@@ -68,11 +68,15 @@ fn config() -> (Config, Vec<PathBuf>) {
         .get_matches();
 
     if let Some(load_paths) = matches.values_of("load-path") {
-        config.require_paths.extend(load_paths.map(PathBuf::from));
+        config.require_paths.extend(load_paths.map(|p| {
+            PathBuf::from(p).canonicalize().unwrap()
+        }));
     }
 
     if let Some(autoload_paths) = matches.values_of("autoload-path") {
-        config.autoload_paths.extend(autoload_paths.map(PathBuf::from));
+        config.autoload_paths.extend(autoload_paths.map(|p| {
+            PathBuf::from(p).canonicalize().unwrap()
+        }));
     }
 
     if let Some(acronyms) = matches.values_of("inflect-acronym") {
