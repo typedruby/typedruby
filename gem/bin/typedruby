@@ -1,0 +1,18 @@
+#!/usr/bin/env ruby
+
+typedruby_bin = File.expand_path("../typedruby", __dir__)
+
+typedruby_load_path = [
+  File.expand_path("../definitions", __dir__),
+  *$LOAD_PATH,
+]
+
+argv = ARGV.dup
+
+if File.file?("typedruby/prelude.rb")
+  argv.unshift("typedruby/prelude.rb")
+end
+
+exec typedruby_bin,
+  *typedruby_load_path.map { |path| "-I#{path}" },
+  *argv
