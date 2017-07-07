@@ -82,28 +82,31 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn check_constant_path(&self, path: &str, loc: &Loc) {
-        if self.source_type == SourceType::TypedRuby {
-            let fname = self.source_file.filename();
-            let root = self.env.resolve_module_root(fname);
-            if let Some(root) = root {
-                let inflected = self.env.inflector.underscore(path);
+        if self.source_type != SourceType::TypedRuby {
+            return
+        }
 
-                let mut expected = root.join(inflected);
-                expected.set_extension("rb");
+        match self.scope.module {
+            &RubyObject::Class{..} => (),
+            _ => return
+        }
 
-                if fname != expected {
-                    self.error("constant defined outside of expected path",
-                        &vec![
-                            Detail::Loc("here", loc),
-                            Detail::Message(
-                                &format!("expected to be found at '{}'", expected.display())
-                            ),
-                        ]
-                    );
-                }
-            } else {
-                panic!("failed to resolve {}", fname.display());
+        let fname = self.source_file.filename();
+        let root = self.env.resolve_module_root(fname);
+        if let Some(root) = root {
+            let inflected = self.env.inflector.underscore(path);
+
+            let mut expected = root.join(inflected);
+            expected.set_extension("rb");
+
+            if fname != expected {
+                let msg = &format!("expected to be found at '{}'", expected.display());
+                self.error("constant defined outside of expected path",
+                    &vec![Detail::Loc("here", loc), Detail::Message(msg)]);
             }
+        } else {
+            self.error("constant defined outside of autoload path",
+                &vec![Detail::Loc("here", loc)]);
         }
     }
 
