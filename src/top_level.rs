@@ -698,6 +698,9 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                 match self.resolve_cbase(base) {
                     Ok(cbase) => {
+                        let path = self.env.object.constant_path(&cbase, name);
+                        self.check_constant_path(&path, &loc);
+
                         if let Some(constant_entry) = self.env.object.get_own_const(&cbase, name) {
                             self.constant_definition_error("Duplicate constant definition", &loc, &constant_entry.loc);
                             return;
