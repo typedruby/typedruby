@@ -15,18 +15,6 @@ use object::{ObjectGraph, RubyObject, MethodEntry, Scope};
 use top_level;
 use typecheck;
 
-fn path_prefix_len(path: &Path, prefix: &Path) -> usize {
-    let mut a = path.components();
-    let mut b = prefix.components();
-    let mut len = 0;
-    loop {
-        match (a.next(), b.next()) {
-            (Some(ref x), Some(ref y)) if x == y => { len += 1 },
-            _ => return len,
-        }
-    }
-}
-
 enum LoadState {
     Loading,
     Loaded,
@@ -244,6 +232,13 @@ impl<'object> Environment<'object> {
     }
 
     pub fn resolve_module_root<'s>(&'s self, filename: &Path) -> Option<&'s Path> {
+        fn path_prefix_len(path: &Path, prefix: &Path) -> usize {
+            path.components()
+                .zip(prefix.components())
+                .take_while(|&(a, b)| a == b)
+                .count()
+        }
+
         let mut best_match: Option<&'s Path> = None;
         let mut best_len = 0;
 
