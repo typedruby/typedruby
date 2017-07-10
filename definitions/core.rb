@@ -751,7 +751,9 @@ end
 class Array::[ElementType] < Object
   def each({ |ElementType element| => :any } &bk) => :self; end
 
-  def each_with_index({ |ElementType element, Integer index| => :any } &bk) => :self; end
+  def each_with_index({ |ElementType element, Integer index| => :any } &) => :self; end
+
+  def each_with_object[T](T object, { |ElementType element, T object| => :any } &) => :self; end
 
   include Enumerable
 
