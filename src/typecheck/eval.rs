@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::collections::HashMap;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, Type, Prototype, KwsplatResult};
+use typecheck::types::{Arg, TypeEnv, Type, Prototype, KwsplatResult, TupleElement};
 use object::{Scope, RubyObject, MethodImpl};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -115,12 +115,6 @@ enum Lhs<'ty, 'object: 'ty> {
     Lvar(Loc, String),
     Simple(Loc, &'ty Type<'ty, 'object>),
     Send(Loc, &'ty Type<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
-}
-
-#[derive(Debug)]
-enum TupleElement<'ty, 'object: 'ty> {
-    Value(&'ty Type<'ty, 'object>),
-    Splat(&'ty Type<'ty, 'object>),
 }
 
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
@@ -411,7 +405,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::TyTuple(ref loc, ref ty_nodes) => {
                 let tys = ty_nodes.iter().map(|ty_node| self.resolve_type(ty_node, context, scope.clone())).collect();
 
-                self.tyenv.tuple(loc.clone(), tys)
+                self.tyenv.tuple(loc.clone(), tys, None, vec![])
             }
             _ => panic!("unknown type node: {:?}", node),
         }
@@ -461,7 +455,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     locals = l;
                 }
 
-                let tuple_ty = self.tyenv.tuple(loc.clone(), mlhs_types);
+                let tuple_ty = self.tyenv.tuple(loc.clone(), mlhs_types, None, vec![]);
 
                 let arg = Arg::Required { loc: loc.clone(), ty: tuple_ty };
 
@@ -669,12 +663,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             None
         };
 
-        self.tyenv.alloc(Type::Tuple {
-            loc: loc,
-            lead: lead_types,
-            splat: splat_type,
-            post: post_types,
-        })
+        self.tyenv.tuple(loc, lead_types, splat_type, post_types)
     }
 
     fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, mut type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
@@ -1449,12 +1438,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     }
                 }
 
-                let tuple = self.tyenv.alloc(Type::Tuple {
-                    loc: loc.clone(),
-                    lead: lead_types,
-                    splat: splat_type,
-                    post: post_types,
-                });
+                let tuple = self.tyenv.tuple(loc.clone(), lead_types, splat_type, post_types);
 
                 let lhs = Lhs::Simple(loc.clone(), tuple);
 
@@ -1527,19 +1511,6 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             self.converge_results(self.seq_process(comp, node), node.loc()))
     }
 
-    fn process_seq_exprs(&self, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, Vec<&'ty Type<'ty, 'object>>>
-    {
-        nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |ev, n| {
-            ev.and_then(|mut tys, l| {
-                self.eval_node(n, l).and_then(|ty, l| {
-                    tys.push(ty);
-                    EvalResult::Ok(tys, l)
-                })
-            })
-        })
-    }
-
     fn process_command_args(&self, loc: &Loc, nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1558,15 +1529,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     {
         match *node {
             Node::Array(ref loc, ref elements) => {
-                self.process_seq_exprs(elements, locals).map(|tys| {
-                    tys.into_iter().fold1(|a, b| {
-                        let ab_loc = a.loc().join(b.loc());
-                        self.tyenv.union(&ab_loc, a, b)
-                    }).unwrap_or_else(||
-                        self.tyenv.new_var(loc.clone()))
-                }).map(|element_ty|
-                    self.create_array_type(loc, element_ty)
-                ).into_computation()
+                if elements.is_empty() {
+                    let elem_ty = self.tyenv.new_var(loc.clone());
+                    let array_ty = self.tyenv.instance(loc.clone(), self.env.object.array_class(), vec![elem_ty]);
+                    Computation::result(array_ty, locals)
+                } else {
+                    self.process_array_tuple(loc, elements, locals)
+                }
             }
             Node::Begin(ref loc, ref nodes) |
             Node::Kwbegin(ref loc, ref nodes) => {
