@@ -3,6 +3,7 @@ use environment::Environment;
 use errors::Detail;
 use object::{RubyObject, Scope, MethodEntry, MethodVisibility, MethodImpl, IvarEntry, ConstantEntry};
 use std::rc::Rc;
+use std::path::{Path, PathBuf};
 use std::cell::Cell;
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
@@ -86,27 +87,29 @@ impl<'env, 'object> Eval<'env, 'object> {
             return
         }
 
-        match self.scope.module {
-            &RubyObject::Class{..} => (),
-            _ => return
-        }
-
         let fname = self.source_file.filename();
         let root = self.env.resolve_module_root(fname);
         if let Some(root) = root {
             let inflected = self.env.inflector.underscore(path);
+            let mut expected = root.join(&inflected);
 
-            let mut expected = root.join(inflected);
-            expected.set_extension("rb");
+            loop {
+                expected.set_extension("rb");
+                if fname == expected {
+                    break
+                }
 
-            if fname != expected {
-                let msg = &format!("expected to be found at '{}'", expected.display());
-                self.error("constant defined outside of expected path",
-                    &vec![Detail::Loc("here", loc), Detail::Message(msg)]);
+                if !expected.pop() || !expected.starts_with(root) {
+                    let msg = &format!("expected to be found at '{}.rb'",
+                                        root.join(&inflected).display());
+                    self.error("constant defined outside of expected path",
+                               &[Detail::Loc("here", loc), Detail::Message(msg)]);
+                    break
+                }
             }
         } else {
             self.error("constant defined outside of autoload path",
-                &vec![Detail::Loc("here", loc)]);
+                &[Detail::Loc("here", loc)]);
         }
     }
 
