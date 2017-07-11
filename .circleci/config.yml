@@ -1,0 +1,10 @@
+version: 2
+jobs:
+   build:
+     working_directory: /src
+     docker:
+       - image: vmgg/rust-ci:0.2
+     steps:
+       - checkout
+       - run: cargo build && cargo test
+       - run: cd parser && cargo build && cargo test
