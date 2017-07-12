@@ -1,7 +1,9 @@
 class Set::[ElementType]
   include Enumerable
 
-  def initialize(Enumerable enum) => nil; end
+  # TODO - the Enumerable type needs to be parameterised over ElementType
+  # when generic modules are supported:
+  def initialize(Enumerable enum = nil) => nil; end
 
   def self.[][ElementType](ElementType *elements) => Set::[ElementType]; end
 
@@ -17,6 +19,8 @@ class Set::[ElementType]
 
   # TODO this should be on Enumerable
   def group_by[GroupKey]({ |ElementType element| => GroupKey } &) => { GroupKey => [ElementType] }; end
+
+  def to_a => [ElementType]; end
 end
 
 class SortedSet < Set
