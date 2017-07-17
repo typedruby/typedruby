@@ -1,0 +1,13 @@
+#!/bin/bash -e
+cd "$(dirname "$0")/.."
+
+if [[ "$(uname -ms)" != "Darwin x86_64" ]]; then
+    echo "fatal: must run script/build-darwin on a Darwin x86_64 host" >&2
+    exit 1
+fi
+
+TARGET_DIR="$(pwd)/target/x86_64-darwin"
+
+mkdir -p "$TARGET_DIR"
+
+CARGO_TARGET_DIR="$TARGET_DIR" cargo build --release
