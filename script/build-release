@@ -25,7 +25,8 @@ cp target/x86_64-linux/release/typedruby tmp/stage/typedruby-x86_64-linux
 
 cd tmp/stage/
 
-gem build typedruby.gemspec
+TYPEDRUBY_VERSION="$(./typedruby-x86_64-darwin -V | cut -d ' ' -f2)" \
+    gem build typedruby.gemspec
 
 GEM="$(echo *.gem)"
 
