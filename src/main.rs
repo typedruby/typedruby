@@ -1,3 +1,4 @@
+#[macro_use]
 extern crate clap;
 extern crate immutable_map;
 extern crate itertools;
@@ -30,7 +31,8 @@ fn config() -> (Config, Vec<PathBuf>) {
     let mut config = Config::new();
     let mut files = Vec::new();
 
-    let matches = App::new("typedruby")
+    let matches = App::new(crate_name!())
+        .version(crate_version!())
         .arg(Arg::with_name("load-path")
             .multiple(true)
             .number_of_values(1)
