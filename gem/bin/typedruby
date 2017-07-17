@@ -1,18 +1,18 @@
 #!/usr/bin/env ruby
+require "etc"
 
-typedruby_bin = File.expand_path("../typedruby", __dir__)
+uname = Etc.uname
 
-typedruby_load_path = [
-  File.expand_path("../definitions", __dir__),
-  *$LOAD_PATH,
-]
+system = "#{uname[:machine]}-#{uname[:sysname]}".downcase
 
-argv = ARGV.dup
+typedruby_bin = File.expand_path("../typedruby-#{system}", __dir__)
 
-if File.file?("typedruby/prelude.rb")
-  argv.unshift("typedruby/prelude.rb")
+unless File.exist?(typedruby_bin)
+  abort "Unsupported system: #{system}"
 end
 
-exec typedruby_bin,
-  *typedruby_load_path.map { |path| "-I#{path}" },
-  *argv
+defs_path = File.expand_path("../definitions", __dir__)
+
+exec [typedruby_bin, $0],
+  "-I#{defs_path}",
+  *ARGV
