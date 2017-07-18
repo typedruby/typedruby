@@ -1,0 +1,18 @@
+#!/usr/bin/env ruby
+require "etc"
+
+uname = Etc.uname
+
+system = "#{uname[:machine]}-#{uname[:sysname]}".downcase
+
+typedruby_bin = File.expand_path("../typedruby-#{system}", __dir__)
+
+unless File.exist?(typedruby_bin)
+  abort "Unsupported system: #{system}"
+end
+
+defs_path = File.expand_path("../definitions", __dir__)
+
+exec [typedruby_bin, $0],
+  "-I#{defs_path}",
+  *ARGV

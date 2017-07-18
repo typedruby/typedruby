@@ -1,2 +1,4 @@
 /target
+/tmp
 *.swp
+*.gem
