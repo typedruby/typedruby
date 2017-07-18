@@ -1,0 +1,33 @@
+#!/bin/bash -e
+cd "$(dirname "$0")/.."
+
+if [[ "$(uname -ms)" != "Darwin x86_64" ]]; then
+    echo "fatal: must run script/build-release on a Darwin x86_64 host" >&2
+    exit 1
+fi
+
+script/build-darwin
+script/build-linux
+
+mkdir -p tmp
+
+rm -rf tmp/stage
+mkdir tmp/stage
+
+mkdir tmp/stage/bin
+
+cp -r definitions tmp/stage/
+cp gem/typedruby.gemspec tmp/stage/
+cp gem/bin/typedruby tmp/stage/bin/
+
+cp target/x86_64-darwin/release/typedruby tmp/stage/typedruby-x86_64-darwin
+cp target/x86_64-linux/release/typedruby tmp/stage/typedruby-x86_64-linux
+
+cd tmp/stage/
+
+TYPEDRUBY_VERSION="$(./typedruby-x86_64-darwin -V | cut -d ' ' -f2)" \
+    gem build typedruby.gemspec
+
+GEM="$(echo *.gem)"
+
+mv "$GEM" ../..

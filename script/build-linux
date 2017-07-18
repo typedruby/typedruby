@@ -1,0 +1,22 @@
+#!/bin/bash -e
+cd "$(dirname "$0")/.."
+
+TARGET_DIR="$(pwd)/target/x86_64-linux"
+
+IMAGE_ID="$(docker build -q .circleci)"
+
+mkdir -p "$TARGET_DIR"
+
+docker run \
+    --volume "$(pwd)":/workspace:ro \
+    --volume "$TARGET_DIR":/target \
+    --workdir /workspace \
+    "$IMAGE_ID" \
+    /bin/bash -c '
+        if [[ "$(uname -ms)" != "Linux x86_64" ]]; then
+            echo "fatal: must run script/build-linux on a Linux x86_64 host" >&2
+            exit 1
+        fi
+
+        CARGO_TARGET_DIR=/target cargo build --release
+    '
