@@ -47,8 +47,6 @@ pub struct Environment<'object> {
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
 
-static REQUIRE_EXTS: &'static [&'static str] = &["", ".rb"];
-
 impl<'object> Environment<'object> {
     pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: Config) -> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
@@ -156,10 +154,22 @@ impl<'object> Environment<'object> {
         }
     }
 
-    fn search_paths(file: &str, paths: &[PathBuf]) -> Option<PathBuf> {
+    fn search_paths<P: AsRef<Path>>(file: &str, paths: &[P]) -> Option<PathBuf> {
+        let has_ext = file.rsplit('/').next()
+            .map(|ext| ext.contains('.'))
+            .unwrap_or(false);
+
+        let exts_for_file = if has_ext {
+            static NO_EXTS: &[&str] = &[""];
+            NO_EXTS
+        } else {
+            static REQUIRE_EXTS: &[&str] = &[".typed.rb", ".rb"];
+            REQUIRE_EXTS
+        };
+
         for path in paths {
-            for ext in REQUIRE_EXTS {
-                let resolved = path.join(file.to_owned() + ext);
+            for ext in exts_for_file {
+                let resolved = path.as_ref().join(file.to_owned() + ext);
 
                 if resolved.is_file() {
                     return Some(resolved)
@@ -175,13 +185,9 @@ impl<'object> Environment<'object> {
     }
 
     pub fn search_relative_path(&self, file: &str, from: &SourceFile) -> Option<PathBuf> {
-        from.filename().parent().and_then(|parent|
-            REQUIRE_EXTS.iter().map(|ext|
-                parent.join(file.to_owned() + ext)
-            ).find(|path|
-                path.is_file()
-            )
-        )
+        from.filename().parent().and_then(|parent| {
+            Self::search_paths(file, &[parent])
+        })
     }
 
     pub fn autoload(&self, module: &'object RubyObject<'object>, name: &str) -> Option<&'object RubyObject<'object>> {
