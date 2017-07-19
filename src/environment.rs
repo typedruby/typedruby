@@ -47,8 +47,6 @@ pub struct Environment<'object> {
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
 
-static REQUIRE_EXTS: &'static [&'static str] = &["", ".rb"];
-
 impl<'object> Environment<'object> {
     pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: Config) -> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
@@ -157,8 +155,20 @@ impl<'object> Environment<'object> {
     }
 
     fn search_paths<P: AsRef<Path>>(file: &str, paths: &[P]) -> Option<PathBuf> {
+        let has_ext = file.rsplit('/').next()
+            .map(|ext| ext.contains('.'))
+            .unwrap_or(false);
+
+        let exts_for_file = if has_ext {
+            static NO_EXTS: &'static [&'static str] = &[""];
+            NO_EXTS
+        } else {
+            static REQUIRE_EXTS: &'static [&'static str] = &[".rb"];
+            REQUIRE_EXTS
+        };
+
         for path in paths {
-            for ext in REQUIRE_EXTS {
+            for ext in exts_for_file {
                 let resolved = path.as_ref().join(file.to_owned() + ext);
 
                 if resolved.is_file() {
