@@ -160,10 +160,10 @@ impl<'object> Environment<'object> {
             .unwrap_or(false);
 
         let exts_for_file = if has_ext {
-            static NO_EXTS: &'static [&'static str] = &[""];
+            static NO_EXTS: &[&str] = &[""];
             NO_EXTS
         } else {
-            static REQUIRE_EXTS: &'static [&'static str] = &[".typed.rb", ".rb"];
+            static REQUIRE_EXTS: &[&str] = &[".typed.rb", ".rb"];
             REQUIRE_EXTS
         };
 
