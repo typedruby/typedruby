@@ -163,7 +163,7 @@ impl<'object> Environment<'object> {
             static NO_EXTS: &'static [&'static str] = &[""];
             NO_EXTS
         } else {
-            static REQUIRE_EXTS: &'static [&'static str] = &[".rb"];
+            static REQUIRE_EXTS: &'static [&'static str] = &[".typed.rb", ".rb"];
             REQUIRE_EXTS
         };
 
