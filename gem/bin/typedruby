@@ -11,7 +11,7 @@ unless File.exist?(typedruby_bin)
   abort "Unsupported system: #{system}"
 end
 
-defs_path = File.expand_path("../definitions", __dir__)
+defs_path = File.expand_path("../definitions/lib", __dir__)
 
 exec [typedruby_bin, $0],
   "-I#{defs_path}",
