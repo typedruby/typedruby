@@ -1112,7 +1112,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_send_args(&self, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+    fn process_send_args(&self, invoc_loc: &Loc, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Vec<CallArg<'ty, 'object>>>
     {
         arg_nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |result, arg_node|
@@ -1121,8 +1121,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     args.push(call_arg);
                     EvalResult::Ok(args, locals)
                 }).if_not(|| {
-                    self.warning("Useless method call", &[
-                        Detail::Loc("here", &id.0),
+                    self.warning("Useless invocation", &[
+                        Detail::Loc("here", invoc_loc),
                         Detail::Loc("argument never evaluates to a result", arg_node.loc()),
                     ]);
                 })
@@ -1263,7 +1263,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         -> Computation<'ty, 'object>
     {
         self.process_send_receiver(recv, id, locals).and_then_comp(|recv_type, locals| {
-            self.process_send_args(id, arg_nodes, locals).and_then_comp(|args, locals| {
+            self.process_send_args(&id.0, arg_nodes, locals).and_then_comp(|args, locals| {
                 self.process_send_dispatch(loc, recv_type, id, args, block, locals)
             })
         })
@@ -1390,7 +1390,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Node::Send(ref loc, ref recv, ref id, ref arg_nodes) => {
                 self.process_send_receiver(recv, id, locals).and_then(|recv_ty, locals| {
-                    self.process_send_args(id, arg_nodes, locals).map(|args| {
+                    self.process_send_args(&id.0, arg_nodes, locals).map(|args| {
                         Lhs::Send(loc.clone(), recv_ty, id.clone(), args)
                     })
                 })
