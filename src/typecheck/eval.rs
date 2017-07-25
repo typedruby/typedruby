@@ -1243,21 +1243,18 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     fn process_send_dispatch(&self, loc: &Loc, recv_type: &'ty Type<'ty, 'object>, id: &Id, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
-        let invokees = self.resolve_invocation(recv_type, id);
-
-        if invokees.is_empty() {
-            self.error(&format!("Could not resolve method #{}", &id.1), &[
-                Detail::Loc(&format!("on {}", &self.tyenv.describe(recv_type)), recv_type.loc()),
-                Detail::Loc("in this invocation", &id.0),
-            ]);
-
-            return Computation::result(self.tyenv.any(loc.clone()), locals);
-        }
-
-        invokees.iter()
+        self.resolve_invocation(recv_type, id)
+            .iter()
             .map(|invokee| self.process_invocation(loc, &id.0, invokee, &args, block.as_ref(), locals.clone()))
             .fold1(Computation::divergent)
-            .unwrap_or_else(|| Computation::result(self.tyenv.any(loc.clone()), locals))
+            .unwrap_or_else(|| {
+                self.error(&format!("Could not resolve method #{}", &id.1), &[
+                    Detail::Loc(&format!("on {}", &self.tyenv.describe(recv_type)), recv_type.loc()),
+                    Detail::Loc("in this invocation", &id.0),
+                ]);
+
+                Computation::result(self.tyenv.any(loc.clone()), locals)
+            })
     }
 
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
