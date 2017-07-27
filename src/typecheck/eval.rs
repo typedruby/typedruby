@@ -11,12 +11,14 @@ use typed_arena::Arena;
 use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
 use itertools::Itertools;
+use deferred_cell::DeferredCell;
 
 pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     env: &'env Environment<'object>,
     tyenv: TypeEnv<'ty, 'env, 'object>,
     scope: Rc<Scope<'object>>,
     type_context: TypeContext<'ty, 'object>,
+    proto: DeferredCell<Rc<Prototype<'ty, 'object>>>,
 }
 
 #[derive(Clone)]
@@ -125,7 +127,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let mut type_context = TypeContext::new(class, class_type_parameters);
 
-        let mut eval = Eval { env: env, tyenv: tyenv, scope: scope.clone(), type_context: type_context.clone() };
+        let mut eval = Eval {
+            env: env,
+            tyenv: tyenv,
+            scope: scope.clone(),
+            type_context: type_context.clone(),
+            proto: DeferredCell::new()
+        };
 
         let (id, prototype_node, body) = match *node {
             Node::Def(_, ref id, ref proto, ref body) =>
@@ -175,6 +183,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
 
         eval.type_context = type_context;
+
+        DeferredCell::set(&mut eval.proto, prototype.clone());
 
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
