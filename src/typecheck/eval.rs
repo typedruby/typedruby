@@ -1281,6 +1281,34 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
+    fn process_yield(&self, loc: &Loc, invoc_loc: &Loc, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        self.process_send_args(invoc_loc, arg_nodes, locals).and_then_comp(|args, locals| {
+            if let Some(&Arg::Block { ty: block_ty, .. }) = self.proto.args.last() {
+                if let Type::Proc { ref proto, .. } = *self.tyenv.prune(block_ty) {
+                    self.match_prototype_with_invocation(loc, invoc_loc, &proto.loc, &proto.args, &args);
+
+                    let retn_ty = self.tyenv.update_loc(proto.retn, loc.clone());
+
+                    Computation::result(retn_ty, locals)
+                } else {
+                    self.error("Cannot yield to block of type", &[
+                        Detail::Loc(&self.tyenv.describe(block_ty), block_ty.loc())
+                    ]);
+
+                    Computation::result(self.tyenv.any(loc.clone()), locals)
+                }
+            } else {
+                self.error("Cannot yield in method without formal block argument", &[
+                    Detail::Loc("here", invoc_loc),
+                ]);
+
+                Computation::result(self.tyenv.any(loc.clone()), locals)
+            }
+        })
+    }
+
     fn seq_process(&self, comp: Computation<'ty, 'object>, node: &Node) -> Computation<'ty, 'object> {
         comp.seq(&|_, locals| self.process_node(node, locals))
     }
@@ -1659,6 +1687,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 } else {
                     panic!("expected Node::Send inside Node::Block")
                 }
+            }
+            Node::Yield(ref loc, ref args) => {
+                let invoc_loc = Loc {
+                    file: loc.file.clone(),
+                    begin_pos: loc.begin_pos,
+                    end_pos: loc.begin_pos + 5,
+                };
+
+                self.process_yield(loc, &invoc_loc, args, locals)
             }
             Node::Hash(ref loc, ref pairs) => {
                 let mut result = EvalResult::Ok((), locals);
