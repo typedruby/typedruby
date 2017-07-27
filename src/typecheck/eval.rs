@@ -1140,18 +1140,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         )
     }
 
-    fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
-        -> Computation<'ty, 'object>
-    {
-        let ref proto_loc = invokee.prototype.loc;
-        let ref proto_args = invokee.prototype.args;
-        let retn = invokee.prototype.retn;
-
-        let (proto_block, proto_args) = match proto_args.last() {
-            Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
-            Some(_) | None => (None, proto_args.as_slice()),
-        };
-
+    fn match_prototype_with_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, proto_loc: &Loc, proto_args: &[Arg<'ty, 'object>], args: &[CallArg<'ty, 'object>]) {
         let args = match proto_args.first() {
             Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
                 let tuple_elements = args.iter().map(|call_arg| match *call_arg {
@@ -1210,6 +1199,21 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         for (proto_ty, pass_ty) in match_result.matches {
             self.compatible(proto_ty, pass_ty, Some(expr_loc));
         }
+    }
+
+    fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        let ref proto_loc = invokee.prototype.loc;
+        let ref proto_args = invokee.prototype.args;
+        let retn = invokee.prototype.retn;
+
+        let (proto_block, proto_args) = match proto_args.last() {
+            Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
+            Some(_) | None => (None, proto_args.as_slice()),
+        };
+
+        self.match_prototype_with_invocation(expr_loc, invoc_loc, proto_loc, proto_args, args);
 
         let comp = self.process_block(invoc_loc, block, locals, invokee.prototype.loc(), proto_block).and_then_comp(|(), locals| {
             match *invokee.method {
