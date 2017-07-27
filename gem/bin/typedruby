@@ -1,18 +1,26 @@
 #!/usr/bin/env ruby
 require "etc"
 
-uname = Etc.uname
+def typedruby_bin_path
+  if bin = ENV["TYPEDRUBY_BIN"]
+    bin
+  else
+    uname = Etc.uname
 
-system = "#{uname[:machine]}-#{uname[:sysname]}".downcase
+    system = "#{uname[:machine]}-#{uname[:sysname]}".downcase
 
-typedruby_bin = File.expand_path("../typedruby-#{system}", __dir__)
+    bin = File.expand_path("../typedruby-#{system}", __dir__)
 
-unless File.exist?(typedruby_bin)
-  abort "Unsupported system: #{system}"
+    unless File.executable?(bin)
+      abort "Unsupported system: #{system}"
+    end
+
+    bin
+  end
 end
 
 defs_path = File.expand_path("../definitions/lib", __dir__)
 
-exec [typedruby_bin, $0],
+exec [typedruby_bin_path, $0],
   "-I#{defs_path}",
   *ARGV
