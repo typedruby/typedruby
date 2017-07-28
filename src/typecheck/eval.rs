@@ -11,12 +11,14 @@ use typed_arena::Arena;
 use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
 use itertools::Itertools;
+use deferred_cell::DeferredCell;
 
 pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     env: &'env Environment<'object>,
     tyenv: TypeEnv<'ty, 'env, 'object>,
     scope: Rc<Scope<'object>>,
     type_context: TypeContext<'ty, 'object>,
+    proto: DeferredCell<Rc<Prototype<'ty, 'object>>>,
 }
 
 #[derive(Clone)]
@@ -125,7 +127,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let mut type_context = TypeContext::new(class, class_type_parameters);
 
-        let mut eval = Eval { env: env, tyenv: tyenv, scope: scope.clone(), type_context: type_context.clone() };
+        let mut eval = Eval {
+            env: env,
+            tyenv: tyenv,
+            scope: scope.clone(),
+            type_context: type_context.clone(),
+            proto: DeferredCell::new()
+        };
 
         let (id, prototype_node, body) = match *node {
             Node::Def(_, ref id, ref proto, ref body) =>
@@ -175,6 +183,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
 
         eval.type_context = type_context;
+
+        DeferredCell::set(&mut eval.proto, prototype.clone());
 
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = *body {
@@ -1112,7 +1122,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_send_args(&self, id: &Id, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+    fn process_send_args(&self, invoc_loc: &Loc, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Vec<CallArg<'ty, 'object>>>
     {
         arg_nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |result, arg_node|
@@ -1121,8 +1131,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     args.push(call_arg);
                     EvalResult::Ok(args, locals)
                 }).if_not(|| {
-                    self.warning("Useless method call", &[
-                        Detail::Loc("here", &id.0),
+                    self.warning("Useless invocation", &[
+                        Detail::Loc("here", invoc_loc),
                         Detail::Loc("argument never evaluates to a result", arg_node.loc()),
                     ]);
                 })
@@ -1130,142 +1140,172 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         )
     }
 
+    fn match_prototype_with_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, proto_loc: &Loc, proto_args: &[Arg<'ty, 'object>], args: &[CallArg<'ty, 'object>]) {
+        let args = match proto_args.first() {
+            Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
+                let tuple_elements = args.iter().map(|call_arg| match *call_arg {
+                    CallArg::Pass(_, ty) => TupleElement::Value(ty),
+                    CallArg::Splat(_, ty) => TupleElement::Splat(ty),
+                }).collect::<Vec<_>>();
+
+                let args_loc = args[0].loc().join(args.last().unwrap().loc());
+
+                let arg_ty = self.tuple_from_elements(args_loc.clone(), &tuple_elements);
+
+                vec![CallArg::Pass(args_loc, arg_ty)]
+            }
+            _ => args.to_vec(),
+        };
+
+        let match_result = call::match_prototype_with_invocation(&self.tyenv, proto_args, &args);
+
+        for match_error in match_result.errors {
+            match match_error {
+                ArgError::TooFewArguments => {
+                    self.error("Too few arguments supplied", &[
+                        Detail::Loc("in this invocation", invoc_loc),
+                        Detail::Loc("for this prototype", proto_loc),
+                    ])
+                }
+                ArgError::TooManyArguments(ref loc) => {
+                    self.error("Too many arguments supplied", &[
+                        Detail::Loc("from here", loc),
+                        Detail::Loc("in this invocation", invoc_loc),
+                        Detail::Loc("for this prototype", proto_loc),
+                    ])
+                }
+                ArgError::MissingKeyword(ref name) => {
+                    self.error(&format!("Missing keyword argument :{}", name), &[
+                        Detail::Loc("in this invocation", invoc_loc),
+                        Detail::Loc("for this prototype", proto_loc),
+                    ])
+                }
+                ArgError::UnknownKeyword(ref name) => {
+                    self.error(&format!("Unknown keyword argument :{}", name), &[
+                        Detail::Loc("in this invocation", invoc_loc),
+                        Detail::Loc("for this prototype", proto_loc),
+                    ])
+                }
+                ArgError::UnexpectedSplat(ref loc) => {
+                    self.error("Unexpected splat in keyword arguments", &[
+                        Detail::Loc("here", loc),
+                        Detail::Loc("in this invocation", invoc_loc),
+                        Detail::Loc("for this prototype", proto_loc),
+                    ])
+                }
+            }
+        }
+
+        for (proto_ty, pass_ty) in match_result.matches {
+            self.compatible(proto_ty, pass_ty, Some(expr_loc));
+        }
+    }
+
+    fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        let ref proto_loc = invokee.prototype.loc;
+        let ref proto_args = invokee.prototype.args;
+        let retn = invokee.prototype.retn;
+
+        let (proto_block, proto_args) = match proto_args.last() {
+            Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
+            Some(_) | None => (None, proto_args.as_slice()),
+        };
+
+        self.match_prototype_with_invocation(expr_loc, invoc_loc, proto_loc, proto_args, args);
+
+        let comp = self.process_block(invoc_loc, block, locals, invokee.prototype.loc(), proto_block).and_then_comp(|(), locals| {
+            match *invokee.method {
+                MethodImpl::IntrinsicKernelRaise => {
+                    Computation::raise(locals)
+                }
+                MethodImpl::IntrinsicKernelIsA => {
+                    if let Some(&CallArg::Pass(ref instance_loc, &Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. })) = args.first() {
+                        let refine = |retn_class, refine_ty| {
+                            let retn_ty = self.tyenv.instance0(expr_loc.clone(), retn_class);
+
+                            let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
+                                locals.refine(name, refine_ty)
+                            } else {
+                                locals.clone()
+                            };
+
+                            Computation::result(retn_ty, locals)
+                        };
+
+                        self.tyenv.partition_by_class(invokee.recv_ty, instance_class, instance_loc)
+                            .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
+                            .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
+                            .flatten(Computation::divergent)
+                    } else {
+                        let boolean_ty = self.tyenv.instance0(expr_loc.clone(), self.env.object.Boolean);
+                        Computation::result(boolean_ty, locals)
+                    }
+                }
+                _ => {
+                    let ty = self.tyenv.update_loc(retn, expr_loc.clone());
+                    Computation::result(ty, locals)
+                }
+
+            }
+        });
+
+        comp.terminate_break_scope()
+    }
+
     fn process_send_dispatch(&self, loc: &Loc, recv_type: &'ty Type<'ty, 'object>, id: &Id, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
-        let invokees = self.resolve_invocation(recv_type, id);
+        self.resolve_invocation(recv_type, id)
+            .iter()
+            .map(|invokee| self.process_invocation(loc, &id.0, invokee, &args, block.as_ref(), locals.clone()))
+            .fold1(Computation::divergent)
+            .unwrap_or_else(|| {
+                self.error(&format!("Could not resolve method #{}", &id.1), &[
+                    Detail::Loc(&format!("on {}", &self.tyenv.describe(recv_type)), recv_type.loc()),
+                    Detail::Loc("in this invocation", &id.0),
+                ]);
 
-        if invokees.is_empty() {
-            self.error(&format!("Could not resolve method #{}", &id.1), &[
-                Detail::Loc(&format!("on {}", &self.tyenv.describe(recv_type)), recv_type.loc()),
-                Detail::Loc("in this invocation", &id.0),
-            ]);
-
-            return Computation::result(self.tyenv.any(loc.clone()), locals);
-        }
-
-        let mut result_comp = None;
-
-        for invokee in invokees {
-            let ref proto_loc = invokee.prototype.loc;
-            let ref proto_args = invokee.prototype.args;
-            let retn = invokee.prototype.retn;
-
-            let (proto_block, proto_args) = match proto_args.last() {
-                Some(&Arg::Block { ty, .. }) => (Some(ty), &proto_args[..proto_args.len() - 1]),
-                Some(_) | None => (None, proto_args.as_slice()),
-            };
-
-            let args = match proto_args.first() {
-                Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
-                    let tuple_elements = args.iter().map(|call_arg| match *call_arg {
-                        CallArg::Pass(_, ty) => TupleElement::Value(ty),
-                        CallArg::Splat(_, ty) => TupleElement::Splat(ty),
-                    }).collect::<Vec<_>>();
-
-                    let args_loc = args[0].loc().join(args.last().unwrap().loc());
-
-                    let arg_ty = self.tuple_from_elements(args_loc.clone(), &tuple_elements);
-
-                    vec![CallArg::Pass(args_loc, arg_ty)]
-                }
-                _ => args.clone(),
-            };
-
-            let match_result = call::match_prototype_with_invocation(&self.tyenv, proto_args, &args);
-
-            for match_error in match_result.errors {
-                match match_error {
-                    ArgError::TooFewArguments => {
-                        self.error("Too few arguments supplied", &[
-                            Detail::Loc("in this invocation", &id.0),
-                            Detail::Loc("for this prototype", proto_loc),
-                        ])
-                    }
-                    ArgError::TooManyArguments(ref loc) => {
-                        self.error("Too many arguments supplied", &[
-                            Detail::Loc("from here", loc),
-                            Detail::Loc("in this invocation", &id.0),
-                            Detail::Loc("for this prototype", proto_loc),
-                        ])
-                    }
-                    ArgError::MissingKeyword(ref name) => {
-                        self.error(&format!("Missing keyword argument :{}", name), &[
-                            Detail::Loc("in this invocation", &id.0),
-                            Detail::Loc("for this prototype", proto_loc),
-                        ])
-                    }
-                    ArgError::UnknownKeyword(ref name) => {
-                        self.error(&format!("Unknown keyword argument :{}", name), &[
-                            Detail::Loc("in this invocation", &id.0),
-                            Detail::Loc("for this prototype", proto_loc),
-                        ])
-                    }
-                    ArgError::UnexpectedSplat(ref loc) => {
-                        self.error("Unexpected splat in keyword arguments", &[
-                            Detail::Loc("here", loc),
-                            Detail::Loc("in this invocation", &id.0),
-                            Detail::Loc("for this prototype", proto_loc),
-                        ])
-                    }
-                }
-            }
-
-            for (proto_ty, pass_ty) in match_result.matches {
-                self.compatible(proto_ty, pass_ty, Some(loc));
-            }
-
-            let comp = self.process_block(&id.0, block.as_ref(), locals.clone(), invokee.prototype.loc(), proto_block).and_then_comp(|(), locals| {
-                match *invokee.method {
-                    MethodImpl::IntrinsicKernelRaise => {
-                        Computation::raise(locals)
-                    }
-                    MethodImpl::IntrinsicKernelIsA => {
-                        if let Some(&CallArg::Pass(ref instance_loc, &Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. })) = args.first() {
-                            let refine = |retn_class, refine_ty| {
-                                let retn_ty = self.tyenv.instance0(loc.clone(), retn_class);
-
-                                let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
-                                    locals.refine(name, refine_ty)
-                                } else {
-                                    locals.clone()
-                                };
-
-                                Computation::result(retn_ty, locals)
-                            };
-
-                            self.tyenv.partition_by_class(invokee.recv_ty, instance_class, instance_loc)
-                                .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
-                                .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
-                                .flatten(Computation::divergent)
-                        } else {
-                            let boolean_ty = self.tyenv.instance0(loc.clone(), self.env.object.Boolean);
-                            Computation::result(boolean_ty, locals)
-                        }
-                    }
-                    _ => {
-                        let ty = self.tyenv.update_loc(retn, loc.clone());
-                        Computation::result(ty, locals)
-                    }
-
-                }
-            });
-
-            let comp = comp.terminate_break_scope();
-
-            result_comp = Computation::divergent_option(result_comp, Some(comp));
-        }
-
-        result_comp.unwrap_or_else(|| Computation::result(self.tyenv.any(loc.clone()), locals))
+                Computation::result(self.tyenv.any(loc.clone()), locals)
+            })
     }
 
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         self.process_send_receiver(recv, id, locals).and_then_comp(|recv_type, locals| {
-            self.process_send_args(id, arg_nodes, locals).and_then_comp(|args, locals| {
+            self.process_send_args(&id.0, arg_nodes, locals).and_then_comp(|args, locals| {
                 self.process_send_dispatch(loc, recv_type, id, args, block, locals)
             })
+        })
+    }
+
+    fn process_yield(&self, loc: &Loc, invoc_loc: &Loc, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        self.process_send_args(invoc_loc, arg_nodes, locals).and_then_comp(|args, locals| {
+            if let Some(&Arg::Block { ty: block_ty, .. }) = self.proto.args.last() {
+                if let Type::Proc { ref proto, .. } = *self.tyenv.prune(block_ty) {
+                    self.match_prototype_with_invocation(loc, invoc_loc, &proto.loc, &proto.args, &args);
+
+                    let retn_ty = self.tyenv.update_loc(proto.retn, loc.clone());
+
+                    Computation::result(retn_ty, locals)
+                } else {
+                    self.error("Cannot yield to block of type", &[
+                        Detail::Loc(&self.tyenv.describe(block_ty), block_ty.loc())
+                    ]);
+
+                    Computation::result(self.tyenv.any(loc.clone()), locals)
+                }
+            } else {
+                self.error("Cannot yield in method without formal block argument", &[
+                    Detail::Loc("here", invoc_loc),
+                ]);
+
+                Computation::result(self.tyenv.any(loc.clone()), locals)
+            }
         })
     }
 
@@ -1390,7 +1430,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
             Node::Send(ref loc, ref recv, ref id, ref arg_nodes) => {
                 self.process_send_receiver(recv, id, locals).and_then(|recv_ty, locals| {
-                    self.process_send_args(id, arg_nodes, locals).map(|args| {
+                    self.process_send_args(&id.0, arg_nodes, locals).map(|args| {
                         Lhs::Send(loc.clone(), recv_ty, id.clone(), args)
                     })
                 })
@@ -1647,6 +1687,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 } else {
                     panic!("expected Node::Send inside Node::Block")
                 }
+            }
+            Node::Yield(ref loc, ref args) => {
+                let invoc_loc = Loc {
+                    file: loc.file.clone(),
+                    begin_pos: loc.begin_pos,
+                    end_pos: loc.begin_pos + 5,
+                };
+
+                self.process_yield(loc, &invoc_loc, args, locals)
             }
             Node::Hash(ref loc, ref pairs) => {
                 let mut result = EvalResult::Ok((), locals);
