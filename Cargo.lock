@@ -1,6 +1,6 @@
 [root]
 name = "typedruby"
-version = "0.0.2"
+version = "0.0.3"
 dependencies = [
  "clap 2.24.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "immutable-map 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
