@@ -3,20 +3,20 @@ use std::rc::Rc;
 use std::collections::HashSet;
 use immutable_map::TreeMap;
 
-use typecheck::types::{TypeEnv, Type};
+use typecheck::types::{TypeEnv, TypeRef};
 
 #[derive(Debug,Clone)]
 pub enum LocalEntry<'ty, 'object: 'ty> {
     Unbound,
-    Bound(&'ty Type<'ty, 'object>),
-    Pinned(&'ty Type<'ty, 'object>),
-    ConditionallyPinned(&'ty Type<'ty, 'object>),
+    Bound(TypeRef<'ty, 'object>),
+    Pinned(TypeRef<'ty, 'object>),
+    ConditionallyPinned(TypeRef<'ty, 'object>),
 }
 
 #[derive(Debug,Clone)]
 pub enum LocalEntryMerge<'ty, 'object: 'ty> {
     Ok(LocalEntry<'ty, 'object>),
-    MustMatch(LocalEntry<'ty, 'object>, &'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>)
+    MustMatch(LocalEntry<'ty, 'object>, TypeRef<'ty, 'object>, TypeRef<'ty, 'object>)
 }
 
 impl<'ty, 'object> LocalEntry<'ty, 'object> {
@@ -157,11 +157,11 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         }
     }
 
-    pub fn assign_shadow(&self, name: String, ty: &'ty Type<'ty, 'object>) -> Locals<'ty, 'object> {
+    pub fn assign_shadow(&self, name: String, ty: TypeRef<'ty, 'object>) -> Locals<'ty, 'object> {
         self.insert_var(name, LocalEntry::Bound(ty))
     }
 
-    pub fn assign(&self, name: String, ty: &'ty Type<'ty, 'object>) -> (Option<&'ty Type<'ty, 'object>>, Locals<'ty, 'object>) {
+    pub fn assign(&self, name: String, ty: TypeRef<'ty, 'object>) -> (Option<TypeRef<'ty, 'object>>, Locals<'ty, 'object>) {
         if let Some(local) = self.0.vars.get(&name) {
             return match *local {
                 LocalEntry::Bound(_) if self.0.autopin == 0 => (None, self.insert_var(name, LocalEntry::Bound(ty))),
@@ -190,7 +190,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         (None, self.insert_var(name, LocalEntry::Bound(ty)))
     }
 
-    pub fn refine(&self, name: &str, ty: &'ty Type<'ty, 'object>) -> Locals<'ty, 'object> {
+    pub fn refine(&self, name: &str, ty: TypeRef<'ty, 'object>) -> Locals<'ty, 'object> {
         match self.get_var_direct(&name) {
             LocalEntry::Unbound => {
                 // TODO - can't refine type of variable not in the immediate scope
