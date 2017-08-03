@@ -174,8 +174,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         // unresolved to that they can be constrained. unify any unresolved
         // type variables with their named parameters:
         for (name, ty) in &type_context.type_names {
-            if eval.tyenv.is_unresolved_var(ty) {
-                eval.tyenv.unify(ty, eval.tyenv.alloc(Type::TypeParameter {
+            if eval.tyenv.is_unresolved_var(*ty) {
+                eval.tyenv.unify(*ty, eval.tyenv.alloc(Type::TypeParameter {
                     name: name.clone(),
                     loc: ty.loc().clone(),
                 })).expect("unifying unresolved typevar should succeed");
@@ -264,7 +264,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let class = match **cpath {
             Node::Const(_, None, Id(_, ref name)) => {
-                if let Some(&&Type::Instance { class, .. }) = context.type_names.get(name) {
+                if let Some(&Type::Instance { class, .. }) = context.type_names.get(name).map(TypeRef::deref) {
                     Ok(class)
                 } else {
                     self.env.resolve_cpath(cpath, scope)
@@ -298,7 +298,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
     fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
         if let Node::Const(_, None, Id(ref name_loc, ref name)) = *cpath {
-            if let Some(ty) = context.type_names.get(name) {
+            if let Some(&ty) = context.type_names.get(name) {
                 if !type_parameters.is_empty() {
                     self.error("Type parameters were supplied but type mentioned does not take any", &[
                         Detail::Loc("here", name_loc),
@@ -569,7 +569,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Detail::Loc(strs.alloc(self.tyenv.describe(err_b)), err_b.loc()),
         ];
 
-        if !err_a.ref_eq(a) || !err_b.ref_eq(b) {
+        if !err_a.ref_eq(&a) || !err_b.ref_eq(&b) {
             details.push(Detail::Message("arising from an attempt to match:"));
             details.push(Detail::Loc(strs.alloc(self.tyenv.describe(a) + ", with:"), a.loc()));
             details.push(Detail::Loc(strs.alloc(self.tyenv.describe(b)), b.loc()));
@@ -611,7 +611,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     match *ty {
                         Type::Tuple { ref lead, ref splat, ref post, .. } => {
                             for lead_ty in lead {
-                                elements.push(TupleElement::Value(lead_ty));
+                                elements.push(TupleElement::Value(*lead_ty));
                             }
 
                             if let Some(splat_ty) = *splat {
@@ -619,7 +619,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             }
 
                             for post_ty in post {
-                                elements.push(TupleElement::Value(post_ty));
+                                elements.push(TupleElement::Value(*post_ty));
                             }
                         }
                         Type::Instance { class, ref type_parameters, .. }
@@ -816,7 +816,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
             }
             Type::Union { ref types, .. } => {
-                types.iter().flat_map(|ty| {
+                types.iter().flat_map(|&ty| {
                     // XXX - this is a hack. instead of narrowing local variables we need to narrow types in the tyenv:
                     let ty = if let Type::LocalVariable { ref name, ref loc, .. } = *recv_type {
                         self.tyenv.local_variable(loc.clone(), name.clone(), ty)
@@ -1201,6 +1201,42 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
+    fn process_intrinsic_kernel_is_a(&self, expr_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        let no_intrinsic = |locals| {
+            let boolean_ty = self.tyenv.instance0(expr_loc.clone(), self.env.object.Boolean);
+            Computation::result(boolean_ty, locals)
+        };
+
+        let (arg_loc, arg_ty) = if let Some(&CallArg::Pass(ref arg_loc, arg_ty)) = args.first() {
+            (arg_loc, self.tyenv.prune(arg_ty))
+        } else {
+            return no_intrinsic(locals);
+        };
+
+        if let Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. } = *arg_ty {
+            let refine = |retn_class, refine_ty| {
+                let retn_ty = self.tyenv.instance0(expr_loc.clone(), retn_class);
+
+                let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
+                    locals.refine(name, refine_ty)
+                } else {
+                    locals.clone()
+                };
+
+                Computation::result(retn_ty, locals)
+            };
+
+            self.tyenv.partition_by_class(invokee.recv_ty, instance_class, arg_loc)
+                .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
+                .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
+                .flatten(Computation::divergent)
+        } else {
+            return no_intrinsic(locals);
+        }
+    }
+
     fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1221,27 +1257,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Computation::raise(locals)
                 }
                 MethodImpl::IntrinsicKernelIsA => {
-                    if let Some(&CallArg::Pass(ref instance_loc, &Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. })) = args.first() {
-                        let refine = |retn_class, refine_ty| {
-                            let retn_ty = self.tyenv.instance0(expr_loc.clone(), retn_class);
-
-                            let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
-                                locals.refine(name, refine_ty)
-                            } else {
-                                locals.clone()
-                            };
-
-                            Computation::result(retn_ty, locals)
-                        };
-
-                        self.tyenv.partition_by_class(invokee.recv_ty, instance_class, instance_loc)
-                            .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
-                            .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
-                            .flatten(Computation::divergent)
-                    } else {
-                        let boolean_ty = self.tyenv.instance0(expr_loc.clone(), self.env.object.Boolean);
-                        Computation::result(boolean_ty, locals)
-                    }
+                    self.process_intrinsic_kernel_is_a(expr_loc, invokee, args, locals)
                 }
                 _ => {
                     let ty = self.tyenv.update_loc(retn, expr_loc.clone());
@@ -1401,7 +1417,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
             }
             Lhs::Simple(_, ty) => EvalResult::Ok(ty, locals),
-            Lhs::Send(ref loc, ref recv_ty, ref id, ref args) => {
+            Lhs::Send(ref loc, recv_ty, ref id, ref args) => {
                 let id = Id(id.0.clone(), id.1.clone() + "=");
 
                 let rhs_ty = self.tyenv.new_var(loc.clone());
@@ -1756,8 +1772,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     for entry in entries {
                         match entry {
                             HashEntry::Symbol(Id(_, key), value) => keywords.push((key, value)),
-                            HashEntry::Kwsplat(kw_ty) => match self.tyenv.to_keyword_hash(kw_ty) {
-                                Some(&Type::KeywordHash { keywords: ref splat_keywords, splat, .. }) => {
+                            HashEntry::Kwsplat(kw_ty) => match *self.tyenv.to_keyword_hash(kw_ty).unwrap() {
+                                Type::KeywordHash { keywords: ref splat_keywords, splat, .. } => {
                                     keywords.extend(splat_keywords.iter().cloned());
                                     splat_ty = match (splat_ty, splat) {
                                         (None, None) => None,
@@ -1872,7 +1888,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let lhs_comp = match lhs {
                         Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
                         Lhs::Simple(_, ty) => Computation::result(ty, locals),
-                        Lhs::Send(ref lhs_loc, ref recv_ty, ref id, ref args) => {
+                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
                             self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
                         }
                     };
@@ -1894,7 +1910,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let lhs_comp = match lhs {
                         Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
                         Lhs::Simple(_, ty) => Computation::result(ty, locals),
-                        Lhs::Send(ref lhs_loc, ref recv_ty, ref id, ref args) => {
+                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
                             self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
                         }
                     };
@@ -1916,7 +1932,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let lhs_ty = match lhs {
                         Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals),
                         Lhs::Simple(_, ty) => EvalResult::Ok(ty, locals),
-                        Lhs::Send(ref lhs_loc, ref recv_ty, ref id, ref args) => {
+                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
                             let comp = self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals);
                             self.extract_results(comp, lhs_loc)
                         }

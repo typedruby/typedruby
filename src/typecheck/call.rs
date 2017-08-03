@@ -84,7 +84,7 @@ fn keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
     }
 
     if let Some(&CallArg::Pass(_, ty)) = args.last() {
-        match *tyenv.prune(ty) {
+        match *tyenv.prune(ty).deref() {
             Type::KeywordHash { ref keywords, splat, .. } => {
                 args.consume_back();
                 KeywordHashArgument::Keywords(keywords, splat)
@@ -165,7 +165,7 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
                 }
             }
         }
-        KeywordHashArgument::Hash(ref hash_ty) => {
+        KeywordHashArgument::Hash(hash_ty) => {
             let mut potential_keywords = Vec::new();
             let mut keyword_hash_loc = kw_loc.clone();
             let mut kwrest_ty = None;
