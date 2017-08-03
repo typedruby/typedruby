@@ -1,12 +1,12 @@
 use ast::{Loc};
-use typecheck::types::{Arg, Type, TypeEnv};
+use typecheck::types::{Arg, Type, TypeEnv, TypeRef};
 use slice_util::{View, Consumer, ForwardConsumer, ReverseConsumer};
 use std::collections::HashMap;
 
 #[derive(Debug,Clone)]
 pub enum CallArg<'ty, 'object: 'ty> {
-    Pass(Loc, &'ty Type<'ty, 'object>),
-    Splat(Loc, &'ty Type<'ty, 'object>),
+    Pass(Loc, TypeRef<'ty, 'object>),
+    Splat(Loc, TypeRef<'ty, 'object>),
 }
 
 impl<'ty, 'object> CallArg<'ty, 'object> {
@@ -29,13 +29,13 @@ pub enum ArgError {
 
 #[derive(Debug)]
 pub struct MatchResult<'ty, 'object: 'ty> {
-    pub matches: Vec<(&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>)>,
+    pub matches: Vec<(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>)>,
     pub errors: Vec<ArgError>,
 }
 
 fn match_argument<'ty, 'object: 'ty>(
-    prototype_arg_type: &'ty Type<'ty, 'object>,
-    passed_arg_type: &'ty Type<'ty, 'object>,
+    prototype_arg_type: TypeRef<'ty, 'object>,
+    passed_arg_type: TypeRef<'ty, 'object>,
     result: &mut MatchResult<'ty, 'object>)
 {
     result.matches.push((prototype_arg_type, passed_arg_type));
@@ -61,8 +61,8 @@ fn consume_remaining_keywords<'a, 'ty: 'a, 'object: 'ty>(
 }
 
 enum KeywordHashArgument<'a, 'ty: 'a, 'object: 'ty> {
-    Keywords(&'a [(String, &'ty Type<'ty, 'object>)], Option<&'ty Type<'ty, 'object>>),
-    Hash(&'ty Type<'ty, 'object>),
+    Keywords(&'a [(String, TypeRef<'ty, 'object>)], Option<TypeRef<'ty, 'object>>),
+    Hash(TypeRef<'ty, 'object>),
     None
 }
 
@@ -197,7 +197,7 @@ fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
 }
 
 fn match_prototype_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, PassedConsumer>(
-    prototype_arg_type: &'ty Type<'ty, 'object>,
+    prototype_arg_type: TypeRef<'ty, 'object>,
     prototype_args: &mut PrototypeConsumer,
     args: &mut PassedConsumer,
     result: &mut MatchResult<'ty, 'object>

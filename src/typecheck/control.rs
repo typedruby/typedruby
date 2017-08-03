@@ -1,6 +1,6 @@
 use std::fmt;
 use std::rc::Rc;
-use typecheck::types::{TypeEnv, Type};
+use typecheck::types::{TypeEnv, Type, TypeRef};
 use typecheck::locals::{Locals, LocalEntryMerge};
 use ast::Loc;
 use util::Or;
@@ -51,13 +51,13 @@ impl<'ty, 'object> ComputationPredicate<'ty, 'object> {
 
 #[derive(Debug)]
 enum Computation_<'ty, 'object: 'ty> {
-    Result(&'ty Type<'ty, 'object>, Locals<'ty, 'object>),
-    Return(&'ty Type<'ty, 'object>),
+    Result(TypeRef<'ty, 'object>, Locals<'ty, 'object>),
+    Return(TypeRef<'ty, 'object>),
     Raise(Locals<'ty, 'object>),
     Redo,
     Retry,
-    Next(&'ty Type<'ty, 'object>, Locals<'ty, 'object>),
-    Break(&'ty Type<'ty, 'object>, Locals<'ty, 'object>),
+    Next(TypeRef<'ty, 'object>, Locals<'ty, 'object>),
+    Break(TypeRef<'ty, 'object>, Locals<'ty, 'object>),
     Divergent(Computation<'ty, 'object>, Computation<'ty, 'object>),
 }
 
@@ -71,11 +71,11 @@ impl<'ty, 'object: 'ty> fmt::Debug for Computation<'ty, 'object> {
 }
 
 impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
-    pub fn result(ty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+    pub fn result(ty: TypeRef<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Result(ty, locals)))
     }
 
-    pub fn return_(ty: &'ty Type<'ty, 'object>) -> Computation<'ty, 'object> {
+    pub fn return_(ty: TypeRef<'ty, 'object>) -> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Return(ty)))
     }
 
@@ -91,11 +91,11 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Retry))
     }
 
-    pub fn next(ty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+    pub fn next(ty: TypeRef<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Next(ty, locals)))
     }
 
-    pub fn break_(ty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+    pub fn break_(ty: TypeRef<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
         Computation(Rc::new(Computation_::Break(ty, locals)))
     }
 
@@ -113,7 +113,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
     }
 
     pub fn seq<F>(&self, f: &F) -> Computation<'ty, 'object>
-        where F: Fn(&'ty Type<'ty, 'object>, Locals<'ty, 'object>) -> Computation<'ty, 'object>
+        where F: Fn(TypeRef<'ty, 'object>, Locals<'ty, 'object>) -> Computation<'ty, 'object>
     {
         match *self.0 {
             Computation_::Result(ref ty, ref locals) => f(ty.clone(), locals.clone()),
@@ -143,7 +143,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
     }
 
     pub fn terminate<F>(&self, f: &F)
-        where F: Fn(&'ty Type<'ty, 'object>)
+        where F: Fn(TypeRef<'ty, 'object>)
     {
         match *self.0 {
             Computation_::Result(ref ty, _) |
@@ -221,7 +221,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
     }
 
     pub fn extract_results<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>)
-        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
+        -> EvalResult<'ty, 'object, TypeRef<'ty, 'object>>
     {
         let converged = self.converge_results(loc, tyenv, merges);
 
@@ -249,7 +249,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
     }
 
     pub fn predicate<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>) -> ComputationPredicate<'ty, 'object> {
-        fn refine_computation<'ty, 'object: 'ty>(ty: &'ty Type<'ty, 'object>, refined_ty: &'ty Type<'ty, 'object>, locals: &Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        fn refine_computation<'ty, 'object: 'ty>(ty: TypeRef<'ty, 'object>, refined_ty: TypeRef<'ty, 'object>, locals: &Locals<'ty, 'object>) -> Computation<'ty, 'object> {
             let locals = if let Type::LocalVariable { ref name, .. } = *ty {
                 locals.refine(name, refined_ty)
             } else {
@@ -346,7 +346,7 @@ impl<'ty, 'object, T> EvalResult<'ty, 'object, T> {
     }
 }
 
-impl<'ty, 'object> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>> {
+impl<'ty, 'object> EvalResult<'ty, 'object, TypeRef<'ty, 'object>> {
     pub fn into_computation(self) -> Computation<'ty, 'object> {
         match self {
             EvalResult::Ok(ty, locals) => Computation::result(ty, locals),
