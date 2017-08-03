@@ -185,7 +185,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         }
     }
 
-    pub fn converge_results<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Computation<'ty, 'object> {
+    pub fn converge_results(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Computation<'ty, 'object> {
         match *self.0 {
             Computation_::Result(..) |
             Computation_::Return(..) |
@@ -220,7 +220,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         }
     }
 
-    pub fn extract_results<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>)
+    pub fn extract_results(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>)
         -> EvalResult<'ty, 'object, TypeRef<'ty, 'object>>
     {
         let converged = self.converge_results(loc, tyenv, merges);
@@ -248,7 +248,7 @@ impl<'ty, 'object: 'ty> Computation<'ty, 'object> {
         }
     }
 
-    pub fn predicate<'env>(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'env, 'object>) -> ComputationPredicate<'ty, 'object> {
+    pub fn predicate(&self, loc: &Loc, tyenv: &TypeEnv<'ty, 'object>) -> ComputationPredicate<'ty, 'object> {
         fn refine_computation<'ty, 'object: 'ty>(ty: TypeRef<'ty, 'object>, refined_ty: TypeRef<'ty, 'object>, locals: &Locals<'ty, 'object>) -> Computation<'ty, 'object> {
             let locals = if let Type::LocalVariable { ref name, .. } = *ty {
                 locals.refine(name, refined_ty)

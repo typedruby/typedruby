@@ -15,7 +15,7 @@ use deferred_cell::DeferredCell;
 
 pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
     env: &'env Environment<'object>,
-    tyenv: TypeEnv<'ty, 'env, 'object>,
+    tyenv: TypeEnv<'ty, 'object>,
     scope: Rc<Scope<'object>>,
     type_context: TypeContext<'ty, 'object>,
     proto: DeferredCell<Rc<Prototype<'ty, 'object>>>,
@@ -43,7 +43,7 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
         }
     }
 
-    pub fn self_type<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
+    pub fn self_type<'env>(&self, tyenv: &TypeEnv<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
         tyenv.instance(loc, self.class, self.type_parameters.clone())
     }
 }
@@ -120,7 +120,7 @@ enum Lhs<'ty, 'object: 'ty> {
 }
 
 impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
-    pub fn process(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) {
+    pub fn process(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) {
         let class_type_parameters = class.type_parameters().iter().map(|&Id(ref loc, _)|
             tyenv.new_var(loc.clone())
         ).collect();

@@ -11,7 +11,7 @@ use typed_arena::Arena;
 use self::types::TypeEnv;
 use self::eval::Eval;
 
-pub fn check<'env, 'object: 'env>(env: &'env Environment<'object>, method: Rc<MethodEntry<'object>>) {
+pub fn check<'object>(env: &Environment<'object>, method: Rc<MethodEntry<'object>>) {
     let arena = Arena::new();
     let types = TypeEnv::new(&arena, &env.object);
 
