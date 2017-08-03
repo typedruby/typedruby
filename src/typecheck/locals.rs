@@ -20,7 +20,7 @@ pub enum LocalEntryMerge<'ty, 'object: 'ty> {
 }
 
 impl<'ty, 'object> LocalEntry<'ty, 'object> {
-    pub fn merge<'env>(self, other: LocalEntry<'ty, 'object>, tyenv: &TypeEnv<'ty, 'env, 'object>) -> LocalEntryMerge<'ty, 'object> {
+    pub fn merge(self, other: LocalEntry<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>) -> LocalEntryMerge<'ty, 'object> {
         match (self, other) {
             (LocalEntry::Unbound, LocalEntry::Unbound) =>
                 LocalEntryMerge::Ok(LocalEntry::Unbound),
@@ -202,7 +202,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         }
     }
 
-    pub fn merge<'env>(&self, other: Locals<'ty, 'object>, tyenv: &TypeEnv<'ty, 'env, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Locals<'ty, 'object> {
+    pub fn merge(&self, other: Locals<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Locals<'ty, 'object> {
         assert!(self.0.autopin == other.0.autopin);
 
         let mut names = HashSet::new();

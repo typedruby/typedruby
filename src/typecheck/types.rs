@@ -15,15 +15,15 @@ pub type UnificationError<'ty, 'object> = (TypeRef<'ty, 'object>, TypeRef<'ty, '
 pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
 
 #[derive(Clone)]
-pub struct TypeEnv<'ty, 'env, 'object: 'ty + 'env> {
+pub struct TypeEnv<'ty, 'object: 'ty> {
     arena: &'ty Arena<Type<'ty, 'object>>,
     next_id: Rc<Cell<TypeVarId>>,
     instance_map: RefCell<TreeMap<TypeVarId, TypeRef<'ty, 'object>>>,
-    pub object: &'env ObjectGraph<'object>,
+    pub object: &'ty ObjectGraph<'object>,
 }
 
-impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
-    pub fn new(arena: &'ty Arena<Type<'ty, 'object>>, object: &'env ObjectGraph<'object>) -> TypeEnv<'ty, 'env, 'object> {
+impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
+    pub fn new(arena: &'ty Arena<Type<'ty, 'object>>, object: &'ty ObjectGraph<'object>) -> TypeEnv<'ty, 'object> {
         TypeEnv {
             arena: arena,
             object: object,
@@ -870,13 +870,13 @@ pub enum KwsplatResult<'ty, 'object: 'ty> {
 }
 
 impl<'ty, 'object: 'ty> KwsplatResult<'ty, 'object> {
-    fn append_ty<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, loc: &Loc, ty: TypeRef<'ty, 'object>)
+    fn append_ty(&self, tyenv: &TypeEnv<'ty, 'object>, loc: &Loc, ty: TypeRef<'ty, 'object>)
         -> KwsplatResult<'ty, 'object>
     {
         self.append(tyenv, loc, KwsplatResult::Ok(ty))
     }
 
-    fn append<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, loc: &Loc, other: KwsplatResult<'ty, 'object>)
+    fn append(&self, tyenv: &TypeEnv<'ty, 'object>, loc: &Loc, other: KwsplatResult<'ty, 'object>)
         -> KwsplatResult<'ty, 'object>
     {
         match *self {
@@ -899,7 +899,7 @@ impl<'ty, 'object> TypeRef<'ty, 'object> {
         self.0
     }
 
-    pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+    pub fn describe(&self, tyenv: &TypeEnv<'ty, 'object>, f: &mut fmt::Write) -> fmt::Result {
         match *tyenv.prune(*self) {
             Type::Instance { ref class, ref type_parameters, .. } => {
                 write!(f, "{}", class.name())?;
@@ -1091,7 +1091,7 @@ impl<'ty, 'object> Prototype<'ty, 'object> {
         &self.loc
     }
 
-    pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+    pub fn describe(&self, tyenv: &TypeEnv<'ty, 'object>, f: &mut fmt::Write) -> fmt::Result {
         let mut print_comma = false;
 
         write!(f, "|")?;
@@ -1170,7 +1170,7 @@ impl<'ty, 'object> Arg<'ty, 'object> {
         }
     }
 
-    pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+    pub fn describe(&self, tyenv: &TypeEnv<'ty, 'object>, f: &mut fmt::Write) -> fmt::Result {
         match *self {
             Arg::Required { ty, .. } => ty.describe(tyenv, f),
             Arg::Procarg0 { ref arg, .. } => arg.describe(tyenv, f),

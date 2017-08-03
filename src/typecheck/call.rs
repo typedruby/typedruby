@@ -66,8 +66,8 @@ enum KeywordHashArgument<'a, 'ty: 'a, 'object: 'ty> {
     None
 }
 
-fn keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
-    tyenv: &TypeEnv<'ty, 'env, 'object>,
+fn keyword_hash_argument<'a, 'ty: 'a, 'object: 'ty>(
+    tyenv: &TypeEnv<'ty, 'object>,
     prototype_args: &mut View<'a, Arg<'ty, 'object>>,
     args: &mut View<'a, CallArg<'ty, 'object>>,
 ) -> KeywordHashArgument<'a, 'ty, 'object>
@@ -104,8 +104,8 @@ fn keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
     }
 }
 
-fn match_keyword_hash_argument<'a, 'ty: 'a, 'env, 'object: 'ty + 'env>(
-    tyenv: &TypeEnv<'ty, 'env, 'object>,
+fn match_keyword_hash_argument<'a, 'ty: 'a, 'object: 'ty>(
+    tyenv: &TypeEnv<'ty, 'object>,
     prototype_args: &mut View<'a, Arg<'ty, 'object>>,
     args: &mut View<'a, CallArg<'ty, 'object>>,
     result: &mut MatchResult<'ty, 'object>
@@ -291,8 +291,8 @@ fn match_rest_argument<'a, 'ty: 'a, 'object, PrototypeConsumer, PassedConsumer>(
     }
 }
 
-pub fn match_prototype_with_invocation<'ty, 'env, 'object: 'ty + 'env>(
-    tyenv: &TypeEnv<'ty, 'env, 'object>,
+pub fn match_prototype_with_invocation<'ty, 'object: 'ty>(
+    tyenv: &TypeEnv<'ty, 'object>,
     prototype_args: &[Arg<'ty, 'object>],
     call_args: &[CallArg<'ty, 'object>],
 ) -> MatchResult<'ty, 'object>
