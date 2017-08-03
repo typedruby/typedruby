@@ -7,22 +7,23 @@ use typed_arena::Arena;
 use immutable_map::TreeMap;
 use util::Or;
 use itertools::Itertools;
+use std::ops::Deref;
 
 pub type TypeVarId = usize;
 
-pub type UnificationError<'ty, 'object> = (&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>);
+pub type UnificationError<'ty, 'object> = (TypeRef<'ty, 'object>, TypeRef<'ty, 'object>);
 pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
 
 #[derive(Clone)]
-pub struct TypeEnv<'ty, 'env, 'object: 'ty + 'env> {
+pub struct TypeEnv<'ty, 'object: 'ty> {
     arena: &'ty Arena<Type<'ty, 'object>>,
     next_id: Rc<Cell<TypeVarId>>,
-    instance_map: RefCell<TreeMap<TypeVarId, &'ty Type<'ty, 'object>>>,
-    pub object: &'env ObjectGraph<'object>,
+    instance_map: RefCell<TreeMap<TypeVarId, TypeRef<'ty, 'object>>>,
+    pub object: &'ty ObjectGraph<'object>,
 }
 
-impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
-    pub fn new(arena: &'ty Arena<Type<'ty, 'object>>, object: &'env ObjectGraph<'object>) -> TypeEnv<'ty, 'env, 'object> {
+impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
+    pub fn new(arena: &'ty Arena<Type<'ty, 'object>>, object: &'ty ObjectGraph<'object>) -> TypeEnv<'ty, 'object> {
         TypeEnv {
             arena: arena,
             object: object,
@@ -37,15 +38,15 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         id
     }
 
-    pub fn alloc(&self, ty: Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
-        self.arena.alloc(ty)
+    pub fn alloc(&self, ty: Type<'ty, 'object>) -> TypeRef<'ty, 'object> {
+        TypeRef(self.arena.alloc(ty))
     }
 
-    pub fn new_var(&self, loc: Loc) -> &'ty Type<'ty, 'object> {
+    pub fn new_var(&self, loc: Loc) -> TypeRef<'ty, 'object> {
         self.alloc(Type::Var { loc: loc, id: self.new_id() })
     }
 
-    pub fn any(&self, loc: Loc) -> &'ty Type<'ty, 'object> {
+    pub fn any(&self, loc: Loc) -> TypeRef<'ty, 'object> {
         self.alloc(Type::Any { loc: loc })
     }
 
@@ -62,8 +63,8 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         })
     }
 
-    pub fn instance(&self, loc: Loc, class: &'object RubyObject<'object>, type_parameters: Vec<&'ty Type<'ty, 'object>>)
-        -> &'ty Type<'ty, 'object>
+    pub fn instance(&self, loc: Loc, class: &'object RubyObject<'object>, type_parameters: Vec<TypeRef<'ty, 'object>>)
+        -> TypeRef<'ty, 'object>
     {
         assert!(class.type_parameters().len() == type_parameters.len());
 
@@ -74,26 +75,26 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         })
     }
 
-    pub fn instance0(&self, loc: Loc, class: &'object RubyObject<'object>) -> &'ty Type<'ty, 'object> {
+    pub fn instance0(&self, loc: Loc, class: &'object RubyObject<'object>) -> TypeRef<'ty, 'object> {
         self.instance(loc, class, Vec::new())
     }
 
-    pub fn nil(&self, loc: Loc) -> &'ty Type<'ty, 'object> {
+    pub fn nil(&self, loc: Loc) -> TypeRef<'ty, 'object> {
         self.instance(loc, self.object.NilClass, Vec::new())
     }
 
-    pub fn nillable(&self, loc: &Loc, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+    pub fn nillable(&self, loc: &Loc, ty: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
         self.union(loc, self.nil(loc.clone()), ty)
     }
 
-    pub fn union(&self, loc: &Loc, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
-        let mut reduced_types: Vec<&_> = Vec::new();
+    pub fn union(&self, loc: &Loc, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
+        let mut reduced_types: Vec<TypeRef> = Vec::new();
 
         let mut types = self.possible_types(a);
         types.extend(self.possible_types(b));
 
-        for ty in types.into_iter() {
-            if reduced_types.iter().any(|rty| self.same_type(rty, ty)) {
+        for ty in types {
+            if reduced_types.iter().any(|rty| self.same_type(*rty, ty)) {
                 continue;
             }
 
@@ -109,8 +110,8 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn tuple(&self, loc: Loc, lead: Vec<&'ty Type<'ty, 'object>>, splat: Option<&'ty Type<'ty, 'object>>, post: Vec<&'ty Type<'ty, 'object>>)
-        -> &'ty Type<'ty, 'object>
+    pub fn tuple(&self, loc: Loc, lead: Vec<TypeRef<'ty, 'object>>, splat: Option<TypeRef<'ty, 'object>>, post: Vec<TypeRef<'ty, 'object>>)
+        -> TypeRef<'ty, 'object>
     {
         self.alloc(Type::Tuple {
             loc: loc,
@@ -121,8 +122,8 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         })
     }
 
-    pub fn keyword_hash(&self, loc: Loc, keywords: Vec<(String, &'ty Type<'ty, 'object>)>, splat: Option<&'ty Type<'ty, 'object>>)
-        -> &'ty Type<'ty, 'object>
+    pub fn keyword_hash(&self, loc: Loc, keywords: Vec<(String, TypeRef<'ty, 'object>)>, splat: Option<TypeRef<'ty, 'object>>)
+        -> TypeRef<'ty, 'object>
     {
         self.alloc(Type::KeywordHash {
             loc: loc,
@@ -132,7 +133,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         })
     }
 
-    pub fn local_variable(&self, loc: Loc, name: String, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+    pub fn local_variable(&self, loc: Loc, name: String, ty: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
         let id = self.new_id();
 
         self.set_var(id, ty);
@@ -144,7 +145,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         })
     }
 
-    fn set_var(&self, id: TypeVarId, ty: &'ty Type<'ty, 'object>) {
+    fn set_var(&self, id: TypeVarId, ty: TypeRef<'ty, 'object>) {
         let mut instance_map_ref = self.instance_map.borrow_mut();
 
         *instance_map_ref = instance_map_ref.insert_or_update(id, ty.clone(), |v|
@@ -153,13 +154,13 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         );
     }
 
-    pub fn prune(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+    pub fn prune(&self, ty: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
         match *ty {
             Type::Var { ref id, .. } |
             Type::LocalVariable { ref id, .. } |
             Type::KeywordHash { ref id, .. } |
             Type::Tuple { ref id, .. } => {
-                if let Some(instance) = { self.instance_map.borrow().get(id) } {
+                if let Some(&instance) = { self.instance_map.borrow().get(id) } {
                     return self.prune(instance)
                 }
             },
@@ -169,11 +170,11 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         ty.clone()
     }
 
-    pub fn compatible(&self, to: &'ty Type<'ty, 'object>, from: &'ty Type<'ty, 'object>) -> UnificationResult<'ty, 'object> {
+    pub fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let to = self.prune(to);
         let from = self.prune(from);
 
-        match (to, from) {
+        match (to.deref(), from.deref()) {
             (&Type::Var { .. }, _) =>
                 self.unify(to, from),
             (_, &Type::Var { .. }) =>
@@ -186,7 +187,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 if to_tp.len() > 0 {
                     // because an object could be mutated after coercion, we
                     // require invariance in type parameters:
-                    to_tp.iter().zip(from_tp).fold(Ok(()), |res, (to_ty, from_ty)|
+                    to_tp.iter().zip(from_tp).fold(Ok(()), |res, (&to_ty, &from_ty)|
                         res.and_then(|()| self.compatible(to_ty, from_ty))
                            .and_then(|()| self.compatible(from_ty, to_ty)))
                 } else {
@@ -195,7 +196,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             },
             (_, &Type::Union { types: ref from_types, .. }) => {
                 for from_type in from_types {
-                    if let e@Err(..) = self.compatible(to, from_type) {
+                    if let e@Err(..) = self.compatible(to, *from_type) {
                         return e;
                     }
                 }
@@ -204,7 +205,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             },
             (&Type::Union { types: ref to_types, .. }, _) => {
                 for to_type in to_types {
-                    if let Ok(()) = self.compatible(to_type, from) {
+                    if let Ok(()) = self.compatible(*to_type, from) {
                         return Ok(());
                     }
                 }
@@ -228,7 +229,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
                 let array_element_ty = type_parameters[0];
 
-                lead.iter().chain(splat).chain(post).fold(Ok(()), |result, ty| {
+                lead.iter().chain(splat).chain(post).fold(Ok(()), |result, &ty| {
                     result.and_then(|()| self.compatible(ty, array_element_ty))
                 })
             }
@@ -400,10 +401,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 self.compatible_arg(arg1, from),
             (_, &Arg::Procarg0 { arg: ref arg2, .. }) =>
                 self.compatible_arg(to, arg2),
-            (&Arg::Required { ty: ref ty1, .. }, &Arg::Required { ty: ref ty2, .. }) |
-            (&Arg::Optional { ty: ref ty1, .. }, &Arg::Required { ty: ref ty2, .. }) |
-            (&Arg::Rest { ty: ref ty1, .. }, &Arg::Rest { ty: ref ty2, .. }) |
-            (&Arg::Block { ty: ref ty1, .. }, &Arg::Block { ty: ref ty2, .. }) =>
+            (&Arg::Required { ty: ty1, .. }, &Arg::Required { ty: ty2, .. }) |
+            (&Arg::Optional { ty: ty1, .. }, &Arg::Required { ty: ty2, .. }) |
+            (&Arg::Rest { ty: ty1, .. }, &Arg::Rest { ty: ty2, .. }) |
+            (&Arg::Block { ty: ty1, .. }, &Arg::Block { ty: ty2, .. }) =>
                 Some(self.compatible(ty2, ty1)),
             (&Arg::Kwarg { .. }, _) |
             (&Arg::Kwoptarg { .. }, _) =>
@@ -412,7 +413,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn is_unresolved_var(&self, ty: &'ty Type<'ty, 'object>) -> bool {
+    pub fn is_unresolved_var(&self, ty: TypeRef<'ty, 'object>) -> bool {
         if let Type::Var { .. } = *self.prune(ty) {
             true
         } else {
@@ -420,7 +421,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn is_instance(&self, ty: &'ty Type<'ty, 'object>, class: &'object RubyObject<'object>) -> bool {
+    pub fn is_instance(&self, ty: TypeRef<'ty, 'object>, class: &'object RubyObject<'object>) -> bool {
         if let Type::Instance { class: ty_class, .. } = *self.prune(ty) {
             ty_class.is_a(class)
         } else {
@@ -428,11 +429,11 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn unify(&self, t1: &'ty Type<'ty, 'object>, t2: &'ty Type<'ty, 'object>) -> UnificationResult<'ty, 'object> {
+    pub fn unify(&self, t1: TypeRef<'ty, 'object>, t2: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let t1 = self.prune(t1);
         let t2 = self.prune(t2);
 
-        match (t1, t2) {
+        match (t1.deref(), t2.deref()) {
             (&Type::Var { id: ref id1, .. }, _) => {
                 if let Type::Var { id: ref id2, .. } = *t2 {
                     if id1 == id2 {
@@ -446,7 +447,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             },
 
             (_, &Type::Var { .. }) =>
-                self.unify(&t2, &t1),
+                self.unify(t2, t1),
 
             (&Type::Instance { class: class1, type_parameters: ref tp1, .. }, &Type::Instance { class: class2, type_parameters: ref tp2, .. }) => {
                 if class1 != class2 {
@@ -463,7 +464,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 self.unify_slice(lead1, lead2)
                     .and_then(|res|
                         match (*splat1, *splat2) {
-                            (Some(ref a), Some(ref b)) => Some(res.and_then(|_|
+                            (Some(a), Some(b)) => Some(res.and_then(|_|
                                 self.unify(a, b)
                             )),
                             (None, None) => Some(res),
@@ -492,10 +493,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 let mut marked2 = marked1.clone();
 
                 // attempt to unify all concrete types first:
-                for (idx2, ty2) in types2.iter().enumerate() {
+                for (idx2, &ty2) in types2.iter().enumerate() {
                     if self.is_unresolved_var(ty2) { continue }
 
-                    for (idx1, ty1) in types1.iter().enumerate() {
+                    for (idx1, &ty1) in types1.iter().enumerate() {
                         if marked1[idx1] { continue }
                         if self.is_unresolved_var(ty1) { continue }
 
@@ -513,10 +514,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 }
 
                 // unify all unresolved type variables:
-                for (idx2, ty2) in types2.iter().enumerate() {
+                for (idx2, &ty2) in types2.iter().enumerate() {
                     if marked2[idx2] { continue }
 
-                    for (idx1, ty1) in types1.iter().enumerate() {
+                    for (idx1, &ty1) in types1.iter().enumerate() {
                         if marked1[idx1] { continue }
 
                         self.unify(ty1, ty2).expect("unifying two unresolved type variables should never fail");
@@ -571,12 +572,12 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    fn unify_slice(&self, types1: &[&'ty Type<'ty, 'object>], types2: &[&'ty Type<'ty, 'object>]) -> Option<UnificationResult<'ty, 'object>> {
+    fn unify_slice(&self, types1: &[TypeRef<'ty, 'object>], types2: &[TypeRef<'ty, 'object>]) -> Option<UnificationResult<'ty, 'object>> {
         if types1.len() != types2.len() {
             return None;
         }
 
-        for (a, b) in types1.iter().zip(types2.iter()) {
+        for (&a, &b) in types1.iter().zip(types2.iter()) {
             match self.unify(a, b) {
                 Ok(_) => {},
                 err@Err(..) => return Some(err),
@@ -586,7 +587,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         Some(Ok(()))
     }
 
-    pub fn update_loc(&self, ty: &'ty Type<'ty, 'object>, loc: Loc) -> &'ty Type<'ty, 'object> {
+    pub fn update_loc(&self, ty: TypeRef<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
         let tyvar = self.new_var(loc);
 
         self.unify(tyvar, ty).expect("unifying new tyvar");
@@ -594,14 +595,16 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         tyvar
     }
 
-    pub fn describe(&self, ty: &'ty Type<'ty, 'object>) -> String {
+    pub fn describe(&self, ty: TypeRef<'ty, 'object>) -> String {
         let mut buffer = String::new();
         ty.describe(self, &mut buffer).unwrap();
         buffer
     }
 
-    pub fn degrade_to_instance(&self, ty: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
-        match self.prune(ty) {
+    pub fn degrade_to_instance(&self, ty: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
+        let pruned = self.prune(ty);
+
+        match pruned.deref() {
             &Type::KeywordHash { id, ref loc, ref keywords, splat } => {
                 let hash_class = self.object.hash_class();
 
@@ -633,11 +636,11 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 self.set_var(id, instance_ty);
                 instance_ty
             }
-            pruned => pruned,
+            _ => pruned,
         }
     }
 
-    pub fn predicate(&self, ty: &'ty Type<'ty, 'object>) -> Or<&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>> {
+    pub fn predicate(&self, ty: TypeRef<'ty, 'object>) -> Or<TypeRef<'ty, 'object>, TypeRef<'ty, 'object>> {
         match *self.prune(ty) {
             Type::Instance { class, .. } => {
                 if class.is_a(self.object.FalseClass) || class.is_a(self.object.NilClass) {
@@ -650,7 +653,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
             }
             Type::Union { ref types, ref loc } => {
                 types.iter()
-                    .map(|t| self.predicate(t))
+                    .map(|t| self.predicate(*t))
                     .fold1(|a, b|
                         a.append(b,
                             |a, b| self.union(loc, a, b),
@@ -667,10 +670,10 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn partition_by_class(&self, ty: &'ty Type<'ty, 'object>, class: &'object RubyObject<'object>, class_loc: &Loc)
-        -> Or<&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>>
+    pub fn partition_by_class(&self, ty: TypeRef<'ty, 'object>, class: &'object RubyObject<'object>, class_loc: &Loc)
+        -> Or<TypeRef<'ty, 'object>, TypeRef<'ty, 'object>>
     {
-        let partition_inner = |ty_class: &'object RubyObject<'object>, ty_params: Option<&[&'ty Type<'ty, 'object>]>| {
+        let partition_inner = |ty_class: &'object RubyObject<'object>, ty_params: Option<&[TypeRef<'ty, 'object>]>| {
             if ty_class.is_a(class) {
                 Or::Left(ty)
             } else if class.is_a(ty_class) {
@@ -704,7 +707,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                 partition_inner(self.object.hash_class(), None),
             Type::Union { ref types, ref loc, .. } => {
                 types.iter()
-                    .map(|t| self.partition_by_class(t, class, class_loc))
+                    .map(|t| self.partition_by_class(*t, class, class_loc))
                     .fold1(|a, b|
                         a.append(b,
                             |a, b| self.union(class_loc, a, b),
@@ -720,36 +723,36 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn possible_types(&self, ty: &'ty Type<'ty, 'object>) -> Vec<&'ty Type<'ty, 'object>> {
+    pub fn possible_types(&self, ty: TypeRef<'ty, 'object>) -> Vec<TypeRef<'ty, 'object>> {
         let mut tys = Vec::new();
         self.possible_types_rec(ty, &mut tys);
         tys
     }
 
-    fn possible_types_rec(&self, ty: &'ty Type<'ty, 'object>, out_tys: &mut Vec<&'ty Type<'ty, 'object>>) {
+    fn possible_types_rec(&self, ty: TypeRef<'ty, 'object>, out_tys: &mut Vec<TypeRef<'ty, 'object>>) {
         match *self.prune(ty) {
             Type::Union { types: ref union_types, .. } => {
                 for ty in union_types {
-                    self.possible_types_rec(ty, out_tys)
+                    self.possible_types_rec(*ty, out_tys)
                 }
             }
             _ => out_tys.push(ty),
         }
     }
 
-    fn same_unordered_types(&self, tys1: &[&'ty Type<'ty, 'object>], tys2: &[&'ty Type<'ty, 'object>]) -> bool {
-        tys1.iter().all(|ty1| tys2.iter().any(|ty2| self.same_type(ty1, ty2)))
+    fn same_unordered_types(&self, tys1: &[TypeRef<'ty, 'object>], tys2: &[TypeRef<'ty, 'object>]) -> bool {
+        tys1.iter().all(|ty1| tys2.iter().any(|ty2| self.same_type(*ty1, *ty2)))
     }
 
-    fn same_types(&self, tys1: &[&'ty Type<'ty, 'object>], tys2: &[&'ty Type<'ty, 'object>]) -> bool {
-        tys1.len() == tys2.len() && tys1.iter().zip(tys2).all(|(t1, t2)| self.same_type(t1, t2))
+    fn same_types(&self, tys1: &[TypeRef<'ty, 'object>], tys2: &[TypeRef<'ty, 'object>]) -> bool {
+        tys1.len() == tys2.len() && tys1.iter().zip(tys2).all(|(t1, t2)| self.same_type(*t1, *t2))
     }
 
-    pub fn same_type(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>) -> bool {
-        match (self.prune(a), self.prune(b)) {
+    pub fn same_type(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>) -> bool {
+        match (&*self.prune(a), &*self.prune(b)) {
             (&Type::Instance { class: c1, type_parameters: ref tp1, .. },
                     &Type::Instance { class: c2, type_parameters: ref tp2, .. }) =>
-                c1 == c2 && tp1.iter().zip(tp2).all(|(t1, t2)| self.same_type(t1, t2)),
+                c1 == c2 && tp1.iter().zip(tp2).all(|(t1, t2)| self.same_type(*t1, *t2)),
 
             (&Type::Union { types: ref tys1, .. }, &Type::Union { types: ref tys2, .. }) =>
                 self.same_unordered_types(tys1, tys2) && self.same_unordered_types(tys2, tys1),
@@ -788,10 +791,12 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn to_keyword_hash(&self, ty: &'ty Type<'ty, 'object>) -> Option<&'ty Type<'ty, 'object>> {
-        match self.prune(ty) {
-            kw_ty@&Type::KeywordHash { .. } => Some(kw_ty),
-            &Type::Instance { class, ref type_parameters, .. }
+    pub fn to_keyword_hash(&self, ty: TypeRef<'ty, 'object>) -> Option<TypeRef<'ty, 'object>> {
+        let pruned = self.prune(ty);
+
+        match *pruned {
+            Type::KeywordHash { .. } => Some(pruned),
+            Type::Instance { class, ref type_parameters, .. }
                 if self.object.is_hash(class) =>
                     if self.is_instance(type_parameters[0], self.object.Symbol) {
                         Some(self.keyword_hash(ty.loc().clone(), vec![], Some(type_parameters[1])))
@@ -802,7 +807,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn is_keyword_hash(&self, ty: &'ty Type<'ty, 'object>) -> bool {
+    pub fn is_keyword_hash(&self, ty: TypeRef<'ty, 'object>) -> bool {
         match *self.prune(ty) {
             Type::KeywordHash { .. } => true,
             Type::Instance { class, ref type_parameters, .. }
@@ -812,7 +817,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    pub fn kwsplat_to_hash(&self, ty: &'ty Type<'ty, 'object>)
+    pub fn kwsplat_to_hash(&self, ty: TypeRef<'ty, 'object>)
         -> KwsplatResult<'ty, 'object>
     {
         match *self.prune(ty) {
@@ -828,7 +833,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
                     KwsplatResult::Ok(type_parameters[1]),
             Type::Union { ref types, .. } =>
                 types.iter()
-                    .map(|union_ty| self.kwsplat_to_hash(union_ty))
+                    .map(|union_ty| self.kwsplat_to_hash(*union_ty))
                     .fold(KwsplatResult::None, |a, b| a.append(self, ty.loc(), b)),
             _ if self.is_instance(ty, self.object.NilClass) =>
                 KwsplatResult::None,
@@ -837,7 +842,7 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
         }
     }
 
-    fn elements_from_tuple(&self, tuple: &'ty Type<'ty, 'object>) -> Vec<TupleElement<'ty, 'object>> {
+    fn elements_from_tuple(&self, tuple: TypeRef<'ty, 'object>) -> Vec<TupleElement<'ty, 'object>> {
         if let Type::Tuple { ref lead, splat, ref post, .. } = *self.prune(tuple) {
             let mut elements = Vec::new();
 
@@ -854,24 +859,24 @@ impl<'ty, 'env, 'object: 'env> TypeEnv<'ty, 'env, 'object> {
 
 #[derive(Debug)]
 pub enum TupleElement<'ty, 'object: 'ty> {
-    Value(&'ty Type<'ty, 'object>),
-    Splat(&'ty Type<'ty, 'object>),
+    Value(TypeRef<'ty, 'object>),
+    Splat(TypeRef<'ty, 'object>),
 }
 
 pub enum KwsplatResult<'ty, 'object: 'ty> {
-    Err(&'ty Type<'ty, 'object>),
+    Err(TypeRef<'ty, 'object>),
     None,
-    Ok(&'ty Type<'ty, 'object>),
+    Ok(TypeRef<'ty, 'object>),
 }
 
 impl<'ty, 'object: 'ty> KwsplatResult<'ty, 'object> {
-    fn append_ty<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, loc: &Loc, ty: &'ty Type<'ty, 'object>)
+    fn append_ty(&self, tyenv: &TypeEnv<'ty, 'object>, loc: &Loc, ty: TypeRef<'ty, 'object>)
         -> KwsplatResult<'ty, 'object>
     {
         self.append(tyenv, loc, KwsplatResult::Ok(ty))
     }
 
-    fn append<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, loc: &Loc, other: KwsplatResult<'ty, 'object>)
+    fn append(&self, tyenv: &TypeEnv<'ty, 'object>, loc: &Loc, other: KwsplatResult<'ty, 'object>)
         -> KwsplatResult<'ty, 'object>
     {
         match *self {
@@ -886,77 +891,16 @@ impl<'ty, 'object: 'ty> KwsplatResult<'ty, 'object> {
     }
 }
 
-#[derive(Debug)]
-pub enum Type<'ty, 'object: 'ty> {
-    Instance {
-        loc: Loc,
-        class: &'object RubyObject<'object>,
-        type_parameters: Vec<&'ty Type<'ty, 'object>>,
-    },
-    Tuple {
-        loc: Loc,
-        lead: Vec<&'ty Type<'ty, 'object>>,
-        splat: Option<&'ty Type<'ty, 'object>>,
-        post: Vec<&'ty Type<'ty, 'object>>,
-        // tuples can degrade to normal array instances:
-        id: TypeVarId,
-    },
-    Union {
-        loc: Loc,
-        types: Vec<&'ty Type<'ty, 'object>>,
-    },
-    Any {
-        loc: Loc,
-    },
-    TypeParameter {
-        loc: Loc,
-        name: String,
-    },
-    KeywordHash {
-        loc: Loc,
-        keywords: Vec<(String, &'ty Type<'ty, 'object>)>,
-        splat: Option<&'ty Type<'ty, 'object>>,
-        // keyword hash types can degrade to normal hash instances
-        // when they do, there will be an entry in the instance_map for this
-        // id:
-        id: TypeVarId,
-    },
-    Proc {
-        loc: Loc,
-        proto: Rc<Prototype<'ty, 'object>>,
-    },
-    Var {
-        loc: Loc,
-        id: TypeVarId,
-    },
-    LocalVariable {
-        loc: Loc,
-        name: String,
-        id: TypeVarId,
-    }
-}
+#[derive(Copy,Clone)]
+pub struct TypeRef<'ty, 'object: 'ty>(&'ty Type<'ty, 'object>);
 
-impl<'ty, 'object> Type<'ty, 'object> {
-    pub fn loc(&self) -> &Loc {
-        match *self {
-            Type::Instance { ref loc, .. } => loc,
-            Type::Tuple { ref loc, .. } => loc,
-            Type::Union { ref loc, .. } => loc,
-            Type::Any { ref loc, .. } => loc,
-            Type::TypeParameter { ref loc, .. } => loc,
-            Type::KeywordHash { ref loc, .. } => loc,
-            Type::Proc { ref loc, .. } => loc,
-            Type::Var { ref loc, .. } => loc,
-            Type::LocalVariable { ref loc, .. } => loc,
-        }
+impl<'ty, 'object> TypeRef<'ty, 'object> {
+    pub fn deref(&self) -> &'ty Type<'ty, 'object> {
+        self.0
     }
 
-    pub fn ref_eq(&self, other: &'ty Type<'ty, 'object>) -> bool {
-        (self as *const _) == (other as *const _)
-    }
-
-    pub fn describe<'env>(&'ty self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
-        match *tyenv.prune(self) {
+    pub fn describe(&self, tyenv: &TypeEnv<'ty, 'object>, f: &mut fmt::Write) -> fmt::Result {
+        match *tyenv.prune(*self) {
             Type::Instance { ref class, ref type_parameters, .. } => {
                 write!(f, "{}", class.name())?;
 
@@ -1051,11 +995,95 @@ impl<'ty, 'object> Type<'ty, 'object> {
     }
 }
 
+impl<'ty, 'object> Deref for TypeRef<'ty, 'object> {
+    type Target = Type<'ty, 'object>;
+
+    fn deref(&self) -> &Self::Target {
+        self.0
+    }
+}
+
+impl<'ty, 'object> fmt::Debug for TypeRef<'ty, 'object> {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[derive(Debug)]
+pub enum Type<'ty, 'object: 'ty> {
+    Instance {
+        loc: Loc,
+        class: &'object RubyObject<'object>,
+        type_parameters: Vec<TypeRef<'ty, 'object>>,
+    },
+    Tuple {
+        loc: Loc,
+        lead: Vec<TypeRef<'ty, 'object>>,
+        splat: Option<TypeRef<'ty, 'object>>,
+        post: Vec<TypeRef<'ty, 'object>>,
+        // tuples can degrade to normal array instances:
+        id: TypeVarId,
+    },
+    Union {
+        loc: Loc,
+        types: Vec<TypeRef<'ty, 'object>>,
+    },
+    Any {
+        loc: Loc,
+    },
+    TypeParameter {
+        loc: Loc,
+        name: String,
+    },
+    KeywordHash {
+        loc: Loc,
+        keywords: Vec<(String, TypeRef<'ty, 'object>)>,
+        splat: Option<TypeRef<'ty, 'object>>,
+        // keyword hash types can degrade to normal hash instances
+        // when they do, there will be an entry in the instance_map for this
+        // id:
+        id: TypeVarId,
+    },
+    Proc {
+        loc: Loc,
+        proto: Rc<Prototype<'ty, 'object>>,
+    },
+    Var {
+        loc: Loc,
+        id: TypeVarId,
+    },
+    LocalVariable {
+        loc: Loc,
+        name: String,
+        id: TypeVarId,
+    }
+}
+
+impl<'ty, 'object> Type<'ty, 'object> {
+    pub fn loc(&self) -> &Loc {
+        match *self {
+            Type::Instance { ref loc, .. } => loc,
+            Type::Tuple { ref loc, .. } => loc,
+            Type::Union { ref loc, .. } => loc,
+            Type::Any { ref loc, .. } => loc,
+            Type::TypeParameter { ref loc, .. } => loc,
+            Type::KeywordHash { ref loc, .. } => loc,
+            Type::Proc { ref loc, .. } => loc,
+            Type::Var { ref loc, .. } => loc,
+            Type::LocalVariable { ref loc, .. } => loc,
+        }
+    }
+
+    pub fn ref_eq(&self, other: &Type<'ty, 'object>) -> bool {
+        (self as *const _) == (other as *const _)
+    }
+}
+
 #[derive(Debug)]
 pub struct Prototype<'ty, 'object: 'ty> {
     pub loc: Loc,
     pub args: Vec<Arg<'ty, 'object>>,
-    pub retn: &'ty Type<'ty, 'object>,
+    pub retn: TypeRef<'ty, 'object>,
 }
 
 impl<'ty, 'object> Prototype<'ty, 'object> {
@@ -1063,7 +1091,7 @@ impl<'ty, 'object> Prototype<'ty, 'object> {
         &self.loc
     }
 
-    pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+    pub fn describe(&self, tyenv: &TypeEnv<'ty, 'object>, f: &mut fmt::Write) -> fmt::Result {
         let mut print_comma = false;
 
         write!(f, "|")?;
@@ -1084,7 +1112,7 @@ impl<'ty, 'object> Prototype<'ty, 'object> {
 pub enum Arg<'ty, 'object: 'ty> {
     Required {
         loc: Loc,
-        ty: &'ty Type<'ty, 'object>,
+        ty: TypeRef<'ty, 'object>,
     },
     Procarg0 {
         loc: Loc,
@@ -1092,31 +1120,31 @@ pub enum Arg<'ty, 'object: 'ty> {
     },
     Optional {
         loc: Loc,
-        ty: &'ty Type<'ty, 'object>,
+        ty: TypeRef<'ty, 'object>,
         expr: Rc<Node>,
     },
     Rest {
         loc: Loc,
-        ty: &'ty Type<'ty, 'object>,
+        ty: TypeRef<'ty, 'object>,
     },
     Kwarg {
         loc: Loc,
         name: String,
-        ty: &'ty Type<'ty, 'object>,
+        ty: TypeRef<'ty, 'object>,
     },
     Kwoptarg {
         loc: Loc,
         name: String,
-        ty: &'ty Type<'ty, 'object>,
+        ty: TypeRef<'ty, 'object>,
         expr: Rc<Node>,
     },
     Kwrest {
         loc: Loc,
-        ty: &'ty Type<'ty, 'object>,
+        ty: TypeRef<'ty, 'object>,
     },
     Block {
         loc: Loc,
-        ty: &'ty Type<'ty, 'object>,
+        ty: TypeRef<'ty, 'object>,
     },
 }
 
@@ -1142,7 +1170,7 @@ impl<'ty, 'object> Arg<'ty, 'object> {
         }
     }
 
-    pub fn describe<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, f: &mut fmt::Write) -> fmt::Result {
+    pub fn describe(&self, tyenv: &TypeEnv<'ty, 'object>, f: &mut fmt::Write) -> fmt::Result {
         match *self {
             Arg::Required { ty, .. } => ty.describe(tyenv, f),
             Arg::Procarg0 { ref arg, .. } => arg.describe(tyenv, f),
