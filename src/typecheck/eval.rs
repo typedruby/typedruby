@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::collections::HashMap;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, Type, Prototype, KwsplatResult, TupleElement};
+use typecheck::types::{Arg, TypeEnv, Type, TypeRef, Prototype, KwsplatResult, TupleElement};
 use object::{Scope, RubyObject, MethodImpl};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -13,9 +13,9 @@ use typecheck::call::{CallArg, ArgError};
 use itertools::Itertools;
 use deferred_cell::DeferredCell;
 
-pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
-    env: &'env Environment<'object>,
-    tyenv: TypeEnv<'ty, 'env, 'object>,
+pub struct Eval<'ty, 'object: 'ty> {
+    env: &'ty Environment<'object>,
+    tyenv: TypeEnv<'ty, 'object>,
     scope: Rc<Scope<'object>>,
     type_context: TypeContext<'ty, 'object>,
     proto: DeferredCell<Rc<Prototype<'ty, 'object>>>,
@@ -24,12 +24,12 @@ pub struct Eval<'ty, 'env, 'object: 'ty + 'env> {
 #[derive(Clone)]
 pub struct TypeContext<'ty, 'object: 'ty> {
     class: &'object RubyObject<'object>,
-    type_parameters: Vec<&'ty Type<'ty, 'object>>,
-    type_names: HashMap<String, &'ty Type<'ty, 'object>>,
+    type_parameters: Vec<TypeRef<'ty, 'object>>,
+    type_names: HashMap<String, TypeRef<'ty, 'object>>,
 }
 
 impl<'ty, 'object> TypeContext<'ty, 'object> {
-    fn new(class: &'object RubyObject<'object>, type_parameters: Vec<&'ty Type<'ty, 'object>>) -> TypeContext<'ty, 'object> {
+    fn new(class: &'object RubyObject<'object>, type_parameters: Vec<TypeRef<'ty, 'object>>) -> TypeContext<'ty, 'object> {
         let type_names =
             class.type_parameters().iter()
                 .map(|&Id(_, ref name)| name.clone())
@@ -43,15 +43,15 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
         }
     }
 
-    pub fn self_type<'env>(&self, tyenv: &TypeEnv<'ty, 'env, 'object>, loc: Loc) -> &'ty Type<'ty, 'object> {
+    pub fn self_type(&self, tyenv: &TypeEnv<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
         tyenv.instance(loc, self.class, self.type_parameters.clone())
     }
 }
 
 enum HashEntry<'ty, 'object: 'ty> {
-    Symbol(Id, &'ty Type<'ty, 'object>),
-    Pair(&'ty Type<'ty, 'object>, &'ty Type<'ty, 'object>),
-    Kwsplat(&'ty Type<'ty, 'object>),
+    Symbol(Id, TypeRef<'ty, 'object>),
+    Pair(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
+    Kwsplat(TypeRef<'ty, 'object>),
 }
 
 #[derive(Clone,Copy)]
@@ -107,7 +107,7 @@ impl BlockArg {
 }
 
 struct Invokee<'ty, 'object: 'ty> {
-    recv_ty: &'ty Type<'ty, 'object>,
+    recv_ty: TypeRef<'ty, 'object>,
     method: Rc<MethodImpl<'object>>,
     prototype: Rc<Prototype<'ty, 'object>>,
 }
@@ -115,12 +115,12 @@ struct Invokee<'ty, 'object: 'ty> {
 #[derive(Debug)]
 enum Lhs<'ty, 'object: 'ty> {
     Lvar(Loc, String),
-    Simple(Loc, &'ty Type<'ty, 'object>),
-    Send(Loc, &'ty Type<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
+    Simple(Loc, TypeRef<'ty, 'object>),
+    Send(Loc, TypeRef<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
 }
 
-impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
-    pub fn process(env: &'env Environment<'object>, tyenv: TypeEnv<'ty, 'env, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) {
+impl<'ty, 'object> Eval<'ty, 'object> {
+    pub fn process(env: &'ty Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) {
         let class_type_parameters = class.type_parameters().iter().map(|&Id(ref loc, _)|
             tyenv.new_var(loc.clone())
         ).collect();
@@ -174,8 +174,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         // unresolved to that they can be constrained. unify any unresolved
         // type variables with their named parameters:
         for (name, ty) in &type_context.type_names {
-            if eval.tyenv.is_unresolved_var(ty) {
-                eval.tyenv.unify(ty, eval.tyenv.alloc(Type::TypeParameter {
+            if eval.tyenv.is_unresolved_var(*ty) {
+                eval.tyenv.unify(*ty, eval.tyenv.alloc(Type::TypeParameter {
                     name: name.clone(),
                     loc: ty.loc().clone(),
                 })).expect("unifying unresolved typevar should succeed");
@@ -202,7 +202,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         self.env.error_sink.borrow_mut().warning(message, details)
     }
 
-    fn create_instance_type(&self, loc: &Loc, class: &'object RubyObject<'object>, mut type_parameters: Vec<&'ty Type<'ty, 'object>>) -> &'ty Type<'ty, 'object> {
+    fn create_instance_type(&self, loc: &Loc, class: &'object RubyObject<'object>, mut type_parameters: Vec<TypeRef<'ty, 'object>>) -> TypeRef<'ty, 'object> {
         let supplied_params = type_parameters.len();
         let expected_params = class.type_parameters().len();
 
@@ -241,7 +241,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         self.tyenv.instance(loc.clone(), class, type_parameters)
     }
 
-    fn resolve_class_instance_type(&self, loc: &Loc, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
+    fn resolve_class_instance_type(&self, loc: &Loc, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
         if type_parameters.len() == 0 {
             return self.tyenv.instance0(loc.clone(), self.env.object.Class);
         }
@@ -264,7 +264,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
 
         let class = match **cpath {
             Node::Const(_, None, Id(_, ref name)) => {
-                if let Some(&&Type::Instance { class, .. }) = context.type_names.get(name) {
+                if let Some(&Type::Instance { class, .. }) = context.type_names.get(name).map(TypeRef::deref) {
                     Ok(class)
                 } else {
                     self.env.resolve_cpath(cpath, scope)
@@ -296,9 +296,9 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
+    fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
         if let Node::Const(_, None, Id(ref name_loc, ref name)) = *cpath {
-            if let Some(ty) = context.type_names.get(name) {
+            if let Some(&ty) = context.type_names.get(name) {
                 if !type_parameters.is_empty() {
                     self.error("Type parameters were supplied but type mentioned does not take any", &[
                         Detail::Loc("here", name_loc),
@@ -341,15 +341,15 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn create_array_type(&self, loc: &Loc, element_type: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+    fn create_array_type(&self, loc: &Loc, element_type: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
         self.tyenv.instance(loc.clone(), self.env.object.array_class(), vec![element_type])
     }
 
-    fn create_hash_type(&self, loc: &Loc, key_type: &'ty Type<'ty, 'object>, value_type: &'ty Type<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+    fn create_hash_type(&self, loc: &Loc, key_type: TypeRef<'ty, 'object>, value_type: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
         self.tyenv.instance(loc.clone(), self.env.object.hash_class(), vec![key_type, value_type])
     }
 
-    fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> &'ty Type<'ty, 'object> {
+    fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
         match *node {
             Node::TyCpath(ref loc, ref cpath) =>
                 self.resolve_instance_type(loc, cpath, &[], context, scope),
@@ -561,7 +561,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         (status, Rc::new(Prototype { loc: proto_loc.clone(), args: args, retn: return_type }), locals)
     }
 
-    fn type_error(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, err_a: &'ty Type<'ty, 'object>, err_b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
+    fn type_error(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, err_a: TypeRef<'ty, 'object>, err_b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
         let strs = Arena::new();
 
         let mut details = vec![
@@ -569,7 +569,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Detail::Loc(strs.alloc(self.tyenv.describe(err_b)), err_b.loc()),
         ];
 
-        if !err_a.ref_eq(a) || !err_b.ref_eq(b) {
+        if !err_a.ref_eq(&a) || !err_b.ref_eq(&b) {
             details.push(Detail::Message("arising from an attempt to match:"));
             details.push(Detail::Loc(strs.alloc(self.tyenv.describe(a) + ", with:"), a.loc()));
             details.push(Detail::Loc(strs.alloc(self.tyenv.describe(b)), b.loc()));
@@ -582,13 +582,13 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         self.error("Could not match types:", &details);
     }
 
-    fn unify(&self, a: &'ty Type<'ty, 'object>, b: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
+    fn unify(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
         if let Err((err_a, err_b)) = self.tyenv.unify(a, b) {
             self.type_error(a, b, err_a, err_b, loc);
         }
     }
 
-    fn compatible(&self, to: &'ty Type<'ty, 'object>, from: &'ty Type<'ty, 'object>, loc: Option<&Loc>) {
+    fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
         if let Err((err_to, err_from)) = self.tyenv.compatible(to, from) {
             self.type_error(to, from, err_to, err_from, loc);
         }
@@ -611,7 +611,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     match *ty {
                         Type::Tuple { ref lead, ref splat, ref post, .. } => {
                             for lead_ty in lead {
-                                elements.push(TupleElement::Value(lead_ty));
+                                elements.push(TupleElement::Value(*lead_ty));
                             }
 
                             if let Some(splat_ty) = *splat {
@@ -619,7 +619,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                             }
 
                             for post_ty in post {
-                                elements.push(TupleElement::Value(post_ty));
+                                elements.push(TupleElement::Value(*post_ty));
                             }
                         }
                         Type::Instance { class, ref type_parameters, .. }
@@ -644,7 +644,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }).into_computation()
     }
 
-    fn tuple_from_elements(&self, loc: Loc, elements: &[TupleElement<'ty, 'object>]) -> &'ty Type<'ty, 'object> {
+    fn tuple_from_elements(&self, loc: Loc, elements: &[TupleElement<'ty, 'object>]) -> TypeRef<'ty, 'object> {
         use slice_util::View;
 
         assert!(!elements.is_empty());
@@ -783,7 +783,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn resolve_invocation(&self, recv_type: &'ty Type<'ty, 'object>, id: &Id) -> Vec<Invokee<'ty, 'object>>
+    fn resolve_invocation(&self, recv_type: TypeRef<'ty, 'object>, id: &Id) -> Vec<Invokee<'ty, 'object>>
     {
         let degraded_recv_type = self.tyenv.degrade_to_instance(recv_type);
 
@@ -816,7 +816,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
             }
             Type::Union { ref types, .. } => {
-                types.iter().flat_map(|ty| {
+                types.iter().flat_map(|&ty| {
                     // XXX - this is a hack. instead of narrowing local variables we need to narrow types in the tyenv:
                     let ty = if let Type::LocalVariable { ref name, ref loc, .. } = *recv_type {
                         self.tyenv.local_variable(loc.clone(), name.clone(), ty)
@@ -879,7 +879,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn extract_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>> {
+    fn extract_results(&self, comp: Computation<'ty, 'object>, loc: &Loc) -> EvalResult<'ty, 'object, TypeRef<'ty, 'object>> {
         let mut merges = Vec::new();
         let result = comp.extract_results(loc, &self.tyenv, &mut merges);
         self.process_local_merges(merges);
@@ -919,7 +919,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn prototype_from_procish_type(&self, procish_ty: &'ty Type<'ty, 'object>)
+    fn prototype_from_procish_type(&self, procish_ty: TypeRef<'ty, 'object>)
         -> Result<Rc<Prototype<'ty, 'object>>, Option<&'static str>>
     {
         match *procish_ty {
@@ -946,8 +946,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn infer_symbol_as_proc_type(&self, proto_block_ty: &'ty Type<'ty, 'object>, mid: &str, loc: &Loc)
-        -> &'ty Type<'ty, 'object>
+    fn infer_symbol_as_proc_type(&self, proto_block_ty: TypeRef<'ty, 'object>, mid: &str, loc: &Loc)
+        -> TypeRef<'ty, 'object>
     {
         let proto = match self.prototype_from_procish_type(proto_block_ty) {
             Ok(proto) => proto,
@@ -962,7 +962,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             }
         };
 
-        fn recv_ty_from_arg<'ty, 'object: 'ty>(arg: Option<&Arg<'ty, 'object>>) -> Option<&'ty Type<'ty, 'object>> {
+        fn recv_ty_from_arg<'ty, 'object: 'ty>(arg: Option<&Arg<'ty, 'object>>) -> Option<TypeRef<'ty, 'object>> {
             match arg {
                 Some(&Arg::Required { ty, .. }) => Some(ty),
                 Some(&Arg::Procarg0 { ref arg, .. }) => recv_ty_from_arg(Some(arg)),
@@ -1016,7 +1016,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn block_type_from_block_pass(&self, proto_block_ty: &'ty Type<'ty, 'object>, node: &Node, locals: Locals<'ty, 'object>)
+    fn block_type_from_block_pass(&self, proto_block_ty: TypeRef<'ty, 'object>, node: &Node, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         self.process_node(node, locals).seq(&|ty, l| {
@@ -1037,7 +1037,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
-    fn process_block(&self, send_loc: &Loc, block: Option<&BlockArg>, locals: Locals<'ty, 'object>, proto_loc: &Loc, prototype_block: Option<&'ty Type<'ty, 'object>>)
+    fn process_block(&self, send_loc: &Loc, block: Option<&BlockArg>, locals: Locals<'ty, 'object>, proto_loc: &Loc, prototype_block: Option<TypeRef<'ty, 'object>>)
         -> EvalResult<'ty, 'object, ()>
     {
         match (prototype_block, block) {
@@ -1103,7 +1103,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn process_send_receiver(&self, recv: &Option<Rc<Node>>, id: &Id, locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
+        -> EvalResult<'ty, 'object, TypeRef<'ty, 'object>>
     {
         match *recv {
             Some(ref recv_node) => {
@@ -1201,6 +1201,42 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
+    fn process_intrinsic_kernel_is_a(&self, expr_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        let no_intrinsic = |locals| {
+            let boolean_ty = self.tyenv.instance0(expr_loc.clone(), self.env.object.Boolean);
+            Computation::result(boolean_ty, locals)
+        };
+
+        let (arg_loc, arg_ty) = if let Some(&CallArg::Pass(ref arg_loc, arg_ty)) = args.first() {
+            (arg_loc, self.tyenv.prune(arg_ty))
+        } else {
+            return no_intrinsic(locals);
+        };
+
+        if let Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. } = *arg_ty {
+            let refine = |retn_class, refine_ty| {
+                let retn_ty = self.tyenv.instance0(expr_loc.clone(), retn_class);
+
+                let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
+                    locals.refine(name, refine_ty)
+                } else {
+                    locals.clone()
+                };
+
+                Computation::result(retn_ty, locals)
+            };
+
+            self.tyenv.partition_by_class(invokee.recv_ty, instance_class, arg_loc)
+                .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
+                .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
+                .flatten(Computation::divergent)
+        } else {
+            return no_intrinsic(locals);
+        }
+    }
+
     fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1221,27 +1257,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     Computation::raise(locals)
                 }
                 MethodImpl::IntrinsicKernelIsA => {
-                    if let Some(&CallArg::Pass(ref instance_loc, &Type::Instance { class: &RubyObject::Metaclass { of: instance_class, .. }, .. })) = args.first() {
-                        let refine = |retn_class, refine_ty| {
-                            let retn_ty = self.tyenv.instance0(expr_loc.clone(), retn_class);
-
-                            let locals = if let Type::LocalVariable { ref name, .. } = *invokee.recv_ty {
-                                locals.refine(name, refine_ty)
-                            } else {
-                                locals.clone()
-                            };
-
-                            Computation::result(retn_ty, locals)
-                        };
-
-                        self.tyenv.partition_by_class(invokee.recv_ty, instance_class, instance_loc)
-                            .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
-                            .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
-                            .flatten(Computation::divergent)
-                    } else {
-                        let boolean_ty = self.tyenv.instance0(expr_loc.clone(), self.env.object.Boolean);
-                        Computation::result(boolean_ty, locals)
-                    }
+                    self.process_intrinsic_kernel_is_a(expr_loc, invokee, args, locals)
                 }
                 _ => {
                     let ty = self.tyenv.update_loc(retn, expr_loc.clone());
@@ -1254,7 +1270,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         comp.terminate_break_scope()
     }
 
-    fn process_send_dispatch(&self, loc: &Loc, recv_type: &'ty Type<'ty, 'object>, id: &Id, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
+    fn process_send_dispatch(&self, loc: &Loc, recv_type: TypeRef<'ty, 'object>, id: &Id, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         self.resolve_invocation(recv_type, id)
@@ -1322,12 +1338,12 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         )
     }
 
-    fn lookup_ivar(&self, name: &str, type_context: &TypeContext<'ty, 'object>) -> Option<&'ty Type<'ty, 'object>> {
+    fn lookup_ivar(&self, name: &str, type_context: &TypeContext<'ty, 'object>) -> Option<TypeRef<'ty, 'object>> {
         self.env.object.lookup_ivar(type_context.class, name).map(|ivar|
             self.resolve_type(&ivar.type_node, type_context, ivar.scope.clone()))
     }
 
-    fn lookup_ivar_or_error(&self, id: &Id, type_context: &TypeContext<'ty, 'object>) -> &'ty Type<'ty, 'object> {
+    fn lookup_ivar_or_error(&self, id: &Id, type_context: &TypeContext<'ty, 'object>) -> TypeRef<'ty, 'object> {
         self.lookup_ivar(&id.1, type_context).unwrap_or_else(|| {
             self.error("Use of undeclared instance variable", &[
                 Detail::Loc("here", &id.0),
@@ -1338,7 +1354,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn lookup_lvar(&self, loc: &Loc, name: &str, locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, Option<&'ty Type<'ty, 'object>>>
+        -> EvalResult<'ty, 'object, Option<TypeRef<'ty, 'object>>>
     {
         let (ty, locals) = locals.lookup(name);
 
@@ -1359,7 +1375,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn lookup_lvar_or_error(&self, loc: &Loc, name: &str, locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
+        -> EvalResult<'ty, 'object, TypeRef<'ty, 'object>>
     {
         self.lookup_lvar(loc, name, locals).map(|ty| {
             ty.unwrap_or_else(|| {
@@ -1372,7 +1388,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
-    fn assign_lvar(&self, name: &str, ty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
+    fn assign_lvar(&self, name: &str, ty: TypeRef<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
         -> Locals<'ty, 'object>
     {
         match locals.assign(name.to_owned(), ty) {
@@ -1390,7 +1406,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn type_for_lhs(&self, lhs: &Lhs<'ty, 'object>, locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
+        -> EvalResult<'ty, 'object, TypeRef<'ty, 'object>>
     {
         match *lhs {
             Lhs::Lvar(ref loc, ref name) => {
@@ -1401,7 +1417,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                 }
             }
             Lhs::Simple(_, ty) => EvalResult::Ok(ty, locals),
-            Lhs::Send(ref loc, ref recv_ty, ref id, ref args) => {
+            Lhs::Send(ref loc, recv_ty, ref id, ref args) => {
                 let id = Id(id.0.clone(), id.1.clone() + "=");
 
                 let rhs_ty = self.tyenv.new_var(loc.clone());
@@ -1491,7 +1507,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         }
     }
 
-    fn process_asgn(&self, lhs: &Node, rty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
+    fn process_asgn(&self, lhs: &Node, rty: TypeRef<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
         -> EvalResult<'ty, 'object, ()>
     {
         self.process_lhs(lhs, locals).and_then(|lhs, locals| {
@@ -1499,7 +1515,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
         })
     }
 
-    fn assign(&self, lhs: Lhs<'ty, 'object>, rty: &'ty Type<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
+    fn assign(&self, lhs: Lhs<'ty, 'object>, rty: TypeRef<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
         -> EvalResult<'ty, 'object, ()>
     {
         match lhs {
@@ -1531,7 +1547,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
     }
 
     fn eval_node(&self, node: &Node, locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, &'ty Type<'ty, 'object>>
+        -> EvalResult<'ty, 'object, TypeRef<'ty, 'object>>
     {
         let comp = self.process_node(node, locals);
         self.extract_results(comp, node.loc())
@@ -1756,8 +1772,8 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     for entry in entries {
                         match entry {
                             HashEntry::Symbol(Id(_, key), value) => keywords.push((key, value)),
-                            HashEntry::Kwsplat(kw_ty) => match self.tyenv.to_keyword_hash(kw_ty) {
-                                Some(&Type::KeywordHash { keywords: ref splat_keywords, splat, .. }) => {
+                            HashEntry::Kwsplat(kw_ty) => match *self.tyenv.to_keyword_hash(kw_ty).unwrap() {
+                                Type::KeywordHash { keywords: ref splat_keywords, splat, .. } => {
                                     keywords.extend(splat_keywords.iter().cloned());
                                     splat_ty = match (splat_ty, splat) {
                                         (None, None) => None,
@@ -1872,7 +1888,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let lhs_comp = match lhs {
                         Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
                         Lhs::Simple(_, ty) => Computation::result(ty, locals),
-                        Lhs::Send(ref lhs_loc, ref recv_ty, ref id, ref args) => {
+                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
                             self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
                         }
                     };
@@ -1894,7 +1910,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let lhs_comp = match lhs {
                         Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
                         Lhs::Simple(_, ty) => Computation::result(ty, locals),
-                        Lhs::Send(ref lhs_loc, ref recv_ty, ref id, ref args) => {
+                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
                             self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
                         }
                     };
@@ -1916,7 +1932,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
                     let lhs_ty = match lhs {
                         Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals),
                         Lhs::Simple(_, ty) => EvalResult::Ok(ty, locals),
-                        Lhs::Send(ref lhs_loc, ref recv_ty, ref id, ref args) => {
+                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
                             let comp = self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals);
                             self.extract_results(comp, lhs_loc)
                         }
@@ -2007,7 +2023,7 @@ impl<'ty, 'env, 'object> Eval<'ty, 'env, 'object> {
             Node::Resbody(ref loc, ref classes, ref var, ref body) => {
                 let ex_type = match classes.as_ref().map(Rc::as_ref) {
                     Some(&Node::Array(ref loc, ref nodes)) => {
-                        self.extract_results(self.process_array_tuple(loc, nodes, locals), loc).map(&|tuple_ty: &'ty Type<'ty, 'object>| {
+                        self.extract_results(self.process_array_tuple(loc, nodes, locals), loc).map(&|tuple_ty: TypeRef<'ty, 'object>| {
                             let mut tys = Vec::new();
 
                             if let Type::Tuple { ref lead, ref splat, ref post, .. } = *tuple_ty {
