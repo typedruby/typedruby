@@ -130,7 +130,9 @@ impl Dedenter {
             result_bytes.drain(space_begin..space_end);
         }
 
-        String::from_utf8(result_bytes).unwrap()
+        unsafe {
+            String::from_utf8_unchecked(result_bytes)
+        }
     }
 
     fn interrupt(&mut self) {
