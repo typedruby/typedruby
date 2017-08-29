@@ -2105,6 +2105,8 @@ class Time < Object
 
   def self.now => :instance
   end
+
+  def strftime(String format) => String; end
 end
 
 module Marshal
