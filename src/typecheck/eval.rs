@@ -2171,6 +2171,20 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     Computation::result(ty, l)
                 })
             }
+            Node::Gvar(ref loc, ref name) => {
+                let ty = match name.as_ref() {
+                    "$$" => self.tyenv.instance0(loc.clone(), self.env.object.Integer),
+                    _ => {
+                        self.error("Unknown global variable", &[
+                            Detail::Loc("here", loc),
+                        ]);
+
+                        self.tyenv.any(loc.clone())
+                    }
+                };
+
+                Computation::result(ty, locals)
+            }
             _ => panic!("node: {:?}", node),
         }
     }
