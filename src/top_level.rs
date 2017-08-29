@@ -522,6 +522,17 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
+    fn process_alias_method(&self, id: &Id, args: &[Rc<Node>]) {
+        if args.len() != 2 {
+            self.error(&format!("Wrong number of arguments to {}", id.1), &[
+                Detail::Loc("here", &id.0),
+            ]);
+            return;
+        }
+
+        self.alias_method(self.scope.module, &args[1], &args[0]);
+    }
+
     fn process_self_send(&self, id: &Id, args: &[Rc<Node>]) {
         match id.1.as_str() {
             "include" => self.process_module_inclusion(id, self.scope.module, args),
@@ -530,6 +541,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             // TODO guard require_dependency behind a rails-mode flag:
             "require_dependency" => self.process_require(id, args, RequireType::LoadPath),
             "require_relative" => self.process_require(id, args, RequireType::Relative),
+            "alias_method" => self.process_alias_method(id, args),
             "attr_reader" => self.process_attr(AttrType::Reader, args),
             "attr_writer" => self.process_attr(AttrType::Writer, args),
             "attr_accessor" => self.process_attr(AttrType::Accessor, args),
