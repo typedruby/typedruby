@@ -77,11 +77,11 @@ impl<'a, 'b: 'a> SexpNode<'a, 'b> {
         self
     }
 
-    pub fn string(&mut self, value: &String) -> &mut SexpNode<'a, 'b> {
+    pub fn string(&mut self, value: &RubyString) -> &mut SexpNode<'a, 'b> {
         self.result = self.result.and_then(|_| {
             if self.fmt.print_str {
                 self.fmt.buf.write_char(' ')?;
-                escape_rb(self.fmt, value)
+                escape_rb(self.fmt, &value.string().unwrap())
             } else {
                 write!(self.fmt, " [STRING]")
             }
