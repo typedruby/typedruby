@@ -114,6 +114,25 @@ impl Loc {
 #[derive(Debug,Clone)]
 pub struct Id(pub Loc, pub String);
 
+#[derive(Debug,Clone)]
+pub struct RubyString {
+    buf : Vec<u8>,
+}
+
+impl RubyString {
+    pub fn bytes(&self) -> &Vec<u8> {
+        return &self.buf
+    }
+
+    pub fn string(&self) -> Option<String> {
+        return String::from_utf8(self.buf.to_vec()).ok()
+    }
+
+    pub fn new(buf: Vec<u8>) -> RubyString {
+        RubyString{buf: buf}
+    }
+}
+
 #[derive(Debug)]
 pub enum Node {
     Alias           (Loc,   Rc<Node>, Rc<Node>),
@@ -205,7 +224,7 @@ pub enum Node {
     Send            (Loc,   Option<Rc<Node>>, Id, Vec<Rc<Node>>),
     ShadowArg       (Loc,   Id),
     Splat           (Loc,   Option<Rc<Node>>),
-    String          (Loc,   String),
+    String          (Loc,   RubyString),
     Super           (Loc,   Vec<Rc<Node>>),
     Symbol          (Loc,   String),
     True            (Loc),
