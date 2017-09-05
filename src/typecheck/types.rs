@@ -543,8 +543,8 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             (&Type::Any { .. }, _) =>
                 Err((t1.clone(), t2.clone())),
 
-            (&Type::TypeParameter { name: ref name1, .. }, &Type::TypeParameter { name: ref name2, .. }) =>
-                if name1 == name2 {
+            (&Type::TypeParameter { index: index1, .. }, &Type::TypeParameter { index: index2, .. }) =>
+                if index1 == index2 {
                     Ok(())
                 } else {
                     Err((t1.clone(), t2.clone()))
@@ -778,8 +778,8 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             (&Type::Any { .. }, &Type::Any { .. }) =>
                 true,
 
-            (&Type::TypeParameter { name: ref name1, .. }, &Type::TypeParameter { name: ref name2, .. }) =>
-                name1 == name2,
+            (&Type::TypeParameter { index: ref index1, .. }, &Type::TypeParameter { index: ref index2, .. }) =>
+                index1 == index2,
 
             (&Type::Var { id: ref id1, .. }, &Type::Var { id: ref id2, .. }) =>
                 id1 == id2,
@@ -955,8 +955,9 @@ impl<'ty, 'object> TypeRef<'ty, 'object> {
             Type::Any { .. } => {
                 write!(f, ":any")?;
             },
-            Type::TypeParameter { ref name, .. } => {
-                write!(f, "type parameter {}", name)?;
+            Type::TypeParameter { class, index, .. } => {
+                let id = class.type_parameter(index);
+                write!(f, "type parameter {}", id.1)?;
             },
             Type::KeywordHash { ref keywords, splat, .. } => {
                 let mut print_comma = false;
@@ -1033,7 +1034,8 @@ pub enum Type<'ty, 'object: 'ty> {
     },
     TypeParameter {
         loc: Loc,
-        name: String,
+        class: &'object RubyObject<'object>,
+        index: usize,
     },
     KeywordHash {
         loc: Loc,
