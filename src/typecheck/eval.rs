@@ -173,10 +173,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         // type parameters are initially inserted into the type context
         // unresolved to that they can be constrained. unify any unresolved
         // type variables with their named parameters:
-        for (name, ty) in &type_context.type_names {
+        for (index, ty) in type_context.type_parameters.iter().enumerate() {
             if eval.tyenv.is_unresolved_var(*ty) {
                 eval.tyenv.unify(*ty, eval.tyenv.alloc(Type::TypeParameter {
-                    name: name.clone(),
+                    index: index,
+                    class: type_context.class,
                     loc: ty.loc().clone(),
                 })).expect("unifying unresolved typevar should succeed");
             }
@@ -841,8 +842,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 method: Rc::new(MethodImpl::Untyped),
                 prototype: self.tyenv.any_prototype(id.0.clone()),
             }],
-            Type::TypeParameter { ref name, .. } => {
-                self.error(&format!("Type parameter {} is of unknown type", name), &[
+            Type::TypeParameter { index, .. } => {
+                let id = self.type_context.class.type_parameter(index);
+
+                self.error(&format!("Type parameter {} is of unknown type", id.1), &[
                     Detail::Loc("in receiver", recv_type.loc()),
                     Detail::Loc("of this invocation", &id.0),
                 ]);
