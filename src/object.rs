@@ -35,7 +35,6 @@ impl<'a> Iterator for AncestorIterator<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         match self.object {
             None => return None,
-            Some(&RubyObject::Object { .. }) => panic!(),
             Some(&RubyObject::Module { ref superclass, .. }) |
             Some(&RubyObject::Class { ref superclass, .. }) |
             Some(&RubyObject::Metaclass { ref superclass, .. }) |
@@ -140,7 +139,6 @@ impl<'a> ObjectGraph<'a> {
                 RubyObject::Class { class: ref class_, .. } |
                 RubyObject::Module { class: ref class_, .. } |
                 RubyObject::Metaclass { class: ref class_, .. } => class_.set(class),
-                RubyObject::Object { .. } |
                 RubyObject::IClass { .. } => panic!(),
             }
         }
@@ -239,7 +237,6 @@ impl<'a> ObjectGraph<'a> {
 
     fn class_table_lookup<T>(table: &ClassTable<'a, T>, class: &'a RubyObject<'a>, key: &str) -> Option<Rc<T>> {
         match *class {
-            RubyObject::Object { .. } => panic!("RubyObject::Object has no associated class table"),
             RubyObject::Module { .. } |
             RubyObject::Class { .. } |
             RubyObject::Metaclass { .. } => {}
@@ -255,7 +252,6 @@ impl<'a> ObjectGraph<'a> {
 
     fn class_table_insert<T>(table: &ClassTable<'a, T>, class: &'a RubyObject<'a>, key: String, value: Rc<T>) {
         match *class {
-            RubyObject::Object { .. } => panic!("RubyObject::Object has no associated class table"),
             RubyObject::Module { .. } |
             RubyObject::Class { .. } |
             RubyObject::Metaclass { .. } => {}
@@ -266,14 +262,6 @@ impl<'a> ObjectGraph<'a> {
 
         table_ref.entry(class).or_insert_with(|| HashMap::new())
             .insert(key, value);
-    }
-
-    pub fn new_typed_object(&self, type_node: Rc<Node>, type_scope: Rc<Scope<'a>>) -> &'a RubyObject<'a> {
-        self.alloc(RubyObject::Object {
-            id: self.new_object_id(),
-            type_node: type_node,
-            type_scope: type_scope,
-        })
     }
 
     pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
@@ -313,7 +301,6 @@ impl<'a> ObjectGraph<'a> {
 
     pub fn metaclass(&self, object_ref: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
         match *object_ref {
-            RubyObject::Object { .. } => panic!(),
             RubyObject::Module { ref class, .. } => {
                 match class.get() {
                     metaclass_ref@&RubyObject::Metaclass { .. } =>
@@ -364,7 +351,6 @@ impl<'a> ObjectGraph<'a> {
 
         let (superclass, constants) =
             match *object {
-                RubyObject::Object { .. } => panic!("called get_const with RubyObject::Object!"),
                 RubyObject::Module { ref superclass, .. } |
                 RubyObject::Class { ref superclass, .. } |
                 RubyObject::Metaclass { ref superclass, .. } =>
@@ -394,7 +380,6 @@ impl<'a> ObjectGraph<'a> {
 
     pub fn get_own_const(&self, object: &'a RubyObject<'a>, name: &str) -> Option<Rc<ConstantEntry<'a>>> {
         match *object {
-            RubyObject::Object { .. } => panic!("called get_own_const with RubyObject::Object!"),
             RubyObject::Module { .. } |
             RubyObject::Class { .. } |
             RubyObject::Metaclass { .. } => {},
@@ -420,7 +405,6 @@ impl<'a> ObjectGraph<'a> {
                 // Object when used in a class/module definition context:
                 if object == self.Object {
                     let superclass = match *object {
-                        RubyObject::Object {..} => panic!("called get_const_for_definition with RubyObject::Object!"),
                         RubyObject::Module { ref superclass, .. } |
                         RubyObject::Class { ref superclass, .. } |
                         RubyObject::Metaclass { ref superclass, .. } => superclass.get(),
@@ -486,7 +470,6 @@ impl<'a> ObjectGraph<'a> {
         // JRuby's algorithm involving keeping a reference to the real module.
         fn method_location<'a>(obj: &'a RubyObject<'a>) -> &'a RubyObject<'a> {
             match *obj {
-                RubyObject::Object {..} => panic!(),
                 RubyObject::Module {..} |
                 RubyObject::Class {..} |
                 RubyObject::Metaclass {..} |
@@ -527,8 +510,6 @@ impl<'a> ObjectGraph<'a> {
             let iclass = self.alloc(RubyObject::IClass {
                 id: self.new_object_id(),
                 superclass: match *current_inclusion_point {
-                    RubyObject::Object { .. } =>
-                        panic!("current_inclusion_point is object"),
                     RubyObject::Module { ref superclass, .. } |
                     RubyObject::Class { ref superclass, .. } |
                     RubyObject::Metaclass { ref superclass, .. } |
@@ -539,7 +520,6 @@ impl<'a> ObjectGraph<'a> {
             });
 
             match *current_inclusion_point {
-                RubyObject::Object { .. } => panic!(),
                 RubyObject::Module { ref superclass, .. } |
                 RubyObject::Class { ref superclass, .. } |
                 RubyObject::Metaclass { ref superclass, .. } |
@@ -670,11 +650,6 @@ pub struct IvarEntry<'object> {
 }
 
 pub enum RubyObject<'a> {
-    Object {
-        id: ObjectId,
-        type_node: Rc<Node>,
-        type_scope: Rc<Scope<'a>>,
-    },
     Module {
         id: ObjectId,
         class: Cell<&'a RubyObject<'a>>,
@@ -704,7 +679,6 @@ pub enum RubyObject<'a> {
 impl<'a> RubyObject<'a> {
     fn id(&self) -> ObjectId {
         match *self {
-            RubyObject::Object { id, .. } => id,
             RubyObject::Module { id, .. } => id,
             RubyObject::Class { id, .. } => id,
             RubyObject::Metaclass { id, .. } => id,
@@ -714,8 +688,6 @@ impl<'a> RubyObject<'a> {
 
     pub fn name(&self) -> String {
         match *self {
-            RubyObject::Object { ref type_node, .. } =>
-                format!("#<@ {:?}>", type_node.loc()),
             RubyObject::Module { ref name, .. } =>
                 name.clone(),
             RubyObject::Class { ref name, .. } =>
@@ -729,7 +701,6 @@ impl<'a> RubyObject<'a> {
 
     pub fn delegate(&'a self) -> &'a RubyObject<'a> {
         match *self {
-            RubyObject::Object { .. } => panic!(),
             RubyObject::Module { .. } |
             RubyObject::Class { .. } |
             RubyObject::Metaclass { .. } =>
@@ -757,8 +728,6 @@ impl<'a> RubyObject<'a> {
     // skips iclasses.
     pub fn superclass(&'a self) -> Option<&'a RubyObject<'a>> {
         match *self {
-            RubyObject::Object { .. } =>
-                panic!("called superclass with RubyObject::Object!"),
             RubyObject::Module { ref superclass, .. } |
             RubyObject::Class { ref superclass, .. } |
             RubyObject::Metaclass { ref superclass, .. } => {
@@ -767,7 +736,6 @@ impl<'a> RubyObject<'a> {
                 loop {
                     match superclass.get() {
                         None => return None,
-                        Some(&RubyObject::Object { .. }) => panic!(),
                         Some(class@&RubyObject::Module { .. }) |
                         Some(class@&RubyObject::Class { .. }) |
                         Some(class@&RubyObject::Metaclass { .. }) => return Some(class),
@@ -782,9 +750,6 @@ impl<'a> RubyObject<'a> {
 
     pub fn type_parameters(&'a self) -> &'a [Id] {
         match *self {
-            RubyObject::Object { .. } => {
-                panic!("called type_parameters on RubyObject::Object!");
-            },
             RubyObject::Module { .. } |
             RubyObject::Metaclass { .. } => {
                 &[]
