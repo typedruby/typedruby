@@ -773,6 +773,10 @@ impl<'a> RubyObject<'a> {
                 panic!("called type_parameters on RubyObject::IClass!"),
         }
     }
+
+    pub fn type_parameter(&'a self, index: usize) -> &'a Id {
+        &self.type_parameters()[index]
+    }
 }
 
 impl<'a> fmt::Debug for RubyObject<'a> {
