@@ -177,7 +177,6 @@ impl<'env, 'object> Eval<'env, 'object> {
                             // do nothing with the class body
                             None
                         }
-                        ConstantEntry::Module { ref loc, value: &RubyObject::Object { .. } } |
                         ConstantEntry::Module { ref loc, value: &RubyObject::Module { .. } } => {
                             self.constant_definition_error(&format!("{} is not a static class", id), name.loc(), loc.as_ref());
 
@@ -283,7 +282,6 @@ impl<'env, 'object> Eval<'env, 'object> {
                         ConstantEntry::Module { value: value@&RubyObject::Module { .. }, .. } => {
                             Some(value)
                         }
-                        ConstantEntry::Module { value: value@&RubyObject::Object { .. }, loc: ref expr_loc } |
                         ConstantEntry::Module { value: value@&RubyObject::Class { .. }, loc: ref expr_loc } |
                         ConstantEntry::Module { value: value@&RubyObject::Metaclass { .. }, loc: ref expr_loc } => {
                             self.constant_definition_error(&format!("{} is not a module", id), name.loc(), expr_loc.as_ref());
@@ -608,11 +606,6 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::SClass(_, ref expr, ref body) => {
                 match self.resolve_static(expr) {
-                    Ok(&RubyObject::Object { .. }) => {
-                        self.warning("SClass on RubyObject (TODO)", &[
-                            Detail::Loc("here", expr.loc()),
-                        ]);
-                    },
                     Ok(singleton) => {
                         let metaclass = self.env.object.metaclass(singleton);
                         self.enter_scope(metaclass, body);
@@ -648,11 +641,6 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::Defs(_, ref singleton, Id(_, ref name), ref proto, ref body) => {
                 match self.resolve_static(singleton) {
-                    Ok(&RubyObject::Object { .. }) => {
-                        self.error("Defs on RubyObject (TODO)", &[
-                            Detail::Loc("here", singleton.loc()),
-                        ]);
-                    }
                     Ok(metaclass) => {
                         let metaclass = self.env.object.metaclass(metaclass);
                         self.decl_method(metaclass, name, node, MethodVisibility::Public);

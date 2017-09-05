@@ -281,12 +281,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 self.tyenv.instance0(loc.clone(), metaclass)
             },
             Ok(&RubyObject::IClass { .. }) => panic!(),
-            Ok(&RubyObject::Object { .. }) => {
-                self.error("Constant does not reference class/module", &[
-                    Detail::Loc("here", cpath.loc()),
-                ]);
-                self.tyenv.new_var(loc.clone())
-            }
             Err((err_node, message)) => {
                 self.error(message, &[
                     Detail::Loc("here", err_node.loc()),
