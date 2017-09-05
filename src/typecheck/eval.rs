@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
 use typecheck::types::{Arg, TypeEnv, Type, TypeRef, Prototype, KwsplatResult, TupleElement};
-use object::{Scope, RubyObject, MethodImpl};
+use object::{Scope, RubyObject, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
@@ -267,10 +267,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 if let Some(&Type::Instance { class, .. }) = context.type_names.get(name).map(TypeRef::deref) {
                     Ok(class)
                 } else {
-                    self.env.resolve_cpath(cpath, scope)
+                    self.resolve_type_name(cpath, scope)
                 }
             }
-            _ => self.env.resolve_cpath(cpath, scope),
+            _ => self.resolve_type_name(cpath, scope),
         };
 
         match class {
@@ -296,6 +296,19 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
+    fn resolve_type_name<'node>(&self, cpath: &'node Node, scope: Rc<Scope<'object>>)
+        -> Result<&'object RubyObject<'object>, (&'node Node, &'static str)>
+    {
+        self.env.resolve_cpath(cpath, scope).and_then(|constant| {
+            match *constant {
+                ConstantEntry::Expression { .. } =>
+                    Err((cpath, "Constant mentioned in type name does not reference static class/module")),
+                ConstantEntry::Module { value, .. } =>
+                    Ok(value),
+            }
+        })
+    }
+
     fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
         if let Node::Const(_, None, Id(ref name_loc, ref name)) = *cpath {
             if let Some(&ty) = context.type_names.get(name) {
@@ -309,28 +322,16 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
         }
 
-        match self.env.resolve_cpath(cpath, scope.clone()) {
-            Ok(class) => match *class {
-                _ if class == self.env.object.Class =>
-                    self.resolve_class_instance_type(loc, type_parameters, context, scope),
-                RubyObject::Object { .. } => {
-                    self.error("Constant mentioned in type name does not reference class/module", &[
-                        Detail::Loc("here", cpath.loc()),
-                    ]);
+        match self.resolve_type_name(cpath, scope.clone()) {
+            Ok(class) if class == self.env.object.Class =>
+                self.resolve_class_instance_type(loc, type_parameters, context, scope),
+            Ok(class) => {
+                let type_parameters = type_parameters.iter().map(|arg|
+                    self.resolve_type(arg, context, scope.clone())
+                ).collect();
 
-                    self.tyenv.new_var(cpath.loc().clone())
-                },
-                RubyObject::Module { .. } |
-                RubyObject::Metaclass { .. } |
-                RubyObject::Class { .. } => {
-                    let type_parameters = type_parameters.iter().map(|arg|
-                        self.resolve_type(arg, context, scope.clone())
-                    ).collect();
-
-                    self.create_instance_type(loc, class, type_parameters)
-                },
-                RubyObject::IClass { .. } => panic!("unexpected iclass"),
-            },
+                self.create_instance_type(loc, class, type_parameters)
+            }
             Err((err_node, message)) => {
                 self.error(message, &[
                     Detail::Loc("here", err_node.loc()),
@@ -1838,15 +1839,20 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::Const(..) => {
                 match self.env.resolve_cpath(node, self.scope.clone()) {
                     Ok(object) => {
-                        let ty = match object {
-                            &RubyObject::Object { ref type_node, ref type_scope, .. } => {
-                                let scope_self = self.env.object.metaclass(type_scope.module);
-                                let type_context = TypeContext::new(scope_self, vec![]);
-                                let ty = self.resolve_type(type_node, &type_context, type_scope.clone());
-                                self.tyenv.update_loc(ty, node.loc().clone())
+                        let ty = match *object {
+                            ConstantEntry::Expression { node: ref const_node, ref scope, .. } => {
+                                if let Node::TyCast(_, _, ref ty_node) = **const_node {
+                                    let scope_self = self.env.object.metaclass(scope.module);
+                                    let type_context = TypeContext::new(scope_self, vec![]);
+                                    let ty = self.resolve_type(ty_node, &type_context, scope.clone());
+                                    self.tyenv.update_loc(ty, node.loc().clone())
+                                } else {
+                                    // TODO - don't know the type of this constant
+                                    self.tyenv.any(node.loc().clone())
+                                }
                             }
-                            _ => {
-                                self.tyenv.instance0(node.loc().clone(), self.env.object.metaclass(object))
+                            ConstantEntry::Module { value, .. } => {
+                                self.tyenv.instance0(node.loc().clone(), self.env.object.metaclass(value))
                             }
                         };
                         Computation::result(ty, locals)

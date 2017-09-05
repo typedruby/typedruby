@@ -180,10 +180,10 @@ impl<'a> ObjectGraph<'a> {
             ivars: RefCell::new(HashMap::new()),
         };
 
-        o.set_const(o.BasicObject, "BasicObject", Rc::new(ConstantEntry { loc: None, value: o.BasicObject }));
-        o.set_const(o.Object, "Object", Rc::new(ConstantEntry { loc: None, value: o.Object }));
-        o.set_const(o.Object, "Module", Rc::new(ConstantEntry { loc: None, value: o.Module }));
-        o.set_const(o.Object, "Class", Rc::new(ConstantEntry { loc: None, value: o.Class }));
+        o.set_const(o.BasicObject, "BasicObject", Rc::new(ConstantEntry::Module { loc: None, value: o.BasicObject }));
+        o.set_const(o.Object, "Object", Rc::new(ConstantEntry::Module { loc: None, value: o.Object }));
+        o.set_const(o.Object, "Module", Rc::new(ConstantEntry::Module { loc: None, value: o.Module }));
+        o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class }));
 
         o.Kernel = o.define_module(None, o.Object, "Kernel");
         o.include_module(o.Object, o.Kernel);
@@ -218,7 +218,7 @@ impl<'a> ObjectGraph<'a> {
     }
 
     fn expect_class(&self, name: &str) -> &'a RubyObject<'a> {
-        self.get_const(self.Object, name).unwrap().value
+        self.get_const(self.Object, name).unwrap().expect_module()
     }
 
     pub fn array_class(&self) -> &'a RubyObject<'a> {
@@ -298,7 +298,7 @@ impl<'a> ObjectGraph<'a> {
     pub fn define_class(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
         let class = self.new_class(self.constant_path(owner, name), superclass, type_parameters);
 
-        self.set_const(owner, name, Rc::new(ConstantEntry { loc: loc, value: class }));
+        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: class }));
 
         class
     }
@@ -306,7 +306,7 @@ impl<'a> ObjectGraph<'a> {
     pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str) -> &'a RubyObject<'a> {
         let module = self.new_module(self.constant_path(owner, name));
 
-        self.set_const(owner, name, Rc::new(ConstantEntry { loc: loc, value: module }));
+        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: module }));
 
         module
     }
@@ -636,9 +636,31 @@ pub enum MethodImpl<'object> {
     IntrinsicKernelIsA,
 }
 
-pub struct ConstantEntry<'object> {
-    pub loc: Option<Loc>,
-    pub value: &'object RubyObject<'object>,
+#[derive(Debug)]
+pub enum ConstantEntry<'object> {
+    Module {
+        loc: Option<Loc>,
+        value: &'object RubyObject<'object>,
+    },
+    Expression {
+        loc: Loc,
+        node: Rc<Node>,
+        scope: Rc<Scope<'object>>,
+    }
+}
+
+impl<'object> ConstantEntry<'object> {
+    pub fn module(&self) -> Option<&'object RubyObject<'object>> {
+        if let ConstantEntry::Module { value, .. } = *self {
+            Some(value)
+        } else {
+            None
+        }
+    }
+
+    pub fn expect_module(&self) -> &'object RubyObject<'object> {
+        self.module().expect("ConstantEntry expected to be Module")
+    }
 }
 
 pub struct IvarEntry<'object> {
