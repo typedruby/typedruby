@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::fmt;
 use typed_arena::Arena;
 use ast::{Node, Loc, Id};
+use define::MethodVisibility;
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
@@ -578,13 +579,6 @@ impl<'object> Scope<'object> {
     pub fn spawn(scope: &Rc<Scope<'object>>, module: &'object RubyObject<'object>) -> Rc<Scope<'object>> {
         Rc::new(Scope { parent: Some(scope.clone()), module: module })
     }
-}
-
-#[derive(Copy,Clone,Debug)]
-pub enum MethodVisibility {
-    Public,
-    Protected,
-    Private,
 }
 
 #[derive(Debug)]

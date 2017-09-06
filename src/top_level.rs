@@ -1,7 +1,8 @@
 use ast::{Id, Node, Loc, SourceFile};
 use environment::Environment;
 use errors::Detail;
-use object::{RubyObject, Scope, MethodEntry, MethodVisibility, MethodImpl, IvarEntry, ConstantEntry};
+use define::{Definitions, MethodVisibility, MethodDef, IvarDef};
+use object::{RubyObject, Scope, ConstantEntry};
 use std::rc::Rc;
 use std::cell::Cell;
 
@@ -15,6 +16,7 @@ struct Eval<'env, 'object: 'env> {
     in_def: bool,
     def_visibility: Cell<MethodVisibility>,
     module_function: Cell<bool>,
+    defs: Rc<Definitions<'object>>,
 }
 
 #[derive(Copy,Clone,Eq,PartialEq)]
@@ -52,7 +54,14 @@ enum RequireType {
 }
 
 impl<'env, 'object> Eval<'env, 'object> {
-    fn new(env: &'env Environment<'object>, scope: Rc<Scope<'object>>, source_file: Rc<SourceFile>, source_type: SourceType, in_def: bool) -> Eval<'env, 'object> {
+    fn new(
+        env: &'env Environment<'object>,
+        scope: Rc<Scope<'object>>,
+        source_file: Rc<SourceFile>,
+        source_type: SourceType,
+        in_def: bool,
+        defs: Rc<Definitions<'object>>
+    ) -> Eval<'env, 'object> {
         Eval {
             env: env,
             scope: scope,
@@ -61,6 +70,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             in_def: in_def,
             def_visibility: Cell::new(MethodVisibility::Public),
             module_function: Cell::new(false),
+            defs: defs,
         }
     }
 
@@ -120,7 +130,14 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn enter_scope(&self, constant: &'object RubyObject<'object>, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let eval = Eval::new(self.env, Scope::spawn(&self.scope, constant), self.source_file.clone(), self.source_type, self.in_def);
+            let eval = Eval::new(
+                self.env,
+                Scope::spawn(&self.scope, constant),
+                self.source_file.clone(),
+                self.source_type,
+                self.in_def,
+                self.defs.clone(),
+            );
 
             eval.eval_node(node)
         }
@@ -128,7 +145,13 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn enter_def(&self, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let eval = Eval::new(self.env, self.scope.clone(), self.source_file.clone(), self.source_type, true);
+            let eval = Eval::new(
+                self.env,
+                self.scope.clone(),
+                self.source_file.clone(),
+                self.source_type,
+                true,
+                self.defs.clone());
 
             eval.eval_node(node)
         }
@@ -318,28 +341,22 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>, visi: MethodVisibility) {
-        let method = Rc::new(MethodEntry {
-            owner: target,
-            visibility: Cell::new(visi),
-            implementation: Rc::new(MethodImpl::Ruby {
-                name: name.to_owned(),
-                node: def_node.clone(),
-                scope: self.scope.clone(),
-            })
+        self.defs.define_method(MethodDef::Def {
+            module: target,
+            visi: visi,
+            name: name.to_owned(),
+            node: def_node.clone(),
+            scope: self.scope.clone(),
         });
-
-        self.env.object.define_method(target, name.to_owned(), method.clone());
-
-        self.env.enqueue_method_for_type_check(method);
     }
 
-    fn symbol_name<'node>(&self, node: &'node Rc<Node>, msg: &str) -> Option<&'node str> {
+    fn symbol_name<'node>(&self, node: &'node Rc<Node>, msg: &str) -> Option<Id> {
         match **node {
-            Node::Symbol(_, ref sym) => Some(sym),
-            Node::Def(_, Id(_, ref sym), _, _) |
-            Node::Defs(_, _, Id(_, ref sym), _, _) => {
+            Node::Symbol(ref loc, ref sym) => Some(Id(loc.clone(), sym.clone())),
+            Node::Def(_, ref id, _, _) |
+            Node::Defs(_, _, ref id, _, _) => {
                 self.eval_node(node);
-                Some(sym)
+                Some(id.clone())
             }
             _ => {
                 self.warning(&format!("Dynamic symbol {}", msg), &[
@@ -355,27 +372,37 @@ impl<'env, 'object> Eval<'env, 'object> {
         let from_name = self.symbol_name(from, "in alias");
         let to_name = self.symbol_name(to, "in alias");
 
-        if let Some(method) = from_name.and_then(|name| self.env.object.lookup_method(klass, name)) {
-            if let Some(name) = to_name {
-                self.env.object.define_method(klass, name.to_owned(), method.clone());
-            }
-        } else {
-            if let Some(name) = from_name {
-                // no need to check None case, symbol_name would have already emitted an error
-                self.error("Could not resolve source method in alias", &[
-                    Detail::Loc(&format!("{}#{}", klass.name(), name), from.loc()),
-                ]);
-            }
-
-            if let Some(name) = to_name {
-                // define alias target as untyped so that uses of it don't produce even more errors:
-                self.env.object.define_method(klass, name.to_owned(), Rc::new(MethodEntry {
-                    owner: klass,
-                    visibility: self.def_visibility.clone(),
-                    implementation: Rc::new(MethodImpl::Untyped),
-                }));
-            }
+        if let (Some(from), Some(to)) = (from_name, to_name) {
+            self.defs.define_method(MethodDef::Alias {
+                module: klass,
+                from: from,
+                to: to,
+            });
         }
+
+        // panic!("TODO port this logic over");
+
+        // if let Some(method) = from_name.and_then(|name| self.env.object.lookup_method(klass, name)) {
+        //     if let Some(name) = to_name {
+        //         self.env.object.define_method(klass, name.to_owned(), method.clone());
+        //     }
+        // } else {
+        //     if let Some(name) = from_name {
+        //         // no need to check None case, symbol_name would have already emitted an error
+        //         self.error("Could not resolve source method in alias", &[
+        //             Detail::Loc(&format!("{}#{}", klass.name(), name), from.loc()),
+        //         ]);
+        //     }
+
+        //     if let Some(name) = to_name {
+        //         // define alias target as untyped so that uses of it don't produce even more errors:
+        //         self.env.object.define_method(klass, name.to_owned(), Rc::new(MethodEntry {
+        //             owner: klass,
+        //             visibility: self.def_visibility.clone(),
+        //             implementation: Rc::new(MethodImpl::Untyped),
+        //         }));
+        //     }
+        // }
     }
 
     fn process_attr(&self, attr_type: AttrType, args: &[Rc<Node>]) {
@@ -386,46 +413,38 @@ impl<'env, 'object> Eval<'env, 'object> {
 
         for arg in args {
             if let Some(sym) = self.symbol_name(arg, "in attribute name") {
-                let ivar = format!("@{}", sym);
-
                 if attr_type.reader() {
-                    let method = MethodEntry {
-                        owner: class,
-                        visibility: self.def_visibility.clone(),
-                        implementation: Rc::new(MethodImpl::AttrReader {
-                            ivar: ivar.clone(),
-                            node: arg.clone(),
-                        }),
-                    };
-                    self.env.object.define_method(class, sym.to_owned(), Rc::new(method));
+                    self.defs.define_method(MethodDef::AttrReader {
+                        module: class,
+                        visi: self.def_visibility.get(),
+                        name: sym.clone(),
+                    });
                 }
 
                 if attr_type.writer() {
-                    let method = MethodEntry {
-                        owner: class,
-                        visibility: self.def_visibility.clone(),
-                        implementation: Rc::new(MethodImpl::AttrWriter {
-                            ivar: ivar.clone(),
-                            node: arg.clone(),
-                        }),
-                    };
-                    self.env.object.define_method(class, sym.to_owned() + "=", Rc::new(method));
+                    self.defs.define_method(MethodDef::AttrWriter {
+                        module: class,
+                        visi: self.def_visibility.get(),
+                        name: sym.clone(),
+                    });
                 }
             }
         }
     }
 
-    fn lookup_method_for_visi(&self, mid: &str) -> Option<Rc<MethodEntry<'object>>> {
-        if let Some(me) = self.env.object.lookup_method(self.scope.module, mid) {
-            return Some(me);
-        }
+    // TODO - move logic over:
 
-        if let RubyObject::Module { .. } = *self.scope.module {
-            self.env.object.lookup_method(self.env.object.Object, mid)
-        } else {
-            None
-        }
-    }
+    // fn lookup_method_for_visi(&self, mid: &str) -> Option<Rc<MethodEntry<'object>>> {
+    //     if let Some(me) = self.env.object.lookup_method(self.scope.module, mid) {
+    //         return Some(me);
+    //     }
+
+    //     if let RubyObject::Module { .. } = *self.scope.module {
+    //         self.env.object.lookup_method(self.env.object.Object, mid)
+    //     } else {
+    //         None
+    //     }
+    // }
 
     fn process_module_function(&self, args: &[Rc<Node>]) {
         if args.is_empty() {
@@ -434,38 +453,51 @@ impl<'env, 'object> Eval<'env, 'object> {
         } else {
             for arg in args {
                 if let Some(mid) = self.symbol_name(arg, "in method name") {
-                    if let Some(method) = self.lookup_method_for_visi(mid) {
-                        let target = self.env.object.metaclass(self.scope.module);
-                        self.env.object.define_method(target, mid.to_owned(), method.clone())
-                    } else {
-                        self.error("Could not resolve method in module_function", &[
-                            Detail::Loc(&format!("{}#{}", self.scope.module.name(), mid), arg.loc()),
-                        ]);
-                    }
+                    self.defs.define_method(MethodDef::ModuleFunc {
+                        module: self.scope.module,
+                        name: mid,
+                    });
+
+                    // panic!("TODO - move this logic over");
+
+                    // if let Some(method) = self.lookup_method_for_visi(mid) {
+                    //     let target = self.env.object.metaclass(self.scope.module);
+                    //     self.env.object.define_method(target, mid.to_owned(), method.clone())
+                    // } else {
+                    //     self.error("Could not resolve method in module_function", &[
+                    //         Detail::Loc(&format!("{}#{}", self.scope.module.name(), mid), arg.loc()),
+                    //     ]);
+                    // }
                 }
             }
         }
     }
 
     fn process_visibility(&self, visi: MethodVisibility, args: &[Rc<Node>]) {
-        let self_ = self.scope.module;
-
         if args.is_empty() {
             self.def_visibility.set(visi);
         } else {
             for arg in args {
                 if let Some(mid) = self.symbol_name(arg, "in method name") {
-                    if let Some(method) = self.lookup_method_for_visi(mid) {
-                        if self_ == method.owner {
-                            method.visibility.set(visi);
-                        } else {
-                            self.env.object.define_method(self_, mid.to_owned(), Rc::new(MethodEntry {
-                                owner: self_,
-                                visibility: Cell::new(visi),
-                                implementation: method.implementation.clone(),
-                            }));
-                        }
-                    }
+                    self.defs.define_method(MethodDef::SetVisi {
+                        module: self.scope.module,
+                        visi: visi,
+                        name: mid,
+                    });
+
+                    // TODO - move logic over:
+
+                    // if let Some(method) = self.lookup_method_for_visi(mid) {
+                    //     if self_ == method.owner {
+                    //         method.visibility.set(visi);
+                    //     } else {
+                    //         self.env.object.define_method(self_, mid.to_owned(), Rc::new(MethodEntry {
+                    //             owner: self_,
+                    //             visibility: Cell::new(visi),
+                    //             implementation: method.implementation.clone(),
+                    //         }));
+                    //     }
+                    // }
                 }
             }
         }
@@ -750,19 +782,28 @@ impl<'env, 'object> Eval<'env, 'object> {
                     Detail::Loc("here", node.loc()),
                 ]);
             }
-            Node::TyIvardecl(_, Id(ref ivar_loc, ref ivar), ref type_node) => {
-                if let Some(ivar_decl) = self.env.object.lookup_ivar(self.scope.module, ivar) {
-                    self.error("Duplicate instance variable type declaration", &[
-                        Detail::Loc("here", ivar_loc),
-                        Detail::Loc("previous declaration was here", &ivar_decl.ivar_loc),
-                    ]);
-                } else {
-                    self.env.object.define_ivar(self.scope.module, ivar.to_owned(), Rc::new(IvarEntry {
-                        ivar_loc: ivar_loc.clone(),
-                        type_node: type_node.clone(),
-                        scope: self.scope.clone(),
-                    }));
-                }
+            Node::TyIvardecl(_, ref ivar, ref type_node) => {
+                self.defs.define_ivar(IvarDef {
+                    module: self.scope.module,
+                    name: ivar.to_owned(),
+                    type_node: type_node.clone(),
+                    scope: self.scope.clone(),
+                });
+
+                // TODO - move logic over:
+
+                // if let Some(ivar_decl) = self.env.object.lookup_ivar(self.scope.module, ivar) {
+                //     self.error("Duplicate instance variable type declaration", &[
+                //         Detail::Loc("here", ivar_loc),
+                //         Detail::Loc("previous declaration was here", &ivar_decl.ivar_loc),
+                //     ]);
+                // } else {
+                //     self.env.object.define_ivar(self.scope.module, ivar.to_owned(), Rc::new(IvarEntry {
+                //         ivar_loc: ivar_loc.clone(),
+                //         type_node: type_node.clone(),
+                //         scope: self.scope.clone(),
+                //     }));
+                // }
             }
             Node::Block(_, ref send_node, ref block_args, ref block_body) => {
                 self.eval_node(send_node);
@@ -1001,12 +1042,12 @@ fn source_type_for_file(source_file: &SourceFile) -> SourceType {
     }
 }
 
-pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>) {
+pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>, defs: Rc<Definitions<'object>>) {
     let scope = Rc::new(Scope { parent: None, module: env.object.Object });
 
     let source_file = node.loc().file.clone();
 
     let source_type = source_type_for_file(&source_file);
 
-    Eval::new(env, scope, source_file, source_type, false).eval_node(&node);
+    Eval::new(env, scope, source_file, source_type, false, defs).eval_node(&node);
 }
