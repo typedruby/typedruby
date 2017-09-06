@@ -24,6 +24,16 @@ struct Eval<'env, 'object: 'env> {
 pub enum SourceType {
     TypedRuby,
     Ruby,
+    Typestub,
+}
+
+impl SourceType {
+    fn is_typed_ruby(self) -> bool {
+        match self {
+            SourceType::TypedRuby | SourceType::Typestub => true,
+            SourceType::Ruby => false,
+        }
+    }
 }
 
 enum ErrorType {
@@ -87,7 +97,7 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn emit_errors(&self) -> bool {
-        self.source_type == SourceType::TypedRuby &&
+        self.source_type.is_typed_ruby() &&
             self.env.should_emit_errors(self.source_file.filename())
     }
 
@@ -1051,6 +1061,12 @@ impl<'env, 'object> Eval<'env, 'object> {
 }
 
 fn source_type_for_file(source_file: &SourceFile) -> SourceType {
+    if source_file.filename().extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or_else(|| "") == "rbi" {
+        return SourceType::Typestub
+    }
+
     let is_typedruby = source_file.source()
         .lines()
         .take_while(|line| line.starts_with("#"))
