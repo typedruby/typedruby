@@ -14,6 +14,7 @@ use termcolor::{ColorChoice, StandardStream};
 
 mod ast;
 mod config;
+mod define;
 mod deferred_cell;
 mod environment;
 mod errors;

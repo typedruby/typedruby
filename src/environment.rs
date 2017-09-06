@@ -9,6 +9,7 @@ use typed_arena::Arena;
 
 use ast::{parse, SourceFile, Node, Id, Level};
 use config::Config;
+use define::Definitions;
 use errors::{ErrorSink, Detail};
 use inflect::Inflector;
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope, ConstantEntry};
@@ -23,6 +24,7 @@ enum LoadState {
 #[derive(Copy,Clone,Eq,PartialEq,Debug)]
 enum Phase {
     Load,
+    Define,
     TypeCheck,
 }
 
@@ -30,6 +32,7 @@ impl Phase {
     pub fn can_load(self) -> bool {
         match self {
             Phase::Load => true,
+            Phase::Define => false,
             Phase::TypeCheck => false,
         }
     }
@@ -43,6 +46,7 @@ pub struct Environment<'object> {
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
     inflector: Inflector,
+    defs: Rc<Definitions<'object>>,
 }
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
@@ -59,6 +63,7 @@ impl<'object> Environment<'object> {
             loaded_features: RefCell::new(HashMap::new()),
             method_queue: RefCell::new(VecDeque::new()),
             inflector: inflector,
+            defs: Rc::new(Definitions::new()),
         };
 
         let source_file = SourceFile::new(PathBuf::from("(builtin stdlib)"), STDLIB_DEFINITIONS.to_owned());
@@ -111,7 +116,7 @@ impl<'object> Environment<'object> {
         }
 
         if let Some(ref node) = ast.node {
-            top_level::evaluate(self, node.clone());
+            top_level::evaluate(self, node.clone(), self.defs.clone());
         }
     }
 
