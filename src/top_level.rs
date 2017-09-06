@@ -81,22 +81,26 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
-    fn resolve_cpath<'a>(&self, node: &'a Node) -> EvalResult<'a, &'object RubyObject<'object>> {
+    fn resolve_cpath<'a>(&self, node: &'a Node) -> EvalResult<'a, Rc<ConstantEntry<'object>>> {
         self.env.resolve_cpath(node, self.scope.clone())
     }
 
     fn resolve_cbase<'a>(&self, cbase: &'a Option<Rc<Node>>) -> EvalResult<'a, &'object RubyObject<'object>> {
         match *cbase {
-            None => Ok(self.scope.module.clone()),
-            Some(ref cbase_node) => self.resolve_cpath(cbase_node),
+            None => Ok(self.scope.module),
+            Some(ref cbase_node) => self.env.resolve_cbase(cbase_node, self.scope.clone()),
         }
     }
 
     fn resolve_decl_ref<'a>(&self, name: &'a Node) -> EvalResult<'a, (&'object RubyObject<'object>, &'a str)> {
         if let Node::Const(_, ref base, Id(_, ref id)) = *name {
             match *base {
-                Some(ref base_node) => self.resolve_cpath(base_node).map(|object_ref| (object_ref, id.as_str())),
-                None => Ok((self.scope.module.clone(), id.as_str())),
+                Some(ref base_node) =>
+                    self.resolve_cpath(base_node).and_then(|constant|
+                        constant.module()
+                            .map(|constant| (constant, id.as_str()))
+                            .ok_or((base_node, "Not a static class/module"))),
+                None => Ok((self.scope.module, id.as_str())),
             }
         } else {
             Err((name, "Class name is not a static constant"))
@@ -105,15 +109,18 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn resolve_static<'a>(&self, node: &'a Node) -> EvalResult<'a, &'object RubyObject<'object>> {
         match *node {
-            Node::Self_(_) => Ok(self.scope.module.clone()),
-            Node::Const(..) => return self.resolve_cpath(node),
+            Node::Self_(_) => Ok(self.scope.module),
+            Node::Const(..) =>
+                self.resolve_cpath(node).and_then(|constant|
+                    constant.module()
+                        .ok_or((node, "Not a static class/module"))),
             _ => Err((node, "unknown static node")),
         }
     }
 
-    fn enter_scope(&self, module: &'object RubyObject<'object>, body: &Option<Rc<Node>>) {
+    fn enter_scope(&self, constant: &'object RubyObject<'object>, body: &Option<Rc<Node>>) {
         if let Some(ref node) = *body {
-            let eval = Eval::new(self.env, Scope::spawn(&self.scope, module), self.source_file.clone(), self.source_type, self.in_def);
+            let eval = Eval::new(self.env, Scope::spawn(&self.scope, constant), self.source_file.clone(), self.source_type, self.in_def);
 
             eval.eval_node(node)
         }
@@ -127,12 +134,12 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
-    fn constant_definition_error(&self, message: &str, loc: &Loc, definition: &Option<Loc>) {
+    fn constant_definition_error(&self, message: &str, loc: &Loc, definition: Option<&Loc>) {
         let mut details = vec![
             Detail::Loc("here", loc),
         ];
 
-        if let Some(ref loc) = *definition {
+        if let Some(ref loc) = definition {
             details.push(Detail::Loc("previously defined here", loc));
         }
 
@@ -143,7 +150,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         // TODO need to autoload
 
         let superclass = superclass.as_ref().and_then(|node| {
-            match self.resolve_cpath(node) {
+            match self.resolve_static(node) {
                 Ok(value) => match *value {
                     RubyObject::Class { .. } |
                     RubyObject::Metaclass { .. } =>
@@ -163,22 +170,21 @@ impl<'env, 'object> Eval<'env, 'object> {
         let class = match self.resolve_decl_ref(name) {
             Ok((base, id)) => {
                 if let Some(constant_entry) = self.env.object.get_const_for_definition(&base, id) {
-                    let value = constant_entry.value;
-                    match *value {
-                        RubyObject::Object { .. } => {
-                            self.constant_definition_error(&format!("{} is not a class", id), name.loc(), &constant_entry.loc);
+                    match *constant_entry {
+                        ConstantEntry::Expression { node: ref expr_node, .. } => {
+                            self.constant_definition_error(&format!("{} is not a static class", id), name.loc(), Some(expr_node.loc()));
 
-                            // open the object's metaclass instead as error recovery:
-                            self.env.object.metaclass(value)
+                            // do nothing with the class body
+                            None
                         }
-                        RubyObject::Module { .. } => {
-                            self.constant_definition_error(&format!("{} is not a class", id), name.loc(), &constant_entry.loc);
+                        ConstantEntry::Module { ref loc, value: &RubyObject::Module { .. } } => {
+                            self.constant_definition_error(&format!("{} is not a static class", id), name.loc(), loc.as_ref());
 
-                            // open the module instead:
-                            value
+                            // do nothing with the class body
+                            None
                         }
-                        RubyObject::Class { .. } |
-                        RubyObject::Metaclass { .. } => {
+                        ConstantEntry::Module { value: value@&RubyObject::Class { .. }, .. } |
+                        ConstantEntry::Module { value: value@&RubyObject::Metaclass { .. }, .. } => {
                             // check superclass matches
                             if let Some((ref superclass_node, ref superclass)) = superclass {
                                 let existing_superclass = value.superclass();
@@ -196,9 +202,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                                 }
                             }
 
-                            value
+                            Some(value)
                         }
-                        RubyObject::IClass { .. } => panic!(),
+                        ConstantEntry::Module { value: &RubyObject::IClass { .. }, .. } =>
+                            panic!(),
                     }
                 } else {
                     let superclass = match superclass {
@@ -238,7 +245,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         self.env.object.constant_path(&base, id),
                         superclass, type_parameters);
 
-                    let constant = Rc::new(ConstantEntry {
+                    let constant = Rc::new(ConstantEntry::Module {
                         loc: Some(name.loc().clone()),
                         value: class,
                     });
@@ -247,7 +254,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         panic!("internal error: would overwrite existing constant");
                     }
 
-                    class
+                    Some(class)
                 }
             }
             Err((node, message)) => {
@@ -256,7 +263,9 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
         };
 
-        self.enter_scope(class, body);
+        if let Some(class) = class {
+            self.enter_scope(class, body);
+        }
     }
 
     fn decl_module(&self, name: &Node, body: &Option<Rc<Node>>) {
@@ -265,22 +274,27 @@ impl<'env, 'object> Eval<'env, 'object> {
         let module = match self.resolve_decl_ref(name) {
             Ok((base, id)) => {
                 if let Some(constant_entry) = self.env.object.get_const_for_definition(&base, id) {
-                    match constant_entry.value {
-                        value@&RubyObject::Object { .. } |
-                        value@&RubyObject::Class { .. } |
-                        value@&RubyObject::Metaclass { .. } => {
-                            self.constant_definition_error(&format!("{} is not a module", id), name.loc(), &constant_entry.loc);
-
-                            value
+                    match *constant_entry {
+                        ConstantEntry::Expression { node: ref expr_node, .. } => {
+                            self.constant_definition_error(&format!("{} is not a static module", id), name.loc(), Some(expr_node.loc()));
+                            None
                         }
-                        &RubyObject::IClass { .. } => panic!(),
-                        value@&RubyObject::Module { .. } => value,
+                        ConstantEntry::Module { value: value@&RubyObject::Module { .. }, .. } => {
+                            Some(value)
+                        }
+                        ConstantEntry::Module { value: value@&RubyObject::Class { .. }, loc: ref expr_loc } |
+                        ConstantEntry::Module { value: value@&RubyObject::Metaclass { .. }, loc: ref expr_loc } => {
+                            self.constant_definition_error(&format!("{} is not a module", id), name.loc(), expr_loc.as_ref());
+                            Some(value)
+                        }
+                        ConstantEntry::Module { value: &RubyObject::IClass { .. }, .. } =>
+                            panic!(),
                     }
                 } else {
                     let module = self.env.object.new_module(
                         self.env.object.constant_path(&base, id));
 
-                    let constant = Rc::new(ConstantEntry {
+                    let constant = Rc::new(ConstantEntry::Module {
                         loc: Some(name.loc().clone()),
                         value: module,
                     });
@@ -289,7 +303,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         panic!("internal error: would overwrite existing constant");
                     }
 
-                    module
+                    Some(module)
                 }
             }
             Err((node, msg)) => {
@@ -298,7 +312,9 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
         };
 
-        self.enter_scope(module, body);
+        if let Some(module) = module {
+            self.enter_scope(module, body);
+        }
     }
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>, visi: MethodVisibility) {
@@ -590,11 +606,6 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::SClass(_, ref expr, ref body) => {
                 match self.resolve_static(expr) {
-                    Ok(&RubyObject::Object { .. }) => {
-                        self.warning("SClass on RubyObject (TODO)", &[
-                            Detail::Loc("here", expr.loc()),
-                        ]);
-                    },
                     Ok(singleton) => {
                         let metaclass = self.env.object.metaclass(singleton);
                         self.enter_scope(metaclass, body);
@@ -630,11 +641,6 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::Defs(_, ref singleton, Id(_, ref name), ref proto, ref body) => {
                 match self.resolve_static(singleton) {
-                    Ok(&RubyObject::Object { .. }) => {
-                        self.error("Defs on RubyObject (TODO)", &[
-                            Detail::Loc("here", singleton.loc()),
-                        ]);
-                    }
                     Ok(metaclass) => {
                         let metaclass = self.env.object.metaclass(metaclass);
                         self.decl_method(metaclass, name, node, MethodVisibility::Public);
@@ -680,30 +686,37 @@ impl<'env, 'object> Eval<'env, 'object> {
                 match self.resolve_cbase(base) {
                     Ok(cbase) => {
                         if let Some(constant_entry) = self.env.object.get_own_const(&cbase, name) {
-                            self.constant_definition_error("Duplicate constant definition", &loc, &constant_entry.loc);
+                            let existing_loc = match *constant_entry {
+                                ConstantEntry::Expression { ref node, .. } => Some(node.loc()),
+                                ConstantEntry::Module { ref loc, .. } => loc.as_ref(),
+                            };
+
+                            self.constant_definition_error("Duplicate constant definition", &loc, existing_loc);
                             return;
                         }
 
-                        let value = match **expr {
-                            Node::Const(..) => self.resolve_cpath(expr),
-                            Node::TyCast(_, _, ref tynode) => {
-                                Ok(self.env.object.new_typed_object(tynode.clone(), self.scope.clone()))
-                            }
+                        let constant = match **expr {
+                            Node::Const(..) => {
+                                self.resolve_cpath(expr).map(|constant| match *constant {
+                                    ConstantEntry::Expression { ref node, ref scope, .. } =>
+                                        ConstantEntry::Expression { node: node.clone(), scope: scope.clone(), loc: loc },
+                                    ConstantEntry::Module { value, .. } =>
+                                        ConstantEntry::Module { value: value, loc: Some(loc) },
+                                })
+                            },
                             // TODO special case things like Struct.new and Class.new here
                             _ => {
-                                let tynode = Rc::new(Node::TyAny(expr.loc().clone()));
-                                Ok(self.env.object.new_typed_object(tynode, self.scope.clone()))
+                                Ok(ConstantEntry::Expression {
+                                    loc: loc,
+                                    node: expr.clone(),
+                                    scope: self.scope.clone(),
+                                })
                             }
                         };
 
-                        match value {
-                            Ok(value) => {
-                                let constant = Rc::new(ConstantEntry {
-                                    loc: Some(loc),
-                                    value: value,
-                                });
-
-                                self.env.object.set_const(&cbase, name, constant);
+                        match constant {
+                            Ok(constant) => {
+                                self.env.object.set_const(&cbase, name, Rc::new(constant));
                             }
                             Err((node, message)) => {
                                 self.warning("Could not statically resolve expression in constant assignment", &[
@@ -731,13 +744,13 @@ impl<'env, 'object> Eval<'env, 'object> {
                 ]);
             }
             Node::TyIvardecl(_, Id(ref ivar_loc, ref ivar), ref type_node) => {
-                if let Some(ivar_decl) = self.env.object.lookup_ivar(&self.scope.module, ivar) {
+                if let Some(ivar_decl) = self.env.object.lookup_ivar(self.scope.module, ivar) {
                     self.error("Duplicate instance variable type declaration", &[
                         Detail::Loc("here", ivar_loc),
                         Detail::Loc("previous declaration was here", &ivar_decl.ivar_loc),
                     ]);
                 } else {
-                    self.env.object.define_ivar(&self.scope.module, ivar.to_owned(), Rc::new(IvarEntry {
+                    self.env.object.define_ivar(self.scope.module, ivar.to_owned(), Rc::new(IvarEntry {
                         ivar_loc: ivar_loc.clone(),
                         type_node: type_node.clone(),
                         scope: self.scope.clone(),

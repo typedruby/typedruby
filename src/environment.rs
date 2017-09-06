@@ -11,7 +11,7 @@ use ast::{parse, SourceFile, Node, Id, Level};
 use config::Config;
 use errors::{ErrorSink, Detail};
 use inflect::Inflector;
-use object::{ObjectGraph, RubyObject, MethodEntry, Scope};
+use object::{ObjectGraph, RubyObject, MethodEntry, Scope, ConstantEntry};
 use top_level;
 use typecheck;
 
@@ -190,7 +190,7 @@ impl<'object> Environment<'object> {
         })
     }
 
-    pub fn autoload(&self, module: &'object RubyObject<'object>, name: &str) -> Option<&'object RubyObject<'object>> {
+    pub fn autoload(&self, module: &'object RubyObject<'object>, name: &str) -> Option<Rc<ConstantEntry<'object>>> {
         if self.config.autoload_paths.is_empty() {
             return None;
         }
@@ -209,7 +209,7 @@ impl<'object> Environment<'object> {
                 // TODO do something with the potential IO error:
                 let _ = self.require(&resolved);
 
-                return self.object.get_const(module, name).map(|ce| ce.value);
+                return self.object.get_const(module, name);
             }
         }
 
@@ -218,7 +218,8 @@ impl<'object> Environment<'object> {
             let resolved = autoload_path.join(&path);
 
             if resolved.is_dir() {
-                return Some(self.object.define_module(None, module, name));
+                let module = self.object.define_module(None, module, name);
+                return Some(Rc::new(ConstantEntry::Module { loc: None, value: module }));
             }
         }
 
@@ -237,28 +238,41 @@ impl<'object> Environment<'object> {
         }
     }
 
-    pub fn resolve_cpath<'node>(&self, node: &'node Node, scope: Rc<Scope<'object>>) -> Result<&'object RubyObject<'object>, (&'node Node, &'static str)> {
+    pub fn resolve_cbase<'node>(&self, node: &'node Node, scope: Rc<Scope<'object>>)
+        -> Result<&'object RubyObject<'object>, (&'node Node, &'static str)>
+    {
         match *node {
-            Node::Cbase(_) =>
-                Ok(Scope::root(&scope).module),
+            Node::Cbase(_) => Ok(Scope::root(&scope).module),
+            Node::Const(..) =>
+                self.resolve_cpath(node, scope)
+                    .and_then(|constant| {
+                        match *constant {
+                            ConstantEntry::Module { value, .. } => Ok(value),
+                            ConstantEntry::Expression { .. } =>
+                                Err((node, "Not a static class/module")),
+                        }}),
+            _ => Err((node, "Not a static constant path")),
+        }
+    }
 
+    pub fn resolve_cpath<'node>(&self, node: &'node Node, scope: Rc<Scope<'object>>)
+        -> Result<Rc<ConstantEntry<'object>>, (&'node Node, &'static str)>
+    {
+        match *node {
             Node::Const(_, Some(ref base), Id(_, ref name)) => {
-                match self.resolve_cpath(base, scope) {
-                    Ok(&RubyObject::Object { .. }) => Err((base, "Not a class or module")),
-                    Ok(&RubyObject::IClass { .. }) => panic!(),
-                    Ok(base_ref) =>
-                        self.object.get_const(base_ref, name)
-                            .map(|ce| Ok(ce.value)).unwrap_or_else(||
-                                self.autoload(base_ref, name).ok_or(
-                                    (node, "No such constant"))),
-                    error => error,
-                }
+                self.resolve_cbase(base, scope)
+                    .and_then(|value|
+                        self.object.get_const(value, name)
+                            .map(Ok)
+                            .unwrap_or_else(||
+                                self.autoload(value, name).ok_or(
+                                    (node, "No such constant"))))
             },
 
             Node::Const(_, None, Id(_, ref name)) => {
                 for scope in Scope::ancestors(&scope) {
                     if let Some(ce) = self.object.get_const(scope.module, name) {
-                        return Ok(ce.value);
+                        return Ok(ce);
                     }
                 }
 
