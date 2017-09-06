@@ -115,21 +115,32 @@ impl Loc {
 pub struct Id(pub Loc, pub String);
 
 #[derive(Debug,Clone)]
-pub struct RubyString {
-    buf : Vec<u8>,
+pub enum RubyString {
+    UTF8(String),
+    Binary(Vec<u8>),
 }
 
 impl RubyString {
-    pub fn bytes(&self) -> &Vec<u8> {
-        return &self.buf
+    pub fn as_bytes(&self) -> &[u8] {
+        match *self {
+            RubyString::UTF8(ref str) => str.as_bytes(),
+            RubyString::Binary(ref vec) => vec.as_slice(),
+        }
     }
 
-    pub fn string(&self) -> Option<String> {
-        return String::from_utf8(self.buf.to_vec()).ok()
+    pub fn string(&self) -> Option<&str> {
+        match *self {
+            RubyString::UTF8(ref str) => Some(str),
+            RubyString::Binary(..) => None,
+        }
     }
 
-    pub fn new(buf: Vec<u8>) -> RubyString {
-        RubyString{buf: buf}
+    pub fn new(buf: &[u8]) -> RubyString {
+        let decoded = String::from_utf8(Vec::from(buf));
+        match decoded {
+            Ok(str) => RubyString::UTF8(str),
+            Err(err) => RubyString::Binary(err.into_bytes()),
+        }
     }
 }
 

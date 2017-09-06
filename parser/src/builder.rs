@@ -30,7 +30,7 @@ fn collapse_string_parts(parts: &[Rc<Node>]) -> bool {
 fn build_static_string(output: &mut Vec<u8>, nodes: &[Rc<Node>]) -> bool {
     for node in nodes {
         match **node {
-            Node::String(_, ref s) => output.append(&mut s.bytes().to_vec()),
+            Node::String(_, ref s) => output.extend_from_slice(s.as_bytes()),
             Node::Begin(_, ref nodes) => {
                 if !build_static_string(output, nodes) {
                     return false;
@@ -86,12 +86,12 @@ impl Dedenter {
         }
     }
 
-    fn dedent(&mut self, bytes: &Vec<u8>) -> RubyString {
+    fn dedent(&mut self, bytes: &[u8]) -> RubyString {
         let mut space_begin = 0;
         let mut space_end = 0;
         let mut offset = 0;
 
-        let mut result_bytes = bytes.to_vec();
+        let mut result_bytes = Vec::from(bytes);
 
         let mut index = 0;
         while index < bytes.len() {
@@ -129,7 +129,7 @@ impl Dedenter {
             result_bytes.drain(space_begin..space_end);
         }
 
-        RubyString::new(result_bytes)
+        RubyString::new(result_bytes.as_slice())
     }
 
     fn interrupt(&mut self) {
@@ -139,7 +139,7 @@ impl Dedenter {
     fn dedent_parts(parts: &[Rc<Node>], mut dedenter: Dedenter) -> Vec<Rc<Node>> {
         parts.iter().map(|part| {
             match **part {
-                Node::String(ref loc, ref val) => Rc::new(Node::String(loc.clone(), dedenter.dedent(val.bytes()))),
+                Node::String(ref loc, ref val) => Rc::new(Node::String(loc.clone(), dedenter.dedent(val.as_bytes()))),
                 _ => { dedenter.interrupt(); part.clone() },
             }
         }).collect()
@@ -189,7 +189,7 @@ macro_rules! tok_split {
     ($self:expr, $tok:expr) => ({
         let tok = $tok.unwrap();
         let loc = tok.location($self.current_file());
-        let s = RubyString::new(tok.bytes());
+        let s = RubyString::new(tok.bytes().as_slice());
         (loc, s)
     })
 }
@@ -197,7 +197,7 @@ macro_rules! tok_split {
 macro_rules! tok_id {
     ($self:expr, $tok:expr) => ({
         let (loc, name) = tok_split!($self, $tok);
-        Id(loc, name.string().unwrap())
+        Id(loc, String::from(name.string().unwrap()))
     })
 }
 
@@ -366,7 +366,7 @@ impl<'a> Builder<'a> {
 
     pub fn arg(&self, name: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, name);
-        Node::Arg(loc, id.string().unwrap())
+        Node::Arg(loc, String::from(id.string().unwrap()))
     }
 
     pub fn args(&mut self, begin: Option<Token>, args: Vec<Rc<Node>>, end: Option<Token>, check_args: bool) -> Option<Node> {
@@ -456,7 +456,7 @@ impl<'a> Builder<'a> {
     pub fn attr_asgn(&self, receiver: Option<Rc<Node>>, dot: Option<Token>, selector: Option<Token>) -> Node {
         let recv = receiver.unwrap();
         let (sel_loc, sel_name) = tok_split!(self, selector);
-        let selector = Id(sel_loc, sel_name.string().unwrap() + "=");
+        let selector = Id(sel_loc, String::from(sel_name.string().unwrap()) + "=");
         let loc = recv.loc().join(&selector.0);
 
         // this builds an incomplete AST node:
@@ -468,7 +468,7 @@ impl<'a> Builder<'a> {
 
     pub fn back_ref(&self, tok: Option<Token>) -> Node {
         let (loc, name) = tok_split!(self, tok);
-        Node::Backref(loc, name.string().unwrap())
+        Node::Backref(loc, String::from(name.string().unwrap()))
     }
 
     pub fn begin(&self, begin: Option<Token>, body: Option<Rc<Node>>, end: Option<Token>) -> Rc<Node> {
@@ -695,7 +695,7 @@ impl<'a> Builder<'a> {
 
     pub fn complex(&self, tok: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::Complex(loc, id.string().unwrap())
+        Node::Complex(loc, String::from(id.string().unwrap()))
     }
 
     pub fn compstmt(&self, mut nodes: Vec<Rc<Node>>) -> Option<Rc<Node>> {
@@ -764,7 +764,7 @@ impl<'a> Builder<'a> {
 
     pub fn cvar(&self, tok: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::Cvar(loc, id.string().unwrap())
+        Node::Cvar(loc, String::from(id.string().unwrap()))
     }
 
     pub fn dedent_string(&self, node: Option<Rc<Node>>, dedent_level: usize) -> Rc<Node> {
@@ -773,7 +773,7 @@ impl<'a> Builder<'a> {
             let mut dedenter = Dedenter::new(dedent_level);
             match *node {
                 Node::String(ref loc, ref val) =>
-                    Rc::new(Node::String(loc.clone(), dedenter.dedent(val.bytes()))),
+                    Rc::new(Node::String(loc.clone(), dedenter.dedent(val.as_bytes()))),
                 Node::DString(ref loc, ref parts) =>
                     Rc::new(Node::DString(loc.clone(), Dedenter::dedent_parts(parts, dedenter))),
                 Node::XString(ref loc, ref parts) =>
@@ -848,7 +848,7 @@ impl<'a> Builder<'a> {
         if self.magic_literals {
             let loc = loc!(self, tok);
             let filename = loc.file.filename().to_str().unwrap();
-            Node::String(loc.clone(), RubyString::new(filename.as_bytes().to_vec()))
+            Node::String(loc.clone(), RubyString::new(filename.as_bytes()))
         } else {
             Node::FileLiteral(loc!(self, tok))
         }
@@ -856,12 +856,12 @@ impl<'a> Builder<'a> {
 
     pub fn float_(&self, tok: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::Float(loc, id.string().unwrap())
+        Node::Float(loc, String::from(id.string().unwrap()))
     }
 
     pub fn float_complex(&self, tok: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::Complex(loc, id.string().unwrap())
+        Node::Complex(loc, String::from(id.string().unwrap()))
     }
 
     pub fn for_(&self, for_: Option<Token>, iterator: Option<Rc<Node>>, _in: Option<Token>, iteratee: Option<Rc<Node>>, _do: Option<Token>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
@@ -872,12 +872,12 @@ impl<'a> Builder<'a> {
 
     pub fn gvar(&self, tok: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::Gvar(loc, id.string().unwrap())
+        Node::Gvar(loc, String::from(id.string().unwrap()))
     }
 
     pub fn ident(&self, tok: Option<Token>) -> Node {
         let (tok, id) = tok_split!(self, tok);
-        Node::Ident(tok, id.string().unwrap())
+        Node::Ident(tok, String::from(id.string().unwrap()))
     }
 
     pub fn index(&self, recv: Option<Rc<Node>>, lbrack: Option<Token>, indexes: Vec<Rc<Node>>, rbrack: Option<Token>) -> Node {
@@ -894,12 +894,12 @@ impl<'a> Builder<'a> {
 
     pub fn integer(&self, tok: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::Integer(loc, id.string().unwrap())
+        Node::Integer(loc, String::from(id.string().unwrap()))
     }
 
     pub fn ivar(&self, tok: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::Ivar(loc, id.string().unwrap())
+        Node::Ivar(loc, String::from(id.string().unwrap()))
     }
 
     pub fn keyword_break(&self, keyword: Option<Token>, lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
@@ -971,7 +971,7 @@ impl<'a> Builder<'a> {
 
     pub fn kwarg(&self, name: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, name);
-        Node::Kwarg(loc, id.string().unwrap())
+        Node::Kwarg(loc, String::from(id.string().unwrap()))
     }
 
     pub fn kwoptarg(&self, name: Option<Token>, value: Option<Rc<Node>>) -> Node {
@@ -1162,7 +1162,7 @@ impl<'a> Builder<'a> {
     pub fn pair_keyword(&self, key: Option<Token>, value: Option<Rc<Node>>) -> Node {
         let value = value.unwrap();
         let (loc, id) = tok_split!(self, key);
-        let sym = Node::Symbol(loc, id.string().unwrap());
+        let sym = Node::Symbol(loc, String::from(id.string().unwrap()));
         Node::Pair(sym.loc().join(value.loc()), Rc::new(sym), value)
     }
 
@@ -1212,12 +1212,12 @@ impl<'a> Builder<'a> {
 
     pub fn rational(&self, tok: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::Rational(loc, id.string().unwrap())
+        Node::Rational(loc, String::from(id.string().unwrap()))
     }
 
     pub fn rational_complex(&self, tok: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::Complex(loc, id.string().unwrap())
+        Node::Complex(loc, String::from(id.string().unwrap()))
     }
 
     pub fn regexp_compose(&mut self, begin: Option<Token>, parts: Vec<Rc<Node>>, end: Option<Token>, options: Option<Rc<Node>>) -> Node {
@@ -1272,7 +1272,7 @@ impl<'a> Builder<'a> {
 
     pub fn shadowarg(&self, name: Option<Token>) -> Node {
         let (loc, name) = tok_split!(self, name);
-        Node::ShadowArg(loc.clone(), Id(loc.clone(), name.string().unwrap()))
+        Node::ShadowArg(loc.clone(), Id(loc.clone(), String::from(name.string().unwrap())))
     }
 
     pub fn splat(&self, star: Option<Token>, arg: Option<Rc<Node>>) -> Node {
@@ -1284,7 +1284,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn string(&self, string_: Option<Token>) -> Node {
-        Node::String(loc!(self, string_), RubyString::new(string_.unwrap().bytes()))
+        Node::String(loc!(self, string_), RubyString::new(string_.unwrap().bytes().as_slice()))
     }
 
     pub fn string_compose(&self, begin: Option<Token>, parts: Vec<Rc<Node>>, end: Option<Token>) -> Node {
@@ -1310,7 +1310,7 @@ impl<'a> Builder<'a> {
 
     pub fn symbol(&self, symbol: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, symbol);
-        Node::Symbol(loc, id.string().unwrap())
+        Node::Symbol(loc, String::from(id.string().unwrap()))
     }
 
     pub fn symbol_compose(&self, begin: Option<Token>, parts: Vec<Rc<Node>>, end: Option<Token>) -> Node {
@@ -1321,7 +1321,7 @@ impl<'a> Builder<'a> {
                 Node::Symbol(ref loc, ref val) =>
                     Node::Symbol(loc.clone(), val.clone()),
                 Node::String(ref loc, ref val) =>
-                    Node::Symbol(loc.clone(), val.string().unwrap()),
+                    Node::Symbol(loc.clone(), String::from(val.string().unwrap())),
                 _ => Node::DSymbol(loc, vec![parts[0].clone()]),
             }
         } else {
@@ -1331,14 +1331,14 @@ impl<'a> Builder<'a> {
 
     pub fn symbol_internal(&self, symbol: Option<Token>) -> Node {
         let (loc, id) = tok_split!(self, symbol);
-        Node::Symbol(loc, id.string().unwrap())
+        Node::Symbol(loc, String::from(id.string().unwrap()))
     }
 
     pub fn symbols_compose(&self, begin: Option<Token>, parts: Vec<Rc<Node>>, end: Option<Token>) -> Node {
         let parts = parts.iter().map(|part| {
             match **part {
                 Node::String(ref loc, ref val) =>
-                    Rc::new(Node::Symbol(loc.clone(), val.string().unwrap())),
+                    Rc::new(Node::Symbol(loc.clone(), String::from(val.string().unwrap()))),
 
                 Node::DString(ref loc, ref parts) =>
                     Rc::new(Node::DSymbol(loc.clone(), parts.clone())),
@@ -1410,7 +1410,7 @@ impl<'a> Builder<'a> {
 
     pub fn tr_gendeclarg(&self, tok: Option<Token>, constraint: Option<Rc<Node>>) -> Node {
         let (loc, id) = tok_split!(self, tok);
-        Node::TyGendeclarg(loc, id.string().unwrap(), constraint)
+        Node::TyGendeclarg(loc, String::from(id.string().unwrap()), constraint)
     }
 
     pub fn tr_geninst(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
