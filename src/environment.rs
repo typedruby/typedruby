@@ -39,10 +39,10 @@ pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<Box<ErrorSink>>,
     pub config: Config,
+    pub inflector: Inflector,
     phase: Cell<Phase>,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
-    inflector: Inflector,
 }
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
@@ -235,6 +235,27 @@ impl<'object> Environment<'object> {
         while let Some(method) = self.method_queue.borrow_mut().pop_front() {
             typecheck::check(self, method);
         }
+    }
+
+    pub fn resolve_module_root<'s>(&'s self, filename: &Path) -> Option<&'s Path> {
+        fn path_prefix_len(path: &Path, prefix: &Path) -> usize {
+            path.components()
+                .zip(prefix.components())
+                .take_while(|&(a, b)| a == b)
+                .count()
+        }
+
+        let mut best_match: Option<&'s Path> = None;
+        let mut best_len = 0;
+
+        for path in &self.config.autoload_paths {
+            let len = path_prefix_len(path, filename);
+            if len > best_len {
+                best_len = len;
+                best_match = Some(&path);
+            }
+        }
+        best_match
     }
 
     pub fn resolve_cpath<'node>(&self, node: &'node Node, scope: Rc<Scope<'object>>) -> Result<&'object RubyObject<'object>, (&'node Node, &'static str)> {

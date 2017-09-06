@@ -7,7 +7,6 @@ extern crate typed_arena;
 extern crate termcolor;
 
 use std::path::PathBuf;
-use std::fs;
 use clap::{App, Arg};
 use typed_arena::Arena;
 use termcolor::{ColorChoice, StandardStream};
@@ -25,10 +24,10 @@ mod typecheck;
 mod util;
 
 use environment::Environment;
-use errors::ErrorReporter;
+use errors::{ErrorReporter, ErrorSink};
 use config::Config;
 
-fn config() -> (Config, Vec<PathBuf>) {
+fn config(report: &mut ErrorSink) -> (Config, Vec<PathBuf>) {
     let mut config = Config::new();
     let mut files = Vec::new();
 
@@ -70,23 +69,36 @@ fn config() -> (Config, Vec<PathBuf>) {
             .help("Source files to type check"))
         .get_matches();
 
-    if let Some(load_paths) = matches.values_of("load-path") {
-        config.require_paths.extend(load_paths.map(PathBuf::from));
+    fn pathcheck(report: &mut ErrorSink, ptype: &str, paths: clap::Values) -> Vec<PathBuf> {
+        paths.filter_map(|path| {
+            let path = PathBuf::from(path);
+            match path.canonicalize() {
+                Ok(p) => Some(p),
+                Err(err) => {
+                    report.warning(
+                        &format!("missing {} path: '{}' ({})", ptype, path.display(), err),
+                        &vec![]
+                    );
+                    None
+                }
+            }
+        }).collect()
+    }
+
+    if let Some(require_paths) = matches.values_of("load-path") {
+        config.require_paths.extend(pathcheck(report, "require", require_paths));
     }
 
     if let Some(autoload_paths) = matches.values_of("autoload-path") {
-        config.autoload_paths.extend(autoload_paths.map(PathBuf::from));
+        config.autoload_paths.extend(pathcheck(report, "autoload", autoload_paths));
+    }
+
+    if let Some(ignore_errors_in) = matches.values_of("ignore-errors-in") {
+        config.ignore_errors_in.extend(pathcheck(report, "ignore", ignore_errors_in));
     }
 
     if let Some(acronyms) = matches.values_of("inflect-acronym") {
         config.inflect_acronyms.extend(acronyms.map(String::from));
-    }
-
-    if let Some(ignore_errors_in) = matches.values_of("ignore-errors-in") {
-        config.ignore_errors_in.extend(ignore_errors_in
-            .map(PathBuf::from)
-            .map(fs::canonicalize)
-            .filter_map(Result::ok));
     }
 
     config.warning = matches.is_present("warning");
@@ -99,8 +111,9 @@ fn config() -> (Config, Vec<PathBuf>) {
 }
 
 fn main() {
-    let (config, files) = config();
-    let errors = ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto));
+    let mut errors = ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto));
+
+    let (config, files) = config(&mut errors);
     let arena = Arena::new();
     let env = Environment::new(&arena, Box::new(errors), config);
 

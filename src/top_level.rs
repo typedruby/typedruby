@@ -3,6 +3,7 @@ use environment::Environment;
 use errors::Detail;
 use object::{RubyObject, Scope, MethodEntry, MethodVisibility, MethodImpl, IvarEntry, ConstantEntry};
 use std::rc::Rc;
+use std::path::{Path, PathBuf};
 use std::cell::Cell;
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
@@ -78,6 +79,37 @@ impl<'env, 'object> Eval<'env, 'object> {
     fn warning(&self, message: &str, details: &[Detail]) {
         if self.emit_errors() {
             self.env.error_sink.borrow_mut().warning(message, details)
+        }
+    }
+
+    fn check_constant_path(&self, path: &str, loc: &Loc) {
+        if self.source_type != SourceType::TypedRuby {
+            return
+        }
+
+        let fname = self.source_file.filename();
+        let root = self.env.resolve_module_root(fname);
+        if let Some(root) = root {
+            let inflected = self.env.inflector.underscore(path);
+            let mut expected = root.join(&inflected);
+
+            loop {
+                expected.set_extension("rb");
+                if fname == expected {
+                    break
+                }
+
+                if !expected.pop() || !expected.starts_with(root) {
+                    let msg = &format!("expected to be found at '{}.rb'",
+                                        root.join(&inflected).display());
+                    self.error("constant defined outside of expected path",
+                               &[Detail::Loc("here", loc), Detail::Message(msg)]);
+                    break
+                }
+            }
+        } else {
+            self.error("constant defined outside of autoload path",
+                &[Detail::Loc("here", loc)]);
         }
     }
 
@@ -234,10 +266,11 @@ impl<'env, 'object> Eval<'env, 'object> {
                             superclass.type_parameters().to_vec()
                         };
 
-                    let class = self.env.object.new_class(
-                        self.env.object.constant_path(&base, id),
-                        superclass, type_parameters);
 
+                    let path = self.env.object.constant_path(&base, id);
+                    self.check_constant_path(&path, name.loc());
+
+                    let class = self.env.object.new_class(path, superclass, type_parameters);
                     let constant = Rc::new(ConstantEntry {
                         loc: Some(name.loc().clone()),
                         value: class,
@@ -277,9 +310,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                         value@&RubyObject::Module { .. } => value,
                     }
                 } else {
-                    let module = self.env.object.new_module(
-                        self.env.object.constant_path(&base, id));
+                    let path = self.env.object.constant_path(&base, id);
+                    self.check_constant_path(&path, name.loc());
 
+                    let module = self.env.object.new_module(path);
                     let constant = Rc::new(ConstantEntry {
                         loc: Some(name.loc().clone()),
                         value: module,
@@ -679,6 +713,9 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                 match self.resolve_cbase(base) {
                     Ok(cbase) => {
+                        let path = self.env.object.constant_path(&cbase, name);
+                        self.check_constant_path(&path, &loc);
+
                         if let Some(constant_entry) = self.env.object.get_own_const(&cbase, name) {
                             self.constant_definition_error("Duplicate constant definition", &loc, &constant_entry.loc);
                             return;
