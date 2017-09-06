@@ -43,7 +43,7 @@ pub fn sexp_node_new<'a, 'b>(fmt: &'a mut SexpFormatter<'b>, name: &str) -> Sexp
     }
 }
 
-fn escape_rb(f: &mut SexpFormatter, s: &String) -> fmt::Result {
+fn escape_rb(f: &mut SexpFormatter, s: &str) -> fmt::Result {
     f.buf.write_char('"')?;
     let mut from = 0;
     for (i, c) in s.char_indices() {
@@ -81,7 +81,7 @@ impl<'a, 'b: 'a> SexpNode<'a, 'b> {
         self.result = self.result.and_then(|_| {
             if self.fmt.print_str {
                 self.fmt.buf.write_char(' ')?;
-                escape_rb(self.fmt, &value.string().unwrap())
+                escape_rb(self.fmt, value.string().unwrap())
             } else {
                 write!(self.fmt, " [STRING]")
             }
@@ -170,7 +170,7 @@ impl Sexp for String {
             write!(w, " :{}", self)
         } else {
             write!(w, " :")?;
-            escape_rb(w, self)
+            escape_rb(w, self.as_str())
         }
     }
 }
