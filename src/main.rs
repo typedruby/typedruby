@@ -112,5 +112,7 @@ fn main() {
         }
     }
 
+    env.define();
+
     env.typecheck();
 }

@@ -255,8 +255,19 @@ impl<'object> Environment<'object> {
         None
     }
 
-    pub fn enqueue_method_for_type_check(&self, method: Rc<MethodEntry<'object>>) {
-        self.method_queue.borrow_mut().push_back(method);
+    pub fn define(&self) {
+        self.phase.set(Phase::Define);
+
+        let methods = {
+            let mut errors = self.error_sink.borrow_mut();
+            self.defs.define(&self.object, errors.as_mut())
+        };
+
+        let mut method_queue = self.method_queue.borrow_mut();
+
+        for method in methods {
+            method_queue.push_back(method);
+        }
     }
 
     pub fn typecheck(&self) {
