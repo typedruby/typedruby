@@ -68,11 +68,11 @@ impl<'object> Definitions<'object> {
         }
     }
 
-    pub fn define_method(&self, method: MethodDef<'object>) {
+    pub fn add_method(&self, method: MethodDef<'object>) {
         self.methods.borrow_mut().push(method);
     }
 
-    pub fn define_ivar(&self, ivar: IvarDef<'object>) {
+    pub fn add_ivar(&self, ivar: IvarDef<'object>) {
         self.ivars.borrow_mut().push(ivar);
     }
 }

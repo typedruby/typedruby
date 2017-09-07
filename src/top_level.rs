@@ -341,7 +341,7 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>, visi: MethodVisibility) {
-        self.defs.define_method(MethodDef::Def {
+        self.defs.add_method(MethodDef::Def {
             module: target,
             visi: visi,
             name: name.to_owned(),
@@ -373,7 +373,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         let to_name = self.symbol_name(to, "in alias");
 
         if let (Some(from), Some(to)) = (from_name, to_name) {
-            self.defs.define_method(MethodDef::Alias {
+            self.defs.add_method(MethodDef::Alias {
                 module: klass,
                 from: from,
                 to: to,
@@ -414,7 +414,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         for arg in args {
             if let Some(sym) = self.symbol_name(arg, "in attribute name") {
                 if attr_type.reader() {
-                    self.defs.define_method(MethodDef::AttrReader {
+                    self.defs.add_method(MethodDef::AttrReader {
                         module: class,
                         visi: self.def_visibility.get(),
                         name: sym.clone(),
@@ -422,7 +422,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 }
 
                 if attr_type.writer() {
-                    self.defs.define_method(MethodDef::AttrWriter {
+                    self.defs.add_method(MethodDef::AttrWriter {
                         module: class,
                         visi: self.def_visibility.get(),
                         name: sym.clone(),
@@ -453,7 +453,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         } else {
             for arg in args {
                 if let Some(mid) = self.symbol_name(arg, "in method name") {
-                    self.defs.define_method(MethodDef::ModuleFunc {
+                    self.defs.add_method(MethodDef::ModuleFunc {
                         module: self.scope.module,
                         name: mid,
                     });
@@ -479,7 +479,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         } else {
             for arg in args {
                 if let Some(mid) = self.symbol_name(arg, "in method name") {
-                    self.defs.define_method(MethodDef::SetVisi {
+                    self.defs.add_method(MethodDef::SetVisi {
                         module: self.scope.module,
                         visi: visi,
                         name: mid,
@@ -783,7 +783,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 ]);
             }
             Node::TyIvardecl(_, ref ivar, ref type_node) => {
-                self.defs.define_ivar(IvarDef {
+                self.defs.add_ivar(IvarDef {
                     module: self.scope.module,
                     name: ivar.to_owned(),
                     type_node: type_node.clone(),
