@@ -38,11 +38,35 @@ impl Phase {
     }
 }
 
+struct PhaseCell(Cell<Phase>);
+
+impl PhaseCell {
+    pub fn new(phase: Phase) -> Self {
+        PhaseCell(Cell::new(phase))
+    }
+
+    pub fn get(&self) -> Phase {
+        self.0.get()
+    }
+
+    pub fn set(&self, phase: Phase) {
+        let current = self.0.get();
+
+        match (current, phase) {
+            (Phase::Load, Phase::Define) |
+            (Phase::Define, Phase::TypeCheck) => {
+                self.0.set(phase)
+            }
+            _ => panic!("invalid phase transition! {:?} -> {:?}", current, phase)
+        }
+    }
+}
+
 pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<Box<ErrorSink>>,
     pub config: Config,
-    phase: Cell<Phase>,
+    phase: PhaseCell,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
     inflector: Inflector,
@@ -59,7 +83,7 @@ impl<'object> Environment<'object> {
             error_sink: RefCell::new(error_sink),
             object: ObjectGraph::new(&arena),
             config: config,
-            phase: Cell::new(Phase::Load),
+            phase: PhaseCell::new(Phase::Load),
             loaded_features: RefCell::new(HashMap::new()),
             method_queue: RefCell::new(VecDeque::new()),
             inflector: inflector,
