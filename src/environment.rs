@@ -66,11 +66,11 @@ pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<Box<ErrorSink>>,
     pub config: Config,
+    pub defs: Definitions<'object>,
     phase: PhaseCell,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
     inflector: Inflector,
-    defs: Rc<Definitions<'object>>,
 }
 
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
@@ -87,7 +87,7 @@ impl<'object> Environment<'object> {
             loaded_features: RefCell::new(HashMap::new()),
             method_queue: RefCell::new(VecDeque::new()),
             inflector: inflector,
-            defs: Rc::new(Definitions::new()),
+            defs: Definitions::new(),
         };
 
         let source_file = SourceFile::new(PathBuf::from("(builtin stdlib)"), STDLIB_DEFINITIONS.to_owned());
@@ -140,7 +140,7 @@ impl<'object> Environment<'object> {
         }
 
         if let Some(ref node) = ast.node {
-            top_level::evaluate(self, node.clone(), self.defs.clone());
+            top_level::evaluate(self, node.clone());
         }
     }
 

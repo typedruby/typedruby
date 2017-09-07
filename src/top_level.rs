@@ -16,7 +16,7 @@ struct Eval<'env, 'object: 'env> {
     in_def: bool,
     def_visibility: Cell<MethodVisibility>,
     module_function: Cell<bool>,
-    defs: Rc<Definitions<'object>>,
+    defs: &'env Definitions<'object>,
 }
 
 #[derive(Copy,Clone,Eq,PartialEq)]
@@ -60,7 +60,6 @@ impl<'env, 'object> Eval<'env, 'object> {
         source_file: Rc<SourceFile>,
         source_type: SourceType,
         in_def: bool,
-        defs: Rc<Definitions<'object>>
     ) -> Eval<'env, 'object> {
         Eval {
             env: env,
@@ -70,7 +69,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             in_def: in_def,
             def_visibility: Cell::new(MethodVisibility::Public),
             module_function: Cell::new(false),
-            defs: defs,
+            defs: &env.defs,
         }
     }
 
@@ -136,7 +135,6 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.source_file.clone(),
                 self.source_type,
                 self.in_def,
-                self.defs.clone(),
             );
 
             eval.eval_node(node)
@@ -151,7 +149,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.source_file.clone(),
                 self.source_type,
                 true,
-                self.defs.clone());
+            );
 
             eval.eval_node(node)
         }
@@ -1042,12 +1040,12 @@ fn source_type_for_file(source_file: &SourceFile) -> SourceType {
     }
 }
 
-pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>, defs: Rc<Definitions<'object>>) {
+pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>) {
     let scope = Rc::new(Scope { parent: None, module: env.object.Object });
 
     let source_file = node.loc().file.clone();
 
     let source_type = source_type_for_file(&source_file);
 
-    Eval::new(env, scope, source_file, source_type, false, defs).eval_node(&node);
+    Eval::new(env, scope, source_file, source_type, false).eval_node(&node);
 }
