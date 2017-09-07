@@ -597,11 +597,11 @@ pub enum MethodImpl<'object> {
     },
     AttrReader {
         ivar: String,
-        node: Rc<Node>,
+        loc: Loc,
     },
     AttrWriter {
         ivar: String,
-        node: Rc<Node>,
+        loc: Loc,
     },
     Untyped,
     IntrinsicClassNew,
