@@ -521,21 +521,28 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
         };
 
-        let path = match require_type {
-            RequireType::LoadPath => self.env.search_require_path(string),
-            RequireType::Relative => self.env.search_relative_path(string, &args[0].loc().file),
-        };
+        if let Some(pathstr) = string.string() {
+            let path = match require_type {
+                RequireType::LoadPath => self.env.search_require_path(&pathstr),
+                RequireType::Relative => self.env.search_relative_path(&pathstr, &args[0].loc().file),
+            };
 
-        if let Some(path) = path {
-            match self.env.require(&path) {
-                Ok(()) => {}
-                Err(e) => panic!("TODO: implement error handling for require errors: {:?}", e),
+            if let Some(path) = path {
+                match self.env.require(&path) {
+                    Ok(()) => {}
+                    Err(e) => panic!("TODO: implement error handling for require errors: {:?}", e),
+                }
+            } else {
+                self.warning("Could not resolve require", &[
+                    Detail::Loc("here", loc),
+                ]);
             }
         } else {
-            self.warning("Could not resolve require", &[
-                Detail::Loc("here", loc),
+            self.error("Invalid UTF-8 in require path", &[
+                Detail::Loc("here", args[0].loc()),
             ]);
-        }
+            return
+        };
     }
 
     fn process_alias_method(&self, id: &Id, args: &[Rc<Node>]) {

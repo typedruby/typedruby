@@ -114,6 +114,36 @@ impl Loc {
 #[derive(Debug,Clone)]
 pub struct Id(pub Loc, pub String);
 
+#[derive(Debug,Clone)]
+pub enum RubyString {
+    UTF8(String),
+    Binary(Vec<u8>),
+}
+
+impl RubyString {
+    pub fn as_bytes(&self) -> &[u8] {
+        match *self {
+            RubyString::UTF8(ref str) => str.as_bytes(),
+            RubyString::Binary(ref vec) => vec.as_slice(),
+        }
+    }
+
+    pub fn string(&self) -> Option<&str> {
+        match *self {
+            RubyString::UTF8(ref str) => Some(str),
+            RubyString::Binary(..) => None,
+        }
+    }
+
+    pub fn new(buf: &[u8]) -> RubyString {
+        let decoded = String::from_utf8(Vec::from(buf));
+        match decoded {
+            Ok(str) => RubyString::UTF8(str),
+            Err(err) => RubyString::Binary(err.into_bytes()),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Node {
     Alias           (Loc,   Rc<Node>, Rc<Node>),
@@ -205,7 +235,7 @@ pub enum Node {
     Send            (Loc,   Option<Rc<Node>>, Id, Vec<Rc<Node>>),
     ShadowArg       (Loc,   Id),
     Splat           (Loc,   Option<Rc<Node>>),
-    String          (Loc,   String),
+    String          (Loc,   RubyString),
     Super           (Loc,   Vec<Rc<Node>>),
     Symbol          (Loc,   String),
     True            (Loc),
