@@ -375,32 +375,9 @@ impl<'env, 'object> Eval<'env, 'object> {
                 module: klass,
                 from: from,
                 to: to,
+                emit_error: self.emit_errors(),
             });
         }
-
-        // panic!("TODO port this logic over");
-
-        // if let Some(method) = from_name.and_then(|name| self.env.object.lookup_method(klass, name)) {
-        //     if let Some(name) = to_name {
-        //         self.env.object.define_method(klass, name.to_owned(), method.clone());
-        //     }
-        // } else {
-        //     if let Some(name) = from_name {
-        //         // no need to check None case, symbol_name would have already emitted an error
-        //         self.error("Could not resolve source method in alias", &[
-        //             Detail::Loc(&format!("{}#{}", klass.name(), name), from.loc()),
-        //         ]);
-        //     }
-
-        //     if let Some(name) = to_name {
-        //         // define alias target as untyped so that uses of it don't produce even more errors:
-        //         self.env.object.define_method(klass, name.to_owned(), Rc::new(MethodEntry {
-        //             owner: klass,
-        //             visibility: self.def_visibility.clone(),
-        //             implementation: Rc::new(MethodImpl::Untyped),
-        //         }));
-        //     }
-        // }
     }
 
     fn process_attr(&self, attr_type: AttrType, args: &[Rc<Node>]) {
@@ -430,20 +407,6 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
-    // TODO - move logic over:
-
-    // fn lookup_method_for_visi(&self, mid: &str) -> Option<Rc<MethodEntry<'object>>> {
-    //     if let Some(me) = self.env.object.lookup_method(self.scope.module, mid) {
-    //         return Some(me);
-    //     }
-
-    //     if let RubyObject::Module { .. } = *self.scope.module {
-    //         self.env.object.lookup_method(self.env.object.Object, mid)
-    //     } else {
-    //         None
-    //     }
-    // }
-
     fn process_module_function(&self, args: &[Rc<Node>]) {
         if args.is_empty() {
             self.def_visibility.set(MethodVisibility::Private);
@@ -454,18 +417,8 @@ impl<'env, 'object> Eval<'env, 'object> {
                     self.defs.add_method(MethodDef::ModuleFunc {
                         module: self.scope.module,
                         name: mid,
+                        emit_error: self.emit_errors(),
                     });
-
-                    // panic!("TODO - move this logic over");
-
-                    // if let Some(method) = self.lookup_method_for_visi(mid) {
-                    //     let target = self.env.object.metaclass(self.scope.module);
-                    //     self.env.object.define_method(target, mid.to_owned(), method.clone())
-                    // } else {
-                    //     self.error("Could not resolve method in module_function", &[
-                    //         Detail::Loc(&format!("{}#{}", self.scope.module.name(), mid), arg.loc()),
-                    //     ]);
-                    // }
                 }
             }
         }
@@ -481,21 +434,8 @@ impl<'env, 'object> Eval<'env, 'object> {
                         module: self.scope.module,
                         visi: visi,
                         name: mid,
+                        emit_error: self.emit_errors(),
                     });
-
-                    // TODO - move logic over:
-
-                    // if let Some(method) = self.lookup_method_for_visi(mid) {
-                    //     if self_ == method.owner {
-                    //         method.visibility.set(visi);
-                    //     } else {
-                    //         self.env.object.define_method(self_, mid.to_owned(), Rc::new(MethodEntry {
-                    //             owner: self_,
-                    //             visibility: Cell::new(visi),
-                    //             implementation: method.implementation.clone(),
-                    //         }));
-                    //     }
-                    // }
                 }
             }
         }
@@ -787,21 +727,6 @@ impl<'env, 'object> Eval<'env, 'object> {
                     type_node: type_node.clone(),
                     scope: self.scope.clone(),
                 });
-
-                // TODO - move logic over:
-
-                // if let Some(ivar_decl) = self.env.object.lookup_ivar(self.scope.module, ivar) {
-                //     self.error("Duplicate instance variable type declaration", &[
-                //         Detail::Loc("here", ivar_loc),
-                //         Detail::Loc("previous declaration was here", &ivar_decl.ivar_loc),
-                //     ]);
-                // } else {
-                //     self.env.object.define_ivar(self.scope.module, ivar.to_owned(), Rc::new(IvarEntry {
-                //         ivar_loc: ivar_loc.clone(),
-                //         type_node: type_node.clone(),
-                //         scope: self.scope.clone(),
-                //     }));
-                // }
             }
             Node::Block(_, ref send_node, ref block_args, ref block_body) => {
                 self.eval_node(send_node);
