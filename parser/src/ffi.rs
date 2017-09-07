@@ -140,6 +140,16 @@ impl Token {
             String::from(str::from_utf8_unchecked(slice::from_raw_parts(string, string_length)))
         }
     }
+
+    pub fn bytes(&self) -> Vec<u8> {
+        unsafe {
+            let mut string: *const u8 = ptr::null();
+            let mut bytes: Vec<u8> = Vec::new();
+            let string_length = rbtoken_get_string(self.token, &mut string);
+            bytes.extend_from_slice(slice::from_raw_parts(string, string_length));
+            bytes
+        }
+    }
 }
 
 pub struct Driver {
@@ -252,4 +262,3 @@ impl Driver {
         vec
     }
 }
-
