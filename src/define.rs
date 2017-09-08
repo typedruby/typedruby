@@ -1,10 +1,10 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
-use ast::{Id, Node};
+use ast::{Id, Node, Loc};
 use errors::Detail;
 use environment::Environment;
-use object::{RubyObject, Scope, MethodEntry, MethodImpl, MethodStub, ObjectGraph, IvarEntry};
+use object::{RubyObject, Scope, MethodEntry, MethodImpl, ObjectGraph, IvarEntry};
 use abstract_type::{TypeNode, TypeScope, Prototype, AnnotationStatus};
 
 #[derive(Copy,Clone,Debug)]
@@ -121,22 +121,32 @@ fn lookup_visi<'o>(module: &'o RubyObject<'o>, name: &str, object: &ObjectGraph<
     })
 }
 
+fn stub_location(method: &MethodEntry) -> Option<Loc> {
+    let proto = match *method.implementation {
+        MethodImpl::TypedRuby{ref proto, ..} |
+        MethodImpl::Ruby{ref proto, ..} => proto,
+        _ => return None
+    };
+    if proto.is_stub {
+        Some(proto.loc.clone())
+    } else {
+        None
+    }
+}
+
 fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
     -> Option<Rc<MethodEntry<'o>>>
 {
     match method {
         MethodDef::Def { module, visi, name: Id(name_loc, name), node, scope } => {
             if let Some(ref meth) = env.object.lookup_method(module, &name) {
-                match *meth.implementation {
-                    MethodImpl::Stub => {
-                        env.error_sink.borrow_mut().error(
-                            "Can't redefine a method that was defined as a stub.", &[
+                if let Some(ref loc) = stub_location(meth) {
+                    env.error_sink.borrow_mut().error(
+                        "Can't redefine a method that was defined as a stub.", &[
                             Detail::Loc("re-defined here", &node.loc()),
-                            Detail::Loc("stub defined here", &meth.stub.borrow().as_ref().as_ref().unwrap().node.loc()),
+                            Detail::Loc("stub defined here", &loc),
                         ]);
-                        return None;
-                    }
-                    _ => (),
+                    return None;
                 }
             }
 
@@ -174,30 +184,76 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                 owner: module,
                 visibility: Cell::new(visi),
                 implementation: Rc::new(impl_),
-                stub: RefCell::new(Rc::new(None)),
             });
 
             env.object.define_method(module, name, method.clone());
 
             return Some(method);
         }
-        MethodDef::Prototype { module, visi, name: Id(_, name), node, scope } => {
-            let stub = MethodStub {
-                node: node.clone(),
-                scope: scope,
+        MethodDef::Prototype { module, visi, name: Id(name_loc, name), node, scope } => {
+            let (proto, body) = match *node {
+                Node::Def(_, _, ref proto, ref body) => (proto, body),
+                Node::Defs(_, _, _, ref proto, ref body) => (proto, body),
+                _ => panic!("unexpected node type"),
             };
+            if let Some(ref bnode) = *body {
+                env.error_sink.borrow_mut().error(
+                    "Methods in .rbi files may not define bodies", &[
+                        Detail::Loc("here", bnode.loc()),
+                    ]);
+            }
 
-            if let Some(meth) = env.object.lookup_method(module, &name) {
-                *meth.stub.borrow_mut() = Rc::new(Some(stub));
+            let type_scope = TypeScope::new(scope.clone(), module);
+            let (anno, mut proto) = Prototype::resolve(&name_loc, proto.as_ref().map(Rc::as_ref), env, type_scope);
+            proto.is_stub = true;
+
+            match anno {
+                AnnotationStatus::Untyped | AnnotationStatus::Empty => {
+                    env.error_sink.borrow_mut().error(
+                        "Definitions in .rbi files must contain type annotations", &[
+                            Detail::Loc("here", &proto.loc),
+                        ]);
+                }
+                AnnotationStatus::Partial => {
+                    env.error_sink.borrow_mut().error(
+                        "Partial type signatures are not allowed in .rbi files.", &[
+                            Detail::Loc("All arguments and return values must be annotated", node.loc()),
+                        ]);
+                }
+                _ => ()
+            }
+
+            let method = if let Some(meth) = env.object.lookup_method(module, &name) {
+                let impl_ = match *meth.implementation {
+                    MethodImpl::TypedRuby{ref name, proto: _, ref body, ref scope} => {
+                        Rc::new(MethodImpl::TypedRuby{
+                            name: name.to_owned(),
+                            proto: proto,
+                            body: body.clone(),
+                            scope: scope.clone(),
+                        })
+                    }
+                    _ => meth.implementation.clone(),
+                };
+
+                Rc::new(MethodEntry {
+                    owner: meth.owner,
+                    visibility: meth.visibility.clone(),
+                    implementation: impl_,
+                })
             } else {
-                let method = Rc::new(MethodEntry {
+                Rc::new(MethodEntry {
                     owner: module,
                     visibility: Cell::new(visi),
-                    implementation: Rc::new(MethodImpl::Stub),
-                    stub: RefCell::new(Rc::new(Some(stub))),
-                });
-                env.object.define_method(module, name.to_owned(), method);
-            }
+                    implementation: Rc::new(MethodImpl::Ruby {
+                        name: name.clone(),
+                        proto: proto,
+                    }),
+                })
+            };
+
+            env.object.define_method(module, name.to_owned(), method.clone());
+            return Some(method);
         }
         MethodDef::Alias { module, to, from, emit_error } => {
             if let Some(method) = env.object.lookup_method(module, &from.1) {
@@ -214,7 +270,6 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                     owner: module,
                     visibility: Cell::new(MethodVisibility::Public),
                     implementation: Rc::new(MethodImpl::Untyped),
-                    stub: RefCell::new(Rc::new(None)),
                 }));
             }
         }
@@ -227,7 +282,6 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                         ivar: format!("@{}", name),
                         loc: loc,
                     }),
-                    stub: RefCell::new(Rc::new(None)),
                 }))
         }
         MethodDef::AttrWriter { module, visi, name: Id(loc, name) } => {
@@ -239,7 +293,6 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                         ivar: format!("@{}", name),
                         loc: loc,
                     }),
-                    stub: RefCell::new(Rc::new(None)),
                 }))
         }
         MethodDef::SetVisi { module, visi, name: Id(loc, name), emit_error } => {
@@ -251,7 +304,6 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                         owner: module,
                         visibility: Cell::new(visi),
                         implementation: method.implementation.clone(),
-                        stub: method.stub.clone(),
                     }))
                 }
             } else {
