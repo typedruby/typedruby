@@ -23,7 +23,6 @@ pub fn check<'object>(env: &Environment<'object>, method: Rc<MethodEntry<'object
         MethodImpl::AttrReader { .. } |
         MethodImpl::AttrWriter { .. } |
         MethodImpl::Untyped |
-        MethodImpl::Stub |
         MethodImpl::IntrinsicClassNew |
         MethodImpl::IntrinsicProcCall |
         MethodImpl::IntrinsicKernelRaise |
