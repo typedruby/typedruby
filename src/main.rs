@@ -14,6 +14,7 @@ use termcolor::{ColorChoice, StandardStream};
 
 mod ast;
 mod config;
+mod define;
 mod deferred_cell;
 mod environment;
 mod errors;
@@ -110,6 +111,8 @@ fn main() {
             Err(e) => println!("{}: {:?}", file.display(), e),
         }
     }
+
+    env.define();
 
     env.typecheck();
 }

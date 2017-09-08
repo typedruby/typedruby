@@ -5,6 +5,7 @@ use std::rc::Rc;
 use std::fmt;
 use typed_arena::Arena;
 use ast::{Node, Loc, Id};
+use define::MethodVisibility;
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
@@ -580,13 +581,6 @@ impl<'object> Scope<'object> {
     }
 }
 
-#[derive(Copy,Clone,Debug)]
-pub enum MethodVisibility {
-    Public,
-    Protected,
-    Private,
-}
-
 #[derive(Debug)]
 pub struct MethodEntry<'object> {
     pub owner: &'object RubyObject<'object>,
@@ -603,11 +597,11 @@ pub enum MethodImpl<'object> {
     },
     AttrReader {
         ivar: String,
-        node: Rc<Node>,
+        loc: Loc,
     },
     AttrWriter {
         ivar: String,
-        node: Rc<Node>,
+        loc: Loc,
     },
     Untyped,
     IntrinsicClassNew,

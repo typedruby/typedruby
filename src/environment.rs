@@ -9,6 +9,7 @@ use typed_arena::Arena;
 
 use ast::{parse, SourceFile, Node, Id, Level};
 use config::Config;
+use define::Definitions;
 use errors::{ErrorSink, Detail};
 use inflect::Inflector;
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope, ConstantEntry};
@@ -23,6 +24,7 @@ enum LoadState {
 #[derive(Copy,Clone,Eq,PartialEq,Debug)]
 enum Phase {
     Load,
+    Define,
     TypeCheck,
 }
 
@@ -30,7 +32,32 @@ impl Phase {
     pub fn can_load(self) -> bool {
         match self {
             Phase::Load => true,
+            Phase::Define => false,
             Phase::TypeCheck => false,
+        }
+    }
+}
+
+struct PhaseCell(Cell<Phase>);
+
+impl PhaseCell {
+    pub fn new(phase: Phase) -> Self {
+        PhaseCell(Cell::new(phase))
+    }
+
+    pub fn get(&self) -> Phase {
+        self.0.get()
+    }
+
+    pub fn set(&self, phase: Phase) {
+        let current = self.0.get();
+
+        match (current, phase) {
+            (Phase::Load, Phase::Define) |
+            (Phase::Define, Phase::TypeCheck) => {
+                self.0.set(phase)
+            }
+            _ => panic!("invalid phase transition! {:?} -> {:?}", current, phase)
         }
     }
 }
@@ -39,7 +66,8 @@ pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<Box<ErrorSink>>,
     pub config: Config,
-    phase: Cell<Phase>,
+    pub defs: Definitions<'object>,
+    phase: PhaseCell,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
     inflector: Inflector,
@@ -55,10 +83,11 @@ impl<'object> Environment<'object> {
             error_sink: RefCell::new(error_sink),
             object: ObjectGraph::new(&arena),
             config: config,
-            phase: Cell::new(Phase::Load),
+            phase: PhaseCell::new(Phase::Load),
             loaded_features: RefCell::new(HashMap::new()),
             method_queue: RefCell::new(VecDeque::new()),
             inflector: inflector,
+            defs: Definitions::new(),
         };
 
         let source_file = SourceFile::new(PathBuf::from("(builtin stdlib)"), STDLIB_DEFINITIONS.to_owned());
@@ -226,8 +255,19 @@ impl<'object> Environment<'object> {
         None
     }
 
-    pub fn enqueue_method_for_type_check(&self, method: Rc<MethodEntry<'object>>) {
-        self.method_queue.borrow_mut().push_back(method);
+    pub fn define(&self) {
+        self.phase.set(Phase::Define);
+
+        let methods = {
+            let mut errors = self.error_sink.borrow_mut();
+            self.defs.define(&self.object, errors.as_mut())
+        };
+
+        let mut method_queue = self.method_queue.borrow_mut();
+
+        for method in methods {
+            method_queue.push_back(method);
+        }
     }
 
     pub fn typecheck(&self) {
