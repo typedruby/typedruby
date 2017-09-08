@@ -42,6 +42,9 @@ fn output_path(path: &PathBuf) -> PathBuf {
 fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
     let status = Command::new(typedruby_exe())
         .arg(&path)
+        // Remove TERM to force termcolor to not output colors in
+        // tests.
+        .env_remove("TERM")
         .output()
         .expect("Failed to execute typedruby");
 
