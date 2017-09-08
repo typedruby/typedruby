@@ -693,9 +693,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 prototype
             }
-            MethodImpl::AttrReader { ref ivar, ref node } => {
+            MethodImpl::AttrReader { ref ivar, ref loc } => {
                 let ivar_type = self.lookup_ivar(ivar, &type_context)
-                    .unwrap_or_else(|| self.tyenv.any(node.loc().clone()));
+                    .unwrap_or_else(|| self.tyenv.any(loc.clone()));
 
                 Rc::new(Prototype {
                     loc: loc.clone(),
@@ -703,13 +703,13 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     retn: ivar_type,
                 })
             }
-            MethodImpl::AttrWriter { ref ivar, ref node } => {
+            MethodImpl::AttrWriter { ref ivar, ref loc } => {
                 let ivar_type = self.lookup_ivar(ivar, &type_context)
-                    .unwrap_or_else(|| self.tyenv.any(node.loc().clone()));
+                    .unwrap_or_else(|| self.tyenv.any(loc.clone()));
 
                 Rc::new(Prototype {
                     loc: loc.clone(),
-                    args: vec![Arg::Required { ty: ivar_type, loc: node.loc().clone() }],
+                    args: vec![Arg::Required { ty: ivar_type, loc: loc.clone() }],
                     retn: ivar_type,
                 })
             }
