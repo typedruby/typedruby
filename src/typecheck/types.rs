@@ -8,6 +8,7 @@ use immutable_map::TreeMap;
 use util::Or;
 use itertools::Itertools;
 use std::ops::Deref;
+use std::iter;
 
 pub type TypeVarId = usize;
 
@@ -429,6 +430,43 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         }
     }
 
+    fn occurs(&self, ty: TypeRef<'ty, 'object>, id: TypeVarId) -> bool {
+        match *self.prune(ty).deref() {
+            Type::Var { id: var_id, .. } if id == var_id => true,
+            Type::Var { .. } => false,
+            Type::Instance { ref type_parameters, .. } =>
+                type_parameters.iter().any(|t| self.occurs(*t, id)),
+            Type::Tuple { ref lead, ref splat, ref post, .. } =>
+                lead.iter()
+                    .chain(splat)
+                    .chain(post)
+                    .any(|t| self.occurs(*t, id)),
+            Type::Union { ref types, .. } =>
+                types.iter().any(|t| self.occurs(*t, id)),
+            Type::Any { .. } |
+            Type::TypeParameter { .. } => false,
+            Type::KeywordHash { ref keywords, .. } =>
+                keywords.iter()
+                    .map(|&(_, t)| t)
+                    .any(|t| self.occurs(t, id)),
+            Type::Proc { ref proto, .. } =>
+                proto.args.iter()
+                    .map(|arg| match *arg.unwrap_procarg0() {
+                        Arg::Procarg0 { .. } => panic!("impossible"),
+                        Arg::Required { ty, .. } |
+                        Arg::Optional { ty, .. } |
+                        Arg::Rest { ty, .. } |
+                        Arg::Kwarg { ty, .. } |
+                        Arg::Kwoptarg { ty, .. } |
+                        Arg::Kwrest { ty, .. } |
+                        Arg::Block { ty, .. } => ty
+                    })
+                    .chain(iter::once(proto.retn))
+                    .any(|t| self.occurs(t, id)),
+            Type::LocalVariable { .. } => panic!("should not happen"),
+        }
+    }
+
     pub fn unify(&self, t1: TypeRef<'ty, 'object>, t2: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let t1 = self.prune(t1);
         let t2 = self.prune(t2);
@@ -442,8 +480,12 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     }
                 }
 
-                self.set_var(*id1, t2.clone());
-                Ok(())
+                if self.occurs(t2, *id1) {
+                    return Err((t1, t2));
+                } else {
+                    self.set_var(*id1, t2.clone());
+                    Ok(())
+                }
             },
 
             (_, &Type::Var { .. }) =>
