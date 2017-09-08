@@ -1,0 +1,12 @@
+error: Can't redefine a method that was defined as a stub.
+
+        @ __ROOT__/tests/fixtures/redefine_stub.rb:5
+          ---v
+      5 | |  def hi
+      6 | |  end
+          -----^ re-defined here
+        @ __ROOT__/tests/fixtures/_lib/has_stub.rbi:2
+          ---v
+      2 | |  def hi => nil
+      3 | |  end
+          -----^ stub defined here
