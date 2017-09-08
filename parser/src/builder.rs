@@ -179,38 +179,30 @@ fn call_type_for_dot(dot: Option<Token>) -> CallType {
     }
 }
 
-macro_rules! loc {
-    ($self:expr, $tok:expr) => ({
-        $tok.as_ref().unwrap().location($self.current_file())
-    })
-}
-
-macro_rules! tok_split {
-    ($self:expr, $tok:expr) => ({
-        let tok = $tok.unwrap();
-        let loc = tok.location($self.current_file());
-        let s = RubyString::new(tok.bytes().as_slice());
-        (loc, s)
-    })
-}
-
-macro_rules! tok_id {
-    ($self:expr, $tok:expr) => ({
-        let (loc, name) = tok_split!($self, $tok);
-        Id(loc, String::from(name.string().unwrap()))
-    })
-}
-
-macro_rules! tok_join {
-    ($self:expr, $left:expr, $right:expr) => ({
-        loc!($self, $left).join(&loc!($self, $right))
-    })
-}
-
 impl<'a> Builder<'a> {
     /*
      * Helpers
      */
+    fn loc(&self, tok: &Option<Token>) -> Loc {
+        tok.as_ref().unwrap().location(self.current_file())
+    }
+
+    fn tok_split(&self, tok: &Option<Token>) -> (Loc, RubyString) {
+        let tok = tok.as_ref().unwrap();
+        let loc = tok.location(self.current_file());
+        let s = RubyString::new(tok.bytes().as_slice());
+        (loc, s)
+    }
+
+    fn tok_id(&self, tok: &Option<Token>) -> Id {
+        let (loc, name) = self.tok_split(tok);
+        Id(loc, String::from(name.string().unwrap()))
+    }
+
+    fn tok_join(&self, left: &Option<Token>, right: &Option<Token>) -> Loc {
+        self.loc(left).join(&self.loc(right))
+    }
+
     fn current_file(&self) -> Rc<SourceFile> {
         self.driver.current_file.clone()
     }
@@ -218,7 +210,7 @@ impl<'a> Builder<'a> {
     fn collection_map(&self, begin: Option<Token>, elements: &[Rc<Node>], end: Option<Token>) -> Option<Loc> {
         if begin.is_some() {
             assert!(end.is_some());
-            Some(tok_join!(self, begin, end))
+            Some(self.tok_join(&begin, &end))
         } else {
             assert!(end.is_none());
             if elements.is_empty() {
@@ -361,11 +353,11 @@ impl<'a> Builder<'a> {
     pub fn alias(&self, alias: Option<Token>, to: Option<Rc<Node>>, from: Option<Rc<Node>>) -> Node {
         let to = to.unwrap();
         let from = from.unwrap();
-        Node::Alias(loc!(self, alias).join(from.loc()), to, from)
+        Node::Alias(self.loc(&alias).join(from.loc()), to, from)
     }
 
     pub fn arg(&self, name: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, name);
+        let (loc, id) = self.tok_split(&name);
         Node::Arg(loc, String::from(id.string().unwrap()))
     }
 
@@ -455,7 +447,7 @@ impl<'a> Builder<'a> {
 
     pub fn attr_asgn(&self, receiver: Option<Rc<Node>>, dot: Option<Token>, selector: Option<Token>) -> Node {
         let recv = receiver.unwrap();
-        let (sel_loc, sel_name) = tok_split!(self, selector);
+        let (sel_loc, sel_name) = self.tok_split(&selector);
         let selector = Id(sel_loc, String::from(sel_name.string().unwrap()) + "=");
         let loc = recv.loc().join(&selector.0);
 
@@ -467,7 +459,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn back_ref(&self, tok: Option<Token>) -> Node {
-        let (loc, name) = tok_split!(self, tok);
+        let (loc, name) = self.tok_split(&tok);
         Node::Backref(loc, String::from(name.string().unwrap()))
     }
 
@@ -475,7 +467,7 @@ impl<'a> Builder<'a> {
         let loc = match begin {
             Some(_) => {
                 assert!(end.is_some());
-                tok_join!(self, begin, end)
+                self.tok_join(&begin, &end)
             },
             None => {
                 assert!(end.is_none());
@@ -538,7 +530,7 @@ impl<'a> Builder<'a> {
 
             stmts.push(Rc::new(
                     Node::Begin(
-                        loc!(self, else_tok).join(else_body.loc()),
+                        self.loc(&else_tok).join(else_body.loc()),
                         vec![else_body])));
 
             compound_stmt = Some(Rc::new(Node::Begin(join_exprs(stmts.as_slice()), stmts)));
@@ -547,7 +539,7 @@ impl<'a> Builder<'a> {
         if ensure_tok.is_some() {
             let mut loc = match compound_stmt {
                 Some(ref compound_stmt_box) => compound_stmt_box.loc().clone(),
-                None => loc!(self, ensure_tok),
+                None => self.loc(&ensure_tok),
             };
 
             if let Some(ref ensure_box) = ensure {
@@ -561,7 +553,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn begin_keyword(&self, begin: Option<Token>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
-        let tokens = tok_join!(self, begin, end);
+        let tokens = self.tok_join(&begin, &end);
         match body {
             Some(node) => {
                 match *node {
@@ -576,7 +568,7 @@ impl<'a> Builder<'a> {
     pub fn binary_op(&self, recv: Option<Rc<Node>>, oper: Option<Token>, arg: Option<Rc<Node>>) -> Node {
         let recv = recv.unwrap();
         let arg = arg.unwrap();
-        Node::Send(recv.loc().join(arg.loc()), Some(recv), tok_id!(self, oper), vec![arg])
+        Node::Send(recv.loc().join(arg.loc()), Some(recv), self.tok_id(&oper), vec![arg])
     }
 
     pub fn block(&mut self, method_call: Option<Rc<Node>>, _begin: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
@@ -606,13 +598,13 @@ impl<'a> Builder<'a> {
             Node::Super(_, _) |
             Node::ZSuper(_) |
             Node::Lambda(_) => {
-                Node::Block(method_call.loc().join(&loc!(self, end)), method_call.clone(), args, body)
+                Node::Block(method_call.loc().join(&self.loc(&end)), method_call.clone(), args, body)
             },
             Node::Break(ref loc, ref sends) |
             Node::Next(ref loc, ref sends) |
             Node::Return(ref loc, ref sends) => {
                 let actual_send = sends.first().unwrap().clone();
-                let block = Rc::new(Node::Block(loc.join(&loc!(self, end)), actual_send, args, body));
+                let block = Rc::new(Node::Block(loc.join(&self.loc(&end)), actual_send, args, body));
                 let loc = loc.join(&join_exprs(&[method_call.clone(), block.clone()]));
 
                 match *method_call {
@@ -628,24 +620,24 @@ impl<'a> Builder<'a> {
 
     pub fn block_pass(&self, amper: Option<Token>, arg: Option<Rc<Node>>) -> Node {
         let arg = arg.unwrap();
-        Node::BlockPass(loc!(self, amper).join(arg.loc()), arg)
+        Node::BlockPass(self.loc(&amper).join(arg.loc()), arg)
     }
 
     pub fn blockarg(&self, amper: Option<Token>, name: Option<Token>) -> Node {
         match name {
             Some(_) => {
-                let id = tok_id!(self, name);
-                Node::Blockarg(loc!(self, amper).join(&id.0), Some(id))
+                let id = self.tok_id(&name);
+                Node::Blockarg(self.loc(&amper).join(&id.0), Some(id))
             },
-            None => Node::Blockarg(loc!(self, amper), None)
+            None => Node::Blockarg(self.loc(&amper), None)
         }
     }
 
     pub fn call_lambda(&self, lambda: Option<Token>) -> Node {
         if self.emit_lambda {
-            Node::Lambda(loc!(self, lambda))
+            Node::Lambda(self.loc(&lambda))
         } else {
-            let loc = loc!(self, lambda);
+            let loc = self.loc(&lambda);
             Node::Send(loc.clone(), None, Id(loc.clone(), "lambda".to_owned()), vec![])
         }
     }
@@ -653,10 +645,10 @@ impl<'a> Builder<'a> {
     pub fn call_method(&self, recv: Option<Rc<Node>>, dot: Option<Token>, selector: Option<Token>, _lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
         let loc = {
             let selector_loc = match selector {
-                Some(_) => loc!(self, selector),
+                Some(_) => self.loc(&selector),
                 // if there is no selector (in the case of the foo.() #call syntax)
                 // syntactically there *must* be a dot:
-                None => loc!(self, dot),
+                None => self.loc(&dot),
             };
 
             let loc_start = match recv {
@@ -665,7 +657,7 @@ impl<'a> Builder<'a> {
             };
 
             if rparen.is_some() {
-                loc_start.join(&loc!(self, rparen))
+                loc_start.join(&self.loc(&rparen))
             } else if args.len() > 0 {
                 loc_start.join(args.last().unwrap().loc())
             } else {
@@ -674,8 +666,8 @@ impl<'a> Builder<'a> {
         };
 
         let selector = match selector {
-            Some(sel) => tok_id!(self, Some(sel)),
-            None => Id(loc!(self, dot), "call".to_owned()),
+            Some(sel) => self.tok_id(&Some(sel)),
+            None => Id(self.loc(&dot), "call".to_owned()),
         };
 
         match call_type_for_dot(dot) {
@@ -685,16 +677,16 @@ impl<'a> Builder<'a> {
     }
 
     pub fn case_(&self, case_: Option<Token>, expr: Option<Rc<Node>>, when_bodies: Vec<Rc<Node>>, _else_tok: Option<Token>, else_body: Option<Rc<Node>>, end: Option<Token>) -> Node {
-        Node::Case(tok_join!(self, case_, end), expr, when_bodies, else_body)
+        Node::Case(self.tok_join(&case_, &end), expr, when_bodies, else_body)
     }
 
     pub fn character(&self, char_: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, char_);
+        let (loc, id) = self.tok_split(&char_);
         Node::String(loc, id)
     }
 
     pub fn complex(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::Complex(loc, String::from(id.string().unwrap()))
     }
 
@@ -708,10 +700,10 @@ impl<'a> Builder<'a> {
 
     pub fn condition(&self, cond_tok: Option<Token>, cond: Option<Rc<Node>>, then: Option<Token>, if_true: Option<Rc<Node>>, else_: Option<Token>, if_false: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let cond = cond.unwrap();
-        let mut loc = loc!(self, cond_tok).join(cond.loc());
+        let mut loc = self.loc(&cond_tok).join(cond.loc());
 
         if then.is_some() {
-            loc = loc.join(&loc!(self, then));
+            loc = loc.join(&self.loc(&then));
         }
 
         if let Some(ref true_branch) = if_true {
@@ -719,7 +711,7 @@ impl<'a> Builder<'a> {
         }
 
         if else_ .is_some() {
-            loc = loc.join(&loc!(self, else_));
+            loc = loc.join(&self.loc(&else_));
         }
 
         if let Some(ref false_branch) = if_false {
@@ -727,7 +719,7 @@ impl<'a> Builder<'a> {
         }
 
         if end.is_some() {
-            loc = loc.join(&loc!(self, end));
+            loc = loc.join(&self.loc(&end));
         }
 
         Node::If(loc, check_condition(cond), if_true, if_false)
@@ -742,19 +734,19 @@ impl<'a> Builder<'a> {
 
     pub fn const_(&self, name: Option<Token>) -> Node {
         assert!(name.is_some());
-        Node::Const(loc!(self, name), None, tok_id!(self, name))
+        Node::Const(self.loc(&name), None, self.tok_id(&name))
     }
 
     pub fn const_fetch(&self, scope: Option<Rc<Node>>, _colon: Option<Token>, name: Option<Token>) -> Node {
         let scope = scope.unwrap();
-        let loc = scope.loc().join(&loc!(self, name));
+        let loc = scope.loc().join(&self.loc(&name));
 
-        Node::Const(loc, Some(scope), tok_id!(self, name))
+        Node::Const(loc, Some(scope), self.tok_id(&name))
     }
 
     pub fn const_global(&self, colon: Option<Token>, name: Option<Token>) -> Node {
-        let loc = tok_join!(self, colon, name);
-        Node::Const(loc, Some(Rc::new(Node::Cbase(loc!(self, colon)))), tok_id!(self, name))
+        let loc = self.tok_join(&colon, &name);
+        Node::Const(loc, Some(Rc::new(Node::Cbase(self.loc(&colon)))), self.tok_id(&name))
     }
 
     pub fn const_op_assignable(&self, node: Option<Rc<Node>>) -> Rc<Node> {
@@ -763,7 +755,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn cvar(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::Cvar(loc, String::from(id.string().unwrap()))
     }
 
@@ -786,24 +778,24 @@ impl<'a> Builder<'a> {
     }
 
     pub fn def_class(&self, class_: Option<Token>, name: Option<Rc<Node>>, _lt: Option<Token>, superclass: Option<Rc<Node>>, body: Option<Rc<Node>>, end_: Option<Token>) -> Node {
-        Node::Class(tok_join!(self, class_, end_), name.unwrap(), superclass, body)
+        Node::Class(self.tok_join(&class_, &end_), name.unwrap(), superclass, body)
     }
 
     pub fn def_method(&self, def: Option<Token>, name: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
-        let loc = tok_join!(self, def, end);
-        Node::Def(loc, tok_id!(self, name), args, body)
+        let loc = self.tok_join(&def, &end);
+        Node::Def(loc, self.tok_id(&name), args, body)
     }
 
     pub fn def_module(&self, module: Option<Token>, name: Option<Rc<Node>>, body: Option<Rc<Node>>, end_: Option<Token>) -> Node {
-        Node::Module(tok_join!(self, module, end_), name.unwrap(), body)
+        Node::Module(self.tok_join(&module, &end_), name.unwrap(), body)
     }
 
     pub fn def_sclass(&self, class_: Option<Token>, _lshft: Option<Token>, expr: Option<Rc<Node>>, body: Option<Rc<Node>>, end_: Option<Token>) -> Node {
-        Node::SClass(tok_join!(self, class_, end_), expr.unwrap(), body)
+        Node::SClass(self.tok_join(&class_, &end_), expr.unwrap(), body)
     }
 
     pub fn def_singleton(&mut self, def: Option<Token>, definee: Option<Rc<Node>>, _dot: Option<Token>, name: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
-        let loc = tok_join!(self, def, end);
+        let loc = self.tok_join(&def, &end);
         let definee = definee.unwrap();
 
         match *definee {
@@ -820,12 +812,12 @@ impl<'a> Builder<'a> {
             _ => {},
         };
 
-        Node::Defs(loc, definee, tok_id!(self, name), args, body)
+        Node::Defs(loc, definee, self.tok_id(&name), args, body)
     }
 
     pub fn encoding_literal(&self, tok: Option<Token>) -> Node {
         if self.magic_literals {
-            let loc = loc!(self, tok);
+            let loc = self.loc(&tok);
             Node::Const(loc.clone(),
                 Some(
                     Rc::new(Node::Const(
@@ -836,74 +828,74 @@ impl<'a> Builder<'a> {
                 Id(loc.clone(), "UTF_8".to_string())
             )
         } else {
-            Node::EncodingLiteral(loc!(self, tok))
+            Node::EncodingLiteral(self.loc(&tok))
         }
     }
 
     pub fn false_(&self, tok: Option<Token>) -> Node {
-        Node::False(loc!(self, tok))
+        Node::False(self.loc(&tok))
     }
 
     pub fn file_literal(&self, tok: Option<Token>) -> Node {
         if self.magic_literals {
-            let loc = loc!(self, tok);
+            let loc = self.loc(&tok);
             let filename = loc.file.filename().to_str().unwrap();
             Node::String(loc.clone(), RubyString::new(filename.as_bytes()))
         } else {
-            Node::FileLiteral(loc!(self, tok))
+            Node::FileLiteral(self.loc(&tok))
         }
     }
 
     pub fn float_(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::Float(loc, String::from(id.string().unwrap()))
     }
 
     pub fn float_complex(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::Complex(loc, String::from(id.string().unwrap()))
     }
 
     pub fn for_(&self, for_: Option<Token>, iterator: Option<Rc<Node>>, _in: Option<Token>, iteratee: Option<Rc<Node>>, _do: Option<Token>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let iterator = iterator.unwrap();
         let iteratee = iteratee.unwrap();
-        Node::For(loc!(self, for_).join(&loc!(self, end)), iterator, iteratee, body)
+        Node::For(self.loc(&for_).join(&self.loc(&end)), iterator, iteratee, body)
     }
 
     pub fn gvar(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::Gvar(loc, String::from(id.string().unwrap()))
     }
 
     pub fn ident(&self, tok: Option<Token>) -> Node {
-        let (tok, id) = tok_split!(self, tok);
+        let (tok, id) = self.tok_split(&tok);
         Node::Ident(tok, String::from(id.string().unwrap()))
     }
 
     pub fn index(&self, recv: Option<Rc<Node>>, lbrack: Option<Token>, indexes: Vec<Rc<Node>>, rbrack: Option<Token>) -> Node {
         let recv = recv.unwrap();
-        let id = Id(tok_join!(self, lbrack, rbrack), "[]".to_owned());
-        Node::Send(recv.loc().join(&loc!(self, rbrack)), Some(recv), id, indexes)
+        let id = Id(self.tok_join(&lbrack, &rbrack), "[]".to_owned());
+        Node::Send(recv.loc().join(&self.loc(&rbrack)), Some(recv), id, indexes)
     }
 
     pub fn index_asgn(&self, recv: Option<Rc<Node>>, lbrack: Option<Token>, indexes: Vec<Rc<Node>>, rbrack: Option<Token>) -> Node {
         let recv = recv.unwrap();
-        let id = Id(tok_join!(self, lbrack, rbrack), "[]=".to_owned());
+        let id = Id(self.tok_join(&lbrack, &rbrack), "[]=".to_owned());
         Node::Send(recv.loc().clone(), Some(recv), id, indexes)
     }
 
     pub fn integer(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::Integer(loc, String::from(id.string().unwrap()))
     }
 
     pub fn ivar(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::Ivar(loc, String::from(id.string().unwrap()))
     }
 
     pub fn keyword_break(&self, keyword: Option<Token>, lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
-        let mut loc = loc!(self, keyword);
+        let mut loc = self.loc(&keyword);
         if let Some(operand_loc) = self.collection_map(lparen, args.as_slice(), rparen) {
             loc = loc.join(&operand_loc);
         }
@@ -913,11 +905,11 @@ impl<'a> Builder<'a> {
 
     pub fn keyword_defined(&self, keyword: Option<Token>, arg: Option<Rc<Node>>) -> Node {
         let arg = arg.unwrap();
-        Node::Defined(loc!(self, keyword).join(arg.loc()), arg)
+        Node::Defined(self.loc(&keyword).join(arg.loc()), arg)
     }
 
     pub fn keyword_next(&self, keyword: Option<Token>, lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
-        let mut loc = loc!(self, keyword);
+        let mut loc = self.loc(&keyword);
         if let Some(operand_loc) = self.collection_map(lparen, args.as_slice(), rparen) {
             loc = loc.join(&operand_loc);
         }
@@ -926,15 +918,15 @@ impl<'a> Builder<'a> {
     }
 
     pub fn keyword_redo(&self, keyword: Option<Token>) -> Node {
-        Node::Redo(loc!(self, keyword))
+        Node::Redo(self.loc(&keyword))
     }
 
     pub fn keyword_retry(&self, keyword: Option<Token>) -> Node {
-        Node::Retry(loc!(self, keyword))
+        Node::Retry(self.loc(&keyword))
     }
 
     pub fn keyword_return(&self, keyword: Option<Token>, lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
-        let mut loc = loc!(self, keyword);
+        let mut loc = self.loc(&keyword);
         if let Some(operand_loc) = self.collection_map(lparen, args.as_slice(), rparen) {
             loc = loc.join(&operand_loc);
         }
@@ -942,7 +934,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn keyword_super(&self, keyword: Option<Token>, lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
-        let mut loc = loc!(self, keyword);
+        let mut loc = self.loc(&keyword);
         if let Some(operand_loc) = self.collection_map(lparen, args.as_slice(), rparen) {
             loc = loc.join(&operand_loc);
         }
@@ -950,7 +942,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn keyword_yield(&mut self, keyword: Option<Token>, lparen: Option<Token>, args: Vec<Rc<Node>>, rparen: Option<Token>) -> Node {
-        let mut loc = loc!(self, keyword);
+        let mut loc = self.loc(&keyword);
         if let Some(operand_loc) = self.collection_map(lparen, args.as_slice(), rparen) {
             loc = loc.join(&operand_loc);
         }
@@ -966,42 +958,42 @@ impl<'a> Builder<'a> {
     }
 
     pub fn keyword_zsuper(&self, keyword: Option<Token>) -> Node {
-        Node::ZSuper(loc!(self, keyword))
+        Node::ZSuper(self.loc(&keyword))
     }
 
     pub fn kwarg(&self, name: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, name);
+        let (loc, id) = self.tok_split(&name);
         Node::Kwarg(loc, String::from(id.string().unwrap()))
     }
 
     pub fn kwoptarg(&self, name: Option<Token>, value: Option<Rc<Node>>) -> Node {
         let value = value.unwrap();
-        let id = tok_id!(self, name);
+        let id = self.tok_id(&name);
         Node::Kwoptarg(id.0.join(value.loc()), id, value)
     }
 
     pub fn kwrestarg(&self, dstar: Option<Token>, name: Option<Token>) -> Node {
         match name {
             Some(_) => {
-                let id = tok_id!(self, name);
-                Node::Kwrestarg(loc!(self, dstar).join(&id.0), Some(id))
+                let id = self.tok_id(&name);
+                Node::Kwrestarg(self.loc(&dstar).join(&id.0), Some(id))
             },
-            None => Node::Kwrestarg(loc!(self, dstar), None),
+            None => Node::Kwrestarg(self.loc(&dstar), None),
         }
     }
 
     pub fn kwsplat(&self, dstar: Option<Token>, arg: Option<Rc<Node>>) -> Node {
         let arg = arg.unwrap();
-        Node::Kwsplat(loc!(self, dstar).join(arg.loc()), arg)
+        Node::Kwsplat(self.loc(&dstar).join(arg.loc()), arg)
     }
 
     pub fn line_literal(&self, tok: Option<Token>) -> Node {
         if self.magic_literals {
-            let loc = loc!(self, tok);
+            let loc = self.loc(&tok);
             let line = loc.file.line_for_pos(loc.begin_pos);
             Node::Integer(loc.clone(), line.number.to_string())
         } else {
-            Node::LineLiteral(loc!(self, tok))
+            Node::LineLiteral(self.loc(&tok))
         }
     }
 
@@ -1019,7 +1011,7 @@ impl<'a> Builder<'a> {
 
     pub fn loop_until(&self, keyword: Option<Token>, cond: Option<Rc<Node>>, _do: Option<Token>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let cond = cond.unwrap();
-        Node::Until(tok_join!(self, keyword, end), cond, body)
+        Node::Until(self.tok_join(&keyword, &end), cond, body)
     }
 
     pub fn loop_until_mod(&self, body: Option<Rc<Node>>, cond: Option<Rc<Node>>) -> Node {
@@ -1035,7 +1027,7 @@ impl<'a> Builder<'a> {
 
     pub fn loop_while(&self, keyword: Option<Token>, cond: Option<Rc<Node>>, _do: Option<Token>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let cond = cond.unwrap();
-        Node::While(tok_join!(self, keyword, end), cond, body)
+        Node::While(self.tok_join(&keyword, &end), cond, body)
     }
 
     pub fn loop_while_mod(&self, body: Option<Rc<Node>>, cond: Option<Rc<Node>>) -> Node {
@@ -1057,7 +1049,7 @@ impl<'a> Builder<'a> {
         if self.declare_static_regexp(&*recv) {
             Node::MatchAsgn(loc, recv.clone(), arg)
         } else {
-            Node::Send(loc, Some(recv), tok_id!(self, oper), vec![arg])
+            Node::Send(loc, Some(recv), self.tok_id(&oper), vec![arg])
         }
     }
 
@@ -1087,7 +1079,7 @@ impl<'a> Builder<'a> {
 
     pub fn negate(&self, uminus: Option<Token>, numeric: Option<Rc<Node>>) -> Node {
         let numeric = numeric.unwrap();
-        let loc = loc!(self, uminus).join(numeric.loc());
+        let loc = self.loc(&uminus).join(numeric.loc());
 
         match *numeric {
             Node::Integer(_, ref value) => Node::Integer(loc, "-".to_owned() + value.as_str()),
@@ -1097,24 +1089,24 @@ impl<'a> Builder<'a> {
     }
 
     pub fn nil(&self, tok: Option<Token>) -> Node {
-        Node::Nil(loc!(self, tok))
+        Node::Nil(self.loc(&tok))
     }
 
     pub fn not_op(&self, not_: Option<Token>, begin: Option<Token>, receiver: Option<Rc<Node>>, end: Option<Token>) -> Node {
-        let not_loc = loc!(self, not_);
-        let id = Id(loc!(self, not_), "!".to_owned());
+        let not_loc = self.loc(&not_);
+        let id = Id(self.loc(&not_), "!".to_owned());
 
         match receiver {
             Some(expr) => {
                 let loc = match end {
-                    Some(_) => not_loc.join(&loc!(self, end)),
+                    Some(_) => not_loc.join(&self.loc(&end)),
                     None => not_loc.join(expr.loc()),
                 };
                 Node::Send(loc, Some(expr), id, vec![])
             },
             None => {
                 assert!(begin.is_some() && end.is_some());
-                let nil_loc = tok_join!(self, begin, end);
+                let nil_loc = self.tok_join(&begin, &end);
                 let loc = not_loc.join(&nil_loc);
                 let recv = Rc::new(Node::Begin(nil_loc.clone(), vec![]));
                 Node::Send(loc, Some(recv), id, vec![])
@@ -1123,7 +1115,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn nth_ref(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::NthRef(loc, id.string().and_then({|n|n.parse().ok()}).unwrap())
     }
 
@@ -1143,12 +1135,12 @@ impl<'a> Builder<'a> {
         match op.string().as_str() {
             "&&" => Node::AndAsgn(lhs.loc().join(rhs.loc()), lhs, rhs),
             "||" => Node::OrAsgn(lhs.loc().join(rhs.loc()), lhs, rhs),
-            _    => Node::OpAsgn(lhs.loc().join(rhs.loc()), lhs, tok_id!(self, Some(op)), rhs),
+            _    => Node::OpAsgn(lhs.loc().join(rhs.loc()), lhs, self.tok_id(&Some(op)), rhs),
         }
     }
 
     pub fn optarg(&self, name: Option<Token>, _eql: Option<Token>, value: Option<Rc<Node>>) -> Node {
-        let id = tok_id!(self, name);
+        let id = self.tok_id(&name);
         let value = value.unwrap();
         Node::Optarg(id.0.join(value.loc()), id, value)
     }
@@ -1161,7 +1153,7 @@ impl<'a> Builder<'a> {
 
     pub fn pair_keyword(&self, key: Option<Token>, value: Option<Rc<Node>>) -> Node {
         let value = value.unwrap();
-        let (loc, id) = tok_split!(self, key);
+        let (loc, id) = self.tok_split(&key);
         let sym = Node::Symbol(loc, String::from(id.string().unwrap()));
         Node::Pair(sym.loc().join(value.loc()), Rc::new(sym), value)
     }
@@ -1173,11 +1165,11 @@ impl<'a> Builder<'a> {
     }
 
     pub fn postexe(&self, begin: Option<Token>, node: Option<Rc<Node>>, rbrace: Option<Token>) -> Node {
-        Node::Postexe(loc!(self, begin).join(&loc!(self, rbrace)), node)
+        Node::Postexe(self.loc(&begin).join(&self.loc(&rbrace)), node)
     }
 
     pub fn preexe(&self, begin: Option<Token>, node: Option<Rc<Node>>, rbrace: Option<Token>) -> Node {
-        Node::Preexe(loc!(self, begin).join(&loc!(self, rbrace)), node)
+        Node::Preexe(self.loc(&begin).join(&self.loc(&rbrace)), node)
     }
 
     pub fn procarg0(&self, arg: Option<Rc<Node>>) -> Rc<Node> {
@@ -1211,20 +1203,20 @@ impl<'a> Builder<'a> {
     }
 
     pub fn rational(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::Rational(loc, String::from(id.string().unwrap()))
     }
 
     pub fn rational_complex(&self, tok: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::Complex(loc, String::from(id.string().unwrap()))
     }
 
     pub fn regexp_compose(&mut self, begin: Option<Token>, parts: Vec<Rc<Node>>, end: Option<Token>, options: Option<Rc<Node>>) -> Node {
-        let begin_loc = loc!(self, begin);
+        let begin_loc = self.loc(&begin);
         let loc = match options {
             Some(ref opt_box) => begin_loc.join(opt_box.loc()),
-            None => begin_loc.join(&loc!(self, end)),
+            None => begin_loc.join(&self.loc(&end)),
         };
         self.check_static_regexp(&loc, parts.as_slice());
         Node::Regexp(loc, parts, options)
@@ -1235,11 +1227,11 @@ impl<'a> Builder<'a> {
         let mut options: Vec<char> = regopt.string().chars().collect();
         options.sort();
         options.dedup();
-        Node::Regopt(loc!(self, Some(regopt)), options)
+        Node::Regopt(self.loc(&Some(regopt)), options)
     }
 
     pub fn rescue_body(&self, rescue: Option<Token>, exc_list: Option<Rc<Node>>, _assoc: Option<Token>, exc_var: Option<Rc<Node>>, _then: Option<Token>, body: Option<Rc<Node>>) -> Node {
-        let mut loc = loc!(self, rescue);
+        let mut loc = self.loc(&rescue);
 
         if let Some(ref boxed_exc_list) = exc_list {
             loc = loc.join(boxed_exc_list.loc());
@@ -1259,32 +1251,32 @@ impl<'a> Builder<'a> {
     pub fn restarg(&self, star: Option<Token>, name: Option<Token>) -> Node {
         match name {
             Some(_) => {
-                let id = tok_id!(self, name);
-                Node::Restarg(loc!(self, star).join(&id.0), Some(id))
+                let id = self.tok_id(&name);
+                Node::Restarg(self.loc(&star).join(&id.0), Some(id))
             },
-            None => Node::Restarg(loc!(self, star), None),
+            None => Node::Restarg(self.loc(&star), None),
         }
     }
 
     pub fn self_(&self, tok: Option<Token>) -> Node {
-        Node::Self_(loc!(self, tok))
+        Node::Self_(self.loc(&tok))
     }
 
     pub fn shadowarg(&self, name: Option<Token>) -> Node {
-        let (loc, name) = tok_split!(self, name);
+        let (loc, name) = self.tok_split(&name);
         Node::ShadowArg(loc.clone(), Id(loc.clone(), String::from(name.string().unwrap())))
     }
 
     pub fn splat(&self, star: Option<Token>, arg: Option<Rc<Node>>) -> Node {
         let loc = match arg {
-            Some(ref box_arg) => loc!(self, star).join(box_arg.loc()),
-            None => loc!(self, star),
+            Some(ref box_arg) => self.loc(&star).join(box_arg.loc()),
+            None => self.loc(&star),
         };
         Node::Splat(loc, arg)
     }
 
     pub fn string(&self, string_: Option<Token>) -> Node {
-        Node::String(loc!(self, string_), RubyString::new(string_.unwrap().bytes().as_slice()))
+        Node::String(self.loc(&string_), RubyString::new(string_.unwrap().bytes().as_slice()))
     }
 
     pub fn string_compose(&self, begin: Option<Token>, parts: Vec<Rc<Node>>, end: Option<Token>) -> Node {
@@ -1304,12 +1296,12 @@ impl<'a> Builder<'a> {
     }
 
     pub fn string_internal(&self, string_: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, string_);
+        let (loc, id) = self.tok_split(&string_);
         Node::String(loc, id)
     }
 
     pub fn symbol(&self, symbol: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, symbol);
+        let (loc, id) = self.tok_split(&symbol);
         Node::Symbol(loc, String::from(id.string().unwrap()))
     }
 
@@ -1330,7 +1322,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn symbol_internal(&self, symbol: Option<Token>) -> Node {
-        let (loc, id) = tok_split!(self, symbol);
+        let (loc, id) = self.tok_split(&symbol);
         Node::Symbol(loc, String::from(id.string().unwrap()))
     }
 
@@ -1359,23 +1351,23 @@ impl<'a> Builder<'a> {
     }
 
     pub fn tr_any(&self, special: Option<Token>) -> Node {
-        Node::TyAny(loc!(self, special))
+        Node::TyAny(self.loc(&special))
     }
 
     pub fn tr_array(&self, begin: Option<Token>, type_: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let type_ = type_.unwrap();
-        Node::TyArray(tok_join!(self, begin, end), type_)
+        Node::TyArray(self.tok_join(&begin, &end), type_)
     }
 
     pub fn tr_cast(&self, begin: Option<Token>, expr: Option<Rc<Node>>, _colon: Option<Token>, type_: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let expr = expr.unwrap();
         let type_ = type_.unwrap();
 
-        Node::TyCast(tok_join!(self, begin, end), expr, type_)
+        Node::TyCast(self.tok_join(&begin, &end), expr, type_)
     }
 
     pub fn tr_class(&self, special: Option<Token>) -> Node {
-        Node::TyClass(loc!(self, special))
+        Node::TyClass(self.loc(&special))
     }
 
     pub fn tr_consubtype(&self, sub: Option<Rc<Node>>, super_: Option<Rc<Node>>) -> Node {
@@ -1400,49 +1392,49 @@ impl<'a> Builder<'a> {
     }
 
     pub fn tr_genargs(&self, begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
-        Node::TyGenargs(tok_join!(self, begin, end), genargs)
+        Node::TyGenargs(self.tok_join(&begin, &end), genargs)
     }
 
     pub fn tr_gendecl(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
         let cpath = cpath.unwrap();
-        Node::TyGendecl(cpath.loc().join(&loc!(self, end)), cpath, genargs)
+        Node::TyGendecl(cpath.loc().join(&self.loc(&end)), cpath, genargs)
     }
 
     pub fn tr_gendeclarg(&self, tok: Option<Token>, constraint: Option<Rc<Node>>) -> Node {
-        let (loc, id) = tok_split!(self, tok);
+        let (loc, id) = self.tok_split(&tok);
         Node::TyGendeclarg(loc, String::from(id.string().unwrap()), constraint)
     }
 
     pub fn tr_geninst(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
         let cpath = cpath.unwrap();
-        Node::TyGeninst(cpath.loc().join(&loc!(self, end)), cpath, genargs)
+        Node::TyGeninst(cpath.loc().join(&self.loc(&end)), cpath, genargs)
     }
 
     pub fn tr_hash(&self, begin: Option<Token>, key_type: Option<Rc<Node>>, _assoc: Option<Token>, value_type: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let key_type = key_type.unwrap();
         let value_type = value_type.unwrap();
 
-        Node::TyHash(tok_join!(self, begin, end), key_type, value_type)
+        Node::TyHash(self.tok_join(&begin, &end), key_type, value_type)
     }
 
     pub fn tr_instance(&self, special: Option<Token>) -> Node {
-        Node::TyInstance(loc!(self, special))
+        Node::TyInstance(self.loc(&special))
     }
 
     pub fn tr_ivardecl(&self, name: Option<Token>, type_: Option<Rc<Node>>) -> Node {
-        let name = tok_id!(self, name);
+        let name = self.tok_id(&name);
         let type_ = type_.unwrap();
 
         Node::TyIvardecl(name.0.join(type_.loc()), name, type_)
     }
 
     pub fn tr_nil(&self, nil: Option<Token>) -> Node {
-        Node::TyNil(loc!(self, nil))
+        Node::TyNil(self.loc(&nil))
     }
 
     pub fn tr_nillable(&self, tilde: Option<Token>, type_: Option<Rc<Node>>) -> Node {
         let type_ = type_.unwrap();
-        Node::TyNillable(loc!(self, tilde).join(type_.loc()), type_)
+        Node::TyNillable(self.loc(&tilde).join(type_.loc()), type_)
     }
 
     pub fn tr_or(&self, a: Option<Rc<Node>>, b: Option<Rc<Node>>) -> Node {
@@ -1453,19 +1445,19 @@ impl<'a> Builder<'a> {
 
     pub fn tr_proc(&self, begin: Option<Token>, args: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let args = args.unwrap();
-        Node::TyProc(tok_join!(self, begin, end), args)
+        Node::TyProc(self.tok_join(&begin, &end), args)
     }
 
     pub fn tr_self(&self, special: Option<Token>) -> Node {
-        Node::TySelf(loc!(self, special))
+        Node::TySelf(self.loc(&special))
     }
 
     pub fn tr_tuple(&self, begin: Option<Token>, types: Vec<Rc<Node>>, end: Option<Token>) -> Node {
-        Node::TyTuple(tok_join!(self, begin, end), types)
+        Node::TyTuple(self.tok_join(&begin, &end), types)
     }
 
     pub fn true_(&self, tok: Option<Token>) -> Node {
-        Node::True(loc!(self, tok))
+        Node::True(self.loc(&tok))
     }
 
     pub fn typed_arg(&self, type_: Option<Rc<Node>>, arg: Option<Rc<Node>>) -> Node {
@@ -1475,7 +1467,7 @@ impl<'a> Builder<'a> {
     }
 
     pub fn unary_op(&self, oper: Option<Token>, receiver: Option<Rc<Node>>) -> Node {
-        let id = tok_id!(self, oper);
+        let id = self.tok_id(&oper);
         let recv = receiver.unwrap();
 
         let id = match id.1.as_str() {
@@ -1489,20 +1481,20 @@ impl<'a> Builder<'a> {
 
     pub fn undef_method(&self, undef: Option<Token>, name_list: Vec<Rc<Node>>) -> Node {
         let loc = match name_list.last() {
-            Some(ref node) => loc!(self, undef).join(node.loc()),
-            None => loc!(self, undef),
+            Some(ref node) => self.loc(&undef).join(node.loc()),
+            None => self.loc(&undef),
         };
 
         Node::Undef(loc, name_list)
     }
 
     pub fn when(&self, when: Option<Token>, patterns: Vec<Rc<Node>>, then: Option<Token>, body: Option<Rc<Node>>) -> Node {
-        let when_loc = loc!(self, when);
+        let when_loc = self.loc(&when);
 
         let loc = if let Some(ref body_box) = body {
             when_loc.join(body_box.loc())
         } else if then.is_some() {
-            when_loc.join(&loc!(self, then))
+            when_loc.join(&self.loc(&then))
         } else {
             when_loc.join(patterns.last().unwrap().loc())
         };
