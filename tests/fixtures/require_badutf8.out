@@ -1,0 +1,5 @@
+error: Invalid UTF-8 in require path
+
+        @ __ROOT__/tests/fixtures/require_badutf8.rb:2
+      2 |  require "\x80"
+                   ^^^^^^ here
