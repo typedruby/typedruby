@@ -375,6 +375,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 })
             }
             MethodImpl::IntrinsicProcCall => panic!("should never happen"),
+            MethodImpl::Stub => panic!("need to rework this to take a MethodEntry"),
         }
     }
 

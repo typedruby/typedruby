@@ -210,6 +210,7 @@ impl<'a> ObjectGraph<'a> {
                 owner: class,
                 visibility: Cell::new(MethodVisibility::Public),
                 implementation: impl_,
+                stub: RefCell::new(Rc::new(None)),
             }))
         }
 
@@ -607,6 +608,7 @@ pub struct MethodEntry<'object> {
     pub owner: &'object RubyObject<'object>,
     pub visibility: Cell<MethodVisibility>,
     pub implementation: Rc<MethodImpl<'object>>,
+    pub stub: RefCell<Rc<Option<MethodStub<'object>>>>,
 }
 
 #[derive(Debug)]
@@ -630,10 +632,17 @@ pub enum MethodImpl<'object> {
         loc: Loc,
     },
     Untyped,
+    Stub,
     IntrinsicClassNew,
     IntrinsicProcCall,
     IntrinsicKernelRaise,
     IntrinsicKernelIsA,
+}
+
+#[derive(Debug)]
+pub struct MethodStub<'object> {
+    pub node: Rc<Node>,
+    pub scope: Rc<Scope<'object>>,
 }
 
 #[derive(Debug)]

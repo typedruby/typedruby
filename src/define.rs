@@ -4,7 +4,7 @@ use std::rc::Rc;
 use ast::{Id, Node};
 use errors::Detail;
 use environment::Environment;
-use object::{RubyObject, Scope, MethodEntry, MethodImpl, ObjectGraph, IvarEntry};
+use object::{RubyObject, Scope, MethodEntry, MethodImpl, MethodStub, ObjectGraph, IvarEntry};
 use abstract_type::{TypeNode, TypeScope, Prototype, AnnotationStatus};
 
 #[derive(Copy,Clone,Debug)]
@@ -17,6 +17,13 @@ pub enum MethodVisibility {
 #[derive(Debug)]
 pub enum MethodDef<'object> {
     Def {
+        module: &'object RubyObject<'object>,
+        visi: MethodVisibility,
+        name: Id,
+        node: Rc<Node>,
+        scope: Rc<Scope<'object>>,
+    },
+    Prototype {
         module: &'object RubyObject<'object>,
         visi: MethodVisibility,
         name: Id,
@@ -49,7 +56,7 @@ pub enum MethodDef<'object> {
         module: &'object RubyObject<'object>,
         name: Id,
         emit_error: bool,
-    }
+    },
 }
 
 #[derive(Debug)]
@@ -119,6 +126,20 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
 {
     match method {
         MethodDef::Def { module, visi, name: Id(name_loc, name), node, scope } => {
+            if let Some(ref meth) = env.object.lookup_method(module, &name) {
+                match *meth.implementation {
+                    MethodImpl::Stub => {
+                        env.error_sink.borrow_mut().error(
+                            "Can't redefine a method that was defined as a stub.", &[
+                            Detail::Loc("re-defined here", &node.loc()),
+                            Detail::Loc("stub defined here", &meth.stub.borrow().as_ref().as_ref().unwrap().node.loc()),
+                        ]);
+                        return None;
+                    }
+                    _ => (),
+                }
+            }
+
             let (proto, body) = match *node {
                 Node::Def(_, _, ref proto, ref body) => (proto, body),
                 Node::Defs(_, _, _, ref proto, ref body) => (proto, body),
@@ -153,11 +174,30 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                 owner: module,
                 visibility: Cell::new(visi),
                 implementation: Rc::new(impl_),
+                stub: RefCell::new(Rc::new(None)),
             });
 
             env.object.define_method(module, name, method.clone());
 
             return Some(method);
+        }
+        MethodDef::Prototype { module, visi, name: Id(_, name), node, scope } => {
+            let stub = MethodStub {
+                node: node.clone(),
+                scope: scope,
+            };
+
+            if let Some(meth) = env.object.lookup_method(module, &name) {
+                *meth.stub.borrow_mut() = Rc::new(Some(stub));
+            } else {
+                let method = Rc::new(MethodEntry {
+                    owner: module,
+                    visibility: Cell::new(visi),
+                    implementation: Rc::new(MethodImpl::Stub),
+                    stub: RefCell::new(Rc::new(Some(stub))),
+                });
+                env.object.define_method(module, name.to_owned(), method);
+            }
         }
         MethodDef::Alias { module, to, from, emit_error } => {
             if let Some(method) = env.object.lookup_method(module, &from.1) {
@@ -174,6 +214,7 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                     owner: module,
                     visibility: Cell::new(MethodVisibility::Public),
                     implementation: Rc::new(MethodImpl::Untyped),
+                    stub: RefCell::new(Rc::new(None)),
                 }));
             }
         }
@@ -185,7 +226,8 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                     implementation: Rc::new(MethodImpl::AttrReader {
                         ivar: format!("@{}", name),
                         loc: loc,
-                    })
+                    }),
+                    stub: RefCell::new(Rc::new(None)),
                 }))
         }
         MethodDef::AttrWriter { module, visi, name: Id(loc, name) } => {
@@ -196,7 +238,8 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                     implementation: Rc::new(MethodImpl::AttrWriter {
                         ivar: format!("@{}", name),
                         loc: loc,
-                    })
+                    }),
+                    stub: RefCell::new(Rc::new(None)),
                 }))
         }
         MethodDef::SetVisi { module, visi, name: Id(loc, name), emit_error } => {
@@ -208,6 +251,7 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                         owner: module,
                         visibility: Cell::new(visi),
                         implementation: method.implementation.clone(),
+                        stub: method.stub.clone(),
                     }))
                 }
             } else {

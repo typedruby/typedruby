@@ -1,4 +1,5 @@
 use std::io;
+use std::io::ErrorKind;
 use std::rc::Rc;
 use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
@@ -167,7 +168,17 @@ impl<'object> Environment<'object> {
             loaded_features_ref.insert(path.clone(), LoadState::Loading);
         }
 
-        let result = self.load_file(&path);
+        let result = self.load_file(&path)
+            .and_then(|_| {
+                let mut stub_path = path.clone();
+                stub_path.set_extension("rbi");
+                self.load_file(&stub_path).or_else(|e| {
+                    match e.kind() {
+                        ErrorKind::NotFound => Ok(()),
+                        _ => Err(e),
+                    }
+                })
+            });
 
         let mut loaded_features_ref = self.loaded_features.borrow_mut();
 

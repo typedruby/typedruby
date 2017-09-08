@@ -384,13 +384,23 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: Id, def_node: &Rc<Node>, visi: MethodVisibility) {
-        self.defs.add_method(MethodDef::Def {
-            module: target,
-            visi: visi,
-            name: name,
-            node: def_node.clone(),
-            scope: self.scope.clone(),
-        });
+        if self.source_type == SourceType::Typestub {
+            self.defs.add_method(MethodDef::Prototype {
+                module: target,
+                visi: visi,
+                name: name,
+                node: def_node.clone(),
+                scope: self.scope.clone(),
+            });
+        } else {
+            self.defs.add_method(MethodDef::Def {
+                module: target,
+                visi: visi,
+                name: name,
+                node: def_node.clone(),
+                scope: self.scope.clone(),
+            });
+        }
     }
 
     fn symbol_name<'node>(&self, node: &'node Rc<Node>, msg: &str) -> Option<Id> {
