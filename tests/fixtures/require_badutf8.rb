@@ -1,0 +1,2 @@
+# @typedruby
+require "\x80"

@@ -1,0 +1,20 @@
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/recursive_type.rb:3
+      3 |    a = []
+                 ^^ t1, with:
+        @ __ROOT__/tests/fixtures/recursive_type.rb:3
+      3 |    a = []
+                 ^^ Array::[t1]
+
+        - arising from an attempt to match:
+
+        @ (builtin stdlib):760
+    760 |    def <<(ElementType item) => :self; end
+                    ^^^^^^^^^^^ t1, with:
+        @ __ROOT__/tests/fixtures/recursive_type.rb:4
+      4 |    a << a
+                  ^ Array::[t1]
+        @ __ROOT__/tests/fixtures/recursive_type.rb:4
+      4 |    a << a
+             ^^^^^^ in this expression
