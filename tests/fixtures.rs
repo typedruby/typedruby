@@ -94,10 +94,13 @@ fn test_fixtures() {
 
         let ch = Changeset::new(&err.expected, &err.got, "\n");
         for diff in ch.diffs.iter() {
-            match *diff {
-                Difference::Same(ref s) => println!(" {}", s),
-                Difference::Add(ref s) => println!("+{}", s),
-                Difference::Rem(ref s) => println!("-{}", s),
+            let (diffchar, s) = match *diff {
+                Difference::Same(ref s) => (' ', s),
+                Difference::Add(ref s) => ('+', s),
+                Difference::Rem(ref s) => ('-', s),
+            };
+            for line in s.split("\n") {
+                println!("{}{}", diffchar, line);
             }
         }
         println!("# end diff");
