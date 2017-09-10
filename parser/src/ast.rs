@@ -408,25 +408,12 @@ pub struct Ast {
 }
 
 fn line_map_from_source(source: &str) -> Vec<usize> {
-    let mut line_map = vec![];
-    let mut previous_index = 0;
-
-    for (index, c) in source.char_indices() {
-        if c == '\n' {
-            line_map.push(previous_index);
-            previous_index = index + 1;
-        }
-    }
-
-    if line_map.is_empty() {
-        line_map.push(0);
-    }
-
-    if line_map.last().unwrap() == &previous_index {
-        line_map.push(source.len());
-    } else {
-        line_map.push(previous_index);
-    }
+    let mut line_map = vec![0];
+    line_map.extend(source
+        .char_indices()
+        .filter(|&(_, c)| c == '\n')
+        .map(|(index, _)| index + 1));
+    line_map.push(source.len());
 
     line_map
 }
@@ -470,5 +457,25 @@ impl SourceFile {
 
     pub fn source(&self) -> &str {
         &self.source
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn line_for_pos() {
+        let file = SourceFile::new(PathBuf::from("file.rb"), String::from("1\n"));
+        assert_eq!(file.line_for_pos(0).number, 1);
+        assert_eq!(file.line_for_pos(1).number, 1);
+    }
+
+    #[test]
+    fn line_for_pos_no_newline_at_end() {
+        let file = SourceFile::new(PathBuf::from("file.rb"), String::from("1\n2"));
+        assert_eq!(file.line_for_pos(0).number, 1);
+        assert_eq!(file.line_for_pos(1).number, 1);
+        assert_eq!(file.line_for_pos(2).number, 2);
     }
 }
