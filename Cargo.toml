@@ -11,3 +11,7 @@ regex = "0.2"
 ruby_parser = { path = "parser" }
 typed-arena = "1.2.0"
 termcolor = "0.3"
+
+[dev-dependencies]
+glob = "0.2"
+difference = "1.0"
