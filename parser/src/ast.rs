@@ -447,7 +447,7 @@ impl SourceFile {
         SourceLine {
             number: idx + 1,
             begin_pos: self.line_map[idx],
-            end_pos: self.line_map[idx + 1],
+            end_pos: self.line_map[min(self.line_map.len() - 1, idx + 1)],
         }
     }
 
@@ -463,6 +463,7 @@ impl SourceFile {
 #[cfg(test)]
 mod test {
     use super::*;
+    use parser;
 
     #[test]
     fn line_for_pos() {
@@ -477,5 +478,12 @@ mod test {
         assert_eq!(file.line_for_pos(0).number, 1);
         assert_eq!(file.line_for_pos(1).number, 1);
         assert_eq!(file.line_for_pos(2).number, 2);
+    }
+
+    #[test]
+    fn print_location_of_node_without_newline() {
+        let file = Rc::new(SourceFile::new(PathBuf::from("file.rb"), String::from("1")));
+        let ast = parser::parse(file);
+        assert_eq!(format!("{}", ast.node.unwrap().loc()), "file.rb:1:1-2:1");
     }
 }
