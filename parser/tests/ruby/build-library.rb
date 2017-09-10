@@ -17,7 +17,7 @@ Dir.glob(File.join(ARGV.first, '**/*.rb')) do |file|
 
     FileUtils.mkdir_p(dirname)
     File.write("#{filename}.rb", code)
-    File.write("#{filename}.sexp", sexp_rb)
+    File.write("#{filename}.rbast", sexp_rb)
   rescue => err
     puts err
     next

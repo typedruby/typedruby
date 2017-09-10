@@ -27,7 +27,7 @@ fn compare_sexps(path: PathBuf) {
     let mut buf_rs = String::new();
     let mut buf_rb = String::new();
 
-    let sexp_path = path.with_extension("sexp");
+    let sexp_path = path.with_extension("rbast");
     let src = Rc::new(ruby_parser::SourceFile::open(path).expect("failed to load file"));
     let ast = ruby_parser::parse(src.clone());
 
