@@ -113,6 +113,14 @@ impl Loc {
         // self.end_pos is exclusive, but Coords should be inclusive
         self.coords_for_pos(self.end_pos - 1)
     }
+
+    pub fn with_begin(&self, begin_pos: usize) -> Loc {
+        Loc { begin_pos, ..self.clone() }
+    }
+
+    pub fn with_end(&self, end_pos: usize) -> Loc {
+        Loc { end_pos, ..self.clone() }
+    }
 }
 
 #[derive(Debug,Clone)]
