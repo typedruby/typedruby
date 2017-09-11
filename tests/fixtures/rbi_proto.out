@@ -1,0 +1,38 @@
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/rbi_proto.rbi:2
+      2 |    def untyped_with_stub(Integer x) => Integer
+                                   ^^^^^^^ Integer, with:
+        @ __ROOT__/tests/fixtures/rbi_proto.rb:6
+      6 |    def typed(String y) => String
+                       ^^^^^^ String
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/rbi_proto.rbi:2
+      2 |    def untyped_with_stub(Integer x) => Integer
+                                   ^^^^^^^ Integer, with:
+        @ __ROOT__/tests/fixtures/rbi_proto.rb:7
+      7 |      untyped_with_stub(y)
+                                 ^ String
+        @ __ROOT__/tests/fixtures/rbi_proto.rb:7
+      7 |      untyped_with_stub(y)
+               ^^^^^^^^^^^^^^^^^^^^ in this expression
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/rbi_proto.rb:6
+      6 |    def typed(String y) => String
+                                    ^^^^^^ String, with:
+        @ __ROOT__/tests/fixtures/rbi_proto.rbi:2
+      2 |    def untyped_with_stub(Integer x) => Integer
+                                                 ^^^^^^^ Integer
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/rbi_proto.rb:6
+      6 |    def typed(String y) => String
+                                    ^^^^^^ String, with:
+        @ __ROOT__/tests/fixtures/rbi_proto.rb:7
+      7 |      untyped_with_stub(y)
+               ^^^^^^^^^^^^^^^^^^^^ Integer
