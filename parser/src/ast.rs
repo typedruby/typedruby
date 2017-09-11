@@ -410,11 +410,11 @@ pub struct Ast {
 
 fn line_map_from_source(source: &str) -> Vec<usize> {
     let mut line_map = vec![0];
+
     line_map.extend(source
         .char_indices()
         .filter(|&(_, c)| c == '\n')
         .map(|(index, _)| index + 1));
-    line_map.push(source.len());
 
     line_map
 }
@@ -445,10 +445,18 @@ impl SourceFile {
             Err(idx) => idx - 1,
         };
 
+        let begin_pos = self.line_map[idx];
+
+        let end_pos = if idx + 1 == self.line_map.len() {
+            self.source.len()
+        } else {
+            self.line_map[idx + 1]
+        };
+
         SourceLine {
             number: idx + 1,
-            begin_pos: self.line_map[idx],
-            end_pos: self.line_map[min(self.line_map.len() - 1, idx + 1)],
+            begin_pos,
+            end_pos,
         }
     }
 
