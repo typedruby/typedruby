@@ -99,7 +99,10 @@ impl Loc {
 
     fn coords_for_pos(&self, pos: usize) -> Coords {
         let line = self.file.line_for_pos(pos);
-        Coords { line: line.number, col: pos - line.begin_pos + 1 }
+        Coords {
+            line: line.number,
+            col: pos - line.begin_pos + 1, // col is 1-indexed
+        }
     }
 
     pub fn begin(&self) -> Coords {
