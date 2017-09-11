@@ -477,16 +477,25 @@ mod test {
     use super::*;
     use parser;
 
+    fn source_file(src: &str) -> Rc<SourceFile> {
+        Rc::new(SourceFile::new(PathBuf::from("file.rb"), src.to_owned()))
+    }
+
+    fn parse(src: &str) -> Rc<Node> {
+        let ast = parser::parse(source_file(src));
+        ast.node.expect("src to parse")
+    }
+
     #[test]
     fn line_for_pos() {
-        let file = SourceFile::new(PathBuf::from("file.rb"), String::from("1\n"));
+        let file = source_file("1\n");
         assert_eq!(file.line_for_pos(0).number, 1);
         assert_eq!(file.line_for_pos(1).number, 1);
     }
 
     #[test]
     fn line_for_pos_no_newline_at_end() {
-        let file = SourceFile::new(PathBuf::from("file.rb"), String::from("1\n2"));
+        let file = source_file("1\n2");
         assert_eq!(file.line_for_pos(0).number, 1);
         assert_eq!(file.line_for_pos(1).number, 1);
         assert_eq!(file.line_for_pos(2).number, 2);
@@ -494,8 +503,13 @@ mod test {
 
     #[test]
     fn print_location_of_node_without_newline() {
-        let file = Rc::new(SourceFile::new(PathBuf::from("file.rb"), String::from("1")));
-        let ast = parser::parse(file);
-        assert_eq!(format!("{}", ast.node.unwrap().loc()), "file.rb:1:1-2:1");
+        let node = parse("1");
+        assert_eq!(format!("{}", node.loc()), "file.rb:1:1-1:1");
+    }
+
+    #[test]
+    fn print_location_of_node_with_newline() {
+        let node = parse("1\n");
+        assert_eq!(format!("{}", node.loc()), "file.rb:1:1-1:1");
     }
 }
