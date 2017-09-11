@@ -99,7 +99,10 @@ impl Loc {
 
     fn coords_for_pos(&self, pos: usize) -> Coords {
         let line = self.file.line_for_pos(pos);
-        Coords { line: line.number, col: pos - line.begin_pos + 1 }
+        Coords {
+            line: line.number,
+            col: pos - line.begin_pos + 1, // col is 1-indexed
+        }
     }
 
     pub fn begin(&self) -> Coords {
@@ -107,7 +110,8 @@ impl Loc {
     }
 
     pub fn end(&self) -> Coords {
-        self.coords_for_pos(self.end_pos)
+        // self.end_pos is exclusive, but Coords should be inclusive
+        self.coords_for_pos(self.end_pos - 1)
     }
 }
 
@@ -409,11 +413,11 @@ pub struct Ast {
 
 fn line_map_from_source(source: &str) -> Vec<usize> {
     let mut line_map = vec![0];
+
     line_map.extend(source
         .char_indices()
         .filter(|&(_, c)| c == '\n')
         .map(|(index, _)| index + 1));
-    line_map.push(source.len());
 
     line_map
 }
@@ -444,10 +448,18 @@ impl SourceFile {
             Err(idx) => idx - 1,
         };
 
+        let begin_pos = self.line_map[idx];
+
+        let end_pos = if idx + 1 == self.line_map.len() {
+            self.source.len()
+        } else {
+            self.line_map[idx + 1]
+        };
+
         SourceLine {
             number: idx + 1,
-            begin_pos: self.line_map[idx],
-            end_pos: self.line_map[idx + 1],
+            begin_pos,
+            end_pos,
         }
     }
 
@@ -463,19 +475,41 @@ impl SourceFile {
 #[cfg(test)]
 mod test {
     use super::*;
+    use parser;
+
+    fn source_file(src: &str) -> Rc<SourceFile> {
+        Rc::new(SourceFile::new(PathBuf::from("file.rb"), src.to_owned()))
+    }
+
+    fn parse(src: &str) -> Rc<Node> {
+        let ast = parser::parse(source_file(src));
+        ast.node.expect("src to parse")
+    }
 
     #[test]
     fn line_for_pos() {
-        let file = SourceFile::new(PathBuf::from("file.rb"), String::from("1\n"));
+        let file = source_file("1\n");
         assert_eq!(file.line_for_pos(0).number, 1);
         assert_eq!(file.line_for_pos(1).number, 1);
     }
 
     #[test]
     fn line_for_pos_no_newline_at_end() {
-        let file = SourceFile::new(PathBuf::from("file.rb"), String::from("1\n2"));
+        let file = source_file("1\n2");
         assert_eq!(file.line_for_pos(0).number, 1);
         assert_eq!(file.line_for_pos(1).number, 1);
         assert_eq!(file.line_for_pos(2).number, 2);
+    }
+
+    #[test]
+    fn print_location_of_node_without_newline() {
+        let node = parse("1");
+        assert_eq!(format!("{}", node.loc()), "file.rb:1:1-1:1");
+    }
+
+    #[test]
+    fn print_location_of_node_with_newline() {
+        let node = parse("1\n");
+        assert_eq!(format!("{}", node.loc()), "file.rb:1:1-1:1");
     }
 }
