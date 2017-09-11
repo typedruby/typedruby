@@ -177,6 +177,7 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                 MethodImpl::Ruby {
                     name: name.clone(),
                     proto: proto,
+                    body: body.clone(),
                 }
             };
 
@@ -225,7 +226,15 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
 
             let method = if let Some(meth) = env.object.lookup_method(module, &name) {
                 let impl_ = match *meth.implementation {
-                    MethodImpl::TypedRuby{ref name, proto: _, ref body, ref scope} => {
+                    MethodImpl::TypedRuby{ref name, ref body, ref scope, ..} => {
+                        Rc::new(MethodImpl::TypedRuby{
+                            name: name.to_owned(),
+                            proto: proto,
+                            body: body.clone(),
+                            scope: scope.clone(),
+                        })
+                    },
+                    MethodImpl::Ruby{ref name, ref body, ..} => {
                         Rc::new(MethodImpl::TypedRuby{
                             name: name.to_owned(),
                             proto: proto,
@@ -248,6 +257,7 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                     implementation: Rc::new(MethodImpl::Ruby {
                         name: name.clone(),
                         proto: proto,
+                        body: None,
                     }),
                 })
             };
