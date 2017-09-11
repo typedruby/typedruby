@@ -218,7 +218,7 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                 AnnotationStatus::Partial => {
                     env.error_sink.borrow_mut().error(
                         "Partial type signatures are not allowed in .rbi files.", &[
-                            Detail::Loc("All arguments and return values must be annotated", node.loc()),
+                            Detail::Loc("All arguments and return values must be annotated", &proto.loc),
                         ]);
                 }
                 _ => ()
@@ -254,9 +254,10 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                 Rc::new(MethodEntry {
                     owner: module,
                     visibility: Cell::new(visi),
-                    implementation: Rc::new(MethodImpl::Ruby {
+                    implementation: Rc::new(MethodImpl::TypedRuby {
                         name: name.clone(),
                         proto: proto,
+                        scope: scope,
                         body: None,
                     }),
                 })

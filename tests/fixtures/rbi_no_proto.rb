@@ -3,4 +3,5 @@
 def typed => nil
   untyped(0)
   no_arg
+  partial(0)
 end

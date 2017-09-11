@@ -9,3 +9,9 @@ error: Definitions in .rbi files must contain type annotations
         @ __ROOT__/tests/fixtures/rbi_no_proto.rbi:4
       4 |  def no_arg
                ^^^^^^ here
+
+error: Partial type signatures are not allowed in .rbi files.
+
+        @ __ROOT__/tests/fixtures/rbi_no_proto.rbi:7
+      7 |  def partial(x) => nil
+                      ^^^^^^^^^^ All arguments and return values must be annotated
