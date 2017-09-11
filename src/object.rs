@@ -620,6 +620,7 @@ pub enum MethodImpl<'object> {
     Ruby {
         name: String,
         proto: Prototype<'object>,
+        body: Option<Rc<Node>>,
     },
     AttrReader {
         ivar: String,
