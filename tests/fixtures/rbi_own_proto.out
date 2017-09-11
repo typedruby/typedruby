@@ -1,11 +1,11 @@
 error: Could not match types:
 
-        @ (builtin stdlib):693
-    693 |    def +(String other) => String; end
+        @ (builtin stdlib):722
+    722 |    def +(String other) => String; end
                    ^^^^^^ String, with:
-        @ __ROOT__/tests/fixtures/rbi_own_proto.rb:2
-      2 |    x + 1
+        @ __ROOT__/tests/fixtures/rbi_own_proto.rb:4
+      4 |    x + 1
                  ^ Integer
-        @ __ROOT__/tests/fixtures/rbi_own_proto.rb:2
-      2 |    x + 1
+        @ __ROOT__/tests/fixtures/rbi_own_proto.rb:4
+      4 |    x + 1
              ^^^^^ in this expression
