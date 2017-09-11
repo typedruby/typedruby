@@ -107,7 +107,8 @@ impl Loc {
     }
 
     pub fn end(&self) -> Coords {
-        self.coords_for_pos(self.end_pos)
+        // self.end_pos is exclusive, but Coords should be inclusive
+        self.coords_for_pos(self.end_pos - 1)
     }
 }
 
