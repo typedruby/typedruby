@@ -1372,7 +1372,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
     fn lookup_ivar(&self, name: &str, type_context: &TypeContext<'ty, 'object>) -> Option<TypeRef<'ty, 'object>> {
         self.env.object.lookup_ivar(type_context.class, name).map(|ivar|
-            self.resolve_type(&ivar.type_node, type_context, ivar.scope.clone()))
+            self.materialize_type(&ivar.ty, type_context))
     }
 
     fn lookup_ivar_or_error(&self, id: &Id, type_context: &TypeContext<'ty, 'object>) -> TypeRef<'ty, 'object> {
