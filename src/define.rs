@@ -129,14 +129,21 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
 
             let (anno, proto) = Prototype::resolve(&name_loc, proto.as_ref().map(Rc::as_ref), env, type_scope);
 
-            let impl_ = match anno {
-                AnnotationStatus::Typed => MethodImpl::TypedRuby {
+            if anno == AnnotationStatus::Partial {
+                env.error_sink.borrow_mut().error("Partial type signatures are not permitted in method definitions", &[
+                    Detail::Loc("all arguments and return value must be annotated", &proto.loc),
+                ]);
+            }
+
+            let impl_ = if anno == AnnotationStatus::Typed {
+                MethodImpl::TypedRuby {
                     name: name.clone(),
                     body: body.clone(),
                     proto: proto,
                     scope: scope,
-                },
-                _ => MethodImpl::Ruby {
+                }
+            } else {
+                MethodImpl::Ruby {
                     name: name.clone(),
                     proto: proto,
                 }
