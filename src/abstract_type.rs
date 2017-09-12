@@ -182,20 +182,20 @@ impl<'object> TypeNode<'object> {
                 loc,
         }
     }
+
+    pub fn resolve<'env>(node: &Node, env: &'env Environment<'object>, scope: Rc<TypeScope<'object>>)
+        -> TypeNodeRef<'object>
+    {
+        ResolveType { env: env, scope: scope }.resolve_type(node)
+    }
 }
 
-pub struct ResolveType<'env, 'object: 'env> {
+struct ResolveType<'env, 'object: 'env> {
     env: &'env Environment<'object>,
     scope: Rc<TypeScope<'object>>,
 }
 
 impl<'env, 'object> ResolveType<'env, 'object> {
-    pub fn resolve(node: &Node, env: &'env Environment<'object>, scope: Rc<TypeScope<'object>>)
-        -> TypeNodeRef<'object>
-    {
-        ResolveType { env: env, scope: scope }.resolve_type(node)
-    }
-
     fn error(&self, message: &str, details: &[Detail]) {
         self.env.error_sink.borrow_mut().error(message, details)
     }
@@ -494,14 +494,14 @@ impl<'env, 'object> ResolveType<'env, 'object> {
                     Node::TyConUnify(ref loc, ref a, ref b) =>
                         TypeConstraint::Unify {
                             loc: loc.clone(),
-                            a: Self::resolve(a, self.env, scope.clone()),
-                            b: Self::resolve(b, self.env, scope.clone()),
+                            a: TypeNode::resolve(a, self.env, scope.clone()),
+                            b: TypeNode::resolve(b, self.env, scope.clone()),
                         },
                     Node::TyConSubtype(ref loc, ref sub, ref super_) =>
                         TypeConstraint::Compatible {
                             loc: loc.clone(),
-                            sub: Self::resolve(sub, self.env, scope.clone()),
-                            super_: Self::resolve(super_, self.env, scope.clone()),
+                            sub: TypeNode::resolve(sub, self.env, scope.clone()),
+                            super_: TypeNode::resolve(super_, self.env, scope.clone()),
                         },
                     _ => panic!("unexpected node type in constraint position"),
                 }),

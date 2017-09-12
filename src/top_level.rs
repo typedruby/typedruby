@@ -5,7 +5,7 @@ use define::{Definitions, MethodVisibility, MethodDef, IvarDef};
 use object::{RubyObject, Scope, ConstantEntry};
 use std::rc::Rc;
 use std::cell::Cell;
-use abstract_type::{ResolveType, TypeNode, TypeScope};
+use abstract_type::{TypeNode, TypeScope};
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 
@@ -683,7 +683,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                                 })
                             },
                             Node::TyCast(_, _, ref type_node) => {
-                                let ty = ResolveType::resolve(type_node, self.env,
+                                let ty = TypeNode::resolve(type_node, self.env,
                                     TypeScope::new(self.scope.clone()));
 
                                 Ok(ConstantEntry::Expression {

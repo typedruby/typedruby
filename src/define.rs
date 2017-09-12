@@ -5,7 +5,7 @@ use ast::{Id, Node};
 use errors::{Detail, ErrorSink};
 use environment::Environment;
 use object::{RubyObject, Scope, MethodEntry, MethodImpl, ObjectGraph, IvarEntry};
-use abstract_type::{ResolveType, TypeScope};
+use abstract_type::{TypeNode, TypeScope};
 
 #[derive(Copy,Clone,Debug)]
 pub enum MethodVisibility {
@@ -218,7 +218,7 @@ fn define_ivar<'o>(env: &Environment<'o>, ivar: IvarDef<'o>) {
             Detail::Loc("previous declaration was here", &ivar_entry.ivar_loc),
         ]);
     } else {
-        let ty = ResolveType::resolve(&type_node, env, TypeScope::new(scope));
+        let ty = TypeNode::resolve(&type_node, env, TypeScope::new(scope));
 
         env.object.define_ivar(module, ivar, Rc::new(IvarEntry {
             ivar_loc: ivar_loc,
