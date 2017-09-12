@@ -13,7 +13,7 @@ use typecheck::call::{CallArg, ArgError};
 use itertools::Itertools;
 use deferred_cell::DeferredCell;
 use abstract_type;
-use abstract_type::{ResolveType, TypeScope, TypeNode};
+use abstract_type::{TypeScope, TypeNode};
 
 pub struct Eval<'ty, 'object: 'ty> {
     env: &'ty Environment<'object>,
@@ -450,7 +450,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
-        let type_node = ResolveType::resolve(node, self.env, context.type_scope(scope));
+        let type_node = TypeNode::resolve(node, self.env, context.type_scope(scope));
 
         self.materialize_type(&type_node, context)
     }
@@ -1692,7 +1692,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Node::TyCast(ref loc, ref expr, ref type_node) => {
                 self.process_node(expr, locals).seq(&|_, l| {
-                    let ab_ty = ResolveType::resolve(type_node, self.env,
+                    let ab_ty = TypeNode::resolve(type_node, self.env,
                         self.type_context.type_scope(self.scope.clone()));
                     let ty = self.materialize_type(&ab_ty, &self.type_context);
                     Computation::result(self.tyenv.update_loc(ty, loc.clone()), l)
