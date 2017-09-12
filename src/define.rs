@@ -5,7 +5,7 @@ use ast::{Id, Node};
 use errors::Detail;
 use environment::Environment;
 use object::{RubyObject, Scope, MethodEntry, MethodImpl, ObjectGraph, IvarEntry};
-use abstract_type::{TypeNode, TypeScope, Prototype};
+use abstract_type::{TypeNode, TypeScope, Prototype, AnnotationStatus};
 
 #[derive(Copy,Clone,Debug)]
 pub enum MethodVisibility {
@@ -127,15 +127,25 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
 
             let type_scope = TypeScope::new(scope.clone(), module);
 
+            let (anno, proto) = Prototype::resolve(&name_loc, proto.as_ref().map(Rc::as_ref), env, type_scope);
+
+            let impl_ = match anno {
+                AnnotationStatus::Typed => MethodImpl::TypedRuby {
+                    name: name.clone(),
+                    body: body.clone(),
+                    proto: proto,
+                    scope: scope,
+                },
+                _ => MethodImpl::Ruby {
+                    name: name.clone(),
+                    proto: proto,
+                }
+            };
+
             let method = Rc::new(MethodEntry {
                 owner: module,
                 visibility: Cell::new(visi),
-                implementation: Rc::new(MethodImpl::Ruby {
-                    name: name.clone(),
-                    body: body.clone(),
-                    proto: Prototype::resolve(&name_loc, proto.as_ref().map(Rc::as_ref), env, type_scope),
-                    scope: scope,
-                }),
+                implementation: Rc::new(impl_),
             });
 
             env.object.define_method(module, name, method.clone());
