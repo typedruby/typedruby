@@ -56,29 +56,6 @@ enum HashEntry<'ty, 'object: 'ty> {
     Kwsplat(TypeRef<'ty, 'object>),
 }
 
-#[derive(Clone,Copy)]
-enum AnnotationStatus {
-    Empty,
-    Typed,
-    Partial,
-    Untyped,
-}
-
-impl AnnotationStatus {
-    pub fn empty() -> AnnotationStatus {
-        AnnotationStatus::Empty
-    }
-
-    pub fn append(self, other: AnnotationStatus) -> AnnotationStatus {
-        match (self, other) {
-            (AnnotationStatus::Typed, AnnotationStatus::Typed) => AnnotationStatus::Typed,
-            (AnnotationStatus::Untyped, AnnotationStatus::Untyped) => AnnotationStatus::Untyped,
-            (AnnotationStatus::Empty, _) => other,
-            _ => AnnotationStatus::Partial,
-        }
-    }
-}
-
 enum BlockArg {
     Pass { loc: Loc, node: Rc<Node> },
     Literal { loc: Loc, args: Option<Rc<Node>>, body: Option<Rc<Node>> },
@@ -125,21 +102,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             proto: DeferredCell::new()
         };
 
-        let (annotation_status, prototype, locals) =
+        let (prototype, locals) =
             eval.materialize_prototype(proto, Locals::new(), &mut type_context);
-
-        match annotation_status {
-            AnnotationStatus::Empty |
-            AnnotationStatus::Untyped =>
-                return,
-            AnnotationStatus::Partial => {
-                eval.error("Partial type signatures are not permitted in method definitions", &[
-                    Detail::Loc("all arguments and return value must be annotated", &prototype.loc),
-                ]);
-                return;
-            },
-            AnnotationStatus::Typed => {},
-        };
 
         // type parameters are initially inserted into the type context
         // unresolved to that they can be constrained. unify any unresolved
@@ -245,7 +209,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn materialize_arg(&self, arg: &abstract_type::ArgNode<'object>, locals: Locals<'ty, 'object>, context: &TypeContext<'ty, 'object>)
-        -> (AnnotationStatus, Arg<'ty, 'object>, Locals<'ty, 'object>)
+        -> (Arg<'ty, 'object>, Locals<'ty, 'object>)
     {
         use abstract_type::ArgNode;
 
@@ -259,14 +223,14 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             ArgNode::Block { ref ty, ref loc, .. } =>
                 (ty.as_ref(), loc),
             ArgNode::Procarg0 { ref arg, ref loc } => {
-                let (anno, arg, locals) = self.materialize_arg(arg, locals, context);
-                return (anno, Arg::Procarg0 { loc: loc.clone(), arg: Box::new(arg) }, locals);
+                let (arg, locals) = self.materialize_arg(arg, locals, context);
+                return (Arg::Procarg0 { loc: loc.clone(), arg: Box::new(arg) }, locals);
             }
         };
 
-        let (status, ty) = match ty {
-            Some(ty) => (AnnotationStatus::Typed, self.materialize_type(ty, context)),
-            None => (AnnotationStatus::Untyped, self.tyenv.new_var(loc.clone())),
+        let ty = match ty {
+            Some(ty) => self.materialize_type(ty, context),
+            None => self.tyenv.new_var(loc.clone()),
         };
 
         let (arg, locals) = match *arg {
@@ -305,11 +269,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 panic!("impossible")
         };
 
-        (status, arg, locals)
+        (arg, locals)
     }
 
     fn materialize_prototype(&self, prototype: &abstract_type::Prototype<'object>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>)
-        -> (AnnotationStatus, Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
+        -> (Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
     {
         use abstract_type::{TypeParameter, TypeConstraint};
 
@@ -334,18 +298,16 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
         }
 
-        let (anno, args, locals) = prototype.args.iter().fold((AnnotationStatus::empty(), Vec::new(), locals),
-            |(anno, mut args, locals), arg| {
-                let (anno_, arg, locals_) = self.materialize_arg(arg, locals, context);
+        let (args, locals) = prototype.args.iter().fold((Vec::new(), locals),
+            |(mut args, locals), arg| {
+                let (arg, locals_) = self.materialize_arg(arg, locals, context);
                 args.push(arg);
-                (anno.append(anno_), args, locals_)
+                (args, locals_)
             });
 
-        let (anno, retn) = match prototype.retn.as_ref() {
-            Some(retn) =>
-                (anno.append(AnnotationStatus::Typed), self.materialize_type(retn, context)),
-            None =>
-                (anno.append(AnnotationStatus::Untyped), self.tyenv.new_var(prototype.loc.clone())),
+        let retn = match prototype.retn.as_ref() {
+            Some(retn) => self.materialize_type(retn, context),
+            None => self.tyenv.new_var(prototype.loc.clone()),
         };
 
         let proto = Rc::new(Prototype {
@@ -354,7 +316,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             retn: retn,
         });
 
-        (anno, proto, locals)
+        (proto, locals)
     }
 
     fn materialize_type(&self, type_node: &TypeNode<'object>, context: &TypeContext<'ty, 'object>) -> TypeRef<'ty, 'object> {
@@ -380,7 +342,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             TypeNode::Proc { ref loc, ref proto } => {
                 let mut context = context.clone();
 
-                let (_, proto, _) = self.materialize_prototype(proto, Locals::new(), &mut context);
+                let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut context);
 
                 self.tyenv.alloc(Type::Proc { loc: loc.clone(), proto: proto })
             }
@@ -670,13 +632,16 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
     fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, mut type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
         match *impl_ {
-            MethodImpl::Ruby { ref proto, .. } => {
-                let (anno, proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
+            MethodImpl::TypedRuby { ref proto, .. } => {
+                let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
 
-                if let AnnotationStatus::Untyped = anno {
-                    self.tyenv.unify(proto.retn, self.tyenv.any(proto.retn.loc().clone()))
-                        .expect("retn to unify");
-                }
+                proto
+            }
+            MethodImpl::Ruby { ref proto, .. } => {
+                let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
+
+                self.tyenv.unify(proto.retn, self.tyenv.any(proto.retn.loc().clone()))
+                    .expect("retn to unify");
 
                 proto
             }

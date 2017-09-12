@@ -591,11 +591,15 @@ pub struct MethodEntry<'object> {
 
 #[derive(Debug)]
 pub enum MethodImpl<'object> {
-    Ruby {
+    TypedRuby {
         name: String,
         proto: Prototype<'object>,
         body: Option<Rc<Node>>,
         scope: Rc<Scope<'object>>,
+    },
+    Ruby {
+        name: String,
+        proto: Prototype<'object>,
     },
     AttrReader {
         ivar: String,

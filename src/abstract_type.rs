@@ -152,6 +152,25 @@ pub enum ArgNode<'object> {
     },
 }
 
+#[derive(Clone,Copy)]
+pub enum AnnotationStatus {
+    Empty,
+    Typed,
+    Partial,
+    Untyped,
+}
+
+impl AnnotationStatus {
+    pub fn append(self, other: AnnotationStatus) -> AnnotationStatus {
+        match (self, other) {
+            (AnnotationStatus::Typed, AnnotationStatus::Typed) => AnnotationStatus::Typed,
+            (AnnotationStatus::Untyped, AnnotationStatus::Untyped) => AnnotationStatus::Untyped,
+            (AnnotationStatus::Empty, _) => other,
+            _ => AnnotationStatus::Partial,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Prototype<'object> {
     pub loc: Loc,
@@ -162,19 +181,30 @@ pub struct Prototype<'object> {
 
 impl<'object> Prototype<'object> {
     pub fn resolve(id_loc: &Loc, node: Option<&Node>, env: &Environment<'object>, scope: Rc<TypeScope<'object>>)
-        -> Prototype<'object>
+        -> (AnnotationStatus, Prototype<'object>)
     {
         match node {
-            Some(proto) =>
-                ResolveType { env: env, scope: scope }
-                    .resolve_prototype(proto),
-            None =>
-                Prototype {
+            Some(proto) => {
+                let resolve = ResolveType { env: env, scope: scope };
+                let (anno, proto) = resolve.resolve_prototype(proto);
+
+                if let AnnotationStatus::Partial = anno {
+                    env.error_sink.borrow_mut().error("Partial type signatures are not permitted in method definitions", &[
+                        Detail::Loc("all arguments and return value must be annotated", &proto.loc),
+                    ]);
+                }
+
+                (anno, proto)
+            }
+            None => {
+                let proto = Prototype {
                     loc: id_loc.clone(),
                     type_parameters: vec![],
                     args: vec![],
                     retn: None,
-                },
+                };
+                (AnnotationStatus::Untyped, proto)
+            }
         }
     }
 }
@@ -390,7 +420,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             Node::TyProc(ref loc, ref prototype) =>
                 Rc::new(TypeNode::Proc {
                     loc: loc.clone(),
-                    proto: self.resolve_prototype(prototype),
+                    proto: self.resolve_prototype(prototype).1,
                 }),
             Node::TyClass(ref loc) =>
                 Rc::new(TypeNode::SpecialClass { loc: loc.clone() }),
@@ -445,20 +475,24 @@ impl<'env, 'object> ResolveType<'env, 'object> {
         }
     }
 
-    fn resolve_arg(&self, node: &Node) -> ArgNode<'object> {
+    fn resolve_arg(&self, node: &Node) -> (AnnotationStatus, ArgNode<'object>) {
         let arg_loc = node.loc().clone();
 
-        let (ty, arg_node) = match *node {
+        let (anno, ty, arg_node) = match *node {
             Node::TypedArg(_, ref type_node, ref arg_node) =>
-                (Some(self.resolve_type(type_node)), arg_node.as_ref()),
-            _ => (None, node),
+                (AnnotationStatus::Typed, Some(self.resolve_type(type_node)), arg_node.as_ref()),
+            _ =>
+                (AnnotationStatus::Untyped, None, node),
         };
 
-        match *arg_node {
+        let arg = match *arg_node {
+            Node::Procarg0(_, ref arg) => {
+                let (anno_inner, arg) = self.resolve_arg(arg);
+                let arg = ArgNode::Procarg0 { loc: arg_loc, arg: Box::new(arg) };
+                return (anno.append(anno_inner), arg);
+            }
             Node::Arg(ref loc, ref name) =>
                 ArgNode::Required { loc: arg_loc, ty: ty, lhs: ArgLhs::Lvar { name: Id(loc.clone(), name.clone()) } },
-            Node::Procarg0(_, ref arg) =>
-                ArgNode::Procarg0 { loc: arg_loc, arg: Box::new(self.resolve_arg(arg)) },
             Node::Blockarg(_, ref name) =>
                 ArgNode::Block { loc: arg_loc, ty: ty, name: name.clone() },
             Node::Kwarg(ref loc, ref name) =>
@@ -476,10 +510,12 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             Node::Kwrestarg(_, ref name) =>
                 ArgNode::Kwrest { loc: arg_loc, ty: ty, name: name.clone() },
             _ => panic!("unexpected node type in resolve_arg"),
-        }
+        };
+
+        (anno, arg)
     }
 
-    pub fn resolve_prototype(&self, node: &Node) -> Prototype<'object> {
+    pub fn resolve_prototype(&self, node: &Node) -> (AnnotationStatus, Prototype<'object>) {
         fn option_rc_ref<T>(rc: &Option<Rc<T>>) -> Option<&T> {
             rc.as_ref().map(Rc::as_ref)
         }
@@ -537,7 +573,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
 
         let resolve = ResolveType { env: self.env, scope: type_scope };
 
-        let args = args.map(|args| {
+        let (anno, args) = args.map(|args| {
             if let Node::Args(_, ref args) = *args {
                 args.as_slice()
             } else {
@@ -545,15 +581,21 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             }
         }).unwrap_or(&[]).iter().map(|arg| {
             resolve.resolve_arg(arg)
-        }).collect();
+        }).fold((AnnotationStatus::Empty, Vec::new()), |(anno1, mut args), (anno2, arg)| {
+            args.push(arg);
+            (anno1.append(anno2), args)
+        });
 
-        let retn = retn.map(|retn| resolve.resolve_type(retn));
+        let (anno, retn) = match retn {
+            Some(retn) => (anno.append(AnnotationStatus::Typed), Some(resolve.resolve_type(retn))),
+            None => (anno.append(AnnotationStatus::Untyped), None),
+        };
 
-        Prototype {
+        (anno, Prototype {
             loc: node.loc().clone(),
             type_parameters: type_parameters,
             args: args,
             retn: retn,
-        }
+        })
     }
 }
