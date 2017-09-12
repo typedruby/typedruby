@@ -376,145 +376,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, type_scope: Rc<TypeScope<'object>>) -> TypeRef<'ty, 'object> {
-        let type_node = TypeNode::resolve(node, self.env, type_scope);
-
-        self.materialize_type(&type_node, context)
-    }
-
-    fn resolve_arg(&self, arg_node: &Node, locals: Locals<'ty, 'object>, context: &TypeContext<'ty, 'object>, scope: Rc<TypeScope<'object>>)
-        -> (Arg<'ty, 'object>, Locals<'ty, 'object>)
-    {
-        let (ty, arg_node) = match *arg_node {
-            Node::TypedArg(_, ref type_node, ref arg) => {
-                let ty = self.resolve_type(type_node, context, scope.clone());
-                (ty, &**arg)
-            },
-            _ => {
-                (self.tyenv.new_var(arg_node.loc().clone()), arg_node)
-            },
-        };
-
-        match *arg_node {
-            Node::Arg(ref loc, ref name) =>
-                (Arg::Required { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Blockarg(ref loc, None) =>
-                (Arg::Block { loc: loc.clone(), ty: ty }, locals),
-            Node::Blockarg(ref loc, Some(Id(_, ref name))) =>
-                (Arg::Block { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Kwarg(ref loc, ref name) =>
-                (Arg::Kwarg { loc: loc.clone(), name: name.to_owned(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Kwoptarg(ref loc, Id(_, ref name), ref expr) =>
-                (Arg::Kwoptarg { loc: loc.clone(), name: name.to_owned(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Mlhs(ref loc, ref nodes) => {
-                let mut mlhs_types = Vec::new();
-                let mut locals = locals;
-
-                for node in nodes {
-                    let (arg, l) = self.resolve_arg(node, locals.clone(), context, scope.clone());
-                    let arg_ty = if let Arg::Required { ty, .. } = arg {
-                        ty
-                    } else {
-                        self.error("Only required arguments are currently supported in destructuring arguments", &[
-                            Detail::Loc("here", arg.loc()),
-                        ]);
-                        break;
-                    };
-                    mlhs_types.push(arg_ty);
-                    locals = l;
-                }
-
-                let tuple_ty = self.tyenv.tuple(loc.clone(), mlhs_types, None, vec![]);
-
-                let arg = Arg::Required { loc: loc.clone(), ty: tuple_ty };
-
-                (arg, locals)
-            }
-            Node::Optarg(_, Id(ref loc, ref name), ref expr) =>
-                (Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Restarg(ref loc, None) =>
-                (Arg::Rest { loc: loc.clone(), ty: ty }, locals),
-            Node::Restarg(ref loc, Some(Id(_, ref name))) =>
-                (Arg::Rest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), self.create_array_type(loc, ty))),
-            Node::Procarg0(ref loc, ref inner_arg_node) => {
-                let (inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
-                (Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
-            }
-            Node::Kwrestarg(ref loc, None) =>
-                (Arg::Kwrest { loc: loc.clone(), ty: ty }, locals),
-            Node::Kwrestarg(ref loc, Some(Id(_, ref name))) => {
-                let hash_ty = self.create_hash_type(loc, self.tyenv.instance0(loc.clone(), self.env.object.Symbol), ty);
-                (Arg::Kwrest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), hash_ty))
-            }
-            _ => panic!("arg_node: {:?}", arg_node),
-        }
-    }
-
-    fn resolve_prototype(&self, proto_loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>, scope: Rc<TypeScope<'object>>)
-        -> (Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
-    {
-        let (args_node, return_type) = match node {
-            Some(&Node::Prototype(_, ref genargs, ref args, ref ret)) => {
-                if let Some(ref genargs_) = *genargs {
-                    if let Node::TyGenargs(_, ref gendeclargs) = **genargs_ {
-                        for gendeclarg in gendeclargs {
-                            if let Node::TyGendeclarg(ref loc, ref name, ref constraint) = **gendeclarg {
-                                let tyvar = self.tyenv.new_var(loc.clone());
-                                context.type_names.insert(name.clone(), tyvar);
-
-                                match constraint.as_ref().map(Rc::as_ref) {
-                                    Some(&Node::TyConUnify(ref loc, ref a, ref b)) => {
-                                        let a = self.resolve_type(a, &context, scope.clone());
-                                        let b = self.resolve_type(b, &context, scope.clone());
-                                        self.unify(a, b, Some(loc));
-                                    }
-                                    Some(&Node::TyConSubtype(ref loc, ref sub, ref super_)) => {
-                                        let sub = self.resolve_type(sub, &context, scope.clone());
-                                        let super_ = self.resolve_type(super_, &context, scope.clone());
-                                        self.compatible(super_, sub, Some(loc));
-                                    }
-                                    Some(_) => panic!(),
-                                    None => {}
-                                }
-                            }
-                        }
-                    }
-                }
-
-                let args = args.as_ref().map(Rc::as_ref);
-
-                match *ret {
-                    Some(ref type_node) =>
-                        (args, self.resolve_type(type_node, &context, scope.clone())),
-                    None =>
-                        (args, self.tyenv.new_var(proto_loc.clone())),
-                }
-            },
-            Some(&Node::Args(..)) | None => {
-                (node, self.tyenv.new_var(proto_loc.clone()))
-            },
-            _ => panic!("unexpected {:?}", node),
-        };
-
-        let mut args = Vec::new();
-        let mut locals = locals;
-
-        match args_node {
-            Some(&Node::Args(_, ref arg_nodes)) => {
-                for arg_node in arg_nodes {
-                    let (arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
-                    args.push(arg);
-                    locals = locals_;
-                }
-            }
-            Some(_) =>
-                panic!("expected args_node to be Node::Args"),
-            None => {},
-        };
-
-        (Rc::new(Prototype { loc: proto_loc.clone(), args: args, retn: return_type }), locals)
-    }
-
     fn type_error(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, err_a: TypeRef<'ty, 'object>, err_b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
         let strs = Arena::new();
 
@@ -1010,7 +871,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 let mut block_type_context = self.type_context.clone();
 
-                let (block_prototype, block_locals) = self.resolve_prototype(loc, args.as_ref().map(Rc::as_ref), block_locals, &mut block_type_context, self.type_scope.clone());
+                let (_, block_abstract_proto) = abstract_type::Prototype::resolve(
+                    loc, args.as_ref().map(Rc::as_ref), &self.env, self.type_scope.clone());
+
+                let (block_prototype, block_locals) =
+                    self.materialize_prototype(&block_abstract_proto, block_locals, &mut block_type_context);
 
                 let block_return_type = block_prototype.retn;
 

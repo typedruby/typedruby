@@ -152,7 +152,7 @@ pub enum ArgNode<'object> {
     },
 }
 
-#[derive(Clone,Copy)]
+#[derive(Clone,Copy,PartialEq,Eq)]
 pub enum AnnotationStatus {
     Empty,
     Typed,
@@ -180,7 +180,7 @@ pub struct Prototype<'object> {
 }
 
 impl<'object> Prototype<'object> {
-    pub fn resolve(id_loc: &Loc, node: Option<&Node>, env: &Environment<'object>, scope: Rc<TypeScope<'object>>)
+    pub fn resolve(proto_loc: &Loc, node: Option<&Node>, env: &Environment<'object>, scope: Rc<TypeScope<'object>>)
         -> (AnnotationStatus, Prototype<'object>)
     {
         match node {
@@ -189,16 +189,14 @@ impl<'object> Prototype<'object> {
                 let (anno, proto) = resolve.resolve_prototype(proto);
 
                 if let AnnotationStatus::Partial = anno {
-                    env.error_sink.borrow_mut().error("Partial type signatures are not permitted in method definitions", &[
-                        Detail::Loc("all arguments and return value must be annotated", &proto.loc),
-                    ]);
+
                 }
 
                 (anno, proto)
             }
             None => {
                 let proto = Prototype {
-                    loc: id_loc.clone(),
+                    loc: proto_loc.clone(),
                     type_parameters: vec![],
                     args: vec![],
                     retn: None,
