@@ -3,7 +3,9 @@ use std::rc::Rc;
 
 use ast::{Id, Node};
 use errors::{Detail, ErrorSink};
+use environment::Environment;
 use object::{RubyObject, Scope, MethodEntry, MethodImpl, ObjectGraph, IvarEntry};
+use abstract_type::{ResolveType, TypeScope};
 
 #[derive(Copy,Clone,Debug)]
 pub enum MethodVisibility {
@@ -80,18 +82,18 @@ impl<'object> Definitions<'object> {
         self.ivars.borrow_mut().push(ivar);
     }
 
-    pub fn define(&self, object: &ObjectGraph<'object>, errors: &mut ErrorSink) -> Vec<Rc<MethodEntry<'object>>> {
+    pub fn define(&self, env: &Environment<'object>) -> Vec<Rc<MethodEntry<'object>>> {
         let mut methods = self.methods.borrow_mut();
         let mut ivars = self.ivars.borrow_mut();
 
         for ivar in ivars.drain(0..) {
-            define_ivar(object, ivar, errors)
+            define_ivar(env, ivar)
         }
 
         let mut method_entries = Vec::new();
 
         for method in methods.drain(0..) {
-            if let Some(entry) = define_method(object, method, errors) {
+            if let Some(entry) = define_method(&env.object, method, env.error_sink.borrow_mut().as_mut()) {
                 method_entries.push(entry)
             }
         }
@@ -207,19 +209,20 @@ fn define_method<'o>(object: &ObjectGraph<'o>, method: MethodDef<'o>, errors: &m
     None
 }
 
-fn define_ivar<'o>(object: &ObjectGraph<'o>, ivar: IvarDef<'o>, errors: &mut ErrorSink) {
+fn define_ivar<'o>(env: &Environment<'o>, ivar: IvarDef<'o>) {
     let IvarDef { module, name: Id(ivar_loc, ivar), type_node, scope } = ivar;
 
-    if let Some(ivar_entry) = object.lookup_ivar(module, &ivar) {
-        errors.error("Duplicate instance variable type declaration", &[
+    if let Some(ivar_entry) = env.object.lookup_ivar(module, &ivar) {
+        env.error_sink.borrow_mut().error("Duplicate instance variable type declaration", &[
             Detail::Loc("here", &ivar_loc),
             Detail::Loc("previous declaration was here", &ivar_entry.ivar_loc),
         ]);
     } else {
-        object.define_ivar(module, ivar, Rc::new(IvarEntry {
+        let ty = ResolveType::resolve(&type_node, env, TypeScope::new(scope));
+
+        env.object.define_ivar(module, ivar, Rc::new(IvarEntry {
             ivar_loc: ivar_loc,
-            type_node: type_node,
-            scope: scope,
+            ty: ty,
         }));
     }
 }

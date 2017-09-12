@@ -6,6 +6,7 @@ use std::fmt;
 use typed_arena::Arena;
 use ast::{Node, Loc, Id};
 use define::MethodVisibility;
+use abstract_type::TypeNodeRef;
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
@@ -639,8 +640,7 @@ impl<'object> ConstantEntry<'object> {
 
 pub struct IvarEntry<'object> {
     pub ivar_loc: Loc,
-    pub type_node: Rc<Node>,
-    pub scope: Rc<Scope<'object>>,
+    pub ty: TypeNodeRef<'object>,
 }
 
 pub enum RubyObject<'a> {
