@@ -1871,16 +1871,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 match self.env.resolve_cpath(node, self.scope.clone()) {
                     Ok(object) => {
                         let ty = match *object {
-                            ConstantEntry::Expression { node: ref const_node, ref scope, .. } => {
-                                if let Node::TyCast(_, _, ref ty_node) = **const_node {
-                                    let scope_self = self.env.object.metaclass(scope.module);
-                                    let type_context = TypeContext::new(scope_self, vec![]);
-                                    let ty = self.resolve_type(ty_node, &type_context, scope.clone());
-                                    self.tyenv.update_loc(ty, node.loc().clone())
-                                } else {
-                                    // TODO - don't know the type of this constant
-                                    self.tyenv.any(node.loc().clone())
-                                }
+                            ConstantEntry::Expression { ref ty, scope_self, .. } => {
+                                let constant_type_context = TypeContext::new(
+                                    self.env.object.metaclass(scope_self), vec![]);
+
+                                self.materialize_type(ty, &constant_type_context)
                             }
                             ConstantEntry::Module { value, .. } => {
                                 self.tyenv.instance0(node.loc().clone(), self.env.object.metaclass(value))

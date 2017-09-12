@@ -619,8 +619,8 @@ pub enum ConstantEntry<'object> {
     },
     Expression {
         loc: Loc,
-        node: Rc<Node>,
-        scope: Rc<Scope<'object>>,
+        ty: TypeNodeRef<'object>,
+        scope_self: &'object RubyObject<'object>,
     }
 }
 

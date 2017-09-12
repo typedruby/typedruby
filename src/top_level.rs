@@ -5,6 +5,7 @@ use define::{Definitions, MethodVisibility, MethodDef, IvarDef};
 use object::{RubyObject, Scope, ConstantEntry};
 use std::rc::Rc;
 use std::cell::Cell;
+use abstract_type::{ResolveType, TypeNode, TypeScope};
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 
@@ -192,8 +193,8 @@ impl<'env, 'object> Eval<'env, 'object> {
             Ok((base, id)) => {
                 if let Some(constant_entry) = self.env.object.get_const_for_definition(&base, id) {
                     match *constant_entry {
-                        ConstantEntry::Expression { node: ref expr_node, .. } => {
-                            self.constant_definition_error(&format!("{} is not a static class", id), name.loc(), Some(expr_node.loc()));
+                        ConstantEntry::Expression { ref loc, .. } => {
+                            self.constant_definition_error(&format!("{} is not a static class", id), name.loc(), Some(loc));
 
                             // do nothing with the class body
                             None
@@ -296,8 +297,8 @@ impl<'env, 'object> Eval<'env, 'object> {
             Ok((base, id)) => {
                 if let Some(constant_entry) = self.env.object.get_const_for_definition(&base, id) {
                     match *constant_entry {
-                        ConstantEntry::Expression { node: ref expr_node, .. } => {
-                            self.constant_definition_error(&format!("{} is not a static module", id), name.loc(), Some(expr_node.loc()));
+                        ConstantEntry::Expression { ref loc, .. } => {
+                            self.constant_definition_error(&format!("{} is not a static module", id), name.loc(), Some(loc));
                             None
                         }
                         ConstantEntry::Module { value: value@&RubyObject::Module { .. }, .. } => {
@@ -664,7 +665,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     Ok(cbase) => {
                         if let Some(constant_entry) = self.env.object.get_own_const(&cbase, name) {
                             let existing_loc = match *constant_entry {
-                                ConstantEntry::Expression { ref node, .. } => Some(node.loc()),
+                                ConstantEntry::Expression { ref loc, .. } => Some(loc),
                                 ConstantEntry::Module { ref loc, .. } => loc.as_ref(),
                             };
 
@@ -675,18 +676,28 @@ impl<'env, 'object> Eval<'env, 'object> {
                         let constant = match **expr {
                             Node::Const(..) => {
                                 self.resolve_cpath(expr).map(|constant| match *constant {
-                                    ConstantEntry::Expression { ref node, ref scope, .. } =>
-                                        ConstantEntry::Expression { node: node.clone(), scope: scope.clone(), loc: loc },
+                                    ConstantEntry::Expression { ref ty, scope_self, .. } =>
+                                        ConstantEntry::Expression { ty: ty.clone(), scope_self, loc },
                                     ConstantEntry::Module { value, .. } =>
                                         ConstantEntry::Module { value: value, loc: Some(loc) },
                                 })
                             },
+                            Node::TyCast(_, _, ref type_node) => {
+                                let ty = ResolveType::resolve(type_node, self.env,
+                                    TypeScope::new(self.scope.clone()));
+
+                                Ok(ConstantEntry::Expression {
+                                    loc: loc,
+                                    ty: ty,
+                                    scope_self: self.scope.module,
+                                })
+                            }
                             // TODO special case things like Struct.new and Class.new here
                             _ => {
                                 Ok(ConstantEntry::Expression {
-                                    loc: loc,
-                                    node: expr.clone(),
-                                    scope: self.scope.clone(),
+                                    loc: loc.clone(),
+                                    ty: Rc::new(TypeNode::Any { loc: loc.clone() }),
+                                    scope_self: self.scope.module,
                                 })
                             }
                         };
