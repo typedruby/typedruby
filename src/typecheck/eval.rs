@@ -48,6 +48,12 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
     pub fn self_type(&self, tyenv: &TypeEnv<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
         tyenv.instance(loc, self.class, self.type_parameters.clone())
     }
+
+    pub fn type_scope(&self, scope: Rc<Scope<'object>>) -> Rc<TypeScope<'object>> {
+        self.type_names.keys()
+            .fold(TypeScope::new(scope), |ts, param|
+                TypeScope::extend(ts, param.clone()))
+    }
 }
 
 enum HashEntry<'ty, 'object: 'ty> {
@@ -444,11 +450,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
-        let type_scope = context.type_names.keys()
-            .fold(TypeScope::new(scope), |ts, param|
-                TypeScope::extend(ts, param.clone()));
-
-        let type_node = ResolveType::resolve(node, self.env, type_scope);
+        let type_node = ResolveType::resolve(node, self.env, context.type_scope(scope));
 
         self.materialize_type(&type_node, context)
     }
@@ -1690,7 +1692,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Node::TyCast(ref loc, ref expr, ref type_node) => {
                 self.process_node(expr, locals).seq(&|_, l| {
-                    let ty = self.resolve_type(type_node, &self.type_context, self.scope.clone());
+                    let ab_ty = ResolveType::resolve(type_node, self.env,
+                        self.type_context.type_scope(self.scope.clone()));
+                    let ty = self.materialize_type(&ab_ty, &self.type_context);
                     Computation::result(self.tyenv.update_loc(ty, loc.clone()), l)
                 })
             }
