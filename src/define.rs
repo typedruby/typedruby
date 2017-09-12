@@ -2,10 +2,10 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use ast::{Id, Node};
-use errors::{Detail, ErrorSink};
+use errors::Detail;
 use environment::Environment;
 use object::{RubyObject, Scope, MethodEntry, MethodImpl, ObjectGraph, IvarEntry};
-use abstract_type::{TypeNode, TypeScope};
+use abstract_type::{TypeNode, TypeScope, Prototype};
 
 #[derive(Copy,Clone,Debug)]
 pub enum MethodVisibility {
@@ -19,7 +19,7 @@ pub enum MethodDef<'object> {
     Def {
         module: &'object RubyObject<'object>,
         visi: MethodVisibility,
-        name: String,
+        name: Id,
         node: Rc<Node>,
         scope: Rc<Scope<'object>>,
     },
@@ -93,7 +93,7 @@ impl<'object> Definitions<'object> {
         let mut method_entries = Vec::new();
 
         for method in methods.drain(0..) {
-            if let Some(entry) = define_method(&env.object, method, env.error_sink.borrow_mut().as_mut()) {
+            if let Some(entry) = define_method(env, method) {
                 method_entries.push(entry)
             }
         }
@@ -114,37 +114,46 @@ fn lookup_visi<'o>(module: &'o RubyObject<'o>, name: &str, object: &ObjectGraph<
     })
 }
 
-fn define_method<'o>(object: &ObjectGraph<'o>, method: MethodDef<'o>, errors: &mut ErrorSink)
+fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
     -> Option<Rc<MethodEntry<'o>>>
 {
     match method {
-        MethodDef::Def { module, visi, name, node, scope } => {
+        MethodDef::Def { module, visi, name: Id(name_loc, name), node, scope } => {
+            let (proto, body) = match *node {
+                Node::Def(_, _, ref proto, ref body) => (proto, body),
+                Node::Defs(_, _, _, ref proto, ref body) => (proto, body),
+                _ => panic!("unexpected node type"),
+            };
+
+            let type_scope = TypeScope::new(scope.clone(), module);
+
             let method = Rc::new(MethodEntry {
                 owner: module,
                 visibility: Cell::new(visi),
                 implementation: Rc::new(MethodImpl::Ruby {
                     name: name.clone(),
-                    node: node,
+                    body: body.clone(),
+                    proto: Prototype::resolve(&name_loc, proto.as_ref().map(Rc::as_ref), env, type_scope),
                     scope: scope,
                 }),
             });
 
-            object.define_method(module, name, method.clone());
+            env.object.define_method(module, name, method.clone());
 
             return Some(method);
         }
         MethodDef::Alias { module, to, from, emit_error } => {
-            if let Some(method) = object.lookup_method(module, &from.1) {
-                object.define_method(module, to.1, method.clone());
+            if let Some(method) = env.object.lookup_method(module, &from.1) {
+                env.object.define_method(module, to.1, method.clone());
             } else {
                 if emit_error {
-                    errors.error("Could not resolve source method in alias", &[
+                    env.error_sink.borrow_mut().error("Could not resolve source method in alias", &[
                         Detail::Loc(&format!("{}#{}", module.name(), from.1), &from.0),
                     ]);
                 }
 
                 // define alias target as untyped so that uses of it don't produce even more errors:
-                object.define_method(module, to.1, Rc::new(MethodEntry {
+                env.object.define_method(module, to.1, Rc::new(MethodEntry {
                     owner: module,
                     visibility: Cell::new(MethodVisibility::Public),
                     implementation: Rc::new(MethodImpl::Untyped),
@@ -152,7 +161,7 @@ fn define_method<'o>(object: &ObjectGraph<'o>, method: MethodDef<'o>, errors: &m
             }
         }
         MethodDef::AttrReader { module, visi, name: Id(loc, name) } => {
-            object.define_method(module, name.clone(),
+            env.object.define_method(module, name.clone(),
                 Rc::new(MethodEntry {
                     owner: module,
                     visibility: Cell::new(visi),
@@ -163,7 +172,7 @@ fn define_method<'o>(object: &ObjectGraph<'o>, method: MethodDef<'o>, errors: &m
                 }))
         }
         MethodDef::AttrWriter { module, visi, name: Id(loc, name) } => {
-            object.define_method(module, format!("{}=", name),
+            env.object.define_method(module, format!("{}=", name),
                 Rc::new(MethodEntry {
                     owner: module,
                     visibility: Cell::new(visi),
@@ -174,11 +183,11 @@ fn define_method<'o>(object: &ObjectGraph<'o>, method: MethodDef<'o>, errors: &m
                 }))
         }
         MethodDef::SetVisi { module, visi, name: Id(loc, name), emit_error } => {
-            if let Some(method) = lookup_visi(module, &name, object) {
+            if let Some(method) = lookup_visi(module, &name, &env.object) {
                 if module == method.owner {
                     method.visibility.set(visi)
                 } else {
-                    object.define_method(module, name, Rc::new(MethodEntry {
+                    env.object.define_method(module, name, Rc::new(MethodEntry {
                         owner: module,
                         visibility: Cell::new(visi),
                         implementation: method.implementation.clone(),
@@ -186,19 +195,19 @@ fn define_method<'o>(object: &ObjectGraph<'o>, method: MethodDef<'o>, errors: &m
                 }
             } else {
                 if emit_error {
-                    errors.error("Could not resolve method name in visibility declaration", &[
+                    env.error_sink.borrow_mut().error("Could not resolve method name in visibility declaration", &[
                         Detail::Loc("here", &loc),
                     ]);
                 }
             }
         }
         MethodDef::ModuleFunc { module, name: Id(loc, name), emit_error } => {
-            if let Some(method) = lookup_visi(module, &name, object) {
-                let target = object.metaclass(module);
-                object.define_method(target, name, method);
+            if let Some(method) = lookup_visi(module, &name, &env.object) {
+                let target = env.object.metaclass(module);
+                env.object.define_method(target, name, method);
             } else {
                 if emit_error {
-                    errors.error("Could not resolve method name in module_function", &[
+                    env.error_sink.borrow_mut().error("Could not resolve method name in module_function", &[
                         Detail::Loc("here", &loc),
                     ]);
                 }
@@ -218,7 +227,7 @@ fn define_ivar<'o>(env: &Environment<'o>, ivar: IvarDef<'o>) {
             Detail::Loc("previous declaration was here", &ivar_entry.ivar_loc),
         ]);
     } else {
-        let ty = TypeNode::resolve(&type_node, env, TypeScope::new(scope));
+        let ty = TypeNode::resolve(&type_node, env, TypeScope::new(scope, module));
 
         env.object.define_ivar(module, ivar, Rc::new(IvarEntry {
             ivar_loc: ivar_loc,
