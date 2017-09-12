@@ -77,21 +77,6 @@ impl AnnotationStatus {
             _ => AnnotationStatus::Partial,
         }
     }
-
-    pub fn append_into(&mut self, other: AnnotationStatus) {
-        *self = self.append(other);
-    }
-
-    pub fn or(self, other: AnnotationStatus) -> AnnotationStatus {
-        match (self, other) {
-            (AnnotationStatus::Empty, _) => other,
-            (_, AnnotationStatus::Empty) => self,
-            (AnnotationStatus::Partial, _) => AnnotationStatus::Partial,
-            (_, AnnotationStatus::Partial) => AnnotationStatus::Partial,
-            (AnnotationStatus::Typed, _) => AnnotationStatus::Typed,
-            (AnnotationStatus::Untyped, _) => other,
-        }
-    }
 }
 
 enum BlockArg {
@@ -436,36 +421,35 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn resolve_arg(&self, arg_node: &Node, locals: Locals<'ty, 'object>, context: &TypeContext<'ty, 'object>, scope: Rc<TypeScope<'object>>)
-        -> (AnnotationStatus, Arg<'ty, 'object>, Locals<'ty, 'object>)
+        -> (Arg<'ty, 'object>, Locals<'ty, 'object>)
     {
-        let (status, ty, arg_node) = match *arg_node {
+        let (ty, arg_node) = match *arg_node {
             Node::TypedArg(_, ref type_node, ref arg) => {
                 let ty = self.resolve_type(type_node, context, scope.clone());
-                (AnnotationStatus::Typed, ty, &**arg)
+                (ty, &**arg)
             },
             _ => {
-                (AnnotationStatus::Untyped, self.tyenv.new_var(arg_node.loc().clone()), arg_node)
+                (self.tyenv.new_var(arg_node.loc().clone()), arg_node)
             },
         };
 
         match *arg_node {
             Node::Arg(ref loc, ref name) =>
-                (status, Arg::Required { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
+                (Arg::Required { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Blockarg(ref loc, None) =>
-                (status, Arg::Block { loc: loc.clone(), ty: ty }, locals),
+                (Arg::Block { loc: loc.clone(), ty: ty }, locals),
             Node::Blockarg(ref loc, Some(Id(_, ref name))) =>
-                (status, Arg::Block { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
+                (Arg::Block { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Kwarg(ref loc, ref name) =>
-                (status, Arg::Kwarg { loc: loc.clone(), name: name.to_owned(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
+                (Arg::Kwarg { loc: loc.clone(), name: name.to_owned(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Kwoptarg(ref loc, Id(_, ref name), ref expr) =>
-                (status, Arg::Kwoptarg { loc: loc.clone(), name: name.to_owned(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
+                (Arg::Kwoptarg { loc: loc.clone(), name: name.to_owned(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Mlhs(ref loc, ref nodes) => {
-                let mut mlhs_status = AnnotationStatus::empty();
                 let mut mlhs_types = Vec::new();
                 let mut locals = locals;
 
                 for node in nodes {
-                    let (st, arg, l) = self.resolve_arg(node, locals.clone(), context, scope.clone());
+                    let (arg, l) = self.resolve_arg(node, locals.clone(), context, scope.clone());
                     let arg_ty = if let Arg::Required { ty, .. } = arg {
                         ty
                     } else {
@@ -474,7 +458,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                         ]);
                         break;
                     };
-                    mlhs_status.append_into(st);
                     mlhs_types.push(arg_ty);
                     locals = l;
                 }
@@ -483,35 +466,33 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 let arg = Arg::Required { loc: loc.clone(), ty: tuple_ty };
 
-                (status.or(mlhs_status), arg, locals)
+                (arg, locals)
             }
             Node::Optarg(_, Id(ref loc, ref name), ref expr) =>
-                (status, Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
+                (Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
             Node::Restarg(ref loc, None) =>
-                (status, Arg::Rest { loc: loc.clone(), ty: ty }, locals),
+                (Arg::Rest { loc: loc.clone(), ty: ty }, locals),
             Node::Restarg(ref loc, Some(Id(_, ref name))) =>
-                (status, Arg::Rest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), self.create_array_type(loc, ty))),
+                (Arg::Rest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), self.create_array_type(loc, ty))),
             Node::Procarg0(ref loc, ref inner_arg_node) => {
-                let (status, inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
-                (status, Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
+                let (inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
+                (Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
             }
             Node::Kwrestarg(ref loc, None) =>
-                (status, Arg::Kwrest { loc: loc.clone(), ty: ty }, locals),
+                (Arg::Kwrest { loc: loc.clone(), ty: ty }, locals),
             Node::Kwrestarg(ref loc, Some(Id(_, ref name))) => {
                 let hash_ty = self.create_hash_type(loc, self.tyenv.instance0(loc.clone(), self.env.object.Symbol), ty);
-                (status, Arg::Kwrest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), hash_ty))
+                (Arg::Kwrest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), hash_ty))
             }
             _ => panic!("arg_node: {:?}", arg_node),
         }
     }
 
     fn resolve_prototype(&self, proto_loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>, scope: Rc<TypeScope<'object>>)
-        -> (AnnotationStatus, Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
+        -> (Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
     {
-        let (mut status, args_node, return_type) = match node {
+        let (args_node, return_type) = match node {
             Some(&Node::Prototype(_, ref genargs, ref args, ref ret)) => {
-                let mut status = AnnotationStatus::empty();
-
                 if let Some(ref genargs_) = *genargs {
                     if let Node::TyGenargs(_, ref gendeclargs) = **genargs_ {
                         for gendeclarg in gendeclargs {
@@ -536,21 +517,19 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                             }
                         }
                     }
-
-                    status.append_into(AnnotationStatus::Typed);
                 }
 
                 let args = args.as_ref().map(Rc::as_ref);
 
                 match *ret {
                     Some(ref type_node) =>
-                        (status.append(AnnotationStatus::Typed), args, self.resolve_type(type_node, &context, scope.clone())),
+                        (args, self.resolve_type(type_node, &context, scope.clone())),
                     None =>
-                        (status.append(AnnotationStatus::Untyped), args, self.tyenv.new_var(proto_loc.clone())),
+                        (args, self.tyenv.new_var(proto_loc.clone())),
                 }
             },
             Some(&Node::Args(..)) | None => {
-                (AnnotationStatus::Untyped, node, self.tyenv.new_var(proto_loc.clone()))
+                (node, self.tyenv.new_var(proto_loc.clone()))
             },
             _ => panic!("unexpected {:?}", node),
         };
@@ -561,8 +540,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         match args_node {
             Some(&Node::Args(_, ref arg_nodes)) => {
                 for arg_node in arg_nodes {
-                    let (arg_status, arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
-                    status.append_into(arg_status);
+                    let (arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
                     args.push(arg);
                     locals = locals_;
                 }
@@ -572,7 +550,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             None => {},
         };
 
-        (status, Rc::new(Prototype { loc: proto_loc.clone(), args: args, retn: return_type }), locals)
+        (Rc::new(Prototype { loc: proto_loc.clone(), args: args, retn: return_type }), locals)
     }
 
     fn type_error(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, err_a: TypeRef<'ty, 'object>, err_b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
@@ -1067,7 +1045,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 let mut block_type_context = self.type_context.clone();
 
-                let (_, block_prototype, block_locals) = self.resolve_prototype(loc, args.as_ref().map(Rc::as_ref), block_locals, &mut block_type_context, self.type_scope.clone());
+                let (block_prototype, block_locals) = self.resolve_prototype(loc, args.as_ref().map(Rc::as_ref), block_locals, &mut block_type_context, self.type_scope.clone());
 
                 let block_return_type = block_prototype.retn;
 
