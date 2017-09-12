@@ -7,6 +7,7 @@ use object::{Scope, RubyObject, ConstantEntry};
 
 pub type TypeNodeRef<'object> = Rc<TypeNode<'object>>;
 
+#[derive(Debug)]
 pub enum TypeScope<'object> {
     Constant {
         scope: Rc<Scope<'object>>,
@@ -18,8 +19,13 @@ pub enum TypeScope<'object> {
 }
 
 impl<'object> TypeScope<'object> {
-    pub fn new(scope: Rc<Scope<'object>>) -> Rc<TypeScope<'object>> {
-        Rc::new(TypeScope::Constant { scope })
+    pub fn new(scope: Rc<Scope<'object>>, module: &'object RubyObject<'object>)
+        -> Rc<TypeScope<'object>>
+    {
+        let scope = Rc::new(TypeScope::Constant { scope });
+
+        module.type_parameters().iter().fold(scope,
+            |scope, &Id(_, ref param)| Self::extend(scope, param.clone()))
     }
 
     pub fn extend(parent: Rc<TypeScope<'object>>, name: String) -> Rc<TypeScope<'object>> {
@@ -152,6 +158,25 @@ pub struct Prototype<'object> {
     pub type_parameters: Vec<TypeParameter<'object>>,
     pub args: Vec<ArgNode<'object>>,
     pub retn: Option<TypeNodeRef<'object>>,
+}
+
+impl<'object> Prototype<'object> {
+    pub fn resolve(id_loc: &Loc, node: Option<&Node>, env: &Environment<'object>, scope: Rc<TypeScope<'object>>)
+        -> Prototype<'object>
+    {
+        match node {
+            Some(proto) =>
+                ResolveType { env: env, scope: scope }
+                    .resolve_prototype(proto),
+            None =>
+                Prototype {
+                    loc: id_loc.clone(),
+                    type_parameters: vec![],
+                    args: vec![],
+                    retn: None,
+                },
+        }
+    }
 }
 
 #[derive(Debug)]

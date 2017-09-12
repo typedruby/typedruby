@@ -339,11 +339,11 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
-    fn decl_method(&self, target: &'object RubyObject<'object>, name: &str, def_node: &Rc<Node>, visi: MethodVisibility) {
+    fn decl_method(&self, target: &'object RubyObject<'object>, name: Id, def_node: &Rc<Node>, visi: MethodVisibility) {
         self.defs.add_method(MethodDef::Def {
             module: target,
             visi: visi,
-            name: name.to_owned(),
+            name: name,
             node: def_node.clone(),
             scope: self.scope.clone(),
         });
@@ -600,14 +600,14 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_maybe_node(proto);
                 self.enter_def(body);
             }
-            Node::Def(_, Id(_, ref name), ref proto, ref body) => {
+            Node::Def(_, ref name, ref proto, ref body) => {
                 self.eval_maybe_node(proto);
 
-                self.decl_method(&self.scope.module, name, node, self.def_visibility.get());
+                self.decl_method(&self.scope.module, name.clone(), node, self.def_visibility.get());
 
                 if self.module_function.get() {
                     let meta = self.env.object.metaclass(self.scope.module);
-                    self.decl_method(meta, name, node, MethodVisibility::Public);
+                    self.decl_method(meta, name.clone(), node, MethodVisibility::Public);
                 }
 
                 self.enter_def(body);
@@ -617,11 +617,11 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_maybe_node(proto);
                 self.enter_def(body);
             }
-            Node::Defs(_, ref singleton, Id(_, ref name), ref proto, ref body) => {
+            Node::Defs(_, ref singleton, ref name, ref proto, ref body) => {
                 match self.resolve_static(singleton) {
                     Ok(metaclass) => {
                         let metaclass = self.env.object.metaclass(metaclass);
-                        self.decl_method(metaclass, name, node, MethodVisibility::Public);
+                        self.decl_method(metaclass, name.clone(), node, MethodVisibility::Public);
                     }
                     Err((node, message)) => {
                         self.warning(message, &[Detail::Loc("here", node.loc())]);
@@ -683,8 +683,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                                 })
                             },
                             Node::TyCast(_, _, ref type_node) => {
-                                let ty = TypeNode::resolve(type_node, self.env,
-                                    TypeScope::new(self.scope.clone()));
+                                let scope = TypeScope::new(self.scope.clone(),
+                                    self.env.object.metaclass(self.scope.module));
+
+                                let ty = TypeNode::resolve(type_node, self.env, scope);
 
                                 Ok(ConstantEntry::Expression {
                                     loc: loc,

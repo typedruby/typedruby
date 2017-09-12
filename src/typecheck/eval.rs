@@ -18,12 +18,12 @@ use abstract_type::{TypeScope, TypeNode};
 pub struct Eval<'ty, 'object: 'ty> {
     env: &'ty Environment<'object>,
     tyenv: TypeEnv<'ty, 'object>,
-    scope: Rc<Scope<'object>>,
     type_context: TypeContext<'ty, 'object>,
+    type_scope: Rc<TypeScope<'object>>,
     proto: DeferredCell<Rc<Prototype<'ty, 'object>>>,
 }
 
-#[derive(Clone)]
+#[derive(Debug,Clone)]
 pub struct TypeContext<'ty, 'object: 'ty> {
     class: &'object RubyObject<'object>,
     type_parameters: Vec<TypeRef<'ty, 'object>>,
@@ -47,12 +47,6 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
 
     pub fn self_type(&self, tyenv: &TypeEnv<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
         tyenv.instance(loc, self.class, self.type_parameters.clone())
-    }
-
-    pub fn type_scope(&self, scope: Rc<Scope<'object>>) -> Rc<TypeScope<'object>> {
-        self.type_names.keys()
-            .fold(TypeScope::new(scope), |ts, param|
-                TypeScope::extend(ts, param.clone()))
     }
 }
 
@@ -128,50 +122,34 @@ enum Lhs<'ty, 'object: 'ty> {
 }
 
 impl<'ty, 'object> Eval<'ty, 'object> {
-    pub fn process(env: &'ty Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) {
+    pub fn process(env: &'ty Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, body: Option<Rc<Node>>, proto: &abstract_type::Prototype<'object>) {
         let class_type_parameters = class.type_parameters().iter().map(|&Id(ref loc, _)|
             tyenv.new_var(loc.clone())
         ).collect();
 
         let mut type_context = TypeContext::new(class, class_type_parameters);
 
+        let type_scope = proto.type_parameters.iter().fold(TypeScope::new(scope, class),
+            |scope, param| TypeScope::extend(scope, param.name.1.clone()));
+
         let mut eval = Eval {
             env: env,
             tyenv: tyenv,
-            scope: scope.clone(),
             type_context: type_context.clone(),
+            type_scope: type_scope,
             proto: DeferredCell::new()
         };
 
-        let (id, prototype_node, body) = match *node {
-            Node::Def(_, ref id, ref proto, ref body) =>
-                (id, proto, body),
-            Node::Defs(_, _, ref id, ref proto, ref body) =>
-                (id, proto, body),
-            _ =>
-                panic!("unknown node: {:?}", node),
-        };
-
-        let (annotation_status, prototype, locals) = {
-            let proto_node = prototype_node.as_ref().map(Rc::as_ref);
-            let proto_loc = proto_node.map(|n| n.loc().join(&id.0)).unwrap_or_else(|| id.0.clone());
-            eval.resolve_prototype(
-                &proto_loc,
-                proto_node,
-                Locals::new(),
-                &mut type_context,
-                scope.clone())
-        };
+        let (annotation_status, prototype, locals) =
+            eval.materialize_prototype(proto, Locals::new(), &mut type_context);
 
         match annotation_status {
             AnnotationStatus::Empty |
             AnnotationStatus::Untyped =>
                 return,
             AnnotationStatus::Partial => {
-                let loc = prototype_node.as_ref().expect("prototype node must exist when annotation status is partial").loc();
-
                 eval.error("Partial type signatures are not permitted in method definitions", &[
-                    Detail::Loc("all arguments and return value must be annotated", loc),
+                    Detail::Loc("all arguments and return value must be annotated", &prototype.loc),
                 ]);
                 return;
             },
@@ -195,7 +173,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         DeferredCell::set(&mut eval.proto, prototype.clone());
 
         // don't typecheck a method if it has no body
-        if let Some(ref body_node) = *body {
+        if let Some(ref body_node) = body {
             eval.process_node(body_node, locals).terminate(&|ty|
                 eval.compatible(prototype.retn, ty, None)
             );
@@ -295,8 +273,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             ArgNode::Kwrest { ref ty, ref loc, .. } |
             ArgNode::Block { ref ty, ref loc, .. } =>
                 (ty.as_ref(), loc),
-            ArgNode::Procarg0 { ref arg, .. } =>
-                return self.materialize_arg(arg, locals, context),
+            ArgNode::Procarg0 { ref arg, ref loc } => {
+                let (anno, arg, locals) = self.materialize_arg(arg, locals, context);
+                return (anno, Arg::Procarg0 { loc: loc.clone(), arg: Box::new(arg) }, locals);
+            }
         };
 
         let (status, ty) = match ty {
@@ -449,13 +429,13 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
-        let type_node = TypeNode::resolve(node, self.env, context.type_scope(scope));
+    fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, type_scope: Rc<TypeScope<'object>>) -> TypeRef<'ty, 'object> {
+        let type_node = TypeNode::resolve(node, self.env, type_scope);
 
         self.materialize_type(&type_node, context)
     }
 
-    fn resolve_arg(&self, arg_node: &Node, locals: Locals<'ty, 'object>, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
+    fn resolve_arg(&self, arg_node: &Node, locals: Locals<'ty, 'object>, context: &TypeContext<'ty, 'object>, scope: Rc<TypeScope<'object>>)
         -> (AnnotationStatus, Arg<'ty, 'object>, Locals<'ty, 'object>)
     {
         let (status, ty, arg_node) = match *arg_node {
@@ -525,7 +505,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn resolve_prototype(&self, proto_loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
+    fn resolve_prototype(&self, proto_loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>, scope: Rc<TypeScope<'object>>)
         -> (AnnotationStatus, Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
     {
         let (mut status, args_node, return_type) = match node {
@@ -712,25 +692,15 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
     fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, mut type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
         match *impl_ {
-            MethodImpl::Ruby { ref node, ref scope, .. } => {
-                let (id, prototype_node) = match **node {
-                    Node::Def(_, ref id, ref proto, _) => (id, proto),
-                    Node::Defs(_, _, ref id, ref proto, _) => (id, proto),
-                    _ => panic!("unexpected node in MethodEntry::Ruby: {:?}", node),
-                };
+            MethodImpl::Ruby { ref proto, .. } => {
+                let (anno, proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
 
-                let prototype_node = prototype_node.as_ref().map(Rc::as_ref);
-
-                let prototype_loc = prototype_node.map(|n| n.loc().join(&id.0)).unwrap_or_else(|| id.0.clone());
-
-                let (anno_status, prototype, _) = self.resolve_prototype(&prototype_loc, prototype_node, Locals::new(), &mut type_context, scope.clone());
-
-                if let AnnotationStatus::Untyped = anno_status {
-                    self.tyenv.unify(prototype.retn, self.tyenv.any(prototype.retn.loc().clone()))
-                        .expect("retn is unresolved type var");
+                if let AnnotationStatus::Untyped = anno {
+                    self.tyenv.unify(proto.retn, self.tyenv.any(proto.retn.loc().clone()))
+                        .expect("retn to unify");
                 }
 
-                prototype
+                proto
             }
             MethodImpl::AttrReader { ref ivar, ref loc } => {
                 let ivar_type = self.lookup_ivar(ivar, &type_context)
@@ -1097,7 +1067,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 let mut block_type_context = self.type_context.clone();
 
-                let (_, block_prototype, block_locals) = self.resolve_prototype(loc, args.as_ref().map(Rc::as_ref), block_locals, &mut block_type_context, self.scope.clone());
+                let (_, block_prototype, block_locals) = self.resolve_prototype(loc, args.as_ref().map(Rc::as_ref), block_locals, &mut block_type_context, self.type_scope.clone());
 
                 let block_return_type = block_prototype.retn;
 
@@ -1692,8 +1662,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Node::TyCast(ref loc, ref expr, ref type_node) => {
                 self.process_node(expr, locals).seq(&|_, l| {
-                    let ab_ty = TypeNode::resolve(type_node, self.env,
-                        self.type_context.type_scope(self.scope.clone()));
+                    let ab_ty = TypeNode::resolve(type_node, self.env, self.type_scope.clone());
                     let ty = self.materialize_type(&ab_ty, &self.type_context);
                     Computation::result(self.tyenv.update_loc(ty, loc.clone()), l)
                 })
@@ -1872,7 +1841,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 comp.seq(&|_, l| Computation::result(string_ty, l))
             }
             Node::Const(..) => {
-                match self.env.resolve_cpath(node, self.scope.clone()) {
+                match self.env.resolve_cpath(node, self.type_scope.constant_scope()) {
                     Ok(object) => {
                         let ty = match *object {
                             ConstantEntry::Expression { ref ty, scope_self, .. } => {
