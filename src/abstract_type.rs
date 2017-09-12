@@ -47,6 +47,7 @@ impl<'object> TypeScope<'object> {
     }
 }
 
+#[derive(Debug)]
 pub enum TypeNode<'object> {
     Instance {
         loc: Loc,
@@ -88,16 +89,19 @@ pub enum TypeNode<'object> {
     },
 }
 
+#[derive(Debug)]
 pub struct ArgExpr<'object> {
     pub expr: Rc<Node>,
     pub scope: Rc<Scope<'object>>,
 }
 
+#[derive(Debug)]
 pub enum ArgLhs {
     Lvar { name: Id },
     Mlhs { loc: Loc, items: Vec<ArgLhs> },
 }
 
+#[derive(Debug)]
 pub enum ArgNode<'object> {
     Required {
         loc: Loc,
@@ -142,6 +146,7 @@ pub enum ArgNode<'object> {
     },
 }
 
+#[derive(Debug)]
 pub struct Prototype<'object> {
     pub loc: Loc,
     pub type_parameters: Vec<TypeParameter<'object>>,
@@ -149,11 +154,13 @@ pub struct Prototype<'object> {
     pub retn: Option<TypeNodeRef<'object>>,
 }
 
+#[derive(Debug)]
 pub struct TypeParameter<'object> {
     pub name: Id,
     pub constraint: Option<TypeConstraint<'object>>,
 }
 
+#[derive(Debug)]
 pub enum TypeConstraint<'object> {
     Compatible { loc: Loc, sub: TypeNodeRef<'object>, super_: TypeNodeRef<'object> },
     Unify { loc: Loc, a: TypeNodeRef<'object>, b: TypeNodeRef<'object> },
