@@ -499,10 +499,10 @@ impl<'env, 'object> Eval<'env, 'object> {
             };
 
             if let Some(path) = path {
-                match self.env.require(&path) {
-                    Ok(()) => {}
-                    Err(e) => panic!("TODO: implement error handling for require errors: {:?}", e),
-                }
+                self.env.require(&path).unwrap_or_else(|e|
+                    self.error(&format!("Could not load file: {}", e), &[
+                        Detail::Loc("in require", args[0].loc()),
+                    ]))
             } else {
                 self.warning("Could not resolve require", &[
                     Detail::Loc("here", loc),
