@@ -297,6 +297,7 @@ using namespace std::string_literals;
   string_contents
   symbol_list
   top_stmts
+  tr_constraints
   tr_gendeclargs
   tr_types
   undef_list
@@ -932,9 +933,9 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     {
                       $$ = driver.build.const_(self, $1);
                     }
-                | primary_value tCOLON2 tLBRACK2 tr_gendeclargs rbracket
+                | primary_value tCOLON2 tLBRACK2 tr_gendeclargs tr_constraints rbracket
                     {
-                      $$ = driver.build.tr_gendecl(self, $1, $3, $4, $5);
+                      $$ = driver.build.tr_gendecl(self, $1, $3, $4, $5, $6);
                     }
                 | primary_value tCOLON2 cname
                     {
@@ -2531,9 +2532,9 @@ keyword_variable: kNIL
                       $$ = nullptr;
                     }
 
-tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
+tr_methodgenargs: tLBRACK2 tr_gendeclargs tr_constraints rbracket
                     {
-                      $$ = driver.build.tr_genargs(self, $1, $2, $3);
+                      $$ = driver.build.tr_genargs(self, $1, $2, $3, $4);
                     }
                 | // nothing
                     {
@@ -3198,10 +3199,22 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs rbracket
                     {
                       $$ = driver.build.tr_gendeclarg(self, $1, nullptr);
                     }
-                | tCONSTANT tCOLON tr_constraint
+                | tCONSTANT tCOLON tr_type
                     {
                       $$ = driver.build.tr_gendeclarg(self, $1, $3);
                     }
+
+  tr_constraints: tr_constraints tSEMI tr_constraint
+                    {
+                      auto &list = $1;
+                      list->push_back($3);
+                      $$ = list;
+                    }
+                |
+                    {
+                      $$ = driver.alloc.node_list();
+                    }
+
 
   tr_gendeclargs: tr_gendeclargs tCOMMA tr_gendeclarg
                     {

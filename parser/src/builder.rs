@@ -1391,13 +1391,13 @@ impl<'a> Builder<'a> {
         Node::TyCpath(cpath.loc().clone(), cpath)
     }
 
-    pub fn tr_genargs(&self, begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
-        Node::TyGenargs(self.tok_join(&begin, &end), genargs)
+    pub fn tr_genargs(&self, begin: Option<Token>, genargs: Vec<Rc<Node>>, constraints: Vec<Rc<Node>>, end: Option<Token>) -> Node {
+        Node::TyGenargs(self.tok_join(&begin, &end), genargs, constraints)
     }
 
-    pub fn tr_gendecl(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
+    pub fn tr_gendecl(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, constraints: Vec<Rc<Node>>, end: Option<Token>) -> Node {
         let cpath = cpath.unwrap();
-        Node::TyGendecl(cpath.loc().join(&self.loc(&end)), cpath, genargs)
+        Node::TyGendecl(cpath.loc().join(&self.loc(&end)), cpath, genargs, constraints)
     }
 
     pub fn tr_gendeclarg(&self, tok: Option<Token>, constraint: Option<Rc<Node>>) -> Node {
