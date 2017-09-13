@@ -1401,8 +1401,14 @@ impl<'a> Builder<'a> {
     }
 
     pub fn tr_gendeclarg(&self, tok: Option<Token>, constraint: Option<Rc<Node>>) -> Node {
-        let (loc, id) = self.tok_split(&tok);
-        Node::TyGendeclarg(loc, String::from(id.string().unwrap()), constraint)
+        let id = self.tok_id(&tok);
+
+        let loc = match constraint {
+            None => id.0.clone(),
+            Some(ref n) => id.0.join(n.loc()),
+        };
+
+        Node::TyGendeclarg(loc, id, constraint)
     }
 
     pub fn tr_geninst(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {

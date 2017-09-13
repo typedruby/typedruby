@@ -806,7 +806,7 @@ class Array::[ElementType] < Object
 
   def length => Integer; end
 
-  def compact[NonNullType : ~NonNullType = ElementType] => [NonNullType]; end
+  def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
 
   def empty? => Boolean; end
 
@@ -824,7 +824,7 @@ class Array::[ElementType] < Object
 
   def fetch(Integer index) => ElementType; end
 
-  def to_h[K, V : ElementType = [K, V]] => { K => V }; end
+  def to_h[K, V; ElementType = [K, V]] => { K => V }; end
 
   def group_by[GroupKey]({ |ElementType element| => GroupKey } &) => { GroupKey => [ElementType] }; end
 

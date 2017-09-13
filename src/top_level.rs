@@ -168,7 +168,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         self.error(message, details.as_slice());
     }
 
-    fn decl_class(&self, name: &Node, type_parameters: &[Rc<Node>], superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
+    fn decl_class(&self, name: &Node, type_parameters: &[Rc<Node>], _type_constraints: &[Rc<Node>], superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
         // TODO need to autoload
 
         let superclass = superclass.as_ref().and_then(|node| {
@@ -239,13 +239,13 @@ impl<'env, 'object> Eval<'env, 'object> {
                         if superclass.type_parameters().is_empty() {
                             type_parameters.iter().map(|param|
                                 match **param {
-                                    Node::TyGendeclarg(ref loc, ref name, None) =>
-                                        Id(loc.clone(), name.to_owned()),
-                                    Node::TyGendeclarg(ref loc, ref name, Some(ref constraint)) => {
+                                    Node::TyGendeclarg(_, ref name, None) =>
+                                        name.clone(),
+                                    Node::TyGendeclarg(_, ref name, Some(ref constraint)) => {
                                         self.error("Type constraints not permitted on class type parameters", &[
                                             Detail::Loc("here", constraint.loc()),
                                         ]);
-                                        Id(loc.clone(), name.to_owned())
+                                        name.clone()
                                     },
                                     _ => panic!("expected TyGendeclarg in TyGendecl"),
                                 }
@@ -567,10 +567,10 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::Class(_, ref declname, ref superclass, ref body) => {
                 match **declname {
-                    Node::TyGendecl(_, ref name, ref genargs) =>
-                        self.decl_class(name, genargs.as_slice(), superclass, body),
+                    Node::TyGendecl(_, ref name, ref type_vars, ref type_constraints) =>
+                        self.decl_class(name, type_vars.as_slice(), type_constraints.as_slice(), superclass, body),
                     Node::Const(..) =>
-                        self.decl_class(declname, &[], superclass, body),
+                        self.decl_class(declname, &[], &[], superclass, body),
                     _ =>
                         panic!("bad node type in class declname position"),
                 }
@@ -943,9 +943,13 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::TyClass(..) |
             Node::TyInstance(..) |
             Node::TyAny(..) => {}
-            Node::TyGenargs(_, ref genargs) => {
-                for genarg in genargs {
-                    self.eval_node(genarg);
+            Node::TyGenargs(_, ref vars, ref constraints) => {
+                for var in vars {
+                    self.eval_node(var);
+                }
+
+                for constraint in constraints {
+                    self.eval_node(constraint);
                 }
             }
             Node::TyGendeclarg(_, _, ref constraint) => {

@@ -91,8 +91,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
         let mut type_context = TypeContext::new(class, class_type_parameters);
 
-        let type_scope = proto.type_parameters.iter().fold(TypeScope::new(scope, class),
-            |scope, param| TypeScope::extend(scope, param.name.1.clone()));
+        let type_scope = proto.type_vars.iter().fold(TypeScope::new(scope, class),
+            |scope, &Id(_, ref name)| TypeScope::extend(scope, name.clone()));
 
         let mut eval = Eval {
             env: env,
@@ -275,22 +275,21 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn materialize_prototype(&self, prototype: &abstract_type::Prototype<'object>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>)
         -> (Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
     {
-        use abstract_type::{TypeParameter, TypeConstraint};
+        use abstract_type::TypeConstraint;
 
-        for &TypeParameter { name: Id(ref loc, ref name), .. } in &prototype.type_parameters {
+        for &Id(ref loc, ref name) in &prototype.type_vars {
             context.type_names.insert(name.clone(),
                 self.tyenv.new_var(loc.clone()));
         }
 
-        for &TypeParameter { ref constraint, .. } in &prototype.type_parameters {
-            match constraint.as_ref() {
-                None => (),
-                Some(&TypeConstraint::Compatible { ref loc, ref sub, ref super_ }) =>
+        for constraint in &prototype.type_constraints {
+            match constraint {
+                &TypeConstraint::Compatible { ref loc, ref sub, ref super_ } =>
                     self.compatible(
                         self.materialize_type(super_, context),
                         self.materialize_type(sub, context),
                         Some(loc)),
-                Some(&TypeConstraint::Unify { ref loc, ref a, ref b }) =>
+                &TypeConstraint::Unify { ref loc, ref a, ref b } =>
                     self.unify(
                         self.materialize_type(a, context),
                         self.materialize_type(b, context),
