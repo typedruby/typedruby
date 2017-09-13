@@ -260,7 +260,7 @@ pub enum Node {
     TyCpath         (Loc,   Rc<Node>),
     TyGenargs       (Loc,   Vec<Rc<Node>>, Vec<Rc<Node>>),
     TyGendecl       (Loc,   Rc<Node>, Vec<Rc<Node>>, Vec<Rc<Node>>),
-    TyGendeclarg    (Loc,   String, Option<Rc<Node>>),
+    TyGendeclarg    (Loc,   Id, Option<Rc<Node>>),
     TyGeninst       (Loc,   Rc<Node>, Vec<Rc<Node>>),
     TyHash          (Loc,   Rc<Node>, Rc<Node>),
     TyInstance      (Loc),
