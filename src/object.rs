@@ -6,6 +6,7 @@ use std::fmt;
 use typed_arena::Arena;
 use ast::{Node, Loc, Id};
 use define::MethodVisibility;
+use abstract_type::{TypeNodeRef, Prototype};
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
@@ -590,10 +591,15 @@ pub struct MethodEntry<'object> {
 
 #[derive(Debug)]
 pub enum MethodImpl<'object> {
+    TypedRuby {
+        name: String,
+        proto: Prototype<'object>,
+        body: Option<Rc<Node>>,
+        scope: Rc<Scope<'object>>,
+    },
     Ruby {
         name: String,
-        node: Rc<Node>,
-        scope: Rc<Scope<'object>>,
+        proto: Prototype<'object>,
     },
     AttrReader {
         ivar: String,
@@ -618,8 +624,8 @@ pub enum ConstantEntry<'object> {
     },
     Expression {
         loc: Loc,
-        node: Rc<Node>,
-        scope: Rc<Scope<'object>>,
+        ty: TypeNodeRef<'object>,
+        scope_self: &'object RubyObject<'object>,
     }
 }
 
@@ -639,8 +645,7 @@ impl<'object> ConstantEntry<'object> {
 
 pub struct IvarEntry<'object> {
     pub ivar_loc: Loc,
-    pub type_node: Rc<Node>,
-    pub scope: Rc<Scope<'object>>,
+    pub ty: TypeNodeRef<'object>,
 }
 
 pub enum RubyObject<'a> {

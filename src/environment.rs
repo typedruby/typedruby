@@ -258,10 +258,7 @@ impl<'object> Environment<'object> {
     pub fn define(&self) {
         self.phase.set(Phase::Define);
 
-        let methods = {
-            let mut errors = self.error_sink.borrow_mut();
-            self.defs.define(&self.object, errors.as_mut())
-        };
+        let methods = self.defs.define(&self);
 
         let mut method_queue = self.method_queue.borrow_mut();
 

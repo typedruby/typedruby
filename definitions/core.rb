@@ -67,10 +67,7 @@ end
 
 class Object < BasicObject
   include Kernel
-  STDOUT = (nil : IO)
-  STDERR = (nil : IO)
   NIL = nil
-  STDIN = (nil : IO)
   ARGF = nil
   TRUE = nil
   FALSE = nil
@@ -116,6 +113,12 @@ class IO < Object
   end
 
   def write(String data) => Integer; end
+end
+
+class Object
+  STDOUT = (nil : IO)
+  STDERR = (nil : IO)
+  STDIN = (nil : IO)
 end
 
 class BasicSocket < IO

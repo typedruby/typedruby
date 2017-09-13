@@ -12,16 +12,18 @@ use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
 use itertools::Itertools;
 use deferred_cell::DeferredCell;
+use abstract_type;
+use abstract_type::{TypeScope, TypeNode};
 
 pub struct Eval<'ty, 'object: 'ty> {
     env: &'ty Environment<'object>,
     tyenv: TypeEnv<'ty, 'object>,
-    scope: Rc<Scope<'object>>,
     type_context: TypeContext<'ty, 'object>,
+    type_scope: Rc<TypeScope<'object>>,
     proto: DeferredCell<Rc<Prototype<'ty, 'object>>>,
 }
 
-#[derive(Clone)]
+#[derive(Debug,Clone)]
 pub struct TypeContext<'ty, 'object: 'ty> {
     class: &'object RubyObject<'object>,
     type_parameters: Vec<TypeRef<'ty, 'object>>,
@@ -54,44 +56,6 @@ enum HashEntry<'ty, 'object: 'ty> {
     Kwsplat(TypeRef<'ty, 'object>),
 }
 
-#[derive(Clone,Copy)]
-enum AnnotationStatus {
-    Empty,
-    Typed,
-    Partial,
-    Untyped,
-}
-
-impl AnnotationStatus {
-    pub fn empty() -> AnnotationStatus {
-        AnnotationStatus::Empty
-    }
-
-    pub fn append(self, other: AnnotationStatus) -> AnnotationStatus {
-        match (self, other) {
-            (AnnotationStatus::Typed, AnnotationStatus::Typed) => AnnotationStatus::Typed,
-            (AnnotationStatus::Untyped, AnnotationStatus::Untyped) => AnnotationStatus::Untyped,
-            (AnnotationStatus::Empty, _) => other,
-            _ => AnnotationStatus::Partial,
-        }
-    }
-
-    pub fn append_into(&mut self, other: AnnotationStatus) {
-        *self = self.append(other);
-    }
-
-    pub fn or(self, other: AnnotationStatus) -> AnnotationStatus {
-        match (self, other) {
-            (AnnotationStatus::Empty, _) => other,
-            (_, AnnotationStatus::Empty) => self,
-            (AnnotationStatus::Partial, _) => AnnotationStatus::Partial,
-            (_, AnnotationStatus::Partial) => AnnotationStatus::Partial,
-            (AnnotationStatus::Typed, _) => AnnotationStatus::Typed,
-            (AnnotationStatus::Untyped, _) => other,
-        }
-    }
-}
-
 enum BlockArg {
     Pass { loc: Loc, node: Rc<Node> },
     Literal { loc: Loc, args: Option<Rc<Node>>, body: Option<Rc<Node>> },
@@ -120,55 +84,26 @@ enum Lhs<'ty, 'object: 'ty> {
 }
 
 impl<'ty, 'object> Eval<'ty, 'object> {
-    pub fn process(env: &'ty Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, node: Rc<Node>) {
+    pub fn process(env: &'ty Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, body: Option<Rc<Node>>, proto: &abstract_type::Prototype<'object>) {
         let class_type_parameters = class.type_parameters().iter().map(|&Id(ref loc, _)|
             tyenv.new_var(loc.clone())
         ).collect();
 
         let mut type_context = TypeContext::new(class, class_type_parameters);
 
+        let type_scope = proto.type_parameters.iter().fold(TypeScope::new(scope, class),
+            |scope, param| TypeScope::extend(scope, param.name.1.clone()));
+
         let mut eval = Eval {
             env: env,
             tyenv: tyenv,
-            scope: scope.clone(),
             type_context: type_context.clone(),
+            type_scope: type_scope,
             proto: DeferredCell::new()
         };
 
-        let (id, prototype_node, body) = match *node {
-            Node::Def(_, ref id, ref proto, ref body) =>
-                (id, proto, body),
-            Node::Defs(_, _, ref id, ref proto, ref body) =>
-                (id, proto, body),
-            _ =>
-                panic!("unknown node: {:?}", node),
-        };
-
-        let (annotation_status, prototype, locals) = {
-            let proto_node = prototype_node.as_ref().map(Rc::as_ref);
-            let proto_loc = proto_node.map(|n| n.loc().join(&id.0)).unwrap_or_else(|| id.0.clone());
-            eval.resolve_prototype(
-                &proto_loc,
-                proto_node,
-                Locals::new(),
-                &mut type_context,
-                scope.clone())
-        };
-
-        match annotation_status {
-            AnnotationStatus::Empty |
-            AnnotationStatus::Untyped =>
-                return,
-            AnnotationStatus::Partial => {
-                let loc = prototype_node.as_ref().expect("prototype node must exist when annotation status is partial").loc();
-
-                eval.error("Partial type signatures are not permitted in method definitions", &[
-                    Detail::Loc("all arguments and return value must be annotated", loc),
-                ]);
-                return;
-            },
-            AnnotationStatus::Typed => {},
-        };
+        let (prototype, locals) =
+            eval.materialize_prototype(proto, Locals::new(), &mut type_context);
 
         // type parameters are initially inserted into the type context
         // unresolved to that they can be constrained. unify any unresolved
@@ -187,7 +122,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         DeferredCell::set(&mut eval.proto, prototype.clone());
 
         // don't typecheck a method if it has no body
-        if let Some(ref body_node) = *body {
+        if let Some(ref body_node) = body {
             eval.process_node(body_node, locals).terminate(&|ty|
                 eval.compatible(prototype.retn, ty, None)
             );
@@ -241,101 +176,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         self.tyenv.instance(loc.clone(), class, type_parameters)
     }
 
-    fn resolve_class_instance_type(&self, loc: &Loc, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
-        if type_parameters.len() == 0 {
-            return self.tyenv.instance0(loc.clone(), self.env.object.Class);
-        }
-
-        if type_parameters.len() > 1 {
-            self.error("Too many type parameters supplied in instantiation of metaclass", &[
-                Detail::Loc("from here", type_parameters[1].loc()),
-            ]);
-        }
-
-        let cpath = if let Node::TyCpath(_, ref cpath) = *type_parameters[0] {
-            cpath
-        } else {
-            self.error("Type parameter in metaclass must be constant path", &[
-                Detail::Loc("here", type_parameters[0].loc()),
-            ]);
-
-            return self.tyenv.new_var(loc.clone());
-        };
-
-        let class = match **cpath {
-            Node::Const(_, None, Id(_, ref name)) => {
-                if let Some(&Type::Instance { class, .. }) = context.type_names.get(name).map(TypeRef::deref) {
-                    Ok(class)
-                } else {
-                    self.resolve_type_name(cpath, scope)
-                }
-            }
-            _ => self.resolve_type_name(cpath, scope),
-        };
-
-        match class {
-            Ok(class@&RubyObject::Module { .. }) |
-            Ok(class@&RubyObject::Class { .. }) |
-            Ok(class@&RubyObject::Metaclass { .. }) => {
-                let metaclass = self.env.object.metaclass(class);
-                self.tyenv.instance0(loc.clone(), metaclass)
-            },
-            Ok(&RubyObject::IClass { .. }) => panic!(),
-            Err((err_node, message)) => {
-                self.error(message, &[
-                    Detail::Loc("here", err_node.loc()),
-                ]);
-                self.tyenv.new_var(loc.clone())
-            }
-        }
-    }
-
-    fn resolve_type_name<'node>(&self, cpath: &'node Node, scope: Rc<Scope<'object>>)
-        -> Result<&'object RubyObject<'object>, (&'node Node, &'static str)>
-    {
-        self.env.resolve_cpath(cpath, scope).and_then(|constant| {
-            match *constant {
-                ConstantEntry::Expression { .. } =>
-                    Err((cpath, "Constant mentioned in type name does not reference static class/module")),
-                ConstantEntry::Module { value, .. } =>
-                    Ok(value),
-            }
-        })
-    }
-
-    fn resolve_instance_type(&self, loc: &Loc, cpath: &Node, type_parameters: &[Rc<Node>], context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
-        if let Node::Const(_, None, Id(ref name_loc, ref name)) = *cpath {
-            if let Some(&ty) = context.type_names.get(name) {
-                if !type_parameters.is_empty() {
-                    self.error("Type parameters were supplied but type mentioned does not take any", &[
-                        Detail::Loc("here", name_loc),
-                    ]);
-                }
-
-                return self.tyenv.update_loc(ty, name_loc.clone());
-            }
-        }
-
-        match self.resolve_type_name(cpath, scope.clone()) {
-            Ok(class) if class == self.env.object.Class =>
-                self.resolve_class_instance_type(loc, type_parameters, context, scope),
-            Ok(class) => {
-                let type_parameters = type_parameters.iter().map(|arg|
-                    self.resolve_type(arg, context, scope.clone())
-                ).collect();
-
-                self.create_instance_type(loc, class, type_parameters)
-            }
-            Err((err_node, message)) => {
-                self.error(message, &[
-                    Detail::Loc("here", err_node.loc()),
-                ]);
-
-                self.tyenv.new_var(cpath.loc().clone())
-            }
-        }
-    }
-
     fn create_array_type(&self, loc: &Loc, element_type: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
         self.tyenv.instance(loc.clone(), self.env.object.array_class(), vec![element_type])
     }
@@ -344,42 +184,171 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         self.tyenv.instance(loc.clone(), self.env.object.hash_class(), vec![key_type, value_type])
     }
 
-    fn resolve_type(&self, node: &Node, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>) -> TypeRef<'ty, 'object> {
-        match *node {
-            Node::TyCpath(ref loc, ref cpath) =>
-                self.resolve_instance_type(loc, cpath, &[], context, scope),
-            Node::TyGeninst(ref loc, ref cpath, ref args) =>
-                self.resolve_instance_type(loc, cpath, args, context, scope),
-            Node::TyNil(ref loc) => {
-                self.create_instance_type(loc, self.env.object.NilClass, Vec::new())
-            },
-            Node::TyAny(ref loc) => {
-                self.tyenv.any(loc.clone())
-            },
-            Node::TyArray(ref loc, ref element) => {
-                self.create_array_type(loc, self.resolve_type(element, context, scope))
-            },
-            Node::TyHash(ref loc, ref key, ref value) => {
-                self.create_hash_type(loc,
-                    self.resolve_type(key, context, scope.clone()),
-                    self.resolve_type(value, context, scope))
-            },
-            Node::TyProc(ref loc, ref prototype) => {
+    fn materialize_arg_lhs(&self, lhs: &abstract_type::ArgLhs, locals: Locals<'ty, 'object>)
+        -> (TypeRef<'ty, 'object>, Locals<'ty, 'object>)
+    {
+        use abstract_type::ArgLhs;
+
+        match *lhs {
+            ArgLhs::Lvar { name: Id(ref loc, ref name) } => {
+                let ty = self.tyenv.new_var(loc.clone());
+                (ty, locals.assign_shadow(name.clone(), ty))
+            }
+            ArgLhs::Mlhs { ref loc, ref items } => {
+                let (tys, locals) = items.iter().fold((Vec::new(), locals), |(mut tys, locals), item| {
+                    let (ty, locals) = self.materialize_arg_lhs(item, locals);
+                    tys.push(ty);
+                    (tys, locals)
+                });
+
+                let ty = self.tyenv.tuple(loc.clone(), tys, None, vec![]);
+
+                (ty, locals)
+            }
+        }
+    }
+
+    fn materialize_arg(&self, arg: &abstract_type::ArgNode<'object>, locals: Locals<'ty, 'object>, context: &TypeContext<'ty, 'object>)
+        -> (Arg<'ty, 'object>, Locals<'ty, 'object>)
+    {
+        use abstract_type::ArgNode;
+
+        let (ty, loc) = match *arg {
+            ArgNode::Required { ref ty, ref loc, .. } |
+            ArgNode::Optional { ref ty, ref loc, .. } |
+            ArgNode::Rest { ref ty, ref loc, .. } |
+            ArgNode::Kwarg { ref ty, ref loc, .. } |
+            ArgNode::Kwoptarg { ref ty, ref loc, .. } |
+            ArgNode::Kwrest { ref ty, ref loc, .. } |
+            ArgNode::Block { ref ty, ref loc, .. } =>
+                (ty.as_ref(), loc),
+            ArgNode::Procarg0 { ref arg, ref loc } => {
+                let (arg, locals) = self.materialize_arg(arg, locals, context);
+                return (Arg::Procarg0 { loc: loc.clone(), arg: Box::new(arg) }, locals);
+            }
+        };
+
+        let ty = match ty {
+            Some(ty) => self.materialize_type(ty, context),
+            None => self.tyenv.new_var(loc.clone()),
+        };
+
+        let (arg, locals) = match *arg {
+            ArgNode::Required { ref lhs, .. } => {
+                let (tyvar, locals) = self.materialize_arg_lhs(lhs, locals);
+                self.unify(tyvar, ty, Some(loc));
+                (Arg::Required { loc: loc.clone(), ty: ty }, locals)
+            }
+            ArgNode::Optional { name: Id(_, ref name), ref default, .. } =>
+                (Arg::Optional { loc: loc.clone(), ty: ty, expr: default.expr.clone() },
+                    locals.assign_shadow(name.clone(), ty)),
+            ArgNode::Rest { name: None, .. } =>
+                (Arg::Rest { loc: loc.clone(), ty: ty }, locals),
+            ArgNode::Rest { name: Some(Id(_, ref name)), .. } =>
+                (Arg::Rest { loc: loc.clone(), ty: ty },
+                    locals.assign_shadow(name.clone(), self.create_array_type(loc, ty))),
+            ArgNode::Kwarg { name: Id(_, ref name), .. } =>
+                (Arg::Kwarg { loc: loc.clone(), name: name.clone(), ty: ty },
+                    locals.assign_shadow(name.clone(), ty)),
+            ArgNode::Kwoptarg { name: Id(_, ref name), ref default, .. } =>
+                (Arg::Kwoptarg { loc: loc.clone(), name: name.clone(), ty: ty, expr: default.expr.clone() },
+                    locals.assign_shadow(name.clone(), ty)),
+            ArgNode::Kwrest { name: None, .. } =>
+                (Arg::Kwrest { loc: loc.clone(), ty: ty }, locals),
+            ArgNode::Kwrest { name: Some(Id(_, ref name)), .. } =>
+                (Arg::Kwrest { loc: loc.clone(), ty: ty },
+                    locals.assign_shadow(name.clone(), self.create_hash_type(loc,
+                        self.tyenv.instance0(loc.clone(), self.env.object.Symbol),
+                        ty))),
+            ArgNode::Block { name: None, .. } =>
+                (Arg::Block { loc: loc.clone(), ty: ty }, locals),
+            ArgNode::Block { name: Some(Id(_, ref name)), .. } =>
+                (Arg::Block { loc: loc.clone(), ty: ty },
+                    locals.assign_shadow(name.clone(), ty)),
+            ArgNode::Procarg0 { .. } =>
+                panic!("impossible")
+        };
+
+        (arg, locals)
+    }
+
+    fn materialize_prototype(&self, prototype: &abstract_type::Prototype<'object>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>)
+        -> (Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
+    {
+        use abstract_type::{TypeParameter, TypeConstraint};
+
+        for &TypeParameter { name: Id(ref loc, ref name), .. } in &prototype.type_parameters {
+            context.type_names.insert(name.clone(),
+                self.tyenv.new_var(loc.clone()));
+        }
+
+        for &TypeParameter { ref constraint, .. } in &prototype.type_parameters {
+            match constraint.as_ref() {
+                None => (),
+                Some(&TypeConstraint::Compatible { ref loc, ref sub, ref super_ }) =>
+                    self.compatible(
+                        self.materialize_type(super_, context),
+                        self.materialize_type(sub, context),
+                        Some(loc)),
+                Some(&TypeConstraint::Unify { ref loc, ref a, ref b }) =>
+                    self.unify(
+                        self.materialize_type(a, context),
+                        self.materialize_type(b, context),
+                        Some(loc)),
+            }
+        }
+
+        let (args, locals) = prototype.args.iter().fold((Vec::new(), locals),
+            |(mut args, locals), arg| {
+                let (arg, locals_) = self.materialize_arg(arg, locals, context);
+                args.push(arg);
+                (args, locals_)
+            });
+
+        let retn = match prototype.retn.as_ref() {
+            Some(retn) => self.materialize_type(retn, context),
+            None => self.tyenv.new_var(prototype.loc.clone()),
+        };
+
+        let proto = Rc::new(Prototype {
+            loc: prototype.loc.clone(),
+            args: args,
+            retn: retn,
+        });
+
+        (proto, locals)
+    }
+
+    fn materialize_type(&self, type_node: &TypeNode<'object>, context: &TypeContext<'ty, 'object>) -> TypeRef<'ty, 'object> {
+        match *type_node {
+            TypeNode::Instance { ref loc, class, ref type_parameters } =>
+                self.create_instance_type(loc, class,
+                    type_parameters.iter().map(|node|
+                        self.materialize_type(node, context)).collect()),
+            TypeNode::Tuple { ref loc, ref lead, ref splat, ref post } =>
+                self.tyenv.tuple(loc.clone(),
+                    lead.iter().map(|node| self.materialize_type(node, context)).collect(),
+                    splat.as_ref().map(|node| self.materialize_type(node, context)),
+                    post.iter().map(|node| self.materialize_type(node, context)).collect()),
+            TypeNode::Union { ref loc, ref types } =>
+                types.iter()
+                    .map(|node| self.materialize_type(node, context))
+                    .fold1(|a, b| self.tyenv.union(loc, a, b))
+                    .unwrap(),
+            TypeNode::Any { ref loc } =>
+                self.tyenv.any(loc.clone()),
+            TypeNode::TypeParameter { ref loc, ref name } =>
+                self.tyenv.update_loc(context.type_names[name], loc.clone()),
+            TypeNode::Proc { ref loc, ref proto } => {
                 let mut context = context.clone();
 
-                self.tyenv.alloc(Type::Proc {
-                    loc: loc.clone(),
-                    proto: self.resolve_prototype(loc, Some(prototype), Locals::new(), &mut context, scope).1,
-                })
-            },
-            Node::TyClass(ref loc) => {
-                // metaclasses never have type parameters:
-                self.create_instance_type(loc, self.env.object.metaclass(context.class), Vec::new())
-            },
-            Node::TySelf(ref loc) => {
-                context.self_type(&self.tyenv, loc.clone())
-            },
-            Node::TyInstance(ref loc) => {
+                let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut context);
+
+                self.tyenv.alloc(Type::Proc { loc: loc.clone(), proto: proto })
+            }
+            TypeNode::SpecialSelf { ref loc } =>
+                context.self_type(&self.tyenv, loc.clone()),
+            TypeNode::SpecialInstance { ref loc } =>
                 match *context.class {
                     RubyObject::Metaclass { of, .. } => {
                         // if the class we're trying to instantiate has type parameters just fill them with new
@@ -397,163 +366,14 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                         self.tyenv.new_var(loc.clone())
                     },
-                }
-            },
-            Node::TyNillable(ref loc, ref type_node) => {
-                self.tyenv.nillable(loc, self.resolve_type(type_node, context, scope))
-            },
-            Node::TyOr(ref loc, ref a, ref b) => {
-                self.tyenv.union(loc,
-                    self.resolve_type(a, context, scope.clone()),
-                    self.resolve_type(b, context, scope))
-            }
-            Node::TyTuple(ref loc, ref ty_nodes) => {
-                let tys = ty_nodes.iter().map(|ty_node| self.resolve_type(ty_node, context, scope.clone())).collect();
-
-                self.tyenv.tuple(loc.clone(), tys, None, vec![])
-            }
-            _ => panic!("unknown type node: {:?}", node),
+                },
+            TypeNode::SpecialClass { ref loc } =>
+                // metaclasses never have type parameters:
+                self.create_instance_type(loc, self.env.object.metaclass(context.class), Vec::new()),
+            TypeNode::Error { ref loc } =>
+                // an error was already printed, just make a fresh type var:
+                self.tyenv.new_var(loc.clone()),
         }
-    }
-
-    fn resolve_arg(&self, arg_node: &Node, locals: Locals<'ty, 'object>, context: &TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
-        -> (AnnotationStatus, Arg<'ty, 'object>, Locals<'ty, 'object>)
-    {
-        let (status, ty, arg_node) = match *arg_node {
-            Node::TypedArg(_, ref type_node, ref arg) => {
-                let ty = self.resolve_type(type_node, context, scope.clone());
-                (AnnotationStatus::Typed, ty, &**arg)
-            },
-            _ => {
-                (AnnotationStatus::Untyped, self.tyenv.new_var(arg_node.loc().clone()), arg_node)
-            },
-        };
-
-        match *arg_node {
-            Node::Arg(ref loc, ref name) =>
-                (status, Arg::Required { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Blockarg(ref loc, None) =>
-                (status, Arg::Block { loc: loc.clone(), ty: ty }, locals),
-            Node::Blockarg(ref loc, Some(Id(_, ref name))) =>
-                (status, Arg::Block { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Kwarg(ref loc, ref name) =>
-                (status, Arg::Kwarg { loc: loc.clone(), name: name.to_owned(), ty: ty }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Kwoptarg(ref loc, Id(_, ref name), ref expr) =>
-                (status, Arg::Kwoptarg { loc: loc.clone(), name: name.to_owned(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Mlhs(ref loc, ref nodes) => {
-                let mut mlhs_status = AnnotationStatus::empty();
-                let mut mlhs_types = Vec::new();
-                let mut locals = locals;
-
-                for node in nodes {
-                    let (st, arg, l) = self.resolve_arg(node, locals.clone(), context, scope.clone());
-                    let arg_ty = if let Arg::Required { ty, .. } = arg {
-                        ty
-                    } else {
-                        self.error("Only required arguments are currently supported in destructuring arguments", &[
-                            Detail::Loc("here", arg.loc()),
-                        ]);
-                        break;
-                    };
-                    mlhs_status.append_into(st);
-                    mlhs_types.push(arg_ty);
-                    locals = l;
-                }
-
-                let tuple_ty = self.tyenv.tuple(loc.clone(), mlhs_types, None, vec![]);
-
-                let arg = Arg::Required { loc: loc.clone(), ty: tuple_ty };
-
-                (status.or(mlhs_status), arg, locals)
-            }
-            Node::Optarg(_, Id(ref loc, ref name), ref expr) =>
-                (status, Arg::Optional { loc: loc.clone(), ty: ty, expr: expr.clone() }, locals.assign_shadow(name.to_owned(), ty)),
-            Node::Restarg(ref loc, None) =>
-                (status, Arg::Rest { loc: loc.clone(), ty: ty }, locals),
-            Node::Restarg(ref loc, Some(Id(_, ref name))) =>
-                (status, Arg::Rest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), self.create_array_type(loc, ty))),
-            Node::Procarg0(ref loc, ref inner_arg_node) => {
-                let (status, inner_arg, locals) = self.resolve_arg(inner_arg_node, locals, context, scope);
-                (status, Arg::Procarg0 { loc: loc.clone(), arg: Box::new(inner_arg) }, locals)
-            }
-            Node::Kwrestarg(ref loc, None) =>
-                (status, Arg::Kwrest { loc: loc.clone(), ty: ty }, locals),
-            Node::Kwrestarg(ref loc, Some(Id(_, ref name))) => {
-                let hash_ty = self.create_hash_type(loc, self.tyenv.instance0(loc.clone(), self.env.object.Symbol), ty);
-                (status, Arg::Kwrest { loc: loc.clone(), ty: ty }, locals.assign_shadow(name.to_owned(), hash_ty))
-            }
-            _ => panic!("arg_node: {:?}", arg_node),
-        }
-    }
-
-    fn resolve_prototype(&self, proto_loc: &Loc, node: Option<&Node>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>, scope: Rc<Scope<'object>>)
-        -> (AnnotationStatus, Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
-    {
-        let (mut status, args_node, return_type) = match node {
-            Some(&Node::Prototype(_, ref genargs, ref args, ref ret)) => {
-                let mut status = AnnotationStatus::empty();
-
-                if let Some(ref genargs_) = *genargs {
-                    if let Node::TyGenargs(_, ref gendeclargs) = **genargs_ {
-                        for gendeclarg in gendeclargs {
-                            if let Node::TyGendeclarg(ref loc, ref name, ref constraint) = **gendeclarg {
-                                let tyvar = self.tyenv.new_var(loc.clone());
-                                context.type_names.insert(name.clone(), tyvar);
-
-                                match constraint.as_ref().map(Rc::as_ref) {
-                                    Some(&Node::TyConUnify(ref loc, ref a, ref b)) => {
-                                        let a = self.resolve_type(a, &context, scope.clone());
-                                        let b = self.resolve_type(b, &context, scope.clone());
-                                        self.unify(a, b, Some(loc));
-                                    }
-                                    Some(&Node::TyConSubtype(ref loc, ref sub, ref super_)) => {
-                                        let sub = self.resolve_type(sub, &context, scope.clone());
-                                        let super_ = self.resolve_type(super_, &context, scope.clone());
-                                        self.compatible(super_, sub, Some(loc));
-                                    }
-                                    Some(_) => panic!(),
-                                    None => {}
-                                }
-                            }
-                        }
-                    }
-
-                    status.append_into(AnnotationStatus::Typed);
-                }
-
-                let args = args.as_ref().map(Rc::as_ref);
-
-                match *ret {
-                    Some(ref type_node) =>
-                        (status.append(AnnotationStatus::Typed), args, self.resolve_type(type_node, &context, scope.clone())),
-                    None =>
-                        (status.append(AnnotationStatus::Untyped), args, self.tyenv.new_var(proto_loc.clone())),
-                }
-            },
-            Some(&Node::Args(..)) | None => {
-                (AnnotationStatus::Untyped, node, self.tyenv.new_var(proto_loc.clone()))
-            },
-            _ => panic!("unexpected {:?}", node),
-        };
-
-        let mut args = Vec::new();
-        let mut locals = locals;
-
-        match args_node {
-            Some(&Node::Args(_, ref arg_nodes)) => {
-                for arg_node in arg_nodes {
-                    let (arg_status, arg, locals_) = self.resolve_arg(arg_node, locals, &context, scope.clone());
-                    status.append_into(arg_status);
-                    args.push(arg);
-                    locals = locals_;
-                }
-            }
-            Some(_) =>
-                panic!("expected args_node to be Node::Args"),
-            None => {},
-        };
-
-        (status, Rc::new(Prototype { loc: proto_loc.clone(), args: args, retn: return_type }), locals)
     }
 
     fn type_error(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, err_a: TypeRef<'ty, 'object>, err_b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
@@ -673,25 +493,18 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
     fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, mut type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
         match *impl_ {
-            MethodImpl::Ruby { ref node, ref scope, .. } => {
-                let (id, prototype_node) = match **node {
-                    Node::Def(_, ref id, ref proto, _) => (id, proto),
-                    Node::Defs(_, _, ref id, ref proto, _) => (id, proto),
-                    _ => panic!("unexpected node in MethodEntry::Ruby: {:?}", node),
-                };
+            MethodImpl::TypedRuby { ref proto, .. } => {
+                let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
 
-                let prototype_node = prototype_node.as_ref().map(Rc::as_ref);
+                proto
+            }
+            MethodImpl::Ruby { ref proto, .. } => {
+                let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
 
-                let prototype_loc = prototype_node.map(|n| n.loc().join(&id.0)).unwrap_or_else(|| id.0.clone());
+                self.tyenv.unify(proto.retn, self.tyenv.any(proto.retn.loc().clone()))
+                    .expect("retn to unify");
 
-                let (anno_status, prototype, _) = self.resolve_prototype(&prototype_loc, prototype_node, Locals::new(), &mut type_context, scope.clone());
-
-                if let AnnotationStatus::Untyped = anno_status {
-                    self.tyenv.unify(prototype.retn, self.tyenv.any(prototype.retn.loc().clone()))
-                        .expect("retn is unresolved type var");
-                }
-
-                prototype
+                proto
             }
             MethodImpl::AttrReader { ref ivar, ref loc } => {
                 let ivar_type = self.lookup_ivar(ivar, &type_context)
@@ -1058,7 +871,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 let mut block_type_context = self.type_context.clone();
 
-                let (_, block_prototype, block_locals) = self.resolve_prototype(loc, args.as_ref().map(Rc::as_ref), block_locals, &mut block_type_context, self.scope.clone());
+                let (_, block_abstract_proto) = abstract_type::Prototype::resolve(
+                    loc, args.as_ref().map(Rc::as_ref), &self.env, self.type_scope.clone());
+
+                let (block_prototype, block_locals) =
+                    self.materialize_prototype(&block_abstract_proto, block_locals, &mut block_type_context);
 
                 let block_return_type = block_prototype.retn;
 
@@ -1335,7 +1152,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
     fn lookup_ivar(&self, name: &str, type_context: &TypeContext<'ty, 'object>) -> Option<TypeRef<'ty, 'object>> {
         self.env.object.lookup_ivar(type_context.class, name).map(|ivar|
-            self.resolve_type(&ivar.type_node, type_context, ivar.scope.clone()))
+            self.materialize_type(&ivar.ty, type_context))
     }
 
     fn lookup_ivar_or_error(&self, id: &Id, type_context: &TypeContext<'ty, 'object>) -> TypeRef<'ty, 'object> {
@@ -1653,7 +1470,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Node::TyCast(ref loc, ref expr, ref type_node) => {
                 self.process_node(expr, locals).seq(&|_, l| {
-                    let ty = self.resolve_type(type_node, &self.type_context, self.scope.clone());
+                    let ab_ty = TypeNode::resolve(type_node, self.env, self.type_scope.clone());
+                    let ty = self.materialize_type(&ab_ty, &self.type_context);
                     Computation::result(self.tyenv.update_loc(ty, loc.clone()), l)
                 })
             }
@@ -1831,19 +1649,14 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 comp.seq(&|_, l| Computation::result(string_ty, l))
             }
             Node::Const(..) => {
-                match self.env.resolve_cpath(node, self.scope.clone()) {
+                match self.env.resolve_cpath(node, self.type_scope.constant_scope()) {
                     Ok(object) => {
                         let ty = match *object {
-                            ConstantEntry::Expression { node: ref const_node, ref scope, .. } => {
-                                if let Node::TyCast(_, _, ref ty_node) = **const_node {
-                                    let scope_self = self.env.object.metaclass(scope.module);
-                                    let type_context = TypeContext::new(scope_self, vec![]);
-                                    let ty = self.resolve_type(ty_node, &type_context, scope.clone());
-                                    self.tyenv.update_loc(ty, node.loc().clone())
-                                } else {
-                                    // TODO - don't know the type of this constant
-                                    self.tyenv.any(node.loc().clone())
-                                }
+                            ConstantEntry::Expression { ref ty, scope_self, .. } => {
+                                let constant_type_context = TypeContext::new(
+                                    self.env.object.metaclass(scope_self), vec![]);
+
+                                self.materialize_type(ty, &constant_type_context)
                             }
                             ConstantEntry::Module { value, .. } => {
                                 self.tyenv.instance0(node.loc().clone(), self.env.object.metaclass(value))
