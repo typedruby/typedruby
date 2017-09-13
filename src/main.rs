@@ -13,6 +13,7 @@ use typed_arena::Arena;
 use termcolor::{ColorChoice, StandardStream};
 
 mod ast;
+mod abstract_type;
 mod config;
 mod define;
 mod deferred_cell;
