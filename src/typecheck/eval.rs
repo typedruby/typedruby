@@ -2,7 +2,7 @@ use std::rc::Rc;
 use std::collections::HashMap;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, Type, TypeRef, Prototype, KwsplatResult, TupleElement};
+use typecheck::types::{Arg, TypeEnv, Type, TypeRef, Prototype, KwsplatResult, TupleElement, TypeConstraint};
 use object::{Scope, RubyObject, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -275,27 +275,27 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn materialize_prototype(&self, prototype: &abstract_type::Prototype<'object>, locals: Locals<'ty, 'object>, context: &mut TypeContext<'ty, 'object>)
         -> (Rc<Prototype<'ty, 'object>>, Locals<'ty, 'object>)
     {
-        use abstract_type::TypeConstraint;
-
         for &Id(ref loc, ref name) in &prototype.type_vars {
             context.type_names.insert(name.clone(),
                 self.tyenv.new_var(loc.clone()));
         }
 
-        for constraint in &prototype.type_constraints {
+        let constraints = prototype.type_constraints.iter().map(|constraint| {
             match constraint {
-                &TypeConstraint::Compatible { ref loc, ref sub, ref super_ } =>
-                    self.compatible(
-                        self.materialize_type(super_, context),
-                        self.materialize_type(sub, context),
-                        Some(loc)),
-                &TypeConstraint::Unify { ref loc, ref a, ref b } =>
-                    self.unify(
-                        self.materialize_type(a, context),
-                        self.materialize_type(b, context),
-                        Some(loc)),
+                &abstract_type::TypeConstraint::Compatible { ref loc, ref sub, ref super_ } =>
+                    TypeConstraint::Compatible {
+                        loc: loc.clone(),
+                        sub: self.materialize_type(sub, context),
+                        super_: self.materialize_type(super_, context),
+                    },
+                &abstract_type::TypeConstraint::Unify { ref loc, ref a, ref b } =>
+                    TypeConstraint::Unify {
+                        loc: loc.clone(),
+                        a: self.materialize_type(a, context),
+                        b: self.materialize_type(b, context),
+                    },
             }
-        }
+        }).collect();
 
         let (args, locals) = prototype.args.iter().fold((Vec::new(), locals),
             |(mut args, locals), arg| {
@@ -311,6 +311,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
         let proto = Rc::new(Prototype {
             loc: prototype.loc.clone(),
+            constraints: constraints,
             args: args,
             retn: retn,
         });
@@ -511,6 +512,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 Rc::new(Prototype {
                     loc: loc.clone(),
+                    constraints: vec![],
                     args: vec![],
                     retn: ivar_type,
                 })
@@ -521,6 +523,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 Rc::new(Prototype {
                     loc: loc.clone(),
+                    constraints: vec![],
                     args: vec![Arg::Required { ty: ivar_type, loc: loc.clone() }],
                     retn: ivar_type,
                 })
@@ -552,6 +555,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                         Rc::new(Prototype {
                             loc: proto.loc.clone(),
+                            // TODO when class type constraints exist we need
+                            // to put them in here:
+                            constraints: vec![],
                             args: proto.args.clone(),
                             retn: instance_type,
                         })
@@ -575,6 +581,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 // TODO give Kernel#raise a proper prototype
                 Rc::new(Prototype {
                     loc: loc.clone(),
+                    constraints: vec![],
                     args: vec![Arg::Rest { loc: loc.clone(), ty: any_ty }],
                     retn: any_ty,
                 })
@@ -582,6 +589,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             MethodImpl::IntrinsicKernelIsA => {
                 Rc::new(Prototype {
                     loc: loc.clone(),
+                    constraints: vec![],
                     args: vec![Arg::Required { loc: loc.clone(), ty: self.tyenv.instance0(loc.clone(), self.env.object.Kernel)}],
                     retn: self.tyenv.instance0(loc.clone(), self.env.object.Boolean),
                 })
@@ -782,6 +790,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 loc: proto_block_ty.loc().clone(),
                 proto: Rc::new(Prototype {
                     loc: proto.loc.clone(),
+                    constraints: vec![],
                     args: proto.args[1..].iter().cloned().collect(),
                     retn: proto.retn,
                 })
