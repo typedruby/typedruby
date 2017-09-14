@@ -1,5 +1,5 @@
 def f[T : Numeric](T x, T y) => T
-  x
+  x < x
 end
 
 def test1 => Float

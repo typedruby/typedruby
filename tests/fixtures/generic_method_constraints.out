@@ -1,5 +1,23 @@
 error: Could not match types:
 
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:1
+      1 |  def f[T : Numeric](T x, T y) => T
+                     ^^^^^^^ Numeric, with:
+        @ (builtin stdlib):651
+    651 |    def <(Numeric other) => Boolean; end
+                                     ^^^^^^^ Boolean
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:1
+      1 |  def f[T : Numeric](T x, T y) => T
+                                           ^ Numeric, with:
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:2
+      2 |    x < x
+             ^^^^^ Boolean
+
+error: Could not match types:
+
         @ __ROOT__/tests/fixtures/generic_method_constraints.rb:6
       6 |    f(2.0, 3)
                ^^^ Float, with:
