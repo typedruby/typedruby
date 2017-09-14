@@ -530,45 +530,42 @@ impl<'env, 'object> ResolveType<'env, 'object> {
     }
 
     fn resolve_prototype_genargs(&self, node: Option<&Node>)
-        -> (Rc<TypeScope<'object>>, Vec<Id>, Vec<TypeConstraint<'object>>)
+        -> (AnnotationStatus, Rc<TypeScope<'object>>, Vec<Id>, Vec<TypeConstraint<'object>>)
     {
-        let mut type_vars = vec![];
-        let mut type_constraints = vec![];
+        if let Some(&Node::TyGenargs(_, ref vars, ref constraints)) = node {
+            let mut type_vars = vec![];
+            let mut type_constraints = vec![];
 
-        let scope =
-            if let Some(&Node::TyGenargs(_, ref vars, ref constraints)) = node {
-                let scope = vars.iter().fold(self.scope.clone(), |scope, var| {
-                    if let &Node::TyGendeclarg(ref loc, ref id, ref supertype) = var.as_ref() {
-                        let scope = TypeScope::extend(scope, id.1.clone());
+            let scope = vars.iter().fold(self.scope.clone(), |scope, var| {
+                if let &Node::TyGendeclarg(ref loc, ref id, ref supertype) = var.as_ref() {
+                    let scope = TypeScope::extend(scope, id.1.clone());
 
-                        type_vars.push(id.clone());
+                    type_vars.push(id.clone());
 
-                        if let Some(supertype) = supertype.as_ref() {
-                            type_constraints.push(TypeConstraint::Compatible {
-                                loc: loc.clone(),
-                                sub: Rc::new(TypeNode::TypeParameter {
-                                    loc: id.0.clone(),
-                                    name: id.1.clone(),
-                                }),
-                                super_: TypeNode::resolve(supertype, self.env, scope.clone()),
-                            });
-                        }
-
-                        scope
-                    } else {
-                        panic!("expected TyGendeclarg in TyGenargs::1")
+                    if let Some(supertype) = supertype.as_ref() {
+                        type_constraints.push(TypeConstraint::Compatible {
+                            loc: loc.clone(),
+                            sub: Rc::new(TypeNode::TypeParameter {
+                                loc: id.0.clone(),
+                                name: id.1.clone(),
+                            }),
+                            super_: TypeNode::resolve(supertype, self.env, scope.clone()),
+                        });
                     }
-                });
 
-                type_constraints.extend(constraints.iter().map(|con|
-                    self.resolve_type_constraint(con, scope.clone())));
+                    scope
+                } else {
+                    panic!("expected TyGendeclarg in TyGenargs::1")
+                }
+            });
 
-                scope
-            } else {
-                self.scope.clone()
-            };
+            type_constraints.extend(constraints.iter().map(|con|
+                self.resolve_type_constraint(con, scope.clone())));
 
-        (scope, type_vars, type_constraints)
+            (AnnotationStatus::Typed, scope, type_vars, type_constraints)
+        } else {
+            (AnnotationStatus::Empty, self.scope.clone(), vec![], vec![])
+        }
     }
 
     pub fn resolve_prototype(&self, node: &Node)
@@ -585,7 +582,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             _ => panic!("unexpected node type in resolve_prototype"),
         };
 
-        let (scope, type_vars, type_constraints)
+        let (anno, scope, type_vars, type_constraints)
             = self.resolve_prototype_genargs(genargs);
 
         let resolve = ResolveType { env: self.env, scope: scope };
@@ -598,7 +595,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             }
         }).unwrap_or(&[]).iter().map(|arg| {
             resolve.resolve_arg(arg)
-        }).fold((AnnotationStatus::Empty, Vec::new()), |(anno1, mut args), (anno2, arg)| {
+        }).fold((anno, Vec::new()), |(anno1, mut args), (anno2, arg)| {
             args.push(arg);
             (anno1.append(anno2), args)
         });

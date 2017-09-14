@@ -18,3 +18,6 @@ end
 
 def f7(Integer x, Integer y) => Integer
 end
+
+def f8[U]
+end
