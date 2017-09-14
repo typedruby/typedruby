@@ -55,12 +55,16 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
         .output()
         .expect("Failed to execute typedruby");
 
-    // TODO: `typedruby` should likely exit 1 if errors are present,
-    // and we need to encode exit status into the test somehow.
-    assert!(status.status.success(),
-            format!("Typechecker exited with status {} on {}", status.status, path.display()));
-
     let expected = read_file(&output_path(&path));
+
+    let expected_code = match expected.len() {
+        0 => 0,
+        _ => 1,
+    };
+
+    assert_eq!(expected_code,
+        status.status.code()
+            .expect("process to exit cleanly with a status code"));
 
     let rootdir = env::current_dir().unwrap();
     let stderr = String::from_utf8(status.stderr)
