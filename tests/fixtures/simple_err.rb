@@ -1,3 +1,5 @@
+# @typedruby
+
 def add1(Integer x) => Integer
   x + 1
 end

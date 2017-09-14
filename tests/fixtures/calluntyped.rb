@@ -1,3 +1,5 @@
+# @typedruby
+
 def untyped(x)
   x.to_s
 end

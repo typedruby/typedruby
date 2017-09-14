@@ -1,3 +1,5 @@
+# @typedruby
+
 # Test that unification won't generate recursive types
 def recursive => nil
   a = []
