@@ -1,0 +1,11 @@
+error: Revealed type is: [Integer, String]
+
+        @ __ROOT__/tests/fixtures/reveal_type.rb:3
+      3 |    reveal_type(x)
+                         ^ expression
+
+error: Revealed expression does not have a value
+
+        @ __ROOT__/tests/fixtures/reveal_type.rb:4
+      4 |    reveal_type(raise ArgumentError)
+                         ^^^^^^^^^^^^^^^^^^^ expression

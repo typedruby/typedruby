@@ -917,6 +917,25 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn process_send(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
+        if recv.is_none() && id.1 == "reveal_type" {
+            for arg in arg_nodes {
+                match self.extract_results(self.process_node(arg, locals.clone()), &arg.loc()) {
+                    EvalResult::Ok(ty, _) => {
+                        self.error(&format!("Revealed type is: {}", &self.tyenv.describe(ty)), &[
+                            Detail::Loc("expression", &arg.loc()),
+                        ]);
+                    }
+                    _ => {
+                        self.error("Revealed expression does not have a value", &[
+                            Detail::Loc("expression", &arg.loc()),
+                        ]);
+                    }
+                }
+            }
+
+            return Computation::result(self.tyenv.any(loc.clone()), locals);
+        }
+
         self.process_send_receiver(recv, id, locals).and_then_comp(|recv_type, locals| {
             self.process_send_args(&id.0, arg_nodes, locals).and_then_comp(|args, locals| {
                 self.process_send_dispatch(loc, recv_type, id, args, block, locals)
