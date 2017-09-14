@@ -2110,6 +2110,8 @@ class Time < Object
   end
 
   def strftime(String format) => String; end
+
+  def to_f => Float; end
 end
 
 module Marshal
