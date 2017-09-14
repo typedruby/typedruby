@@ -1,11 +1,11 @@
 error: Could not match types:
 
-        @ __ROOT__/tests/fixtures/simple_err.rb:1
-      1 |  def add1(Integer x) => Integer
+        @ __ROOT__/tests/fixtures/simple_err.rb:3
+      3 |  def add1(Integer x) => Integer
                     ^^^^^^^ Integer, with:
-        @ __ROOT__/tests/fixtures/simple_err.rb:6
-      6 |    add1("0")
+        @ __ROOT__/tests/fixtures/simple_err.rb:8
+      8 |    add1("0")
                   ^^^ String
-        @ __ROOT__/tests/fixtures/simple_err.rb:6
-      6 |    add1("0")
+        @ __ROOT__/tests/fixtures/simple_err.rb:8
+      8 |    add1("0")
              ^^^^^^^^^ in this expression

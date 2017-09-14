@@ -8,6 +8,7 @@ extern crate termcolor;
 
 use std::path::PathBuf;
 use std::fs;
+use std::process;
 use clap::{App, Arg};
 use typed_arena::Arena;
 use termcolor::{ColorChoice, StandardStream};
@@ -106,14 +107,28 @@ fn main() {
     let arena = Arena::new();
     let env = Environment::new(&arena, Box::new(errors), config);
 
-    for file in files {
+    let success = files.iter().all(|file|
         match env.require(&file) {
-            Ok(()) => (),
-            Err(e) => println!("{}: {:?}", file.display(), e),
-        }
-    }
+            Ok(()) => true,
+            Err(e) => {
+                env.error_sink.borrow_mut()
+                    .error(&format!("{}: {}", file.display(), e), &[]);
+                false
+            }
+        });
 
     env.define();
 
     env.typecheck();
+
+    let errors = env.error_sink.borrow();
+
+    let success = success &&
+        errors.error_count() == 0 &&
+        errors.warning_count() == 0;
+
+    process::exit(match success {
+        true => 0,
+        false => 1,
+    });
 }
