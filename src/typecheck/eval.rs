@@ -105,6 +105,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         let (prototype, locals) =
             eval.materialize_prototype(proto, Locals::new(), &mut type_context);
 
+        eval.apply_constraints(&prototype.constraints);
+
         // type parameters are initially inserted into the type context
         // unresolved to that they can be constrained. unify any unresolved
         // type variables with their named parameters:
@@ -1057,6 +1059,17 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
+    fn apply_constraints(&self, constraints: &[TypeConstraint<'ty, 'object>]) {
+        for constraint in constraints {
+            match *constraint {
+                TypeConstraint::Unify { ref loc, a, b } =>
+                    self.unify(a, b, Some(loc)),
+                TypeConstraint::Compatible { ref loc, sub, super_ } =>
+                    self.compatible(super_, sub, Some(loc)),
+            }
+        }
+    }
+
     fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1087,14 +1100,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
         });
 
-        for constraint in &invokee.prototype.constraints {
-            match *constraint {
-                TypeConstraint::Unify { ref loc, a, b } =>
-                    self.unify(a, b, Some(loc)),
-                TypeConstraint::Compatible { ref loc, sub, super_ } =>
-                    self.compatible(super_, sub, Some(loc)),
-            }
-        }
+        self.apply_constraints(&invokee.prototype.constraints);
 
         comp.terminate_break_scope()
     }
