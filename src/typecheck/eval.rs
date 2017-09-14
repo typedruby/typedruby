@@ -1087,6 +1087,15 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
         });
 
+        for constraint in &invokee.prototype.constraints {
+            match *constraint {
+                TypeConstraint::Unify { ref loc, a, b } =>
+                    self.unify(a, b, Some(loc)),
+                TypeConstraint::Compatible { ref loc, sub, super_ } =>
+                    self.compatible(super_, sub, Some(loc)),
+            }
+        }
+
         comp.terminate_break_scope()
     }
 
