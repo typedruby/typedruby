@@ -1,0 +1,41 @@
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:6
+      6 |    f(2.0, 3)
+               ^^^ Float, with:
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:6
+      6 |    f(2.0, 3)
+                    ^ Integer
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:1
+      1 |  def f[T : Numeric](T x, T y) => T
+                                   ^ Float, with:
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:6
+      6 |    f(2.0, 3)
+                    ^ Integer
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:6
+      6 |    f(2.0, 3)
+             ^^^^^^^^^ in this expression
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:1
+      1 |  def f[T : Numeric](T x, T y) => T
+                     ^^^^^^^ Numeric, with:
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:10
+     10 |    f("foo", "bar")
+               ^^^^^ String
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:1
+      1 |  def f[T : Numeric](T x, T y) => T
+                     ^^^^^^^ Numeric, with:
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:1
+      1 |  def f[T : Numeric](T x, T y) => T
+                 ^ String
+        @ __ROOT__/tests/fixtures/generic_method_constraints.rb:1
+      1 |  def f[T : Numeric](T x, T y) => T
+                 ^^^^^^^^^^^ in this expression
