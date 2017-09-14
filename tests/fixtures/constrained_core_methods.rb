@@ -1,3 +1,5 @@
+# @typedruby
+
 def array_compact => nil
   [1, nil, 3].compact
 end

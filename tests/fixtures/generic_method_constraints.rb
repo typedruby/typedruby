@@ -1,3 +1,5 @@
+# @typedruby
+
 def f[T : Numeric](T x, T y) => T
   x < x
 end

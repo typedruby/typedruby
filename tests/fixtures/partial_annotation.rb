@@ -1,3 +1,5 @@
+# @typedruby
+
 def f1
 end
 

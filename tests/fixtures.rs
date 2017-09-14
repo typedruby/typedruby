@@ -7,7 +7,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
-use std::path::{PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 // Path to our executables
@@ -39,6 +39,13 @@ fn output_path(path: &PathBuf) -> PathBuf {
     expected_file
 }
 
+fn read_file(path: &Path) -> String {
+    let mut f = File::open(path).expect("open to succeed");
+    let mut contents = String::new();
+    f.read_to_string(&mut contents).expect("read to succeed");
+    contents
+}
+
 fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
     let status = Command::new(typedruby_exe())
         .arg(&path)
@@ -48,18 +55,16 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
         .output()
         .expect("Failed to execute typedruby");
 
-    // TODO: `typedruby` should likely exit 1 if errors are present,
-    // and we need to encode exit status into the test somehow.
-    assert!(status.status.success(),
-            format!("Typechecker exited with status {} on {}", status.status, path.display()));
+    let expected = read_file(&output_path(&path));
 
-    let expected_file = output_path(&path);
-    let f = File::open(expected_file);
-    let mut expected: String = String::new();
-    match f {
-        Ok(mut file) => file.read_to_string(&mut expected).expect("read failed"),
-        Err(..) => 0,
+    let expected_code = match expected.len() {
+        0 => 0,
+        _ => 1,
     };
+
+    assert_eq!(expected_code,
+        status.status.code()
+            .expect("process to exit cleanly with a status code"));
 
     let rootdir = env::current_dir().unwrap();
     let stderr = String::from_utf8(status.stderr)

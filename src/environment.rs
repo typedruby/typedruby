@@ -172,15 +172,11 @@ impl<'object> Environment<'object> {
         let mut loaded_features_ref = self.loaded_features.borrow_mut();
 
         match result {
-            Ok(()) => {
-                loaded_features_ref.insert(path, LoadState::Loaded);
-                Ok(())
-            },
-            Err(err) => {
-                loaded_features_ref.remove(&path);
-                Err(err)
-            },
+            Ok(_) => { loaded_features_ref.insert(path, LoadState::Loaded); }
+            Err(_) => { loaded_features_ref.remove(&path); }
         }
+
+        result
     }
 
     fn search_paths<P: AsRef<Path>>(file: &str, paths: &[P]) -> Option<PathBuf> {
