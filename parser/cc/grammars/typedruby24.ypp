@@ -3190,7 +3190,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs tr_constraints rbracket
                     {
                       $$ = driver.build.tr_conunify(self, $1, $3);
                     }
-                | tr_type tLT tr_type
+                | tr_type tCOLON tr_type
                     {
                       $$ = driver.build.tr_consubtype(self, $1, $3);
                     }
