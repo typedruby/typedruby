@@ -836,6 +836,9 @@ class Array::[ElementType] < Object
   def sort_by![SortKey]({ |ElementType element| => SortKey } &) => :self; end
 
   def take(Integer count) => [ElementType]; end
+
+  def reduce[T](T initial, { |T acc, ElementType e| => T } &) => T; end
+  alias :inject :reduce
 end
 
 class Hash::[KeyType, ValueType] < Object
@@ -2229,4 +2232,3 @@ end
 
 class UDPSocket < IPSocket
 end
-
