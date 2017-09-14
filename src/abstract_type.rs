@@ -174,7 +174,8 @@ impl AnnotationStatus {
 #[derive(Debug)]
 pub struct Prototype<'object> {
     pub loc: Loc,
-    pub type_parameters: Vec<TypeParameter<'object>>,
+    pub type_vars: Vec<Id>,
+    pub type_constraints: Vec<TypeConstraint<'object>>,
     pub args: Vec<ArgNode<'object>>,
     pub retn: Option<TypeNodeRef<'object>>,
 }
@@ -197,7 +198,8 @@ impl<'object> Prototype<'object> {
             None => {
                 let proto = Prototype {
                     loc: proto_loc.clone(),
-                    type_parameters: vec![],
+                    type_vars: vec![],
+                    type_constraints: vec![],
                     args: vec![],
                     retn: None,
                 };
@@ -205,12 +207,6 @@ impl<'object> Prototype<'object> {
             }
         }
     }
-}
-
-#[derive(Debug)]
-pub struct TypeParameter<'object> {
-    pub name: Id,
-    pub constraint: Option<TypeConstraint<'object>>,
 }
 
 #[derive(Debug)]
@@ -513,12 +509,71 @@ impl<'env, 'object> ResolveType<'env, 'object> {
         (anno, arg)
     }
 
-    pub fn resolve_prototype(&self, node: &Node) -> (AnnotationStatus, Prototype<'object>) {
+    fn resolve_type_constraint(&self, node: &Node, scope: Rc<TypeScope<'object>>)
+        -> TypeConstraint<'object>
+    {
+        match *node {
+            Node::TyConUnify(ref loc, ref a, ref b) =>
+                TypeConstraint::Unify {
+                    loc: loc.clone(),
+                    a: TypeNode::resolve(a, self.env, scope.clone()),
+                    b: TypeNode::resolve(b, self.env, scope.clone()),
+                },
+            Node::TyConSubtype(ref loc, ref sub, ref super_) =>
+                TypeConstraint::Compatible {
+                    loc: loc.clone(),
+                    sub: TypeNode::resolve(sub, self.env, scope.clone()),
+                    super_: TypeNode::resolve(super_, self.env, scope.clone()),
+                },
+            _ => panic!("unexpected node in resolve_type_constraint")
+        }
+    }
+
+    fn resolve_prototype_genargs(&self, node: Option<&Node>)
+        -> (AnnotationStatus, Rc<TypeScope<'object>>, Vec<Id>, Vec<TypeConstraint<'object>>)
+    {
+        if let Some(&Node::TyGenargs(_, ref vars, ref constraints)) = node {
+            let mut type_vars = vec![];
+            let mut type_constraints = vec![];
+
+            let scope = vars.iter().fold(self.scope.clone(), |scope, var| {
+                if let &Node::TyGendeclarg(ref loc, ref id, ref supertype) = var.as_ref() {
+                    let scope = TypeScope::extend(scope, id.1.clone());
+
+                    type_vars.push(id.clone());
+
+                    if let Some(supertype) = supertype.as_ref() {
+                        type_constraints.push(TypeConstraint::Compatible {
+                            loc: loc.clone(),
+                            sub: Rc::new(TypeNode::TypeParameter {
+                                loc: id.0.clone(),
+                                name: id.1.clone(),
+                            }),
+                            super_: TypeNode::resolve(supertype, self.env, scope.clone()),
+                        });
+                    }
+
+                    scope
+                } else {
+                    panic!("expected TyGendeclarg in TyGenargs::1")
+                }
+            });
+
+            type_constraints.extend(constraints.iter().map(|con|
+                self.resolve_type_constraint(con, scope.clone())));
+
+            (AnnotationStatus::Typed, scope, type_vars, type_constraints)
+        } else {
+            (AnnotationStatus::Empty, self.scope.clone(), vec![], vec![])
+        }
+    }
+
+    pub fn resolve_prototype(&self, node: &Node)
+        -> (AnnotationStatus, Prototype<'object>)
+    {
         fn option_rc_ref<T>(rc: &Option<Rc<T>>) -> Option<&T> {
             rc.as_ref().map(Rc::as_ref)
         }
-
-        let mut type_parameters = Vec::new();
 
         let (genargs, args, retn) = match *node {
             Node::Prototype(_, ref genargs, ref args, ref retn) =>
@@ -527,49 +582,10 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             _ => panic!("unexpected node type in resolve_prototype"),
         };
 
-        // first, collect all type parameters into a Vec<TypeParameter> while
-        // also binding their names in type scope:
-        let type_scope = genargs.map(|genargs| {
-            if let Node::TyGenargs(_, ref gendeclargs) = *genargs {
-                gendeclargs.as_slice()
-            } else {
-                panic!("Expected TyGenargs in genargs position of Prototype")
-            }
-        }).unwrap_or(&[]).iter().map(|gendeclarg| {
-            if let Node::TyGendeclarg(ref loc, ref name, ref constraint) = **gendeclarg {
-                (loc, name, option_rc_ref(constraint))
-            } else {
-                panic!("Expected TyGendeclarg in TyGenargs")
-            }
-        }).fold(self.scope.clone(), |scope, (loc, name, constraint)| {
-            let scope = TypeScope::extend(scope, name.clone());
+        let (anno, scope, type_vars, type_constraints)
+            = self.resolve_prototype_genargs(genargs);
 
-            // TODO - name should be an Id, not a String
-            let id = Id(loc.with_end(loc.begin_pos + name.len()), name.clone());
-
-            type_parameters.push(TypeParameter {
-                name: id,
-                constraint: constraint.map(|con| match *con {
-                    Node::TyConUnify(ref loc, ref a, ref b) =>
-                        TypeConstraint::Unify {
-                            loc: loc.clone(),
-                            a: TypeNode::resolve(a, self.env, scope.clone()),
-                            b: TypeNode::resolve(b, self.env, scope.clone()),
-                        },
-                    Node::TyConSubtype(ref loc, ref sub, ref super_) =>
-                        TypeConstraint::Compatible {
-                            loc: loc.clone(),
-                            sub: TypeNode::resolve(sub, self.env, scope.clone()),
-                            super_: TypeNode::resolve(super_, self.env, scope.clone()),
-                        },
-                    _ => panic!("unexpected node type in constraint position"),
-                }),
-            });
-
-            scope
-        });
-
-        let resolve = ResolveType { env: self.env, scope: type_scope };
+        let resolve = ResolveType { env: self.env, scope: scope };
 
         let (anno, args) = args.map(|args| {
             if let Node::Args(_, ref args) = *args {
@@ -579,7 +595,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             }
         }).unwrap_or(&[]).iter().map(|arg| {
             resolve.resolve_arg(arg)
-        }).fold((AnnotationStatus::Empty, Vec::new()), |(anno1, mut args), (anno2, arg)| {
+        }).fold((anno, Vec::new()), |(anno1, mut args), (anno2, arg)| {
             args.push(arg);
             (anno1.append(anno2), args)
         });
@@ -591,7 +607,8 @@ impl<'env, 'object> ResolveType<'env, 'object> {
 
         (anno, Prototype {
             loc: node.loc().clone(),
-            type_parameters: type_parameters,
+            type_vars: type_vars,
+            type_constraints: type_constraints,
             args: args,
             retn: retn,
         })

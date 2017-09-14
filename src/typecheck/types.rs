@@ -56,6 +56,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
         Rc::new(Prototype {
             loc: loc.clone(),
+            constraints: vec![],
             args: vec![
                 Arg::Rest { loc: loc.clone(), ty: any_ty },
                 Arg::Block { loc: loc.clone(), ty: any_ty },
@@ -1101,6 +1102,20 @@ pub enum Type<'ty, 'object: 'ty> {
     }
 }
 
+#[derive(Debug)]
+pub enum TypeConstraint<'ty, 'object: 'ty> {
+    Unify {
+        loc: Loc,
+        a: TypeRef<'ty, 'object>,
+        b: TypeRef<'ty, 'object>,
+    },
+    Compatible {
+        loc: Loc,
+        sub: TypeRef<'ty, 'object>,
+        super_: TypeRef<'ty, 'object>,
+    },
+}
+
 impl<'ty, 'object> Type<'ty, 'object> {
     pub fn loc(&self) -> &Loc {
         match *self {
@@ -1124,6 +1139,7 @@ impl<'ty, 'object> Type<'ty, 'object> {
 #[derive(Debug)]
 pub struct Prototype<'ty, 'object: 'ty> {
     pub loc: Loc,
+    pub constraints: Vec<TypeConstraint<'ty, 'object>>,
     pub args: Vec<Arg<'ty, 'object>>,
     pub retn: TypeRef<'ty, 'object>,
 }

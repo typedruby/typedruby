@@ -1391,18 +1391,24 @@ impl<'a> Builder<'a> {
         Node::TyCpath(cpath.loc().clone(), cpath)
     }
 
-    pub fn tr_genargs(&self, begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
-        Node::TyGenargs(self.tok_join(&begin, &end), genargs)
+    pub fn tr_genargs(&self, begin: Option<Token>, genargs: Vec<Rc<Node>>, constraints: Vec<Rc<Node>>, end: Option<Token>) -> Node {
+        Node::TyGenargs(self.tok_join(&begin, &end), genargs, constraints)
     }
 
-    pub fn tr_gendecl(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
+    pub fn tr_gendecl(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, constraints: Vec<Rc<Node>>, end: Option<Token>) -> Node {
         let cpath = cpath.unwrap();
-        Node::TyGendecl(cpath.loc().join(&self.loc(&end)), cpath, genargs)
+        Node::TyGendecl(cpath.loc().join(&self.loc(&end)), cpath, genargs, constraints)
     }
 
     pub fn tr_gendeclarg(&self, tok: Option<Token>, constraint: Option<Rc<Node>>) -> Node {
-        let (loc, id) = self.tok_split(&tok);
-        Node::TyGendeclarg(loc, String::from(id.string().unwrap()), constraint)
+        let id = self.tok_id(&tok);
+
+        let loc = match constraint {
+            None => id.0.clone(),
+            Some(ref n) => id.0.join(n.loc()),
+        };
+
+        Node::TyGendeclarg(loc, id, constraint)
     }
 
     pub fn tr_geninst(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
