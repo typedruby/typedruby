@@ -7,7 +7,7 @@ use std::env;
 use std::fs::File;
 use std::io::Read;
 use std::io::Write;
-use std::path::{PathBuf};
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 // Path to our executables
@@ -39,6 +39,13 @@ fn output_path(path: &PathBuf) -> PathBuf {
     expected_file
 }
 
+fn read_file(path: &Path) -> String {
+    let mut f = File::open(path).expect("open to succeed");
+    let mut contents = String::new();
+    f.read_to_string(&mut contents).expect("read to succeed");
+    contents
+}
+
 fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
     let status = Command::new(typedruby_exe())
         .arg(&path)
@@ -53,13 +60,7 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
     assert!(status.status.success(),
             format!("Typechecker exited with status {} on {}", status.status, path.display()));
 
-    let expected_file = output_path(&path);
-    let f = File::open(expected_file);
-    let mut expected: String = String::new();
-    match f {
-        Ok(mut file) => file.read_to_string(&mut expected).expect("read failed"),
-        Err(..) => 0,
-    };
+    let expected = read_file(&output_path(&path));
 
     let rootdir = env::current_dir().unwrap();
     let stderr = String::from_utf8(status.stderr)
