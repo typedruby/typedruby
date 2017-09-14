@@ -21,3 +21,9 @@ error: Partial type signatures are not permitted in method definitions
         @ __ROOT__/tests/fixtures/partial_annotation.rb:13
      13 |  def f5(x, y, Integer z) => Integer
                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ all arguments and return value must be annotated
+
+error: Partial type signatures are not permitted in method definitions
+
+        @ __ROOT__/tests/fixtures/partial_annotation.rb:22
+     22 |  def f8[U]
+                 ^^^ all arguments and return value must be annotated
