@@ -879,17 +879,19 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
-            (&Node::TyGenargs(ref __self_0, ref __self_1),) => {
+            (&Node::TyGenargs(ref __self_0, ref __self_1, ref __self_2),) => {
                 let mut builder = __arg_0.new_node("ty-genargs");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
                 builder.finish()
             }
-            (&Node::TyGendecl(ref __self_0, ref __self_1, ref __self_2),) => {
+            (&Node::TyGendecl(ref __self_0, ref __self_1, ref __self_2, ref __self_3),) => {
                 let mut builder = __arg_0.new_node("ty-gendecl");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
+                let _ = builder.field(__self_3);
                 builder.finish()
             }
             (&Node::TyGendeclarg(ref __self_0, ref __self_1, ref __self_2),) => {
