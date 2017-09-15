@@ -58,6 +58,18 @@ rbdriver_diag_get(const ruby_parser::base_driver* parser, size_t index, struct c
 void
 rbdriver_diag_report(ruby_parser::base_driver* driver, const struct cdiagnostic *diag);
 
+size_t
+rbdriver_comment_get_length(const ruby_parser::base_driver* parser);
+
+size_t
+rbdriver_comment_get_begin(const ruby_parser::base_driver* parser, size_t index);
+
+size_t
+rbdriver_comment_get_end(const ruby_parser::base_driver* parser, size_t index);
+
+size_t
+rbdriver_comment_get_string(const ruby_parser::base_driver* parser, size_t index, const char** out_ptr);
+
 }
 
 #endif

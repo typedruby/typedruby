@@ -99,3 +99,31 @@ rbdriver_diag_report(ruby_parser::base_driver* driver, const struct cdiagnostic 
 		diag->data ? std::string(diag->data) : ""
 	);
 }
+
+size_t
+rbdriver_comment_get_length(const ruby_parser::base_driver* parser)
+{
+    return parser->lex.comments.size();
+}
+
+size_t
+rbdriver_comment_get_begin(const ruby_parser::base_driver* parser, size_t index)
+{
+    return parser->lex.comments.at(index).begin_pos();
+}
+
+size_t
+rbdriver_comment_get_end(const ruby_parser::base_driver* parser, size_t index)
+{
+    return parser->lex.comments.at(index).end_pos();
+}
+
+size_t
+rbdriver_comment_get_string(const ruby_parser::base_driver* parser, size_t index, const char** out_ptr)
+{
+    auto &comment = parser->lex.comments.at(index);
+
+    *out_ptr = comment.string().data();
+
+    return comment.string().size();
+}
