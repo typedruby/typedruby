@@ -495,7 +495,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         if let Some(pathstr) = string.string() {
             let path = match require_type {
                 RequireType::LoadPath => self.env.search_require_path(&pathstr),
-                RequireType::Relative => self.env.search_relative_path(&pathstr, &args[0].loc().file),
+                RequireType::Relative => self.env.search_relative_path(&pathstr, &args[0].loc().file()),
             };
 
             if let Some(path) = path {
@@ -984,9 +984,7 @@ fn source_type_for_file(source_file: &SourceFile) -> SourceType {
 
 pub fn evaluate<'env, 'object: 'env>(env: &'env Environment<'object>, node: Rc<Node>) {
     let scope = Rc::new(Scope { parent: None, module: env.object.Object });
-
-    let source_file = node.loc().file.clone();
-
+    let source_file = node.loc().file().clone();
     let source_type = source_type_for_file(&source_file);
 
     Eval::new(env, scope, source_file, source_type, false).eval_node(&node);
