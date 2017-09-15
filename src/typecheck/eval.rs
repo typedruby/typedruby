@@ -1541,12 +1541,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 }
             }
             Node::Yield(ref loc, ref args) => {
-                let invoc_loc = Loc {
-                    file: loc.file.clone(),
-                    begin_pos: loc.begin_pos,
-                    end_pos: loc.begin_pos + 5,
-                };
-
+                let invoc_loc = loc.with_end(loc.begin_pos + 5);
                 self.process_yield(loc, &invoc_loc, args, locals)
             }
             Node::Hash(ref loc, ref pairs) => {
