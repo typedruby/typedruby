@@ -71,27 +71,25 @@ impl<T: WriteColor> ErrorReporter<T> {
         for detail in details {
             match *detail {
                 Detail::Loc(ref message, ref loc) => {
-                    let begin = loc.file.line_for_pos(loc.begin_pos);
-                    let end = loc.file.line_for_pos(loc.end_pos);
+                    let begin = loc.file().line_for_pos(loc.begin_pos);
+                    let end = loc.file().line_for_pos(loc.end_pos);
 
                     write_color!(low, self.io, "        @ {}:{}\n",
-                        loc.file.filename().display(),
+                        loc.file().filename().display(),
                         begin.number);
 
                     if begin.number == end.number {
                         // same line
                         let line_info = begin;
+                        let source = loc.file().source();
 
                         write_color!(low, self.io, "{:>7} | ", line_info.number);
 
-                        write!(self.io, " {}",
-                               &loc.file.source()[line_info.begin_pos..loc.begin_pos])?;
+                        write!(self.io, " {}", &source[line_info.begin_pos..loc.begin_pos])?;
 
-                        write_color!(err, self.io, "{}",
-                                     &loc.file.source()[loc.begin_pos..loc.end_pos]);
+                        write_color!(err, self.io, "{}", &source[loc.begin_pos..loc.end_pos]);
 
-                        write!(self.io, "{}\n",
-                               &loc.file.source()[loc.end_pos..line_info.end_pos].trim_right())?;
+                        write!(self.io, "{}\n", source[loc.end_pos..line_info.end_pos].trim_right())?;
 
                         write_color!(err, self.io, "{0:1$}{2}",
                            "", 11 + loc.begin_pos - line_info.begin_pos,
@@ -100,7 +98,7 @@ impl<T: WriteColor> ErrorReporter<T> {
 
                         write_color!(high, self.io, " {}\n", message);
                     } else {
-                        let source = loc.file.source()[begin.begin_pos..end.end_pos].split("\n");
+                        let source = loc.file().source()[begin.begin_pos..end.end_pos].split("\n");
 
                         write_color!(err, self.io, "{0:1$}{2}v\n",
                             "", 10, "-".repeat(loc.begin_pos - begin.begin_pos + 1)

@@ -457,3 +457,9 @@ fn diag_send_block_blockarg() {
 	assert_diag!(code, Level::Error, Error::BlockAndBlockarg, OPTIONS);
 }
 
+#[test]
+fn diag_missing_end() {
+	let code = "def foobar";
+	assert_diag!(code, Level::Error, Error::UnexpectedToken, OPTIONS);
+}
+

@@ -125,12 +125,7 @@ impl Token {
     pub fn location(&self, file: Rc<SourceFile>) -> Loc {
         let begin = unsafe { rbtoken_get_start(self.token) };
         let end = unsafe { rbtoken_get_end(self.token) };
-
-        Loc {
-            file: file,
-            begin_pos: begin,
-            end_pos: end,
-        }
+        Loc::new(file, begin, end)
     }
 
     pub fn string(&self) -> String {
@@ -239,12 +234,7 @@ impl Driver {
                 diag
             };
 
-            let loc = Loc {
-                file: self.current_file.clone(),
-                begin_pos: cdiag.begin_pos,
-                end_pos: cdiag.end_pos
-            };
-
+            let loc = Loc::new(self.current_file.clone(), cdiag.begin_pos, cdiag.end_pos);
             let cstr = unsafe { CStr::from_ptr(cdiag.data) }.to_str();
             let data = match cstr {
                 Ok(msg) => if msg.len() > 0 { Some(msg.to_owned()) } else { None },
