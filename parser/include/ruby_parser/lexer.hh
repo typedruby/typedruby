@@ -26,6 +26,19 @@ namespace ruby_parser {
     RUBY_24,
   };
 
+  class comment {
+    size_t begin_pos_;
+    size_t end_pos_;
+    std::string string_;
+
+  public:
+    size_t begin_pos() const;
+    size_t end_pos() const;
+    const std::string& string() const;
+
+    comment(size_t begin_pos, size_t end_pos, std::string string);
+  };
+
   class lexer {
   public:
     using environment = std::set<std::string>;
@@ -130,6 +143,8 @@ namespace ruby_parser {
     size_t last_token_e;
 
     bool in_kwarg;            // true at the end of "def foo a:"
+
+    std::vector<comment> comments;
 
     lexer(diagnostics_t &diag, ruby_version version, const std::string& source_buffer_);
 

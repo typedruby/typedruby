@@ -172,9 +172,10 @@ int lexer::arg_or_cmdarg() {
 }
 
 void lexer::emit_comment(const char* s, const char* e) {
-  /* unused for now */
-  (void)s;
-  (void)e;
+  size_t offset_start = (size_t)(s - source_buffer.data());
+  size_t offset_end = (size_t)(e - source_buffer.data());
+
+  comments.emplace_back(offset_start, offset_end, tok(s, e));
 }
 
 std::string lexer::tok() {
@@ -2606,4 +2607,20 @@ optional_size lexer::dedent_level() {
   auto ret = dedent_level_;
   dedent_level_ = std::nullopt;
   return ret;
+}
+
+comment::comment(size_t begin_pos, size_t end_pos, std::string string)
+  : begin_pos_(begin_pos), end_pos_(end_pos), string_(string)
+{}
+
+size_t comment::begin_pos() const {
+  return begin_pos_;
+}
+
+size_t comment::end_pos() const {
+  return end_pos_;
+}
+
+const std::string& comment::string() const {
+  return string_;
 }
