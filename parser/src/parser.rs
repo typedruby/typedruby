@@ -31,5 +31,6 @@ pub fn parse_with_opts(source_file: Rc<SourceFile>, opts: &ParserOptions) -> Ast
     Ast {
         node: node,
         diagnostics: driver.diagnostics(),
+        comments: driver.comments(),
     }
 }

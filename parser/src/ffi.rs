@@ -2,7 +2,7 @@
 
 extern crate libc;
 
-use ::ast::{Node, Loc, SourceFile, Diagnostic, Level, Error};
+use ::ast::{Node, Loc, SourceFile, Diagnostic, Level, Error, Comment};
 use ::builder::Builder;
 use ::parser::ParserOptions;
 use self::libc::{size_t, c_char};
@@ -108,6 +108,10 @@ extern "C" {
     fn rbdriver_diag_get_length(driver: *const DriverPtr) -> size_t;
     fn rbdriver_diag_get(driver: *const DriverPtr, index: size_t, diag: *mut CDiagnostic);
     fn rbdriver_diag_report(driver: *const DriverPtr, diag: *const CDiagnostic);
+    fn rbdriver_comment_get_length(driver: *const DriverPtr) -> size_t;
+    fn rbdriver_comment_get_begin(driver: *const DriverPtr, index: size_t) -> size_t;
+    fn rbdriver_comment_get_end(driver: *const DriverPtr, index: size_t) -> size_t;
+    fn rbdriver_comment_get_string(driver: *const DriverPtr, index: size_t, ptr: *mut *const u8) -> size_t;
 }
 
 pub struct Token {
@@ -238,6 +242,30 @@ impl Driver {
                 level: cdiag.level,
                 loc: loc,
                 data: data,
+            });
+        }
+
+        vec
+    }
+
+    pub fn comments(&self) -> Vec<Comment> {
+        let len = unsafe { rbdriver_comment_get_length(self.ptr) };
+        let mut vec = Vec::with_capacity(len);
+
+        for index in 0..len {
+            let begin_pos = unsafe { rbdriver_comment_get_begin(self.ptr, index) };
+            let end_pos = unsafe { rbdriver_comment_get_end(self.ptr, index) };
+
+            let mut string: *const u8 = ptr::null();
+            let string_length = unsafe { rbdriver_comment_get_string(self.ptr, index, &mut string) };
+
+            let contents = unsafe {
+                String::from(str::from_utf8_unchecked(slice::from_raw_parts(string, string_length)))
+            };
+
+            vec.push(Comment {
+                loc: Loc::new(self.current_file.clone(), begin_pos, end_pos),
+                contents: contents,
             });
         }
 

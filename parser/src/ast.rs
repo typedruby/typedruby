@@ -71,6 +71,12 @@ pub struct Diagnostic {
     pub data: Option<String>,
 }
 
+#[derive(Debug)]
+pub struct Comment {
+    pub loc: Loc,
+    pub contents: String,
+}
+
 include!(concat!(env!("OUT_DIR"), "/ffi_diagnostics.rs"));
 
 impl fmt::Display for Loc {
@@ -439,6 +445,7 @@ impl Node {
 pub struct Ast {
     pub node: Option<Rc<Node>>,
     pub diagnostics: Vec<Diagnostic>,
+    pub comments: Vec<Comment>,
 }
 
 fn line_map_from_source(source: &str) -> Vec<usize> {
