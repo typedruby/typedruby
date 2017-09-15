@@ -839,7 +839,7 @@ impl<'a> Builder<'a> {
     pub fn file_literal(&self, tok: Option<Token>) -> Node {
         if self.magic_literals {
             let loc = self.loc(&tok);
-            let filename = loc.file.filename().to_str().unwrap();
+            let filename = loc.file().filename().to_str().unwrap();
             Node::String(loc.clone(), RubyString::new(filename.as_bytes()))
         } else {
             Node::FileLiteral(self.loc(&tok))
@@ -990,8 +990,8 @@ impl<'a> Builder<'a> {
     pub fn line_literal(&self, tok: Option<Token>) -> Node {
         if self.magic_literals {
             let loc = self.loc(&tok);
-            let line = loc.file.line_for_pos(loc.begin_pos);
-            Node::Integer(loc.clone(), line.number.to_string())
+            let line = loc.begin().line;
+            Node::Integer(loc.clone(), line.to_string())
         } else {
             Node::LineLiteral(self.loc(&tok))
         }

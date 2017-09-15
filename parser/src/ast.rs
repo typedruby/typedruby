@@ -37,7 +37,7 @@ pub struct SourceLine {
 
 #[derive(Clone,Eq,PartialEq,Hash)]
 pub struct Loc {
-    pub file: Rc<SourceFile>,
+    file: Rc<SourceFile>,
     pub begin_pos: usize,
     pub end_pos: usize,
 }
@@ -85,6 +85,15 @@ impl fmt::Debug for Loc {
 }
 
 impl Loc {
+    pub fn new(file: Rc<SourceFile>, begin: usize, end: usize) -> Self {
+        let max = file.source.len();
+        Loc {
+            file: file,
+            begin_pos: min(max, begin),
+            end_pos: min(max, end),
+        }
+    }
+
     pub fn join(&self, other: &Loc) -> Loc {
         if self.file.filename != other.file.filename {
             panic!("can't join Locs of disparate files");
@@ -105,6 +114,10 @@ impl Loc {
         }
     }
 
+    pub fn file(&self) -> &Rc<SourceFile> {
+        &self.file
+    }
+
     pub fn begin(&self) -> Coords {
         self.coords_for_pos(self.begin_pos)
     }
@@ -115,11 +128,13 @@ impl Loc {
     }
 
     pub fn with_begin(&self, begin_pos: usize) -> Loc {
-        Loc { begin_pos, ..self.clone() }
+        let pos = min(begin_pos, self.file.source.len());
+        Loc { begin_pos: pos, ..self.clone() }
     }
 
     pub fn with_end(&self, end_pos: usize) -> Loc {
-        Loc { end_pos, ..self.clone() }
+        let pos = min(end_pos, self.file.source.len());
+        Loc { end_pos: pos, ..self.clone() }
     }
 }
 
