@@ -9,6 +9,9 @@ indent_style = space
 [*.{rs,cc,hh}]
 indent_size = 4
 
+[*.{rl,ypp}]
+indent_size = 2
+
 [*.{rb,gemspec}]
 indent_size = 2
 
