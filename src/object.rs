@@ -186,7 +186,7 @@ impl<'a> ObjectGraph<'a> {
         o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class }));
 
         o.Kernel = o.define_module(None, o.Object, "Kernel");
-        o.include_module(o.Object, o.Kernel);
+        o.include_module(o.Object, o.Kernel).expect("including Kernel into Object to succeed");
         o.Boolean = o.define_class(None, o.Object, "Boolean", o.Object, Vec::new());
         o.TrueClass = o.define_class(None, o.Object, "TrueClass", o.Boolean, Vec::new());
         o.FalseClass = o.define_class(None, o.Object, "FalseClass", o.Boolean, Vec::new());
@@ -465,7 +465,7 @@ impl<'a> ObjectGraph<'a> {
     }
 
     // TODO - check for instance variable name conflicts in superclasses and subclasses:
-    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> bool {
+    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> Result<(), ()> {
         // TODO - we'll need this to implement prepends later.
         // MRI's prepend implementation relies on changing the type of the object
         // at the module's address. We can't do that here, so instead let's go with
@@ -482,7 +482,7 @@ impl<'a> ObjectGraph<'a> {
 
         if target == module.delegate() {
             // cyclic include
-            return false
+            return Err(())
         }
 
         let mut current_inclusion_point = method_location(target);
@@ -490,7 +490,7 @@ impl<'a> ObjectGraph<'a> {
         'next_module: for next_module in module.ancestors() {
             if target == next_module.delegate() {
                 // cyclic include
-                return false
+                return Err(())
             }
 
             let mut superclass_seen = false;
@@ -541,7 +541,7 @@ impl<'a> ObjectGraph<'a> {
             current_inclusion_point = iclass;
         }
 
-        true
+        Ok(())
     }
 
     pub fn is_hash(&self, class: &'a RubyObject<'a>) -> bool {

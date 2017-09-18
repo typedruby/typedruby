@@ -452,11 +452,11 @@ impl<'env, 'object> Eval<'env, 'object> {
         for arg in args {
             match self.resolve_static(arg) {
                 Ok(obj) => {
-                    if !self.env.object.include_module(target, &obj) {
+                    self.env.object.include_module(target, &obj).unwrap_or_else(|()| {
                         self.error("Cyclic include", &[
                             Detail::Loc("here", arg.loc()),
                         ])
-                    }
+                    })
                 }
                 Err((node, message)) => {
                     self.warning(&format!("Could not statically resolve module reference in {}", id.1), &[
