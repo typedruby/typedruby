@@ -398,17 +398,17 @@ namespace bison {
 namespace typedruby24 {
 
 #define DIAGCHECK() do { \
-	if (driver.pending_error) { \
-		driver.pending_error = false; \
-		YYERROR; \
-	} \
+        if (driver.pending_error) { \
+                driver.pending_error = false; \
+                YYERROR; \
+        } \
 } while(false);
 
 void parser::error(const std::string &msg) {
-	driver.diagnostics.emplace_back(
-		dlevel::ERROR, dclass::UnexpectedToken,
-		diagnostic::range(driver.lex.last_token_s, driver.lex.last_token_e),
-		msg);
+        driver.diagnostics.emplace_back(
+                dlevel::ERROR, dclass::UnexpectedToken,
+                diagnostic::range(driver.lex.last_token_s, driver.lex.last_token_e),
+                msg);
 }
 
 int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
@@ -465,14 +465,14 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 
                       if (rescue_bodies->size() == 0 && else_ != nullptr) {
                         driver.diagnostics.emplace_back(
-			  dlevel::WARNING, dclass::UselessElse, else_->tok);
+                          dlevel::WARNING, dclass::UselessElse, else_->tok);
                       }
 
                       $$ = driver.build.begin_body(self, $1, rescue_bodies,
-						else_ ? else_->tok : nullptr,
-						else_ ? else_->nod : nullptr,
-						ensure ? ensure->tok : nullptr,
-						ensure ? ensure->nod : nullptr);
+                                                else_ ? else_->tok : nullptr,
+                                                else_ ? else_->nod : nullptr,
+                                                ensure ? ensure->tok : nullptr,
+                                                ensure ? ensure->nod : nullptr);
                     }
 
         compstmt: stmts opt_terms
@@ -502,7 +502,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | klBEGIN tLCURLY top_compstmt tRCURLY
                     {
                       driver.diagnostics.emplace_back(dlevel::ERROR,
-			dclass::BeginInMethod, $1);
+                        dclass::BeginInMethod, $1);
                       YYERROR;
                     }
 
@@ -550,7 +550,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | stmt kRESCUE_MOD stmt
                     {
                       ruby_parser::node_list rescue_body(
-						driver.build.rescue_body(self, $2, nullptr, nullptr, nullptr, nullptr, $3));
+                                                driver.build.rescue_body(self, $2, nullptr, nullptr, nullptr, nullptr, $3));
                       $$ = driver.build.begin_body(self, $1, &rescue_body, nullptr, nullptr, nullptr, nullptr);
                     }
                 | klEND tLCURLY compstmt tRCURLY
@@ -621,7 +621,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | command_call kRESCUE_MOD stmt
                     {
                       node_list rescue_body(
-			driver.build.rescue_body(self, $2, nullptr, nullptr, nullptr, nullptr, $3));
+                        driver.build.rescue_body(self, $2, nullptr, nullptr, nullptr, nullptr, $3));
                       $$ = driver.build.begin_body(self, $1, &rescue_body, nullptr, nullptr, nullptr, nullptr);
                     }
                 | command_asgn
@@ -1453,15 +1453,15 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     {
                       auto &else_ = $5;
                       $$ = driver.build.condition(self, $1, $2, $3, $4,
-			else_ ? else_->tok : nullptr,
-			else_ ? else_->nod : nullptr, $6);
+                        else_ ? else_->tok : nullptr,
+                        else_ ? else_->nod : nullptr, $6);
                     }
                 | kUNLESS expr_value then compstmt opt_else kEND
                     {
                       auto &else_ = $5;
                       $$ = driver.build.condition(self, $1, $2, $3,
                         else_ ? else_->nod : nullptr,
-			else_ ? else_->tok : nullptr, $4, $6);
+                        else_ ? else_->tok : nullptr, $4, $6);
                     }
                 | kWHILE
                     {
@@ -1494,7 +1494,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       $$ = driver.build.case_(self, $1, $2,
                         &case_body->whens,
                         else_ ? else_->tok : nullptr,
-			else_ ? else_->nod : nullptr, $5);
+                        else_ ? else_->nod : nullptr, $5);
                     }
                 | kCASE opt_terms case_body kEND
                     {
@@ -1503,7 +1503,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       $$ = driver.build.case_(self, $1, nullptr,
                         &case_body->whens,
                         else_ ? else_->tok : nullptr,
-			else_ ? else_->nod : nullptr, $4);
+                        else_ ? else_->nod : nullptr, $4);
                     }
                 | kFOR for_var kIN
                     {
@@ -2165,9 +2165,9 @@ opt_block_args_tail:
 
                       rescues->push_front(driver.build.rescue_body(self, $1,
                           exc_list,
-			  exc_var ? exc_var->tok : nullptr,
-			  exc_var ? exc_var->nod : nullptr,
-			  $4, $5));
+                          exc_var ? exc_var->tok : nullptr,
+                          exc_var ? exc_var->nod : nullptr,
+                          $4, $5));
 
                       $$ = rescues;
                     }
