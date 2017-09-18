@@ -9,7 +9,7 @@ indent_style = space
 [*.{rs,cc,hh}]
 indent_size = 4
 
-[*.rb]
+[*.{rb,gemspec}]
 indent_size = 2
 
 [Makefile]
