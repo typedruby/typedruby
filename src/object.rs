@@ -3,6 +3,7 @@ use std::hash::{Hash, Hasher};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
+use std::fmt::Write;
 use typed_arena::Arena;
 use ast::{Node, Loc, Id};
 use define::MethodVisibility;
@@ -711,8 +712,16 @@ impl<'a> RubyObject<'a> {
                 name.clone(),
             RubyObject::Metaclass { of, .. } =>
                 format!("Class::[{}]", of.name()),
-            RubyObject::IClass { .. } =>
-                panic!("iclass has no name"),
+            RubyObject::IClass { ref site, .. } => {
+                let mut s = format!("iclass for {} (included from {}",
+                    site.module.name(), site.reason.name());
+
+                if let Some(ref loc) = site.loc {
+                    &write!(&mut s, " at {}", loc);
+                }
+
+                s + ")"
+            }
         }
     }
 
