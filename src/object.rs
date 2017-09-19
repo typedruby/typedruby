@@ -357,8 +357,8 @@ impl<'a> ObjectGraph<'a> {
                 RubyObject::Class { ref superclass, .. } |
                 RubyObject::Metaclass { ref superclass, .. } =>
                     (superclass, constants_ref.get(object)),
-                RubyObject::IClass { ref superclass, ref module, .. } =>
-                    (superclass, constants_ref.get(module))
+                RubyObject::IClass { ref superclass, ref site, .. } =>
+                    (superclass, constants_ref.get(site.module))
             };
 
         match constants.and_then(|c| c.get(name)) {
@@ -509,6 +509,15 @@ impl<'a> ObjectGraph<'a> {
                 }
             }
 
+            let site = match *next_module {
+                RubyObject::IClass { ref site, .. } => site.clone(),
+                _ => Rc::new(IncludeSite {
+                    module: next_module.delegate(),
+                    type_parameters: vec![],
+                    reason: target
+                }),
+            };
+
             let iclass = self.alloc(RubyObject::IClass {
                 id: self.new_object_id(),
                 superclass: match *current_inclusion_point {
@@ -518,7 +527,7 @@ impl<'a> ObjectGraph<'a> {
                     RubyObject::IClass { ref superclass, .. } =>
                         superclass.clone(),
                 },
-                module: next_module.delegate(),
+                site: site,
             });
 
             match *current_inclusion_point {
@@ -648,6 +657,12 @@ pub struct IvarEntry<'object> {
     pub ty: TypeNodeRef<'object>,
 }
 
+pub struct IncludeSite<'object> {
+    pub module: &'object RubyObject<'object>,
+    pub reason: &'object RubyObject<'object>,
+    pub type_parameters: Vec<TypeNodeRef<'object>>,
+}
+
 pub enum RubyObject<'a> {
     Module {
         id: ObjectId,
@@ -671,7 +686,7 @@ pub enum RubyObject<'a> {
     IClass {
         id: ObjectId,
         superclass: Cell<Option<&'a RubyObject<'a>>>,
-        module: &'a RubyObject<'a>,
+        site: Rc<IncludeSite<'a>>,
     }
 }
 
@@ -704,8 +719,8 @@ impl<'a> RubyObject<'a> {
             RubyObject::Class { .. } |
             RubyObject::Metaclass { .. } =>
                 self,
-            RubyObject::IClass { module, .. } =>
-                module,
+            RubyObject::IClass { ref site, .. } =>
+                &site.module,
         }
     }
 
