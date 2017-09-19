@@ -187,7 +187,7 @@ impl<'a> ObjectGraph<'a> {
         o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class }));
 
         o.Kernel = o.define_module(None, o.Object, "Kernel");
-        o.include_module(o.Object, o.Kernel).expect("including Kernel into Object to succeed");
+        o.include_module(o.Object, o.Kernel, None).expect("including Kernel into Object to succeed");
         o.Boolean = o.define_class(None, o.Object, "Boolean", o.Object, Vec::new());
         o.TrueClass = o.define_class(None, o.Object, "TrueClass", o.Boolean, Vec::new());
         o.FalseClass = o.define_class(None, o.Object, "FalseClass", o.Boolean, Vec::new());
@@ -466,7 +466,7 @@ impl<'a> ObjectGraph<'a> {
     }
 
     // TODO - check for instance variable name conflicts in superclasses and subclasses:
-    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> Result<(), IncludeError> {
+    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>, loc: Option<&Loc>) -> Result<(), IncludeError> {
         // TODO - we'll need this to implement prepends later.
         // MRI's prepend implementation relies on changing the type of the object
         // at the module's address. We can't do that here, so instead let's go with
@@ -511,6 +511,7 @@ impl<'a> ObjectGraph<'a> {
             let site = match *next_module {
                 RubyObject::IClass { ref site, .. } => site.clone(),
                 _ => Rc::new(IncludeSite {
+                    loc: loc.cloned(),
                     module: next_module.delegate(),
                     type_parameters: vec![],
                     reason: target
@@ -657,6 +658,7 @@ pub struct IvarEntry<'object> {
 }
 
 pub struct IncludeSite<'object> {
+    pub loc: Option<Loc>,
     pub module: &'object RubyObject<'object>,
     pub reason: &'object RubyObject<'object>,
     pub type_parameters: Vec<TypeNodeRef<'object>>,
