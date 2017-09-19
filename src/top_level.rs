@@ -2,7 +2,7 @@ use ast::{Id, Node, Loc, SourceFile};
 use environment::Environment;
 use errors::Detail;
 use define::{Definitions, MethodVisibility, MethodDef, IvarDef};
-use object::{RubyObject, Scope, ConstantEntry};
+use object::{RubyObject, Scope, ConstantEntry, IncludeError};
 use std::rc::Rc;
 use std::cell::Cell;
 use abstract_type::{TypeNode, TypeScope};
@@ -452,11 +452,14 @@ impl<'env, 'object> Eval<'env, 'object> {
         for arg in args {
             match self.resolve_static(arg) {
                 Ok(obj) => {
-                    self.env.object.include_module(target, &obj).unwrap_or_else(|()| {
-                        self.error("Cyclic include", &[
-                            Detail::Loc("here", arg.loc()),
-                        ])
-                    })
+                    match self.env.object.include_module(target, obj) {
+                        Ok(()) => (),
+                        Err(IncludeError::CyclicInclude) => {
+                            self.error("Cyclic include", &[
+                                Detail::Loc("here", arg.loc()),
+                            ])
+                        }
+                    }
                 }
                 Err((node, message)) => {
                     self.warning(&format!("Could not statically resolve module reference in {}", id.1), &[

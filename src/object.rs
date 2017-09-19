@@ -465,7 +465,7 @@ impl<'a> ObjectGraph<'a> {
     }
 
     // TODO - check for instance variable name conflicts in superclasses and subclasses:
-    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> Result<(), ()> {
+    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> Result<(), IncludeError> {
         // TODO - we'll need this to implement prepends later.
         // MRI's prepend implementation relies on changing the type of the object
         // at the module's address. We can't do that here, so instead let's go with
@@ -481,16 +481,14 @@ impl<'a> ObjectGraph<'a> {
         }
 
         if target == module.delegate() {
-            // cyclic include
-            return Err(())
+            return Err(IncludeError::CyclicInclude)
         }
 
         let mut current_inclusion_point = method_location(target);
 
         'next_module: for next_module in module.ancestors() {
             if target == next_module.delegate() {
-                // cyclic include
-                return Err(())
+                return Err(IncludeError::CyclicInclude)
             }
 
             let mut superclass_seen = false;
@@ -661,6 +659,11 @@ pub struct IncludeSite<'object> {
     pub module: &'object RubyObject<'object>,
     pub reason: &'object RubyObject<'object>,
     pub type_parameters: Vec<TypeNodeRef<'object>>,
+}
+
+#[derive(Debug)]
+pub enum IncludeError {
+    CyclicInclude,
 }
 
 pub enum RubyObject<'a> {
