@@ -452,7 +452,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         for arg in args {
             match self.resolve_static(arg) {
                 Ok(obj) => {
-                    match self.env.object.include_module(target, obj) {
+                    match self.env.object.include_module(target, obj, Some(arg.loc())) {
                         Ok(()) => (),
                         Err(IncludeError::CyclicInclude) => {
                             self.error("Cyclic include", &[
