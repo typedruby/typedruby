@@ -603,39 +603,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn lookup_method(&self, name: &str, type_context: TypeContext<'ty, 'object>)
         -> Option<(TypeContext<'ty, 'object>, Rc<MethodEntry<'object>>)>
     {
-        let mut include_tree = HashMap::new();
-
         for module in type_context.class.ancestors() {
-            match *module {
-                RubyObject::IClass { ref site, .. } => {
-                    include_tree.insert(site.module, site);
-                }
-                RubyObject::Class { .. } |
-                RubyObject::Metaclass { .. } => {
-                    include_tree.clear();
-                }
-                _ => panic!("unexpected object type in ancestry! {:?}", module)
-            }
-
             if let Some(method) = self.env.object.lookup_method_direct(module, name) {
-                let include_chain = {
-                    let mut chain = Vec::new();
-                    let mut cur = module.delegate();
-
-                    loop {
-                        match include_tree.get(cur) {
-                            Some(site) => {
-                                chain.push(site);
-                                cur = site.reason;
-                            }
-                            None => {
-                                break;
-                            }
-                        }
-                    }
-
-                    chain
-                };
+                let include_chain = type_context.class.include_chain(module);
 
                 let type_context = include_chain.iter().rev()
                     .fold(type_context, |context, site| {
