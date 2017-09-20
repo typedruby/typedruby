@@ -520,6 +520,10 @@ impl<'a> ObjectGraph<'a> {
             return Err(IncludeError::CyclicInclude)
         }
 
+        if module.type_parameters().len() != type_parameters.len() {
+            panic!("type parameter count mismatch in module inclusion")
+        }
+
         let include_site = Rc::new(IncludeSite {
             loc: loc,
             module: module.delegate(),

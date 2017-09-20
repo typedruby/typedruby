@@ -5,6 +5,7 @@ use define::{Definitions, MethodVisibility, MethodDef, IvarDef};
 use object::{RubyObject, Scope, ConstantEntry, IncludeError};
 use std::rc::Rc;
 use std::cell::Cell;
+use std::iter::repeat;
 use abstract_type::{TypeNode, TypeScope};
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
@@ -477,7 +478,10 @@ impl<'env, 'object> Eval<'env, 'object> {
         for arg in args {
             match self.resolve_static(arg) {
                 Ok(obj) => {
-                    match self.env.object.include_module(target, obj, vec![], Some(arg.loc().clone())) {
+                    let params = repeat(Rc::new(TypeNode::Any { loc: arg.loc().clone() }))
+                        .take(obj.type_parameters().len()).collect();
+
+                    match self.env.object.include_module(target, obj, params, Some(arg.loc().clone())) {
                         Ok(()) => (),
                         Err(IncludeError::CyclicInclude) => {
                             self.error("Cyclic include", &[
