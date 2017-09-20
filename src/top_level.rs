@@ -49,6 +49,12 @@ impl AttrType {
     }
 }
 
+struct DeclRef<'object> {
+    base: &'object RubyObject<'object>,
+    name: String,
+    type_parameters: Vec<Id>,
+}
+
 enum RequireType {
     LoadPath,
     Relative,
@@ -102,19 +108,52 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
-    fn resolve_decl_ref<'a>(&self, name: &'a Node) -> EvalResult<'a, (&'object RubyObject<'object>, &'a str)> {
-        if let Node::Const(_, ref base, Id(_, ref id)) = *name {
+    fn resolve_decl_ref<'a>(&self, node: &'a Node) -> EvalResult<'a, DeclRef<'object>> {
+        let (name, params) = match *node {
+            Node::TyGendecl(_, ref name, ref params, ref constraints) => {
+                let params = params.iter().map(|param|
+                    match **param {
+                        Node::TyGendeclarg(_, ref name, None) =>
+                            name.clone(),
+                        Node::TyGendeclarg(_, ref name, Some(ref constraint)) => {
+                            self.error("Type constraints not permitted on classes/modules", &[
+                                Detail::Loc("here", constraint.loc()),
+                            ]);
+                            name.clone()
+                        },
+                        _ => panic!("expected TyGendeclarg in TyGendecl"),
+                    }
+                ).collect();
+
+                if !constraints.is_empty() {
+                    self.error("Type constraints not permitted on classes/modules", &[
+                        Detail::Loc("here", constraints[0].loc()),
+                    ]);
+                }
+
+                (Rc::as_ref(name), params)
+            }
+            _ => {
+                (node, vec![])
+            }
+        };
+
+        let ref_ = if let Node::Const(_, ref base, ref id) = *name {
             match *base {
                 Some(ref base_node) =>
                     self.resolve_cpath(base_node).and_then(|constant|
                         constant.module()
-                            .map(|constant| (constant, id.as_str()))
+                            .map(|constant| (constant, id))
                             .ok_or((base_node, "Not a static class/module"))),
-                None => Ok((self.scope.module, id.as_str())),
+                None => Ok((self.scope.module, id)),
             }
         } else {
             Err((name, "Class name is not a static constant"))
-        }
+        };
+
+        ref_.map(|(base, name)| {
+            DeclRef { base, name: name.1.clone(), type_parameters: params }
+        })
     }
 
     fn resolve_static<'a>(&self, node: &'a Node) -> EvalResult<'a, &'object RubyObject<'object>> {
@@ -168,7 +207,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         self.error(message, details.as_slice());
     }
 
-    fn decl_class(&self, name: &Node, type_parameters: &[Rc<Node>], _type_constraints: &[Rc<Node>], superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
+    fn decl_class(&self, name: &Node, superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
         // TODO need to autoload
 
         let superclass = superclass.as_ref().and_then(|node| {
@@ -190,17 +229,17 @@ impl<'env, 'object> Eval<'env, 'object> {
         });
 
         let class = match self.resolve_decl_ref(name) {
-            Ok((base, id)) => {
-                if let Some(constant_entry) = self.env.object.get_const_for_definition(&base, id) {
+            Ok(decl) => {
+                if let Some(constant_entry) = self.env.object.get_const_for_definition(decl.base, &decl.name) {
                     match *constant_entry {
                         ConstantEntry::Expression { ref loc, .. } => {
-                            self.constant_definition_error(&format!("{} is not a static class", id), name.loc(), Some(loc));
+                            self.constant_definition_error(&format!("{} is not a static class", decl.name), name.loc(), Some(loc));
 
                             // do nothing with the class body
                             None
                         }
                         ConstantEntry::Module { ref loc, value: &RubyObject::Module { .. } } => {
-                            self.constant_definition_error(&format!("{} is not a static class", id), name.loc(), loc.as_ref());
+                            self.constant_definition_error(&format!("{} is not a static class", decl.name), name.loc(), loc.as_ref());
 
                             // do nothing with the class body
                             None
@@ -237,24 +276,12 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                     let type_parameters =
                         if superclass.type_parameters().is_empty() {
-                            type_parameters.iter().map(|param|
-                                match **param {
-                                    Node::TyGendeclarg(_, ref name, None) =>
-                                        name.clone(),
-                                    Node::TyGendeclarg(_, ref name, Some(ref constraint)) => {
-                                        self.error("Type constraints not permitted on class type parameters", &[
-                                            Detail::Loc("here", constraint.loc()),
-                                        ]);
-                                        name.clone()
-                                    },
-                                    _ => panic!("expected TyGendeclarg in TyGendecl"),
-                                }
-                            ).collect()
-                        } else if type_parameters.is_empty() {
+                            decl.type_parameters
+                        } else if decl.type_parameters.is_empty() {
                             superclass.type_parameters().to_vec()
                         } else {
-                            let loc = type_parameters.first().unwrap().loc().join(
-                                        type_parameters.last().unwrap().loc());
+                            let loc = decl.type_parameters.first().unwrap().0.join(
+                                        &decl.type_parameters.last().unwrap().0);
 
                             self.error("Subclasses of generic classes may not specify type parameters", &[
                                 Detail::Loc("here", &loc),
@@ -264,7 +291,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         };
 
                     let class = self.env.object.new_class(
-                        self.env.object.constant_path(&base, id),
+                        self.env.object.constant_path(decl.base, &decl.name),
                         superclass, type_parameters);
 
                     let constant = Rc::new(ConstantEntry::Module {
@@ -272,7 +299,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         value: class,
                     });
 
-                    self.env.object.set_const(&base, id, constant)
+                    self.env.object.set_const(decl.base, &decl.name, constant)
                         .expect("constant to not already exist");
 
                     Some(class)
@@ -293,11 +320,11 @@ impl<'env, 'object> Eval<'env, 'object> {
         // TODO need to autoload
 
         let module = match self.resolve_decl_ref(name) {
-            Ok((base, id)) => {
-                if let Some(constant_entry) = self.env.object.get_const_for_definition(&base, id) {
+            Ok(decl) => {
+                if let Some(constant_entry) = self.env.object.get_const_for_definition(decl.base, &decl.name) {
                     match *constant_entry {
                         ConstantEntry::Expression { ref loc, .. } => {
-                            self.constant_definition_error(&format!("{} is not a static module", id), name.loc(), Some(loc));
+                            self.constant_definition_error(&format!("{} is not a static module", decl.name), name.loc(), Some(loc));
                             None
                         }
                         ConstantEntry::Module { value: value@&RubyObject::Module { .. }, .. } => {
@@ -305,7 +332,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         }
                         ConstantEntry::Module { value: value@&RubyObject::Class { .. }, loc: ref expr_loc } |
                         ConstantEntry::Module { value: value@&RubyObject::Metaclass { .. }, loc: ref expr_loc } => {
-                            self.constant_definition_error(&format!("{} is not a module", id), name.loc(), expr_loc.as_ref());
+                            self.constant_definition_error(&format!("{} is not a module", decl.name), name.loc(), expr_loc.as_ref());
                             Some(value)
                         }
                         ConstantEntry::Module { value: &RubyObject::IClass { .. }, .. } =>
@@ -313,14 +340,14 @@ impl<'env, 'object> Eval<'env, 'object> {
                     }
                 } else {
                     let module = self.env.object.new_module(
-                        self.env.object.constant_path(&base, id), vec![]);
+                        self.env.object.constant_path(decl.base, &decl.name), decl.type_parameters);
 
                     let constant = Rc::new(ConstantEntry::Module {
                         loc: Some(name.loc().clone()),
                         value: module,
                     });
 
-                    self.env.object.set_const(&base, id, constant)
+                    self.env.object.set_const(decl.base, &decl.name, constant)
                         .expect("constant to not already exist");
 
                     Some(module)
@@ -450,10 +477,21 @@ impl<'env, 'object> Eval<'env, 'object> {
         for arg in args {
             match self.resolve_static(arg) {
                 Ok(obj) => {
-                    match self.env.object.include_module(target, obj, Some(arg.loc())) {
+                    match self.env.object.include_module(target, obj, vec![], Some(arg.loc().clone())) {
                         Ok(()) => (),
                         Err(IncludeError::CyclicInclude) => {
                             self.error("Cyclic include", &[
+                                Detail::Loc("here", arg.loc()),
+                            ])
+                        }
+                        Err(IncludeError::DuplicateInclude(Some(loc))) => {
+                            self.error("Duplicate include", &[
+                                Detail::Loc("here", arg.loc()),
+                                Detail::Loc("previous inclusion was here", loc),
+                            ])
+                        }
+                        Err(IncludeError::DuplicateInclude(None)) => {
+                            self.error("Duplicate include", &[
                                 Detail::Loc("here", arg.loc()),
                             ])
                         }
@@ -567,14 +605,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 }
             }
             Node::Class(_, ref declname, ref superclass, ref body) => {
-                match **declname {
-                    Node::TyGendecl(_, ref name, ref type_vars, ref type_constraints) =>
-                        self.decl_class(name, type_vars.as_slice(), type_constraints.as_slice(), superclass, body),
-                    Node::Const(..) =>
-                        self.decl_class(declname, &[], &[], superclass, body),
-                    _ =>
-                        panic!("bad node type in class declname position"),
-                }
+                self.decl_class(declname, superclass, body);
             }
             Node::Module(_, ref name, ref body) => {
                 self.decl_module(name, body);
