@@ -610,10 +610,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 RubyObject::IClass { ref site, .. } => {
                     include_tree.insert(site.module, site);
                 }
-                RubyObject::Class { .. } => {
+                RubyObject::Class { .. } |
+                RubyObject::Metaclass { .. } => {
                     include_tree.clear();
                 }
-                _ => panic!("unexpected object type in ancestry!")
+                _ => panic!("unexpected object type in ancestry! {:?}", module)
             }
 
             if let Some(method) = self.env.object.lookup_method_direct(module, name) {
