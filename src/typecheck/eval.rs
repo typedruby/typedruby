@@ -324,7 +324,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn materialize_type(&self, type_node: &TypeNode<'object>, context: &TypeContext<'ty, 'object>) -> TypeRef<'ty, 'object> {
         match *type_node {
             TypeNode::Instance { ref loc, class, ref type_parameters } =>
-                self.create_instance_type(loc, class,
+                self.tyenv.instance(loc.clone(), class,
                     type_parameters.iter().map(|node|
                         self.materialize_type(node, context)).collect()),
             TypeNode::Tuple { ref loc, ref lead, ref splat, ref post } =>
@@ -356,7 +356,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                         // if the class we're trying to instantiate has type parameters just fill them with new
                         // type variables. TODO revisit this logic and see if there's something better we could do?
                         let type_parameters = of.type_parameters().iter().map(|_| self.tyenv.new_var(loc.clone())).collect();
-                        self.create_instance_type(loc, of, type_parameters)
+                        self.tyenv.instance(loc.clone(), of, type_parameters)
                     },
                     _ => {
                         // special case to allow the Class#allocate definition in the stdlib:
@@ -371,7 +371,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 },
             TypeNode::SpecialClass { ref loc } =>
                 // metaclasses never have type parameters:
-                self.create_instance_type(loc, self.env.object.metaclass(context.class), Vec::new()),
+                self.tyenv.instance(loc.clone(), self.env.object.metaclass(context.class), Vec::new()),
             TypeNode::Error { ref loc } =>
                 // an error was already printed, just make a fresh type var:
                 self.tyenv.new_var(loc.clone()),
@@ -2016,7 +2016,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     self.process_node(end, locals).seq(&|end_ty, locals| {
                         // TODO the Range class needs type constraints to make
                         // sure the two values can actually be compared
-                        let ty = self.create_instance_type(loc,
+                        let ty = self.tyenv.instance(loc.clone(),
                             self.env.object.range_class(),
                             vec![begin_ty, end_ty]);
 
