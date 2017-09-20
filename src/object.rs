@@ -181,10 +181,10 @@ impl<'a> ObjectGraph<'a> {
             ivars: RefCell::new(HashMap::new()),
         };
 
-        o.set_const(o.BasicObject, "BasicObject", Rc::new(ConstantEntry::Module { loc: None, value: o.BasicObject }));
-        o.set_const(o.Object, "Object", Rc::new(ConstantEntry::Module { loc: None, value: o.Object }));
-        o.set_const(o.Object, "Module", Rc::new(ConstantEntry::Module { loc: None, value: o.Module }));
-        o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class }));
+        o.set_const(o.BasicObject, "BasicObject", Rc::new(ConstantEntry::Module { loc: None, value: o.BasicObject })).unwrap();
+        o.set_const(o.Object, "Object", Rc::new(ConstantEntry::Module { loc: None, value: o.Object })).unwrap();
+        o.set_const(o.Object, "Module", Rc::new(ConstantEntry::Module { loc: None, value: o.Module })).unwrap();
+        o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class })).unwrap();
         o.Kernel = o.define_module(None, o.Object, "Kernel", vec![]);
 
         o.include_module(o.Object, o.Kernel, None).expect("including Kernel into Object to succeed");
@@ -290,7 +290,8 @@ impl<'a> ObjectGraph<'a> {
     pub fn define_class(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
         let class = self.new_class(self.constant_path(owner, name), superclass, type_parameters);
 
-        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: class }));
+        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: class }))
+            .expect("class to not already exist");
 
         class
     }
@@ -298,7 +299,8 @@ impl<'a> ObjectGraph<'a> {
     pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
         let module = self.new_module(self.constant_path(owner, name), type_parameters);
 
-        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: module }));
+        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: module }))
+            .expect("module to not already exist");
 
         module
     }
@@ -372,12 +374,12 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, entry: Rc<ConstantEntry<'a>>) -> bool {
+    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, entry: Rc<ConstantEntry<'a>>) -> Result<(), ()> {
         match Self::class_table_lookup(&self.constants, object, name) {
-            Some(_) => false,
+            Some(_) => Err(()),
             None => {
                 Self::class_table_insert(&self.constants, object, name.to_owned(), entry);
-                true
+                Ok(())
             },
         }
     }
