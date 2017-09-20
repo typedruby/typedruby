@@ -185,9 +185,11 @@ impl<'a> ObjectGraph<'a> {
         o.set_const(o.Object, "Object", Rc::new(ConstantEntry::Module { loc: None, value: o.Object })).unwrap();
         o.set_const(o.Object, "Module", Rc::new(ConstantEntry::Module { loc: None, value: o.Module })).unwrap();
         o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class })).unwrap();
-        o.Kernel = o.define_module(None, o.Object, "Kernel", vec![]);
 
-        o.include_module(o.Object, o.Kernel, None).expect("including Kernel into Object to succeed");
+        o.Kernel = o.define_module(None, o.Object, "Kernel", vec![]);
+        o.include_module(o.Object, o.Kernel, vec![], None)
+            .expect("including Kernel into Object to succeed");
+
         o.Boolean = o.define_class(None, o.Object, "Boolean", o.Object, Vec::new());
         o.TrueClass = o.define_class(None, o.Object, "TrueClass", o.Boolean, Vec::new());
         o.FalseClass = o.define_class(None, o.Object, "FalseClass", o.Boolean, Vec::new());
@@ -469,7 +471,9 @@ impl<'a> ObjectGraph<'a> {
     }
 
     // TODO - check for instance variable name conflicts in superclasses and subclasses:
-    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>, loc: Option<&Loc>) -> Result<(), IncludeError> {
+    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>, type_parameters: Vec<TypeNodeRef<'a>>, loc: Option<Loc>)
+        -> Result<(), IncludeError<'a>>
+    {
         // TODO - we'll need this to implement prepends later.
         // MRI's prepend implementation relies on changing the type of the object
         // at the module's address. We can't do that here, so instead let's go with
@@ -488,6 +492,13 @@ impl<'a> ObjectGraph<'a> {
             return Err(IncludeError::CyclicInclude)
         }
 
+        let include_site = Rc::new(IncludeSite {
+            loc: loc,
+            module: module.delegate(),
+            type_parameters: type_parameters,
+            reason: target
+        });
+
         let mut current_inclusion_point = method_location(target);
 
         'next_module: for next_module in module.ancestors() {
@@ -498,13 +509,21 @@ impl<'a> ObjectGraph<'a> {
             let mut superclass_seen = false;
 
             for next_class in method_location(target).ancestors().skip(1) {
-                if let RubyObject::IClass {..} = *next_class {
+                if let RubyObject::IClass { ref site, .. } = *next_class {
                     if next_class.delegate() == next_module.delegate() {
                         if !superclass_seen {
                             current_inclusion_point = next_class;
                         }
 
-                        continue 'next_module;
+                        if site.type_parameters.is_empty() {
+                            // modules without type parameters retain their
+                            // legacy behaviour of being ignored during inclusion:
+                            continue 'next_module;
+                        }
+
+                        // duplicate inclusion of modules with type parameters
+                        // are not supported:
+                        return Err(IncludeError::DuplicateInclude(site.loc.as_ref()));
                     }
                 } else {
                     superclass_seen = true;
@@ -513,12 +532,7 @@ impl<'a> ObjectGraph<'a> {
 
             let site = match *next_module {
                 RubyObject::IClass { ref site, .. } => site.clone(),
-                _ => Rc::new(IncludeSite {
-                    loc: loc.cloned(),
-                    module: next_module.delegate(),
-                    type_parameters: vec![],
-                    reason: target
-                }),
+                _ => include_site.clone(),
             };
 
             let iclass = self.alloc(RubyObject::IClass {
@@ -668,8 +682,9 @@ pub struct IncludeSite<'object> {
 }
 
 #[derive(Debug)]
-pub enum IncludeError {
+pub enum IncludeError<'object> {
     CyclicInclude,
+    DuplicateInclude(Option<&'object Loc>),
 }
 
 pub enum RubyObject<'a> {
