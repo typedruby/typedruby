@@ -1,3 +1,5 @@
+# @typedruby
+
 class BasicObject
   def initialize => :any; end
 
@@ -93,7 +95,7 @@ class Object < BasicObject
   def send(Symbol method_name, :any *args) => :any; end
 end
 
-module Enumerable
+module Enumerable::[EnumType]
 end
 
 class IO < Object
@@ -758,7 +760,9 @@ class Array::[ElementType] < Object
 
   def each_with_object[T](T object, { |ElementType element, T object| => :any } &) => :self; end
 
-  include Enumerable
+  # we don't yet have syntax to do this, so this is done in
+  # post_core_init in object.rs:
+  # include Enumerable::[ElementType]
 
   def <<(ElementType item) => :self; end
 
@@ -844,7 +848,9 @@ end
 class Hash::[KeyType, ValueType] < Object
   def each({ |KeyType k, ValueType v| => :any } &) => :self; end
 
-  include Enumerable
+  # we don't yet have syntax to do this, so this is done in
+  # post_core_init in object.rs:
+  # include Enumerable::[[KeyType, ValueType]]
 
   def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
 

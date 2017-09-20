@@ -7,7 +7,7 @@ use std::fmt::Write;
 use typed_arena::Arena;
 use ast::{Node, Loc, Id};
 use define::MethodVisibility;
-use abstract_type::{TypeNodeRef, Prototype};
+use abstract_type::{TypeNode, TypeNodeRef, Prototype};
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
@@ -218,6 +218,36 @@ impl<'a> ObjectGraph<'a> {
         }
 
         o
+    }
+
+    pub fn post_core_init(&self) {
+        let enumerable = self.expect_class("Enumerable");
+
+        let array = self.array_class();
+        let hash = self.hash_class();
+
+        self.include_module(array, enumerable,
+            vec![Rc::new(TypeNode::TypeParameter {
+                loc: array.type_parameters()[0].0.clone(),
+                name: "ElementType".to_owned(),
+            })], None).unwrap();
+
+        self.include_module(hash, enumerable,
+            vec![Rc::new(TypeNode::Tuple {
+                loc: hash.type_parameters()[0].0.join(&hash.type_parameters()[1].0),
+                lead: vec![
+                    Rc::new(TypeNode::TypeParameter {
+                        loc: hash.type_parameters()[0].0.clone(),
+                        name: "KeyType".to_owned(),
+                    }),
+                    Rc::new(TypeNode::TypeParameter {
+                        loc: hash.type_parameters()[1].0.clone(),
+                        name: "ValueType".to_owned(),
+                    }),
+                ],
+                splat: None,
+                post: vec![],
+            })], None).unwrap();
     }
 
     fn expect_class(&self, name: &str) -> &'a RubyObject<'a> {
