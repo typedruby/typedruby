@@ -472,16 +472,14 @@ impl<'a> ObjectGraph<'a> {
         Self::class_table_insert(&self.methods, target, name, entry)
     }
 
+    pub fn lookup_method_direct(&self, module: &'a RubyObject<'a>, name: &str) -> Option<Rc<MethodEntry<'a>>> {
+        Self::class_table_lookup(&self.methods, module.delegate(), name)
+    }
+
     pub fn lookup_method(&self, klass: &'a RubyObject<'a>, name: &str) -> Option<Rc<MethodEntry<'a>>> {
-        for ancestor in klass.ancestors() {
-            let delegate = ancestor.delegate();
-
-            if let Some(method) = Self::class_table_lookup(&self.methods, delegate, name) {
-                return Some(method.clone());
-            }
-        }
-
-        None
+        klass.ancestors()
+            .filter_map(|k| self.lookup_method_direct(k, name))
+            .nth(0)
     }
 
     pub fn define_ivar(&self, target: &'a RubyObject<'a>, name: String, ivar: Rc<IvarEntry<'a>>) {
@@ -704,6 +702,7 @@ pub struct IvarEntry<'object> {
     pub ty: TypeNodeRef<'object>,
 }
 
+#[derive(Debug)]
 pub struct IncludeSite<'object> {
     pub loc: Option<Loc>,
     pub module: &'object RubyObject<'object>,
