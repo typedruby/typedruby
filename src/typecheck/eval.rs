@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
 use typecheck::types::{Arg, TypeEnv, Type, TypeRef, Prototype, KwsplatResult, TupleElement, TypeConstraint};
-use object::{Scope, RubyObject, MethodImpl, ConstantEntry};
+use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
@@ -534,8 +534,14 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             MethodImpl::IntrinsicClassNew => {
                 match *type_context.class {
                     RubyObject::Metaclass { of, .. } => {
-                        let initialize_method = match self.env.object.lookup_method(of, "initialize") {
-                            Some(method) => method,
+                        let tyctx = TypeContext::new(of,
+                            of.type_parameters().iter().map(|_|
+                                self.tyenv.new_var(loc.clone())
+                            ).collect()
+                        );
+
+                        let (tyctx, initialize_method) = match self.lookup_method("initialize", tyctx) {
+                            Some(result) => result,
                             None => {
                                 self.error("Can't call #new on class with undefined #initialize method", &[
                                     Detail::Loc("here", loc),
@@ -545,15 +551,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                             }
                         };
 
-                        let initialize_type_context = TypeContext::new(of,
-                            of.type_parameters().iter().map(|_|
-                                self.tyenv.new_var(loc.clone())
-                            ).collect()
-                        );
+                        let instance_type = tyctx.self_type(&self.tyenv, loc.clone());
 
-                        let instance_type = initialize_type_context.self_type(&self.tyenv, loc.clone());
-
-                        let proto = self.prototype_from_method_impl(loc, &initialize_method.implementation, initialize_type_context);
+                        let proto = self.prototype_from_method_impl(loc, &initialize_method.implementation, tyctx);
 
                         Rc::new(Prototype {
                             loc: proto.loc.clone(),
@@ -600,24 +600,85 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
+    fn lookup_method(&self, name: &str, type_context: TypeContext<'ty, 'object>)
+        -> Option<(TypeContext<'ty, 'object>, Rc<MethodEntry<'object>>)>
+    {
+        let mut include_tree = HashMap::new();
+
+        for module in type_context.class.ancestors() {
+            match *module {
+                RubyObject::IClass { ref site, .. } => {
+                    include_tree.insert(site.module, site);
+                }
+                RubyObject::Class { .. } => {
+                    include_tree.clear();
+                }
+                _ => panic!("unexpected object type in ancestry!")
+            }
+
+            if let Some(method) = self.env.object.lookup_method_direct(module, name) {
+                let include_chain = {
+                    let mut chain = Vec::new();
+                    let mut cur = module.delegate();
+
+                    loop {
+                        match include_tree.get(cur) {
+                            Some(site) => {
+                                chain.push(site);
+                                cur = site.reason;
+                            }
+                            None => {
+                                break;
+                            }
+                        }
+                    }
+
+                    chain
+                };
+
+                let type_context = include_chain.iter().rev()
+                    .fold(type_context, |context, site| {
+                        let type_params = site.type_parameters.iter()
+                            .map(|param| self.materialize_type(param, &context))
+                            .collect::<Vec<_>>();
+
+                        let type_names = site.module.type_parameters().iter()
+                            .map(|&Id(_, ref name)| name.to_owned())
+                            .zip(type_params.iter().cloned())
+                            .collect();
+
+                        TypeContext {
+                            class: site.module,
+                            type_parameters: type_params,
+                            type_names: type_names,
+                        }
+                    });
+
+                return Some((type_context, method));
+            }
+        }
+
+        None
+    }
+
     fn resolve_invocation(&self, recv_type: TypeRef<'ty, 'object>, id: &Id) -> Vec<Invokee<'ty, 'object>>
     {
         let degraded_recv_type = self.tyenv.degrade_to_instance(recv_type);
 
         match *degraded_recv_type {
             Type::Instance { class, type_parameters: ref tp, .. } => {
-                match self.env.object.lookup_method(class, &id.1) {
-                    Some(method) => vec![Invokee {
+                match self.lookup_method(&id.1, TypeContext::new(class, tp.clone())) {
+                    Some((tyctx, method)) => vec![Invokee {
                         recv_ty: recv_type,
                         method: method.implementation.clone(),
-                        prototype: self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(class, tp.clone())),
+                        prototype: self.prototype_from_method_impl(&id.0, &method.implementation, tyctx),
                     }],
                     None => vec![],
                 }
             }
             Type::Proc { ref proto, .. } => {
-                match self.env.object.lookup_method(self.env.object.Proc, &id.1) {
-                    Some(method) => match *method.implementation {
+                match self.lookup_method(&id.1, TypeContext::new(self.env.object.Proc, vec![])) {
+                    Some((tyctx, method)) => match *method.implementation {
                         MethodImpl::IntrinsicProcCall => vec![Invokee {
                             recv_ty: recv_type,
                             method: method.implementation.clone(),
@@ -626,7 +687,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                         _ => vec![Invokee {
                             recv_ty: recv_type,
                             method: method.implementation.clone(),
-                            prototype: self.prototype_from_method_impl(&id.0, &method.implementation, TypeContext::new(&self.env.object.Proc, Vec::new())),
+                            prototype: self.prototype_from_method_impl(&id.0, &method.implementation, tyctx),
                         }],
                     },
                     None => vec![],
