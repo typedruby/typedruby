@@ -243,7 +243,7 @@ impl<'object> Environment<'object> {
             let resolved = autoload_path.join(&path);
 
             if resolved.is_dir() {
-                let module = self.object.define_module(None, module, name);
+                let module = self.object.define_module(None, module, name, vec![]);
                 return Some(Rc::new(ConstantEntry::Module { loc: None, value: module }));
             }
         }

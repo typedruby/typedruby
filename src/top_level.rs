@@ -314,7 +314,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     }
                 } else {
                     let module = self.env.object.new_module(
-                        self.env.object.constant_path(&base, id));
+                        self.env.object.constant_path(&base, id), vec![]);
 
                     let constant = Rc::new(ConstantEntry::Module {
                         loc: Some(name.loc().clone()),

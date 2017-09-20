@@ -185,8 +185,8 @@ impl<'a> ObjectGraph<'a> {
         o.set_const(o.Object, "Object", Rc::new(ConstantEntry::Module { loc: None, value: o.Object }));
         o.set_const(o.Object, "Module", Rc::new(ConstantEntry::Module { loc: None, value: o.Module }));
         o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class }));
+        o.Kernel = o.define_module(None, o.Object, "Kernel", vec![]);
 
-        o.Kernel = o.define_module(None, o.Object, "Kernel");
         o.include_module(o.Object, o.Kernel, None).expect("including Kernel into Object to succeed");
         o.Boolean = o.define_class(None, o.Object, "Boolean", o.Object, Vec::new());
         o.TrueClass = o.define_class(None, o.Object, "TrueClass", o.Boolean, Vec::new());
@@ -277,12 +277,13 @@ impl<'a> ObjectGraph<'a> {
         })
     }
 
-    pub fn new_module(&self, name: String) -> &'a RubyObject<'a> {
+    pub fn new_module(&self, name: String, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
         self.alloc(RubyObject::Module {
             id: self.new_object_id(),
             name: name,
             class: Cell::new(self.Module),
             superclass: Cell::new(None),
+            type_parameters: type_parameters,
         })
     }
 
@@ -294,8 +295,8 @@ impl<'a> ObjectGraph<'a> {
         class
     }
 
-    pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str) -> &'a RubyObject<'a> {
-        let module = self.new_module(self.constant_path(owner, name));
+    pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
+        let module = self.new_module(self.constant_path(owner, name), type_parameters);
 
         self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: module }));
 
@@ -675,6 +676,7 @@ pub enum RubyObject<'a> {
         class: Cell<&'a RubyObject<'a>>,
         name: String,
         superclass: Cell<Option<&'a RubyObject<'a>>>,
+        type_parameters: Vec<Id>,
     },
     Class {
         id: ObjectId,
@@ -778,10 +780,10 @@ impl<'a> RubyObject<'a> {
 
     pub fn type_parameters(&'a self) -> &'a [Id] {
         match *self {
-            RubyObject::Module { .. } |
             RubyObject::Metaclass { .. } => {
                 &[]
             },
+            RubyObject::Module { ref type_parameters, .. } |
             RubyObject::Class { ref type_parameters, .. } =>
                 type_parameters,
             RubyObject::IClass { .. } =>
