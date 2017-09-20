@@ -794,6 +794,42 @@ impl<'a> RubyObject<'a> {
         AncestorIterator { object: Some(self) }
     }
 
+    pub fn include_chain(&'a self, module: &'a RubyObject<'a>) -> Vec<Rc<IncludeSite<'a>>> {
+        let mut include_tree = HashMap::new();
+
+        for ancestor in self.ancestors() {
+            match *ancestor {
+                RubyObject::IClass { ref site, .. } => {
+                    include_tree.insert(site.module, site.clone());
+                }
+                _ => {
+                    include_tree.clear();
+                }
+            }
+
+            if ancestor == module {
+                break
+            }
+        }
+
+        let mut chain = Vec::new();
+        let mut cur = module.delegate();
+
+        loop {
+            match include_tree.get(cur) {
+                Some(site) => {
+                    chain.push(site.clone());
+                    cur = site.reason;
+                }
+                None => break
+            }
+        }
+
+        chain.reverse();
+
+        chain
+    }
+
     pub fn is_a(&'a self, other: &'a RubyObject<'a>) -> bool {
         for k in self.ancestors() {
             if k.delegate() == other {
