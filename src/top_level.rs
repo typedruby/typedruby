@@ -272,9 +272,8 @@ impl<'env, 'object> Eval<'env, 'object> {
                         value: class,
                     });
 
-                    if !self.env.object.set_const(&base, id, constant) {
-                        panic!("internal error: would overwrite existing constant");
-                    }
+                    self.env.object.set_const(&base, id, constant)
+                        .expect("constant to not already exist");
 
                     Some(class)
                 }
@@ -321,9 +320,8 @@ impl<'env, 'object> Eval<'env, 'object> {
                         value: module,
                     });
 
-                    if !self.env.object.set_const(&base, id, constant) {
-                        panic!("internal error: would overwrite existing constant");
-                    }
+                    self.env.object.set_const(&base, id, constant)
+                        .expect("constant to not already exist");
 
                     Some(module)
                 }
@@ -709,7 +707,8 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                         match constant {
                             Ok(constant) => {
-                                self.env.object.set_const(&cbase, name, Rc::new(constant));
+                                self.env.object.set_const(&cbase, name, Rc::new(constant))
+                                    .expect("constant to not already exist");
                             }
                             Err((node, message)) => {
                                 self.warning("Could not statically resolve expression in constant assignment", &[
