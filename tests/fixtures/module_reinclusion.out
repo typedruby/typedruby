@@ -1,0 +1,14 @@
+error: Duplicate include
+
+        @ __ROOT__/tests/fixtures/module_reinclusion.rb:4
+      4 |    include Enumerable
+                     ^^^^^^^^^^ here
+
+error: Duplicate include
+
+        @ __ROOT__/tests/fixtures/module_reinclusion.rb:9
+      9 |    include Enumerable
+                     ^^^^^^^^^^ here
+        @ __ROOT__/tests/fixtures/module_reinclusion.rb:8
+      8 |    include Enumerable
+                     ^^^^^^^^^^ previous inclusion was here
