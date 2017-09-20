@@ -310,6 +310,10 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             self.error("Type referenced is generic but no type parameters were supplied", &[
                 Detail::Loc("here", loc),
             ]);
+
+            for _ in 0..expected_params {
+                type_parameters.push(Rc::new(TypeNode::Error { loc: loc.clone() }));
+            }
         } else if supplied_params < expected_params {
             let mut message = format!("{} also expects ", class.name());
 
