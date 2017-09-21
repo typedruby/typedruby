@@ -10,7 +10,6 @@ use typed_arena::Arena;
 use typecheck::call;
 use typecheck::call::{CallArg, ArgError};
 use itertools::Itertools;
-use deferred_cell::DeferredCell;
 use abstract_type;
 use abstract_type::{TypeScope, TypeNode};
 use typecheck::materialize::Materialize;
@@ -20,7 +19,7 @@ pub struct Eval<'ty, 'object: 'ty> {
     tyenv: TypeEnv<'ty, 'object>,
     type_context: TypeContext<'ty, 'object>,
     type_scope: Rc<TypeScope<'object>>,
-    proto: DeferredCell<Rc<Prototype<'ty, 'object>>>,
+    proto: Rc<Prototype<'ty, 'object>>,
 }
 
 enum HashEntry<'ty, 'object: 'ty> {
@@ -67,23 +66,23 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         let type_scope = proto.type_vars.iter().fold(TypeScope::new(scope, class),
             |scope, &Id(_, ref name)| TypeScope::extend(scope, name.clone()));
 
-        let mut eval = Eval {
+        let (proto, locals) = Materialize::new(env, &tyenv)
+            .materialize_prototype(proto, Locals::new(), &mut type_context);
+
+        let eval = Eval {
             env: env,
             tyenv: tyenv,
-            type_context: type_context.clone(),
+            type_context: type_context,
             type_scope: type_scope,
-            proto: DeferredCell::new()
+            proto: proto,
         };
 
-        let (prototype, locals) =
-            eval.materialize_prototype(proto, Locals::new(), &mut type_context);
-
-        eval.apply_constraints(&prototype.constraints);
+        eval.apply_constraints(&eval.proto.constraints);
 
         // type parameters are initially inserted into the type context
         // unresolved to that they can be constrained. unify any unresolved
         // type variables with their named parameters:
-        for (name, ty) in &type_context.type_names {
+        for (name, ty) in &eval.type_context.type_names {
             if eval.tyenv.is_unresolved_var(*ty) {
                 eval.tyenv.unify(*ty, eval.tyenv.alloc(Type::TypeParameter {
                     name: name.clone(),
@@ -92,14 +91,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
         }
 
-        eval.type_context = type_context;
-
-        DeferredCell::set(&mut eval.proto, prototype.clone());
-
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = body {
             eval.process_node(body_node, locals).terminate(&|ty|
-                eval.compatible(prototype.retn, ty, None)
+                eval.compatible(eval.proto.retn, ty, None)
             );
         }
     }
