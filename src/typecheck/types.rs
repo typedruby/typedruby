@@ -1,7 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
-use ast::{Loc, Node};
+use ast::{Loc, Node, Id};
 use object::{ObjectGraph, RubyObject};
 use typed_arena::Arena;
 use immutable_map::TreeMap;
@@ -9,11 +9,39 @@ use util::Or;
 use itertools::Itertools;
 use std::ops::Deref;
 use std::iter;
+use std::collections::HashMap;
 
 pub type TypeVarId = usize;
 
 pub type UnificationError<'ty, 'object> = (TypeRef<'ty, 'object>, TypeRef<'ty, 'object>);
 pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
+
+#[derive(Debug,Clone)]
+pub struct TypeContext<'ty, 'object: 'ty> {
+    pub class: &'object RubyObject<'object>,
+    pub type_parameters: Vec<TypeRef<'ty, 'object>>,
+    pub type_names: HashMap<String, TypeRef<'ty, 'object>>,
+}
+
+impl<'ty, 'object> TypeContext<'ty, 'object> {
+    pub fn new(class: &'object RubyObject<'object>, type_parameters: Vec<TypeRef<'ty, 'object>>) -> TypeContext<'ty, 'object> {
+        let type_names =
+            class.type_parameters().iter()
+                .map(|&Id(_, ref name)| name.clone())
+                .zip(type_parameters.iter().cloned())
+                .collect();
+
+        TypeContext {
+            class: class,
+            type_parameters: type_parameters,
+            type_names: type_names,
+        }
+    }
+
+    pub fn self_type(&self, tyenv: &TypeEnv<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
+        tyenv.instance(loc, self.class, self.type_parameters.clone())
+    }
+}
 
 #[derive(Clone)]
 pub struct TypeEnv<'ty, 'object: 'ty> {
