@@ -1,0 +1,59 @@
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:24
+     24 |    set = MySet.new([1, 2, 3])
+                              ^ Integer, with:
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:26
+     26 |    set.concat(["foo", "bar"])
+                         ^^^^^ String
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:11
+     11 |    def concat(Enumerable::[T] other) => nil
+                        ^^^^^^^^^^^^^^^ Enumerable::[Integer], with:
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:26
+     26 |    set.concat(["foo", "bar"])
+                        ^^^^^^^^^^^^^^ Array::[String]
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:26
+     26 |    set.concat(["foo", "bar"])
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^ in this expression
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:24
+     24 |    set = MySet.new([1, 2, 3])
+                              ^ Integer, with:
+        @ (builtin stdlib):849
+    849 |  class Hash::[KeyType, ValueType] < Object
+                        ^^^^^^^^^^^^^^^^^^ Array::[Integer]
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:11
+     11 |    def concat(Enumerable::[T] other) => nil
+                        ^^^^^^^^^^^^^^^ Enumerable::[Integer], with:
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:28
+     28 |    set.concat({ 4 => 5 })
+                        ^^^^^^^^^^ Hash::[Integer, Integer]
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:28
+     28 |    set.concat({ 4 => 5 })
+             ^^^^^^^^^^^^^^^^^^^^^^ in this expression
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:23
+     23 |  def main => nil
+                       ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:24
+     24 |    set = MySet.new([1, 2, 3])
+                         ^^^ MySet::[Integer]
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:23
+     23 |  def main => nil
+                       ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/module_compatibility.rb:30
+     30 |    set
+             ^^^ MySet::[Integer]
