@@ -1,7 +1,8 @@
 mod call;
-mod eval;
 mod control;
+mod eval;
 mod locals;
+mod materialize;
 mod types;
 
 use std::rc::Rc;
