@@ -1,8 +1,7 @@
 use std::rc::Rc;
-use std::collections::HashMap;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, Type, TypeRef, Prototype, KwsplatResult, TupleElement, TypeConstraint};
+use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, TupleElement, TypeConstraint};
 use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -21,33 +20,6 @@ pub struct Eval<'ty, 'object: 'ty> {
     type_context: TypeContext<'ty, 'object>,
     type_scope: Rc<TypeScope<'object>>,
     proto: DeferredCell<Rc<Prototype<'ty, 'object>>>,
-}
-
-#[derive(Debug,Clone)]
-pub struct TypeContext<'ty, 'object: 'ty> {
-    class: &'object RubyObject<'object>,
-    type_parameters: Vec<TypeRef<'ty, 'object>>,
-    type_names: HashMap<String, TypeRef<'ty, 'object>>,
-}
-
-impl<'ty, 'object> TypeContext<'ty, 'object> {
-    fn new(class: &'object RubyObject<'object>, type_parameters: Vec<TypeRef<'ty, 'object>>) -> TypeContext<'ty, 'object> {
-        let type_names =
-            class.type_parameters().iter()
-                .map(|&Id(_, ref name)| name.clone())
-                .zip(type_parameters.iter().cloned())
-                .collect();
-
-        TypeContext {
-            class: class,
-            type_parameters: type_parameters,
-            type_names: type_names,
-        }
-    }
-
-    pub fn self_type(&self, tyenv: &TypeEnv<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
-        tyenv.instance(loc, self.class, self.type_parameters.clone())
-    }
 }
 
 enum HashEntry<'ty, 'object: 'ty> {
