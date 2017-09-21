@@ -176,6 +176,14 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         })
     }
 
+    pub fn array(&self, loc: Loc, element_type: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
+        self.instance(loc, self.env.object.array_class(), vec![element_type])
+    }
+
+    pub fn hash(&self, loc: Loc, key_type: TypeRef<'ty, 'object>, value_type: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
+        self.instance(loc, self.env.object.hash_class(), vec![key_type, value_type])
+    }
+
     fn set_var(&self, id: TypeVarId, ty: TypeRef<'ty, 'object>) {
         let mut instance_map_ref = self.instance_map.borrow_mut();
 
