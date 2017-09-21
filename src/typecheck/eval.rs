@@ -388,25 +388,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     {
         for module in type_context.class.ancestors() {
             if let Some(method) = self.env.object.lookup_method_direct(module, name) {
-                let include_chain = type_context.class.include_chain(module);
-
-                let type_context = include_chain.iter().rev()
-                    .fold(type_context, |context, site| {
-                        let type_params = site.type_parameters.iter()
-                            .map(|param| self.materialize_type(param, &context))
-                            .collect::<Vec<_>>();
-
-                        let type_names = site.module.type_parameters().iter()
-                            .map(|&Id(_, ref name)| name.to_owned())
-                            .zip(type_params.iter().cloned())
-                            .collect();
-
-                        TypeContext {
-                            class: site.module,
-                            type_parameters: type_params,
-                            type_names: type_names,
-                        }
-                    });
+                let type_context = self.tyenv.map_type_context(type_context, module);
 
                 return Some((type_context, method));
             }
