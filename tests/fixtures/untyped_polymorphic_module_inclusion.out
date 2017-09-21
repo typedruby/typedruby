@@ -3,8 +3,8 @@ error: Could not match types:
         @ __ROOT__/tests/fixtures/untyped_polymorphic_module_inclusion.rb:7
       7 |  def main => nil
                        ^^^ NilClass, with:
-        @ (builtin stdlib):103
-    103 |    def map[ProjectedType]({ |EnumType x| => ProjectedType } &) => [ProjectedType]; end
+        @ (builtin stdlib):105
+    105 |    def map[ProjectedType]({ |EnumType x| => ProjectedType } &) => [ProjectedType]; end
                                                                             ^^^^^^^^^^^^^^^ Array::[:any]
 
         - arising from an attempt to match:
