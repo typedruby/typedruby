@@ -3,10 +3,11 @@ use std::hash::{Hash, Hasher};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
+use std::fmt::Write;
 use typed_arena::Arena;
 use ast::{Node, Loc, Id};
 use define::MethodVisibility;
-use abstract_type::{TypeNodeRef, Prototype};
+use abstract_type::{TypeNode, TypeNodeRef, Prototype};
 
 // can become NonZero<u64> once NonZero for non-pointer types hits stable:
 type ObjectId = u64;
@@ -180,13 +181,15 @@ impl<'a> ObjectGraph<'a> {
             ivars: RefCell::new(HashMap::new()),
         };
 
-        o.set_const(o.BasicObject, "BasicObject", Rc::new(ConstantEntry::Module { loc: None, value: o.BasicObject }));
-        o.set_const(o.Object, "Object", Rc::new(ConstantEntry::Module { loc: None, value: o.Object }));
-        o.set_const(o.Object, "Module", Rc::new(ConstantEntry::Module { loc: None, value: o.Module }));
-        o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class }));
+        o.set_const(o.BasicObject, "BasicObject", Rc::new(ConstantEntry::Module { loc: None, value: o.BasicObject })).unwrap();
+        o.set_const(o.Object, "Object", Rc::new(ConstantEntry::Module { loc: None, value: o.Object })).unwrap();
+        o.set_const(o.Object, "Module", Rc::new(ConstantEntry::Module { loc: None, value: o.Module })).unwrap();
+        o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class })).unwrap();
 
-        o.Kernel = o.define_module(None, o.Object, "Kernel");
-        o.include_module(o.Object, o.Kernel);
+        o.Kernel = o.define_module(None, o.Object, "Kernel", vec![]);
+        o.include_module(o.Object, o.Kernel, vec![], None)
+            .expect("including Kernel into Object to succeed");
+
         o.Boolean = o.define_class(None, o.Object, "Boolean", o.Object, Vec::new());
         o.TrueClass = o.define_class(None, o.Object, "TrueClass", o.Boolean, Vec::new());
         o.FalseClass = o.define_class(None, o.Object, "FalseClass", o.Boolean, Vec::new());
@@ -215,6 +218,36 @@ impl<'a> ObjectGraph<'a> {
         }
 
         o
+    }
+
+    pub fn post_core_init(&self) {
+        let enumerable = self.expect_class("Enumerable");
+
+        let array = self.array_class();
+        let hash = self.hash_class();
+
+        self.include_module(array, enumerable,
+            vec![Rc::new(TypeNode::TypeParameter {
+                loc: array.type_parameters()[0].0.clone(),
+                name: "ElementType".to_owned(),
+            })], None).unwrap();
+
+        self.include_module(hash, enumerable,
+            vec![Rc::new(TypeNode::Tuple {
+                loc: hash.type_parameters()[0].0.join(&hash.type_parameters()[1].0),
+                lead: vec![
+                    Rc::new(TypeNode::TypeParameter {
+                        loc: hash.type_parameters()[0].0.clone(),
+                        name: "KeyType".to_owned(),
+                    }),
+                    Rc::new(TypeNode::TypeParameter {
+                        loc: hash.type_parameters()[1].0.clone(),
+                        name: "ValueType".to_owned(),
+                    }),
+                ],
+                splat: None,
+                post: vec![],
+            })], None).unwrap();
     }
 
     fn expect_class(&self, name: &str) -> &'a RubyObject<'a> {
@@ -276,27 +309,30 @@ impl<'a> ObjectGraph<'a> {
         })
     }
 
-    pub fn new_module(&self, name: String) -> &'a RubyObject<'a> {
+    pub fn new_module(&self, name: String, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
         self.alloc(RubyObject::Module {
             id: self.new_object_id(),
             name: name,
             class: Cell::new(self.Module),
             superclass: Cell::new(None),
+            type_parameters: type_parameters,
         })
     }
 
     pub fn define_class(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
         let class = self.new_class(self.constant_path(owner, name), superclass, type_parameters);
 
-        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: class }));
+        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: class }))
+            .expect("class to not already exist");
 
         class
     }
 
-    pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str) -> &'a RubyObject<'a> {
-        let module = self.new_module(self.constant_path(owner, name));
+    pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
+        let module = self.new_module(self.constant_path(owner, name), type_parameters);
 
-        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: module }));
+        self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: module }))
+            .expect("module to not already exist");
 
         module
     }
@@ -357,8 +393,8 @@ impl<'a> ObjectGraph<'a> {
                 RubyObject::Class { ref superclass, .. } |
                 RubyObject::Metaclass { ref superclass, .. } =>
                     (superclass, constants_ref.get(object)),
-                RubyObject::IClass { ref superclass, ref module, .. } =>
-                    (superclass, constants_ref.get(module))
+                RubyObject::IClass { ref superclass, ref site, .. } =>
+                    (superclass, constants_ref.get(site.module))
             };
 
         match constants.and_then(|c| c.get(name)) {
@@ -370,12 +406,12 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
-    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, entry: Rc<ConstantEntry<'a>>) -> bool {
+    pub fn set_const(&self, object: &'a RubyObject<'a>, name: &str, entry: Rc<ConstantEntry<'a>>) -> Result<(), ()> {
         match Self::class_table_lookup(&self.constants, object, name) {
-            Some(_) => false,
+            Some(_) => Err(()),
             None => {
                 Self::class_table_insert(&self.constants, object, name.to_owned(), entry);
-                true
+                Ok(())
             },
         }
     }
@@ -436,16 +472,14 @@ impl<'a> ObjectGraph<'a> {
         Self::class_table_insert(&self.methods, target, name, entry)
     }
 
+    pub fn lookup_method_direct(&self, module: &'a RubyObject<'a>, name: &str) -> Option<Rc<MethodEntry<'a>>> {
+        Self::class_table_lookup(&self.methods, module.delegate(), name)
+    }
+
     pub fn lookup_method(&self, klass: &'a RubyObject<'a>, name: &str) -> Option<Rc<MethodEntry<'a>>> {
-        for ancestor in klass.ancestors() {
-            let delegate = ancestor.delegate();
-
-            if let Some(method) = Self::class_table_lookup(&self.methods, delegate, name) {
-                return Some(method.clone());
-            }
-        }
-
-        None
+        klass.ancestors()
+            .filter_map(|k| self.lookup_method_direct(k, name))
+            .nth(0)
     }
 
     pub fn define_ivar(&self, target: &'a RubyObject<'a>, name: String, ivar: Rc<IvarEntry<'a>>) {
@@ -465,7 +499,9 @@ impl<'a> ObjectGraph<'a> {
     }
 
     // TODO - check for instance variable name conflicts in superclasses and subclasses:
-    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>) -> bool {
+    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>, type_parameters: Vec<TypeNodeRef<'a>>, loc: Option<Loc>)
+        -> Result<(), IncludeError<'a>>
+    {
         // TODO - we'll need this to implement prepends later.
         // MRI's prepend implementation relies on changing the type of the object
         // at the module's address. We can't do that here, so instead let's go with
@@ -481,33 +517,55 @@ impl<'a> ObjectGraph<'a> {
         }
 
         if target == module.delegate() {
-            // cyclic include
-            return false
+            return Err(IncludeError::CyclicInclude)
         }
+
+        if module.type_parameters().len() != type_parameters.len() {
+            panic!("type parameter count mismatch in module inclusion")
+        }
+
+        let include_site = Rc::new(IncludeSite {
+            loc: loc,
+            module: module.delegate(),
+            type_parameters: type_parameters,
+            reason: target
+        });
 
         let mut current_inclusion_point = method_location(target);
 
         'next_module: for next_module in module.ancestors() {
             if target == next_module.delegate() {
-                // cyclic include
-                return false
+                return Err(IncludeError::CyclicInclude)
             }
 
             let mut superclass_seen = false;
 
             for next_class in method_location(target).ancestors().skip(1) {
-                if let RubyObject::IClass {..} = *next_class {
+                if let RubyObject::IClass { ref site, .. } = *next_class {
                     if next_class.delegate() == next_module.delegate() {
                         if !superclass_seen {
                             current_inclusion_point = next_class;
                         }
 
-                        continue 'next_module;
+                        if site.type_parameters.is_empty() {
+                            // modules without type parameters retain their
+                            // legacy behaviour of being ignored during inclusion:
+                            continue 'next_module;
+                        }
+
+                        // duplicate inclusion of modules with type parameters
+                        // are not supported:
+                        return Err(IncludeError::DuplicateInclude(site.loc.as_ref()));
                     }
                 } else {
                     superclass_seen = true;
                 }
             }
+
+            let site = match *next_module {
+                RubyObject::IClass { ref site, .. } => site.clone(),
+                _ => include_site.clone(),
+            };
 
             let iclass = self.alloc(RubyObject::IClass {
                 id: self.new_object_id(),
@@ -518,7 +576,7 @@ impl<'a> ObjectGraph<'a> {
                     RubyObject::IClass { ref superclass, .. } =>
                         superclass.clone(),
                 },
-                module: next_module.delegate(),
+                site: site,
             });
 
             match *current_inclusion_point {
@@ -532,7 +590,7 @@ impl<'a> ObjectGraph<'a> {
             current_inclusion_point = iclass;
         }
 
-        true
+        Ok(())
     }
 
     pub fn is_hash(&self, class: &'a RubyObject<'a>) -> bool {
@@ -648,12 +706,27 @@ pub struct IvarEntry<'object> {
     pub ty: TypeNodeRef<'object>,
 }
 
+#[derive(Debug)]
+pub struct IncludeSite<'object> {
+    pub loc: Option<Loc>,
+    pub module: &'object RubyObject<'object>,
+    pub reason: &'object RubyObject<'object>,
+    pub type_parameters: Vec<TypeNodeRef<'object>>,
+}
+
+#[derive(Debug)]
+pub enum IncludeError<'object> {
+    CyclicInclude,
+    DuplicateInclude(Option<&'object Loc>),
+}
+
 pub enum RubyObject<'a> {
     Module {
         id: ObjectId,
         class: Cell<&'a RubyObject<'a>>,
         name: String,
         superclass: Cell<Option<&'a RubyObject<'a>>>,
+        type_parameters: Vec<Id>,
     },
     Class {
         id: ObjectId,
@@ -671,7 +744,7 @@ pub enum RubyObject<'a> {
     IClass {
         id: ObjectId,
         superclass: Cell<Option<&'a RubyObject<'a>>>,
-        module: &'a RubyObject<'a>,
+        site: Rc<IncludeSite<'a>>,
     }
 }
 
@@ -693,8 +766,16 @@ impl<'a> RubyObject<'a> {
                 name.clone(),
             RubyObject::Metaclass { of, .. } =>
                 format!("Class::[{}]", of.name()),
-            RubyObject::IClass { .. } =>
-                panic!("iclass has no name"),
+            RubyObject::IClass { ref site, .. } => {
+                let mut s = format!("iclass for {} (included from {}",
+                    site.module.name(), site.reason.name());
+
+                if let Some(ref loc) = site.loc {
+                    &write!(&mut s, " at {}", loc);
+                }
+
+                s + ")"
+            }
         }
     }
 
@@ -704,13 +785,49 @@ impl<'a> RubyObject<'a> {
             RubyObject::Class { .. } |
             RubyObject::Metaclass { .. } =>
                 self,
-            RubyObject::IClass { module, .. } =>
-                module,
+            RubyObject::IClass { ref site, .. } =>
+                &site.module,
         }
     }
 
     pub fn ancestors(&'a self) -> AncestorIterator<'a> {
         AncestorIterator { object: Some(self) }
+    }
+
+    pub fn include_chain(&'a self, module: &'a RubyObject<'a>) -> Vec<Rc<IncludeSite<'a>>> {
+        let mut include_tree = HashMap::new();
+
+        for ancestor in self.ancestors() {
+            match *ancestor {
+                RubyObject::IClass { ref site, .. } => {
+                    include_tree.insert(site.module, site.clone());
+                }
+                _ => {
+                    include_tree.clear();
+                }
+            }
+
+            if ancestor.delegate() == module.delegate() {
+                break
+            }
+        }
+
+        let mut chain = Vec::new();
+        let mut cur = module.delegate();
+
+        loop {
+            match include_tree.get(cur) {
+                Some(site) => {
+                    chain.push(site.clone());
+                    cur = site.reason;
+                }
+                None => break
+            }
+        }
+
+        chain.reverse();
+
+        chain
     }
 
     pub fn is_a(&'a self, other: &'a RubyObject<'a>) -> bool {
@@ -749,10 +866,10 @@ impl<'a> RubyObject<'a> {
 
     pub fn type_parameters(&'a self) -> &'a [Id] {
         match *self {
-            RubyObject::Module { .. } |
             RubyObject::Metaclass { .. } => {
                 &[]
             },
+            RubyObject::Module { ref type_parameters, .. } |
             RubyObject::Class { ref type_parameters, .. } =>
                 type_parameters,
             RubyObject::IClass { .. } =>

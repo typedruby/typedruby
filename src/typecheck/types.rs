@@ -1,33 +1,63 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
-use ast::{Loc, Node};
-use object::{ObjectGraph, RubyObject};
+use ast::{Loc, Node, Id};
+use environment::Environment;
+use object::RubyObject;
 use typed_arena::Arena;
 use immutable_map::TreeMap;
 use util::Or;
 use itertools::Itertools;
 use std::ops::Deref;
 use std::iter;
+use std::collections::HashMap;
+use typecheck::materialize::Materialize;
 
 pub type TypeVarId = usize;
 
 pub type UnificationError<'ty, 'object> = (TypeRef<'ty, 'object>, TypeRef<'ty, 'object>);
 pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
 
+#[derive(Debug,Clone)]
+pub struct TypeContext<'ty, 'object: 'ty> {
+    pub class: &'object RubyObject<'object>,
+    pub type_parameters: Vec<TypeRef<'ty, 'object>>,
+    pub type_names: HashMap<String, TypeRef<'ty, 'object>>,
+}
+
+impl<'ty, 'object> TypeContext<'ty, 'object> {
+    pub fn new(class: &'object RubyObject<'object>, type_parameters: Vec<TypeRef<'ty, 'object>>) -> TypeContext<'ty, 'object> {
+        let type_names =
+            class.type_parameters().iter()
+                .map(|&Id(_, ref name)| name.clone())
+                .zip(type_parameters.iter().cloned())
+                .collect();
+
+        TypeContext {
+            class: class,
+            type_parameters: type_parameters,
+            type_names: type_names,
+        }
+    }
+
+    pub fn self_type(&self, tyenv: &TypeEnv<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
+        tyenv.instance(loc, self.class, self.type_parameters.clone())
+    }
+}
+
 #[derive(Clone)]
 pub struct TypeEnv<'ty, 'object: 'ty> {
     arena: &'ty Arena<Type<'ty, 'object>>,
     next_id: Rc<Cell<TypeVarId>>,
     instance_map: RefCell<TreeMap<TypeVarId, TypeRef<'ty, 'object>>>,
-    pub object: &'ty ObjectGraph<'object>,
+    env: &'ty Environment<'object>,
 }
 
 impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
-    pub fn new(arena: &'ty Arena<Type<'ty, 'object>>, object: &'ty ObjectGraph<'object>) -> TypeEnv<'ty, 'object> {
+    pub fn new(arena: &'ty Arena<Type<'ty, 'object>>, env: &'ty Environment<'object>) -> TypeEnv<'ty, 'object> {
         TypeEnv {
             arena: arena,
-            object: object,
+            env: env,
             instance_map: RefCell::new(TreeMap::new()),
             next_id: Rc::new(Cell::new(1)),
         }
@@ -82,7 +112,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
     }
 
     pub fn nil(&self, loc: Loc) -> TypeRef<'ty, 'object> {
-        self.instance(loc, self.object.NilClass, Vec::new())
+        self.instance(loc, self.env.object.NilClass, Vec::new())
     }
 
     pub fn nillable(&self, loc: &Loc, ty: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
@@ -147,6 +177,14 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         })
     }
 
+    pub fn array(&self, loc: Loc, element_type: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
+        self.instance(loc, self.env.object.array_class(), vec![element_type])
+    }
+
+    pub fn hash(&self, loc: Loc, key_type: TypeRef<'ty, 'object>, value_type: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
+        self.instance(loc, self.env.object.hash_class(), vec![key_type, value_type])
+    }
+
     fn set_var(&self, id: TypeVarId, ty: TypeRef<'ty, 'object>) {
         let mut instance_map_ref = self.instance_map.borrow_mut();
 
@@ -172,6 +210,32 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         ty.clone()
     }
 
+    pub fn map_type_context(&self, type_context: TypeContext<'ty, 'object>, module: &'object RubyObject<'object>)
+        -> TypeContext<'ty, 'object>
+    {
+        let mat = Materialize::new(self.env, self);
+
+        let include_chain = type_context.class.include_chain(module);
+
+        include_chain.iter().rev()
+            .fold(type_context, |context, site| {
+                let type_params = site.type_parameters.iter()
+                    .map(|param| mat.materialize_type(param, &context))
+                    .collect::<Vec<_>>();
+
+                let type_names = site.module.type_parameters().iter()
+                    .map(|&Id(_, ref name)| name.to_owned())
+                    .zip(type_params.iter().cloned())
+                    .collect();
+
+                TypeContext {
+                    class: site.module,
+                    type_parameters: type_params,
+                    type_names: type_names,
+                }
+            })
+    }
+
     pub fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let to = self.prune(to);
         let from = self.prune(from);
@@ -186,15 +250,15 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     return Err((to, from));
                 }
 
-                if to_tp.len() > 0 {
+                let from_tyctx = TypeContext::new(from_class, from_tp.clone());
+
+                let to_tyctx = self.map_type_context(from_tyctx, to_class);
+
+                to_tp.iter().zip(to_tyctx.type_parameters).fold(Ok(()), |res, (&to_ty, from_ty)|
                     // because an object could be mutated after coercion, we
                     // require invariance in type parameters:
-                    to_tp.iter().zip(from_tp).fold(Ok(()), |res, (&to_ty, &from_ty)|
-                        res.and_then(|()| self.compatible(to_ty, from_ty))
-                           .and_then(|()| self.compatible(from_ty, to_ty)))
-                } else {
-                    Ok(())
-                }
+                    res.and_then(|()| self.compatible(to_ty, from_ty))
+                       .and_then(|()| self.compatible(from_ty, to_ty)))
             },
             (_, &Type::Union { types: ref from_types, .. }) => {
                 for from_type in from_types {
@@ -217,12 +281,12 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             (&Type::Any { .. }, _) => Ok(()),
             (_, &Type::Any { .. }) => Ok(()),
             (&Type::Instance { class, .. }, &Type::KeywordHash { .. })
-                if self.object.is_hash(class) =>
+                if self.is_hash(class) =>
             {
                 self.compatible(to, self.degrade_to_instance(from))
             }
             (&Type::Tuple { ref lead, ref splat, ref post, .. }, &Type::Instance { class, ref type_parameters, .. })
-                if self.object.is_array(class) =>
+                if self.env.object.is_array(class) =>
             {
                 // While very convenient, this compatibility rule is slightly
                 // unsound as it assumes that the array instance has enough
@@ -299,7 +363,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 Ok(())
             }
             (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
-                if !self.object.is_hash(class) {
+                if !self.is_hash(class) {
                     return Err((to, from));
                 }
 
@@ -307,7 +371,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 let value_ty = type_parameters[1];
 
                 match *self.prune(key_ty) {
-                    Type::Instance { class, .. } if class.is_a(self.object.Symbol) => {
+                    Type::Instance { class, .. } if class.is_a(self.env.object.Symbol) => {
                         // ok!
                     },
                     _ => return Err((to, from)),
@@ -649,10 +713,10 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
         match pruned.deref() {
             &Type::KeywordHash { id, ref loc, ref keywords, splat } => {
-                let hash_class = self.object.hash_class();
+                let hash_class = self.env.object.hash_class();
 
                 // degrade keyword hash to instance type:
-                let key_ty = self.instance(loc.clone(), self.object.Symbol, vec![]);
+                let key_ty = self.instance(loc.clone(), self.env.object.Symbol, vec![]);
                 let value_ty = keywords.iter().map(|&(_, keyword_ty)|
                     keyword_ty
                 ).chain(splat).fold1(|ty1, ty2|
@@ -666,7 +730,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 instance_ty
             },
             &Type::Tuple { id, ref lead, ref splat, ref post, ref loc } => {
-                let array_class = self.object.array_class();
+                let array_class = self.env.object.array_class();
 
                 let element_ty = lead.iter()
                     .chain(splat)
@@ -686,9 +750,9 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
     pub fn predicate(&self, ty: TypeRef<'ty, 'object>) -> Or<TypeRef<'ty, 'object>, TypeRef<'ty, 'object>> {
         match *self.prune(ty) {
             Type::Instance { class, .. } => {
-                if class.is_a(self.object.FalseClass) || class.is_a(self.object.NilClass) {
+                if class.is_a(self.env.object.FalseClass) || class.is_a(self.env.object.NilClass) {
                     Or::Right(ty)
-                } else if self.object.FalseClass.is_a(class) || self.object.NilClass.is_a(class) {
+                } else if self.env.object.FalseClass.is_a(class) || self.env.object.NilClass.is_a(class) {
                     Or::Both(ty, ty)
                 } else {
                     Or::Left(ty)
@@ -743,11 +807,11 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             Type::Instance { class: ty_class, type_parameters: ref ty_params, .. } =>
                 partition_inner(ty_class, Some(ty_params)),
             Type::Proc { .. } =>
-                partition_inner(self.object.Proc, Some(&[])),
+                partition_inner(self.env.object.Proc, Some(&[])),
             Type::Tuple { .. } =>
-                partition_inner(self.object.array_class(), None),
+                partition_inner(self.env.object.array_class(), None),
             Type::KeywordHash { .. } =>
-                partition_inner(self.object.hash_class(), None),
+                partition_inner(self.env.object.hash_class(), None),
             Type::Union { ref types, ref loc, .. } => {
                 types.iter()
                     .map(|t| self.partition_by_class(*t, class, class_loc))
@@ -840,8 +904,8 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         match *pruned {
             Type::KeywordHash { .. } => Some(pruned),
             Type::Instance { class, ref type_parameters, .. }
-                if self.object.is_hash(class) =>
-                    if self.is_instance(type_parameters[0], self.object.Symbol) {
+                if self.is_hash(class) =>
+                    if self.is_instance(type_parameters[0], self.env.object.Symbol) {
                         Some(self.keyword_hash(ty.loc().clone(), vec![], Some(type_parameters[1])))
                     } else {
                         None
@@ -850,12 +914,16 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         }
     }
 
+    pub fn is_hash(&self, class: &'object RubyObject<'object>) -> bool {
+        self.env.object.is_hash(class)
+    }
+
     pub fn is_keyword_hash(&self, ty: TypeRef<'ty, 'object>) -> bool {
         match *self.prune(ty) {
             Type::KeywordHash { .. } => true,
             Type::Instance { class, ref type_parameters, .. }
-                if self.object.is_hash(class) =>
-                    self.is_instance(type_parameters[0], self.object.Symbol),
+                if self.is_hash(class) =>
+                    self.is_instance(type_parameters[0], self.env.object.Symbol),
             _ => false,
         }
     }
@@ -870,15 +938,15 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     .chain(splat)
                     .fold(KwsplatResult::None, |res, ty| res.append_ty(self, ty.loc(), ty)),
             Type::Instance { class, ref type_parameters, .. }
-                if self.object.is_hash(class)
-                && self.is_instance(type_parameters[0], self.object.Symbol)
+                if self.is_hash(class)
+                && self.is_instance(type_parameters[0], self.env.object.Symbol)
                 =>
                     KwsplatResult::Ok(type_parameters[1]),
             Type::Union { ref types, .. } =>
                 types.iter()
                     .map(|union_ty| self.kwsplat_to_hash(*union_ty))
                     .fold(KwsplatResult::None, |a, b| a.append(self, ty.loc(), b)),
-            _ if self.is_instance(ty, self.object.NilClass) =>
+            _ if self.is_instance(ty, self.env.object.NilClass) =>
                 KwsplatResult::None,
             _ =>
                 KwsplatResult::Err(ty),

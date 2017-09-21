@@ -310,6 +310,10 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             self.error("Type referenced is generic but no type parameters were supplied", &[
                 Detail::Loc("here", loc),
             ]);
+
+            for _ in 0..expected_params {
+                type_parameters.push(Rc::new(TypeNode::Error { loc: loc.clone() }));
+            }
         } else if supplied_params < expected_params {
             let mut message = format!("{} also expects ", class.name());
 
@@ -494,8 +498,21 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             Node::Kwoptarg(_, ref name, ref expr) =>
                 ArgNode::Kwoptarg { loc: arg_loc, ty: ty, name: name.clone(),
                     default: ArgExpr { expr: expr.clone(), scope: self.scope.constant_scope() } },
-            Node::Mlhs(..) =>
-                ArgNode::Required { loc: arg_loc, ty: ty, lhs: self.resolve_arg_mlhs(arg_node).unwrap() },
+            Node::Mlhs(..) => {
+                match (ty, self.resolve_arg_mlhs(arg_node).unwrap()) {
+                    (Some(ty), arg@ArgLhs::Mlhs { .. }) => {
+                        self.error("Exterior type annotations on destructuring arguments are not allowed", &[
+                            Detail::Loc("here", ty.loc()),
+                            Detail::Loc("for this destructuring argument", arg_node.loc()),
+                        ]);
+
+                        ArgNode::Required { loc: arg_loc, ty: None, lhs: arg }
+                    }
+                    (ty, arg) => {
+                        ArgNode::Required { loc: arg_loc, ty: ty, lhs: arg }
+                    }
+                }
+            }
             Node::Optarg(_, ref name, ref expr) =>
                 ArgNode::Optional { loc: arg_loc, ty: ty, name: name.clone(),
                     default: ArgExpr { expr: expr.clone(), scope: self.scope.constant_scope() } },
