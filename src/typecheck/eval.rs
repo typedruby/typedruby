@@ -1654,7 +1654,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                             (self.tyenv.new_var(loc.clone()), self.tyenv.new_var(loc.clone()))
                         );
 
-                    self.create_hash_type(loc, key_ty, value_ty)
+                    self.tyenv.hash(loc.clone(), key_ty, value_ty)
                 };
 
                 result.map(|()| hash_ty).into_computation()
