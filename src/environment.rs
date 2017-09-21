@@ -94,6 +94,8 @@ impl<'object> Environment<'object> {
 
         env.load_source_file(source_file);
 
+        env.object.post_core_init();
+
         env
     }
 
@@ -243,7 +245,7 @@ impl<'object> Environment<'object> {
             let resolved = autoload_path.join(&path);
 
             if resolved.is_dir() {
-                let module = self.object.define_module(None, module, name);
+                let module = self.object.define_module(None, module, name, vec![]);
                 return Some(Rc::new(ConstantEntry::Module { loc: None, value: module }));
             }
         }

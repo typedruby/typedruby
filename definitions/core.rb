@@ -1,3 +1,5 @@
+# @typedruby
+
 class BasicObject
   def initialize => :any; end
 
@@ -93,7 +95,30 @@ class Object < BasicObject
   def send(Symbol method_name, :any *args) => :any; end
 end
 
-module Enumerable
+module Enumerable::[EnumType]
+  def each({ |EnumType element| => :any } &) => :self; end
+
+  def each_with_index({ |EnumType element, Integer index| => :any } &) => :self; end
+
+  def each_with_object[T](T object, { |EnumType element, T object| => :any } &) => T; end
+
+  def map[ProjectedType]({ |EnumType x| => ProjectedType } &) => [ProjectedType]; end
+  alias :collect :map
+
+  def reduce[T](T initial, { |T acc, EnumType x| => T } &) => T; end
+  alias :inject :reduce
+
+  def group_by[GroupKey]({ |EnumType element| => GroupKey } &) => { GroupKey => [EnumType] }; end
+
+  def find({ |EnumType element| => Boolean } &) => ~EnumType; end
+
+  def any?({ |EnumType element| => Boolean } &) => Boolean; end
+
+  def all?({ |EnumType element| => Boolean } &) => Boolean; end
+
+  def take(Integer count) => [EnumType]; end
+
+  def drop(Integer n) => [EnumType]; end
 end
 
 class IO < Object
@@ -754,16 +779,11 @@ end
 class Array::[ElementType] < Object
   def each({ |ElementType element| => :any } &bk) => :self; end
 
-  def each_with_index({ |ElementType element, Integer index| => :any } &) => :self; end
-
-  def each_with_object[T](T object, { |ElementType element, T object| => :any } &) => :self; end
-
-  include Enumerable
+  # we don't yet have syntax to do this, so this is done in
+  # post_core_init in object.rs:
+  # include Enumerable::[ElementType]
 
   def <<(ElementType item) => :self; end
-
-  def map[ProjectedType]({ |ElementType element| => ProjectedType } &) => [ProjectedType]; end
-  alias :collect :map
 
   def map!({ |ElementType element| => ElementType } &) => :self; end
   alias :collect! :map!
@@ -788,10 +808,6 @@ class Array::[ElementType] < Object
 
   def join(String sep = "") => String; end
 
-  def any?({ |ElementType element| => Boolean } &) => Boolean; end
-
-  def all?({ |ElementType element| => Boolean } &) => Boolean; end
-
   def first => ~ElementType; end
 
   def last => ~ElementType; end
@@ -814,10 +830,6 @@ class Array::[ElementType] < Object
 
   def uniq!(~{ |ElementType element| => :any } &) => [ElementType]; end
 
-  def find({ |ElementType element| => Boolean } &) => ~ElementType; end
-
-  def drop(Integer n) => [ElementType]; end
-
   def [](Integer index) => ~ElementType; end
 
   def []=(Integer index, ElementType value) => ElementType; end
@@ -826,25 +838,20 @@ class Array::[ElementType] < Object
 
   def to_h[K, V; ElementType = [K, V]] => { K => V }; end
 
-  def group_by[GroupKey]({ |ElementType element| => GroupKey } &) => { GroupKey => [ElementType] }; end
-
   def delete_if({ |ElementType element| => Boolean } &) => :self; end
 
   # TODO enforce that SortKey must respond to <=>
   # or perhaps that it's comparable?
   def sort_by[SortKey]({ |ElementType element| => SortKey } &) => [ElementType]; end
   def sort_by![SortKey]({ |ElementType element| => SortKey } &) => :self; end
-
-  def take(Integer count) => [ElementType]; end
-
-  def reduce[T](T initial, { |T acc, ElementType e| => T } &) => T; end
-  alias :inject :reduce
 end
 
 class Hash::[KeyType, ValueType] < Object
   def each({ |KeyType k, ValueType v| => :any } &) => :self; end
 
-  include Enumerable
+  # we don't yet have syntax to do this, so this is done in
+  # post_core_init in object.rs:
+  # include Enumerable::[[KeyType, ValueType]]
 
   def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
 
@@ -867,19 +874,11 @@ class Hash::[KeyType, ValueType] < Object
 
   def empty? => Boolean; end
 
-  def map[ProjectedType]({ |KeyType k, ValueType v| => ProjectedType } &) => [ProjectedType]; end
-  alias :collect :map
-
   def keys => [KeyType]; end
 
   def values => [ValueType]; end
 
   def delete(KeyType k) => ~ValueType; end
-
-  def any?({ |KeyType k, ValueType v| => Boolean } &) => Boolean; end
-
-  def reduce[T](T initial, { |T acc, [KeyType, ValueType] kv| => T } &) => T; end
-  alias :inject :reduce
 
   def delete_if({ |KeyType key, ValueType value| => Boolean } &) => :self; end
 end

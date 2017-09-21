@@ -90,7 +90,7 @@ fn keyword_hash_argument<'a, 'ty: 'a, 'object: 'ty>(
                 KeywordHashArgument::Keywords(keywords, splat)
             }
             Type::Instance { ref class, .. } => {
-                if class.is_a(tyenv.object.hash_class()) {
+                if tyenv.is_hash(class) {
                     args.consume_back();
                     KeywordHashArgument::Hash(ty)
                 } else {
