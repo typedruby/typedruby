@@ -849,7 +849,7 @@ end
 class Hash::[KeyType, ValueType] < Object
   def each({ |KeyType k, ValueType v| => :any } &) => :self; end
 
-  # we don't yet have syntax to do this, so this is done in
+  # TODO we don't yet have syntax to do this, so this is done in
   # post_core_init in object.rs:
   # include Enumerable::[[KeyType, ValueType]]
 
