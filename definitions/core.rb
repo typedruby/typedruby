@@ -130,10 +130,10 @@ class IO < Object
   def self.read(
     String name,
     ~Integer length = nil,
-    ~Integer offset = nil
-    # :any encoding:, # TODO this should be String or Encoding
-    # String mode:,
-    # [String] open_args:
+    ~Integer offset = nil,
+    ~(String | Encoding) encoding: nil,
+    ~String mode: nil,
+    ~[String] open_args: nil
   ) => String
   end
 
