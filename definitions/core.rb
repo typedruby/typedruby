@@ -12,6 +12,8 @@ class BasicObject
 end
 
 module Kernel
+  def gets(~String sep = $/) => ~String; end
+
   def puts(:any *) => nil; end
 
   def warn(:any *) => nil; end
