@@ -13,7 +13,7 @@ use self::eval::Eval;
 
 pub fn check<'object>(env: &Environment<'object>, method: Rc<MethodEntry<'object>>) {
     let arena = Arena::new();
-    let types = TypeEnv::new(&arena, &env.object);
+    let types = TypeEnv::new(&arena, env);
 
     match *method.implementation {
         MethodImpl::TypedRuby { ref scope, ref body, ref proto, .. } =>
