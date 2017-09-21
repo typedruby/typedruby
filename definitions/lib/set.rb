@@ -3,7 +3,7 @@ class Set::[ElementType]
 
   # TODO - the Enumerable type needs to be parameterised over ElementType
   # when generic modules are supported:
-  def initialize(Enumerable enum = nil) => nil; end
+  def initialize(Enumerable::[ElementType] enum = nil) => nil; end
 
   def self.[][ElementType](ElementType *elements) => Set::[ElementType]; end
 

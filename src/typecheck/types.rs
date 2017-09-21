@@ -250,15 +250,15 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     return Err((to, from));
                 }
 
-                if to_tp.len() > 0 {
+                let from_tyctx = TypeContext::new(from_class, from_tp.clone());
+
+                let to_tyctx = self.map_type_context(from_tyctx, to_class);
+
+                to_tp.iter().zip(to_tyctx.type_parameters).fold(Ok(()), |res, (&to_ty, from_ty)|
                     // because an object could be mutated after coercion, we
                     // require invariance in type parameters:
-                    to_tp.iter().zip(from_tp).fold(Ok(()), |res, (&to_ty, &from_ty)|
-                        res.and_then(|()| self.compatible(to_ty, from_ty))
-                           .and_then(|()| self.compatible(from_ty, to_ty)))
-                } else {
-                    Ok(())
-                }
+                    res.and_then(|()| self.compatible(to_ty, from_ty))
+                       .and_then(|()| self.compatible(from_ty, to_ty)))
             },
             (_, &Type::Union { types: ref from_types, .. }) => {
                 for from_type in from_types {

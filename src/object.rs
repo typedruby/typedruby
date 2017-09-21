@@ -807,7 +807,7 @@ impl<'a> RubyObject<'a> {
                 }
             }
 
-            if ancestor == module {
+            if ancestor.delegate() == module.delegate() {
                 break
             }
         }
