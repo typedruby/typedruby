@@ -96,6 +96,8 @@ class Object < BasicObject
 end
 
 module Enumerable::[EnumType]
+  def each({ |EnumType element| => :any } &) => :self; end
+
   def each_with_index({ |EnumType element, Integer index| => :any } &) => :self; end
 
   def each_with_object[T](T object, { |EnumType element, T object| => :any } &) => T; end
