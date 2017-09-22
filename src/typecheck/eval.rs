@@ -1808,6 +1808,13 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 Computation::result(ty, locals)
             }
+            Node::TyConstInstance(ref loc, ref cpath, _) => {
+                self.error("Bare type instance not valid in expression", &[
+                    Detail::Loc("here", loc),
+                ]);
+
+                self.process_node(cpath, locals)
+            }
             _ => panic!("node: {:?}", node),
         }
     }
