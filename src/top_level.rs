@@ -5,8 +5,7 @@ use define::{Definitions, MethodVisibility, MethodDef, IvarDef};
 use object::{RubyObject, Scope, ConstantEntry, IncludeError};
 use std::rc::Rc;
 use std::cell::Cell;
-use std::iter::repeat;
-use abstract_type::{TypeNode, TypeScope};
+use abstract_type::{TypeNode, TypeScope, TypeNodeRef};
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 
@@ -164,7 +163,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.resolve_cpath(node).and_then(|constant|
                     constant.module()
                         .ok_or((node, "Not a static class/module"))),
-            _ => Err((node, "unknown static node")),
+            Node::TyConstInstance(..) =>
+                Err((node, "Generic instance not valid here")),
+            _ =>
+                Err((node, "unknown static node")),
         }
     }
 
@@ -468,6 +470,24 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
     }
 
+    fn resolve_module_ref<'a>(&self, node: &'a Node)
+        -> EvalResult<'a, (&'object RubyObject<'object>, Vec<TypeNodeRef<'object>>)>
+    {
+        let (node, params) = match *node {
+            Node::TyConstInstance(_, ref cpath, ref params) =>
+                (cpath.as_ref(), params.as_slice()),
+            _ =>
+                (node, &[] as &[Rc<Node>]),
+        };
+
+        self.resolve_static(node).map(|obj| {
+            let sc = TypeScope::new(self.scope.clone(), self.scope.module);
+
+            (obj, params.iter().map(|param|
+                TypeNode::resolve(param, &self.env, sc.clone())).collect())
+        })
+    }
+
     fn process_module_inclusion(&self, id: &Id, target: &'object RubyObject<'object>, args: &[Rc<Node>]) {
         if args.is_empty() {
             self.error(&format!("Wrong number of arguments to {}", id.1), &[
@@ -476,10 +496,26 @@ impl<'env, 'object> Eval<'env, 'object> {
         }
 
         for arg in args {
-            match self.resolve_static(arg) {
-                Ok(obj) => {
-                    let params = repeat(Rc::new(TypeNode::Any { loc: arg.loc().clone() }))
-                        .take(obj.type_parameters().len()).collect();
+            match self.resolve_module_ref(arg) {
+                Ok((obj, mut params)) => {
+                    if obj.type_parameters().len() != params.len() {
+                        let any = Rc::new(TypeNode::Any { loc: arg.loc().clone() });
+
+                        if params.is_empty() {
+                            // allow untyped inclusions of parameterised modules
+                            // for legacy compatibility
+                        } else if obj.type_parameters().len() > params.len() {
+                            self.error("Too few type parameters supplied in instantiation of generic type", &[
+                                Detail::Loc("here", params.last().unwrap().loc())
+                            ]);
+                        } else if obj.type_parameters().len() < params.len() {
+                            self.error("Too many type parameters supplied in instantiation of generic type", &[
+                                Detail::Loc("here", params.last().unwrap().loc())
+                            ]);
+                        }
+
+                        params.resize(obj.type_parameters().len(), any);
+                    }
 
                     match self.env.object.include_module(target, obj, params, Some(arg.loc().clone())) {
                         Ok(()) => (),
