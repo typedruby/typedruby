@@ -17,7 +17,6 @@ mod ast;
 mod abstract_type;
 mod config;
 mod define;
-mod deferred_cell;
 mod environment;
 mod errors;
 mod inflect;
