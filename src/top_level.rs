@@ -517,22 +517,17 @@ impl<'env, 'object> Eval<'env, 'object> {
                         params.resize(obj.type_parameters().len(), any);
                     }
 
-                    match self.env.object.include_module(target, obj, params, Some(arg.loc().clone())) {
+                    match self.env.object.include_module(target, obj, params, arg.loc().clone()) {
                         Ok(()) => (),
                         Err(IncludeError::CyclicInclude) => {
                             self.error("Cyclic include", &[
                                 Detail::Loc("here", arg.loc()),
                             ])
                         }
-                        Err(IncludeError::DuplicateInclude(Some(loc))) => {
+                        Err(IncludeError::DuplicateInclude(loc)) => {
                             self.error("Duplicate include", &[
                                 Detail::Loc("here", arg.loc()),
                                 Detail::Loc("previous inclusion was here", loc),
-                            ])
-                        }
-                        Err(IncludeError::DuplicateInclude(None)) => {
-                            self.error("Duplicate include", &[
-                                Detail::Loc("here", arg.loc()),
                             ])
                         }
                     }

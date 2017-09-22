@@ -3,7 +3,6 @@ use std::hash::{Hash, Hasher};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
-use std::fmt::Write;
 use typed_arena::Arena;
 use ast::{Node, Loc, Id};
 use define::MethodVisibility;
@@ -187,9 +186,6 @@ impl<'a> ObjectGraph<'a> {
         o.set_const(o.Object, "Class", Rc::new(ConstantEntry::Module { loc: None, value: o.Class })).unwrap();
 
         o.Kernel = o.define_module(None, o.Object, "Kernel", vec![]);
-        o.include_module(o.Object, o.Kernel, vec![], None)
-            .expect("including Kernel into Object to succeed");
-
         o.Boolean = o.define_class(None, o.Object, "Boolean", o.Object, Vec::new());
         o.TrueClass = o.define_class(None, o.Object, "TrueClass", o.Boolean, Vec::new());
         o.FalseClass = o.define_class(None, o.Object, "FalseClass", o.Boolean, Vec::new());
@@ -465,7 +461,7 @@ impl<'a> ObjectGraph<'a> {
     }
 
     // TODO - check for instance variable name conflicts in superclasses and subclasses:
-    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>, type_parameters: Vec<TypeNodeRef<'a>>, loc: Option<Loc>)
+    pub fn include_module(&self, target: &'a RubyObject<'a>, module: &'a RubyObject<'a>, type_parameters: Vec<TypeNodeRef<'a>>, loc: Loc)
         -> Result<(), IncludeError<'a>>
     {
         // TODO - we'll need this to implement prepends later.
@@ -521,7 +517,7 @@ impl<'a> ObjectGraph<'a> {
 
                         // duplicate inclusion of modules with type parameters
                         // are not supported:
-                        return Err(IncludeError::DuplicateInclude(site.loc.as_ref()));
+                        return Err(IncludeError::DuplicateInclude(&site.loc));
                     }
                 } else {
                     superclass_seen = true;
@@ -674,7 +670,7 @@ pub struct IvarEntry<'object> {
 
 #[derive(Debug)]
 pub struct IncludeSite<'object> {
-    pub loc: Option<Loc>,
+    pub loc: Loc,
     pub module: &'object RubyObject<'object>,
     pub reason: &'object RubyObject<'object>,
     pub type_parameters: Vec<TypeNodeRef<'object>>,
@@ -683,7 +679,7 @@ pub struct IncludeSite<'object> {
 #[derive(Debug)]
 pub enum IncludeError<'object> {
     CyclicInclude,
-    DuplicateInclude(Option<&'object Loc>),
+    DuplicateInclude(&'object Loc),
 }
 
 pub enum RubyObject<'a> {
@@ -733,14 +729,8 @@ impl<'a> RubyObject<'a> {
             RubyObject::Metaclass { of, .. } =>
                 format!("Class::[{}]", of.name()),
             RubyObject::IClass { ref site, .. } => {
-                let mut s = format!("iclass for {} (included from {}",
-                    site.module.name(), site.reason.name());
-
-                if let Some(ref loc) = site.loc {
-                    &write!(&mut s, " at {}", loc);
-                }
-
-                s + ")"
+                format!("iclass for {} (included from {} at {})",
+                    site.module.name(), site.reason.name(), site.loc)
             }
         }
     }
