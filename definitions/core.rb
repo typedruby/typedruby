@@ -132,10 +132,10 @@ class IO < Object
   def self.read(
     String name,
     ~Integer length = nil,
-    ~Integer offset = nil
-    # :any encoding:, # TODO this should be String or Encoding
-    # String mode:,
-    # [String] open_args:
+    ~Integer offset = nil,
+    ~(String | Encoding) encoding: nil,
+    ~String mode: nil,
+    ~[String] open_args: nil
   ) => String
   end
 
@@ -851,7 +851,7 @@ end
 class Hash::[KeyType, ValueType] < Object
   def each({ |KeyType k, ValueType v| => :any } &) => :self; end
 
-  # we don't yet have syntax to do this, so this is done in
+  # TODO we don't yet have syntax to do this, so this is done in
   # post_core_init in object.rs:
   # include Enumerable::[[KeyType, ValueType]]
 

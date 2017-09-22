@@ -367,10 +367,6 @@ impl<'a> ObjectGraph<'a> {
                             id: self.new_object_id(),
                             of: object_ref,
                             class: class.clone(),
-                            // no need to check for None superclass here - BasicObject's metaclass was already
-                            // constructed in ObjectGraph::bootstrap:
-                            // TODO - we do need to replace the direct superclass field get with something that
-                            // ignores iclasses:
                             superclass: Cell::new(object_ref.superclass().map(|c| self.metaclass(c))),
                         });
 
