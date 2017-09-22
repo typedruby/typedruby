@@ -24,9 +24,9 @@ error: Could not match types:
         @ __ROOT__/tests/fixtures/module_compatibility.rb:24
      24 |    set = MySet.new([1, 2, 3])
                               ^ Integer, with:
-        @ (builtin stdlib):851
-    851 |  class Hash::[KeyType, ValueType] < Object
-                        ^^^^^^^^^^^^^^^^^^ Array::[Integer]
+        @ (builtin stdlib):850
+    850 |    include Enumerable::[[KeyType, ValueType]]
+                                  ^^^^^^^^^^^^^^^^^^^^ Array::[Integer]
 
         - arising from an attempt to match:
 
