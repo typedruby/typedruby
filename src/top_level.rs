@@ -1037,6 +1037,13 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::TyProc(_, ref proto) => {
                 self.eval_node(proto);
             }
+            Node::TyConstInstance(_, ref cpath, ref params) => {
+                self.eval_node(cpath);
+
+                for param in params {
+                    self.eval_node(param);
+                }
+            }
             _ => panic!("unknown node: {:?}", node),
         }
     }
