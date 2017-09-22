@@ -124,7 +124,7 @@ module Enumerable::[EnumType]
 end
 
 class IO < Object
-  include Enumerable
+  include Enumerable::[String]
   SEEK_SET = nil
   SEEK_CUR = nil
   SEEK_END = nil
@@ -779,11 +779,9 @@ class String < Object
 end
 
 class Array::[ElementType] < Object
-  def each({ |ElementType element| => :any } &bk) => :self; end
+  include Enumerable::[ElementType]
 
-  # we don't yet have syntax to do this, so this is done in
-  # post_core_init in object.rs:
-  # include Enumerable::[ElementType]
+  def each({ |ElementType element| => :any } &bk) => :self; end
 
   def <<(ElementType item) => :self; end
 
@@ -849,11 +847,9 @@ class Array::[ElementType] < Object
 end
 
 class Hash::[KeyType, ValueType] < Object
-  def each({ |KeyType k, ValueType v| => :any } &) => :self; end
+  include Enumerable::[[KeyType, ValueType]]
 
-  # TODO we don't yet have syntax to do this, so this is done in
-  # post_core_init in object.rs:
-  # include Enumerable::[[KeyType, ValueType]]
+  def each({ |KeyType k, ValueType v| => :any } &) => :self; end
 
   def merge(Hash::[KeyType, ValueType] other) => Hash::[KeyType, ValueType]; end
 
@@ -1192,22 +1188,22 @@ class Complex < Numeric
   I = nil
 end
 
-class Enumerator < Object
-  include Enumerable
+class Enumerator::[EnumType] < Object
+  include Enumerable::[EnumType]
 end
 
 class Enumerator::Lazy < Enumerator
 end
 
-class Enumerator::Generator < Object
-  include Enumerable
+class Enumerator::Generator::[EnumType] < Object
+  include Enumerable::[EnumType]
 end
 
-class Enumerator::Yielder < Object
+class Enumerator::Yielder::[EnumType] < Object
 end
 
 class Struct < Object
-  include Enumerable
+  include Enumerable::[:any]
 end
 
 module Process
@@ -2067,7 +2063,7 @@ class ThreadGroup < Object
 end
 
 class Dir < Object
-  include Enumerable
+  include Enumerable::[String]
 
   def self.[](String pattern) => [String]; end
 end
@@ -2124,7 +2120,7 @@ module Marshal
 end
 
 class Range::[BeginType, EndType] < Object
-  include Enumerable
+  include Enumerable::[BeginType]
 end
 
 class IOError < StandardError

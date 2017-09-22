@@ -117,6 +117,7 @@ struct builder {
 	foreign_ptr(*symbols_compose)(self_ptr builder, const token* begin, const node_list* parts, const token* end);
 	foreign_ptr(*ternary)(self_ptr builder, foreign_ptr cond, const token* question, foreign_ptr if_true, const token* colon, foreign_ptr if_false);
 	foreign_ptr(*tr_any)(self_ptr builder, const token* special);
+	foreign_ptr(*tr_arg_instance)(self_ptr builder, foreign_ptr base, const node_list* types, const token* end);
 	foreign_ptr(*tr_array)(self_ptr builder, const token* begin, foreign_ptr type_, const token* end);
 	foreign_ptr(*tr_cast)(self_ptr builder, const token* begin, foreign_ptr expr, const token* colon, foreign_ptr type_, const token* end);
 	foreign_ptr(*tr_class)(self_ptr builder, const token* special);

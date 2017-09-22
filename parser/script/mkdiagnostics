@@ -60,6 +60,9 @@ MESSAGES = {
   # Rewriter diagnostics
   :invalid_action          => 'cannot {}',
   :clobbered               => 'clobbered by: {}',
+
+  # TypedRuby diagnostics
+  :not_static_cpath_in_geninst => "Type name in generic instance must be a static constant path"
 }.freeze
 
 def camelize(sym)

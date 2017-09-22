@@ -94,8 +94,6 @@ impl<'object> Environment<'object> {
 
         env.load_source_file(source_file);
 
-        env.object.post_core_init();
-
         env
     }
 

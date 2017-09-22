@@ -71,6 +71,15 @@ fn check_condition(cond: Rc<Node>) -> Rc<Node> {
     }
 }
 
+fn check_static_cpath(node: &Node) -> bool {
+    match *node {
+        Node::Const(_, Some(ref base), _) => check_static_cpath(base),
+        Node::Const(_, None, _) => true,
+        Node::Cbase(_) => true,
+        _ => false,
+    }
+}
+
 struct Dedenter {
     dedent_level: usize,
     at_line_begin: bool,
@@ -1352,6 +1361,18 @@ impl<'a> Builder<'a> {
 
     pub fn tr_any(&self, special: Option<Token>) -> Node {
         Node::TyAny(self.loc(&special))
+    }
+
+    pub fn tr_arg_instance(&mut self, base: Option<Rc<Node>>, parameters: Vec<Rc<Node>>, end: Option<Token>) -> Rc<Node> {
+        let base = base.unwrap();
+
+        if check_static_cpath(&base) {
+            let loc = base.loc().join(&self.loc(&end));
+            Rc::new(Node::TyConstInstance(loc, base, parameters))
+        } else {
+            self.driver.error(Error::NotStaticCpathInGeninst, base.loc().clone());
+            base
+        }
     }
 
     pub fn tr_array(&self, begin: Option<Token>, type_: Option<Rc<Node>>, end: Option<Token>) -> Node {
