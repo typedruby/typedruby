@@ -1021,6 +1021,11 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       $$ = driver.build.op_assign(self, const_, $4, $5);
                       DIAGCHECK();
                     }
+                | primary_value tCOLON2 tLBRACK2 tr_types rbracket
+                    {
+                      $$ = driver.build.tr_arg_instance(self, $1, $4, $5);
+                      DIAGCHECK();
+                    }
                 | tCOLON3 tCONSTANT tOP_ASGN arg_rhs
                     {
                       auto const_ = driver.build.const_op_assignable(self, driver.build.const_global(self, $1, $2));

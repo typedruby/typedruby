@@ -859,6 +859,13 @@ impl Sexp for Node {
                 let _ = builder.field(__self_0);
                 builder.finish()
             }
+            (&Node::TyConstInstance(ref loc, ref cpath, ref params),) => {
+                let mut builder = __arg_0.new_node("ty-const-instance");
+                let _ = builder.field(loc);
+                let _ = builder.field(cpath);
+                let _ = builder.field(params);
+                builder.finish()
+            }
             (&Node::TyConSubtype(ref loc, ref sub, ref super_),) => {
                 let mut builder = __arg_0.new_node("ty-consubtype");
                 let _ = builder.field(loc);
