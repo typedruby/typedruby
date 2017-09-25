@@ -26,6 +26,12 @@ pub enum SourceType {
     Ruby,
 }
 
+enum ErrorType {
+    Ruby,
+    Strict,
+    TypedRuby,
+}
+
 #[derive(Copy,Clone)]
 enum AttrType {
     Reader,
@@ -85,15 +91,15 @@ impl<'env, 'object> Eval<'env, 'object> {
             self.env.should_emit_errors(self.source_file.filename())
     }
 
-    fn error(&self, message: &str, details: &[Detail]) {
-        if self.emit_errors() {
-            self.env.error_sink.borrow_mut().error(message, details)
-        }
-    }
+    fn error(&self, error_type: ErrorType, message: &str, details: &[Detail]) {
+        let emit = match error_type {
+            ErrorType::Ruby |
+            ErrorType::TypedRuby => true,
+            ErrorType::Strict => self.source_type == SourceType::TypedRuby,
+        };
 
-    fn warning(&self, message: &str, details: &[Detail]) {
-        if self.emit_errors() {
-            self.env.error_sink.borrow_mut().warning(message, details)
+        if emit && self.env.should_emit_errors(self.source_file.filename()) {
+            self.env.error_sink.borrow_mut().error(message, details)
         }
     }
 
@@ -116,7 +122,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         Node::TyGendeclarg(_, ref name, None) =>
                             name.clone(),
                         Node::TyGendeclarg(_, ref name, Some(ref constraint)) => {
-                            self.error("Type constraints not permitted on classes/modules", &[
+                            self.error(ErrorType::TypedRuby, "Type constraints not permitted on classes/modules", &[
                                 Detail::Loc("here", constraint.loc()),
                             ]);
                             name.clone()
@@ -126,7 +132,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 ).collect();
 
                 if !constraints.is_empty() {
-                    self.error("Type constraints not permitted on classes/modules", &[
+                    self.error(ErrorType::TypedRuby, "Type constraints not permitted on classes/modules", &[
                         Detail::Loc("here", constraints[0].loc()),
                     ]);
                 }
@@ -207,7 +213,7 @@ impl<'env, 'object> Eval<'env, 'object> {
             details.push(Detail::Loc("previously defined here", loc));
         }
 
-        self.error(message, details.as_slice());
+        self.error(ErrorType::Strict, message, details.as_slice());
     }
 
     fn decl_class(&self, name: &Node, superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
@@ -220,12 +226,12 @@ impl<'env, 'object> Eval<'env, 'object> {
                     RubyObject::Metaclass { .. } =>
                         Some((node, value)),
                     _ => {
-                        self.error("Superclass is not a class", &[Detail::Loc("here", node.loc())]);
+                        self.error(ErrorType::Strict, "Superclass is not a class", &[Detail::Loc("here", node.loc())]);
                         None
                     }
                 },
                 Err((node, message)) => {
-                    self.warning(&message, &[Detail::Loc("here", node.loc())]);
+                    self.error(ErrorType::Strict, &message, &[Detail::Loc("here", node.loc())]);
                     None
                 }
             }
@@ -259,7 +265,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                                             None => "nil".to_owned(),
                                         };
 
-                                    self.error(&format!("Superclass does not match existing superclass {}", existing_superclass_name), &[
+                                    self.error(ErrorType::Strict, &format!("Superclass does not match existing superclass {}", existing_superclass_name), &[
                                         Detail::Loc("here", superclass_node.loc()),
                                         // TODO - show location of previous definition
                                     ]);
@@ -286,7 +292,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                             let loc = decl.type_parameters.first().unwrap().0.join(
                                         &decl.type_parameters.last().unwrap().0);
 
-                            self.error("Subclasses of generic classes may not specify type parameters", &[
+                            self.error(ErrorType::TypedRuby, "Subclasses of generic classes may not specify type parameters", &[
                                 Detail::Loc("here", &loc),
                             ]);
 
@@ -309,7 +315,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 }
             }
             Err((node, message)) => {
-                self.warning(&message, &[Detail::Loc("here", node.loc())]);
+                self.error(ErrorType::Strict, &message, &[Detail::Loc("here", node.loc())]);
                 return;
             }
         };
@@ -357,7 +363,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 }
             }
             Err((node, msg)) => {
-                self.error(msg, &[Detail::Loc("here", node.loc())]);
+                self.error(ErrorType::Strict, msg, &[Detail::Loc("here", node.loc())]);
                 return
             }
         };
@@ -386,7 +392,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 Some(id.clone())
             }
             _ => {
-                self.warning(&format!("Dynamic symbol {}", msg), &[
+                self.error(ErrorType::Strict, &format!("Dynamic symbol {}", msg), &[
                     Detail::Loc("here", node.loc()),
                 ]);
 
@@ -490,7 +496,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn process_module_inclusion(&self, id: &Id, target: &'object RubyObject<'object>, args: &[Rc<Node>]) {
         if args.is_empty() {
-            self.error(&format!("Wrong number of arguments to {}", id.1), &[
+            self.error(ErrorType::Strict, &format!("Wrong number of arguments to {}", id.1), &[
                 Detail::Loc("here", &id.0),
             ]);
         }
@@ -501,16 +507,16 @@ impl<'env, 'object> Eval<'env, 'object> {
                     if obj.type_parameters().len() != params.len() {
                         let any = Rc::new(TypeNode::Any { loc: arg.loc().clone() });
 
-                        if params.is_empty() {
+                        if params.is_empty() && self.source_type != SourceType::TypedRuby {
                             // allow untyped inclusions of parameterised modules
                             // for legacy compatibility
                         } else if obj.type_parameters().len() > params.len() {
-                            self.error("Too few type parameters supplied in instantiation of generic type", &[
-                                Detail::Loc("here", params.last().unwrap().loc())
+                            self.error(ErrorType::TypedRuby, "Too few type parameters supplied in instantiation of generic type", &[
+                                Detail::Loc("here", arg.loc())
                             ]);
                         } else if obj.type_parameters().len() < params.len() {
-                            self.error("Too many type parameters supplied in instantiation of generic type", &[
-                                Detail::Loc("here", params.last().unwrap().loc())
+                            self.error(ErrorType::TypedRuby, "Too many type parameters supplied in instantiation of generic type", &[
+                                Detail::Loc("here", arg.loc())
                             ]);
                         }
 
@@ -520,12 +526,12 @@ impl<'env, 'object> Eval<'env, 'object> {
                     match self.env.object.include_module(target, obj, params, arg.loc().clone()) {
                         Ok(()) => (),
                         Err(IncludeError::CyclicInclude) => {
-                            self.error("Cyclic include", &[
+                            self.error(ErrorType::Ruby, "Cyclic include", &[
                                 Detail::Loc("here", arg.loc()),
                             ])
                         }
                         Err(IncludeError::DuplicateInclude(loc)) => {
-                            self.error("Duplicate include", &[
+                            self.error(ErrorType::Strict, "Duplicate include", &[
                                 Detail::Loc("here", arg.loc()),
                                 Detail::Loc("previous inclusion was here", loc),
                             ])
@@ -533,7 +539,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     }
                 }
                 Err((node, message)) => {
-                    self.warning(&format!("Could not statically resolve module reference in {}", id.1), &[
+                    self.error(ErrorType::Strict, &format!("Could not statically resolve module reference in {}", id.1), &[
                         Detail::Loc(message, node.loc()),
                     ]);
                 }
@@ -543,14 +549,14 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn process_require(&self, id: &Id, args: &[Rc<Node>], require_type: RequireType) {
         if args.len() == 0 {
-            self.error(&format!("Missing argument to {}", id.1), &[
+            self.error(ErrorType::Strict, &format!("Missing argument to {}", id.1), &[
                 Detail::Loc("here", &id.0),
             ]);
             return;
         }
 
         if args.len() > 1 {
-            self.error(&format!("Too many arguments to {}", id.1), &[
+            self.error(ErrorType::Strict, &format!("Too many arguments to {}", id.1), &[
                 Detail::Loc("from here", args[1].loc()),
             ]);
             return;
@@ -559,7 +565,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         let (loc, string) = match *args[0] {
             Node::String(ref loc, ref string) => (loc, string),
             _ => {
-                self.warning("Could not resolve dynamic path in require", &[
+                self.error(ErrorType::Strict, "Could not resolve dynamic path in require", &[
                     Detail::Loc("here", args[0].loc()),
                 ]);
                 return;
@@ -574,16 +580,16 @@ impl<'env, 'object> Eval<'env, 'object> {
 
             if let Some(path) = path {
                 self.env.require(&path).unwrap_or_else(|e|
-                    self.error(&format!("Could not load file: {}", e), &[
+                    self.error(ErrorType::Strict, &format!("Could not load file: {}", e), &[
                         Detail::Loc("in require", args[0].loc()),
                     ]))
             } else {
-                self.warning("Could not resolve require", &[
+                self.error(ErrorType::Strict, "Could not resolve require", &[
                     Detail::Loc("here", loc),
                 ]);
             }
         } else {
-            self.error("Invalid UTF-8 in require path", &[
+            self.error(ErrorType::Strict, "Invalid UTF-8 in require path", &[
                 Detail::Loc("here", args[0].loc()),
             ]);
             return
@@ -592,7 +598,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
     fn process_alias_method(&self, id: &Id, args: &[Rc<Node>]) {
         if args.len() != 2 {
-            self.error(&format!("Wrong number of arguments to {}", id.1), &[
+            self.error(ErrorType::Strict, &format!("Wrong number of arguments to {}", id.1), &[
                 Detail::Loc("here", &id.0),
             ]);
             return;
@@ -656,7 +662,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         self.enter_scope(metaclass, body);
                     }
                     Err((node, message)) => {
-                        self.warning("Could not statically resolve singleton expression", &[
+                        self.error(ErrorType::Strict, "Could not statically resolve singleton expression", &[
                             Detail::Loc(message, node.loc()),
                         ]);
                         return;
@@ -691,7 +697,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                         self.decl_method(metaclass, name.clone(), node, MethodVisibility::Public);
                     }
                     Err((node, message)) => {
-                        self.warning(message, &[Detail::Loc("here", node.loc())]);
+                        self.error(ErrorType::Strict, message, &[Detail::Loc("here", node.loc())]);
                     }
                 }
 
@@ -777,14 +783,14 @@ impl<'env, 'object> Eval<'env, 'object> {
                                     .expect("constant to not already exist");
                             }
                             Err((node, message)) => {
-                                self.warning("Could not statically resolve expression in constant assignment", &[
+                                self.error(ErrorType::Strict, "Could not statically resolve expression in constant assignment", &[
                                     Detail::Loc(message, node.loc()),
                                 ]);
                             }
                         }
                     }
                     Err((node, message)) => {
-                        self.warning("Could not statically resolve constant in assignment", &[
+                        self.error(ErrorType::Strict, "Could not statically resolve constant in assignment", &[
                             Detail::Loc(message, node.loc()),
                         ]);
                     }
@@ -797,7 +803,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.alias_method(self.scope.module, from, to);
             }
             Node::TyIvardecl(..) if self.in_def => {
-                self.error("Invalid instance variable type declaration", &[
+                self.error(ErrorType::TypedRuby, "Invalid instance variable type declaration", &[
                     Detail::Loc("here", node.loc()),
                 ]);
             }
