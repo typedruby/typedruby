@@ -915,7 +915,7 @@ module ObjectSpace
 end
 
 class ObjectSpace::WeakMap < Object
-  include Enumerable
+  include Enumerable::[:any]
 end
 
 module DidYouMean
