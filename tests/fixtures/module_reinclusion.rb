@@ -1,12 +1,12 @@
 # @typedruby
 
 class Foo < Array
-  include Enumerable
+  include Enumerable::[Integer]
 end
 
 class Bar
-  include Enumerable
-  include Enumerable
+  include Enumerable::[Integer]
+  include Enumerable::[String]
 end
 
 module MonomorphicModule
