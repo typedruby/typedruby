@@ -1,0 +1,5 @@
+error: Too few type parameters supplied in instantiation of generic type
+
+        @ __ROOT__/tests/fixtures/untyped_polymorphic_module_inclusion_strict.rb:4
+      4 |    include Enumerable
+                     ^^^^^^^^^^ here
