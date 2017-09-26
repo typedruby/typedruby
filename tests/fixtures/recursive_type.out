@@ -9,8 +9,8 @@ error: Could not match types:
 
         - arising from an attempt to match:
 
-        @ (builtin stdlib):786
-    786 |    def <<(ElementType item) => :self; end
+        @ (builtin stdlib):788
+    788 |    def <<(ElementType item) => :self; end
                     ^^^^^^^^^^^ t1, with:
         @ __ROOT__/tests/fixtures/recursive_type.rb:6
       6 |    a << a
