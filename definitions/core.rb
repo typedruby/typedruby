@@ -121,6 +121,8 @@ module Enumerable::[EnumType]
   def take(Integer count) => [EnumType]; end
 
   def drop(Integer n) => [EnumType]; end
+
+  def count => Integer; end
 end
 
 class IO < Object
