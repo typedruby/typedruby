@@ -16,6 +16,8 @@ def greet(String name) => nil
 end
 ```
 
+Check out the [documentation](/docs) for an introductory guide and more details!
+
 ## Syntax
 
 TypedRuby extends the Ruby grammar to allow argument and return type annotations in method definitions and blocks.
