@@ -1,4 +1,4 @@
-# @typedruby
+# intentionally no typedruby annotation here
 
 class Foo
   include Enumerable
