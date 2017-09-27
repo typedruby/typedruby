@@ -1,5 +1,5 @@
 class Set::[ElementType]
-  include Enumerable
+  include Enumerable::[ElementType]
 
   def initialize(Enumerable::[ElementType] enum = nil) => nil; end
 
