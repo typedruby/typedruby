@@ -727,13 +727,15 @@ class String < Object
 
   def *(Integer times) => String; end
 
-  def sub((String | Regexp) pattern, { |String s| => String } &) => String; end
+  # Ideally these would be overloaded to allow exactly one of `repl`
+  # and a block, but we don't support overloads.
+  def sub((String | Regexp) pattern, ~String repl=nil, ~{ |String s| => String } &) => String; end
 
-  def gsub((String | Regexp) pattern, { |String s| => String } &) => String; end
+  def gsub((String | Regexp) pattern, ~String repl=nil, ~{ |String s| => String } &) => String; end
 
-  def sub!((String | Regexp) pattern, { |String s| => String } &) => ~String; end
+  def sub!((String | Regexp) pattern, ~String repl=nil, ~{ |String s| => String } &) => ~String; end
 
-  def gsub!((String | Regexp) pattern, { |String s| => String } &) => ~String; end
+  def gsub!((String | Regexp) pattern, ~String repl=nil, ~{ |String s| => String } &) => ~String; end
 
   def size => Integer; end
 
