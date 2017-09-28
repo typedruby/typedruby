@@ -767,7 +767,7 @@ class String < Object
 
   def chomp!(String suffix = "") => ~String; end
 
-  def split(String delim) => [String]; end
+  def split((String | Regexp) delim) => [String]; end
 
   def unpack(String format) => [:any]; end
 
