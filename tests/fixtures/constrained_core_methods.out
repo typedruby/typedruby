@@ -3,7 +3,7 @@ error: Could not match types:
         @ __ROOT__/tests/fixtures/constrained_core_methods.rb:3
       3 |  def array_compact => nil
                                 ^^^ NilClass, with:
-        @ (builtin stdlib):827
+        @ (builtin stdlib):__LINE__
     827 |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
                                                                      ^^^^^^^^^^^^^ Array::[Integer]
 
@@ -18,7 +18,7 @@ error: Could not match types:
 
 error: Could not match types:
 
-        @ (builtin stdlib):827
+        @ (builtin stdlib):__LINE__
     827 |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
                                       ^^^^^^^^^^^^ NilClass | t2, with:
         @ __ROOT__/tests/fixtures/constrained_core_methods.rb:8
@@ -27,13 +27,13 @@ error: Could not match types:
 
         - arising from an attempt to match:
 
-        @ (builtin stdlib):827
+        @ (builtin stdlib):__LINE__
     827 |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
                                       ^^^^^^^^^^^^ NilClass | t2, with:
-        @ (builtin stdlib):827
+        @ (builtin stdlib):__LINE__
     827 |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
                                                      ^^^^^^^^^^^ Integer
-        @ (builtin stdlib):827
+        @ (builtin stdlib):__LINE__
     827 |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
                                       ^^^^^^^^^^^^^^^^^^^^^^^^^^ in this expression
 
@@ -42,7 +42,7 @@ error: Could not match types:
         @ __ROOT__/tests/fixtures/constrained_core_methods.rb:11
      11 |  def array_to_h => nil
                              ^^^ NilClass, with:
-        @ (builtin stdlib):841
+        @ (builtin stdlib):__LINE__
     841 |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
                                                      ^^^^^^^^^^ Hash::[String, Integer]
 
@@ -60,18 +60,18 @@ error: Could not match types:
         @ __ROOT__/tests/fixtures/constrained_core_methods.rb:16
      16 |    [["one", 1], 2].to_h
              ^^^^^^^^^^^^^^^ [String, Integer] | Integer, with:
-        @ (builtin stdlib):841
+        @ (builtin stdlib):__LINE__
     841 |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
                                           ^^^^^^ [t3, t4]
 
         - arising from an attempt to match:
 
-        @ (builtin stdlib):841
+        @ (builtin stdlib):__LINE__
     841 |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
                             ^^^^^^^^^^^ [String, Integer] | Integer, with:
-        @ (builtin stdlib):841
+        @ (builtin stdlib):__LINE__
     841 |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
                                           ^^^^^^ [t3, t4]
-        @ (builtin stdlib):841
+        @ (builtin stdlib):__LINE__
     841 |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
                             ^^^^^^^^^^^^^^^^^^^^ in this expression
