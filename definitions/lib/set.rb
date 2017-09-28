@@ -1,5 +1,5 @@
 class Set::[ElementType]
-  include Enumerable
+  include Enumerable::[ElementType]
 
   def initialize(Enumerable::[ElementType] enum = nil) => nil; end
 
@@ -7,13 +7,13 @@ class Set::[ElementType]
 
   def <<(ElementType element) => :self; end
 
-  def +((Set::[ElementType] | Array::[ElementType]) other) => :self; end
+  def +(Enumerable::[ElementType] other) => :self; end
 
   def include?(ElementType element) => Boolean; end
 
-  def |((Set::[ElementType] | Array::[ElementType]) other) => :self; end
+  def |(Enumerable::[ElementType] other) => :self; end
 
-  def &((Set::[ElementType] | Array::[ElementType]) other) => :self; end
+  def &(Enumerable::[ElementType] other) => :self; end
 
   def to_a => [ElementType]; end
 end
