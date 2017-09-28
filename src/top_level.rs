@@ -104,8 +104,8 @@ impl<'env, 'object> Eval<'env, 'object> {
     fn error(&self, error_type: ErrorType, message: &str, details: &[Detail]) {
         let emit = match error_type {
             ErrorType::Ruby |
-            ErrorType::TypedRuby => true,
-            ErrorType::Strict => self.source_type == SourceType::TypedRuby,
+            ErrorType::TypedRuby |
+            ErrorType::Strict => self.source_type != SourceType::Ruby,
         };
 
         if emit && self.env.should_emit_errors(self.source_file.filename()) {
@@ -762,8 +762,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                                 ConstantEntry::Module { ref loc, .. } => loc.as_ref(),
                             };
 
-                            self.constant_definition_error("Duplicate constant definition", &loc, existing_loc);
-                            return;
+                            if self.source_type != SourceType::Typestub {
+                                self.constant_definition_error("Duplicate constant definition", &loc, existing_loc);
+                                return;
+                            }
                         }
 
                         let constant = match **expr {
@@ -799,8 +801,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                         match constant {
                             Ok(constant) => {
-                                self.env.object.set_const(&cbase, name, Rc::new(constant))
-                                    .expect("constant to not already exist");
+                                self.env.object.replace_const(&cbase, name, Rc::new(constant));
                             }
                             Err((node, message)) => {
                                 self.error(ErrorType::Strict, "Could not statically resolve expression in constant assignment", &[
