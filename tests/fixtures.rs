@@ -1,8 +1,10 @@
 extern crate difference;
 extern crate glob;
+extern crate regex;
 
 use difference::{Changeset, Difference};
 use glob::glob;
+use regex::Regex;
 use std::env;
 use std::fs::File;
 use std::io::Read;
@@ -47,6 +49,8 @@ fn read_file(path: &Path) -> String {
 }
 
 fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
+    let stdlib_re = Regex::new(r"(\(builtin stdlib\)):\d+").unwrap();
+
     let status = Command::new(typedruby_exe())
         .arg(&path)
         // Remove TERM to force termcolor to not output colors in
@@ -67,9 +71,11 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
             .expect("process to exit cleanly with a status code"));
 
     let rootdir = env::current_dir().unwrap();
-    let stderr = String::from_utf8(status.stderr)
-        .expect("Output was invalid UTF-8")
-        .replace(rootdir.to_str().expect("invalid utf-8 in path"), "__ROOT__");
+    let stderr = stdlib_re.replace_all(
+        &String::from_utf8(status.stderr)
+            .expect("Output was invalid UTF-8")
+            .replace(rootdir.to_str().expect("invalid utf-8 in path"), "__ROOT__"),
+        "$1:__LINE__").into_owned();
 
     if stderr != expected {
         return Some(Mismatch{

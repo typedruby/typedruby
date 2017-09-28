@@ -24,7 +24,7 @@ error: Could not match types:
         @ __ROOT__/tests/fixtures/enumerable_methods.rb:9
       9 |  def test2 => nil
                         ^^^ NilClass, with:
-        @ (builtin stdlib):113
+        @ (builtin stdlib):__LINE__
     113 |    def group_by[GroupKey]({ |EnumType element| => GroupKey } &) => { GroupKey => [EnumType] }; end
                                                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^ Hash::[Boolean, Array::[Integer]]
 

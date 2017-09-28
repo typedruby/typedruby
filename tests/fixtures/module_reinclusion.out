@@ -3,7 +3,7 @@ error: Duplicate include
         @ __ROOT__/tests/fixtures/module_reinclusion.rb:4
       4 |    include Enumerable::[Integer]
                      ^^^^^^^^^^^^^^^^^^^^^ here
-        @ (builtin stdlib):784
+        @ (builtin stdlib):__LINE__
     784 |    include Enumerable::[ElementType]
                      ^^^^^^^^^^^^^^^^^^^^^^^^^ previous inclusion was here
 
