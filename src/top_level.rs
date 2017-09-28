@@ -56,6 +56,7 @@ impl AttrType {
 }
 
 struct DeclRef<'object> {
+    loc: Loc,
     base: &'object RubyObject<'object>,
     name: String,
     type_parameters: Vec<Id>,
@@ -158,7 +159,12 @@ impl<'env, 'object> Eval<'env, 'object> {
         };
 
         ref_.map(|(base, name)| {
-            DeclRef { base, name: name.1.clone(), type_parameters: params }
+            DeclRef {
+                loc: node.loc().clone(),
+                base: base,
+                name: name.1.clone(),
+                type_parameters: params,
+            }
         })
     }
 
@@ -216,6 +222,27 @@ impl<'env, 'object> Eval<'env, 'object> {
         self.error(ErrorType::Strict, message, details.as_slice());
     }
 
+    fn check_type_parameter_match(&self, decl: &DeclRef<'object>, existing: &'object RubyObject<'object>, existing_loc: Option<&Loc>) {
+        // we allow reopening generic classes/modules with no type parameters
+        // for backwards compatibility:
+
+        if !decl.type_parameters.is_empty() {
+            let eq = decl.type_parameters.len() == existing.type_parameters().len() &&
+                decl.type_parameters.iter().zip(existing.type_parameters())
+                    .all(|(&Id(_, ref a), &Id(_, ref b))| a == b);
+
+            if !eq {
+                let mut details = vec![Detail::Loc("here", &decl.loc)];
+
+                if let Some(loc) = existing_loc {
+                    details.push(Detail::Loc("previous definition here", loc));
+                }
+
+                self.error(ErrorType::TypedRuby, "Mismatched type parameters", &details);
+            }
+        }
+    }
+
     fn decl_class(&self, name: &Node, superclass: &Option<Rc<Node>>, body: &Option<Rc<Node>>) {
         // TODO need to autoload
 
@@ -253,8 +280,8 @@ impl<'env, 'object> Eval<'env, 'object> {
                             // do nothing with the class body
                             None
                         }
-                        ConstantEntry::Module { value: value@&RubyObject::Class { .. }, .. } |
-                        ConstantEntry::Module { value: value@&RubyObject::Metaclass { .. }, .. } => {
+                        ConstantEntry::Module { ref loc, value: value@&RubyObject::Class { .. }, .. } |
+                        ConstantEntry::Module { ref loc, value: value@&RubyObject::Metaclass { .. }, .. } => {
                             // check superclass matches
                             if let Some((ref superclass_node, ref superclass)) = superclass {
                                 let existing_superclass = value.superclass();
@@ -271,6 +298,8 @@ impl<'env, 'object> Eval<'env, 'object> {
                                     ]);
                                 }
                             }
+
+                            self.check_type_parameter_match(&decl, value, loc.as_ref());
 
                             Some(value)
                         }
@@ -330,22 +359,20 @@ impl<'env, 'object> Eval<'env, 'object> {
 
         let module = match self.resolve_decl_ref(name) {
             Ok(decl) => {
-                if let Some(constant_entry) = self.env.object.get_const_for_definition(decl.base, &decl.name) {
-                    match *constant_entry {
+                if let Some(ce) = self.env.object.get_const_for_definition(decl.base, &decl.name) {
+                    match *ce {
                         ConstantEntry::Expression { ref loc, .. } => {
                             self.constant_definition_error(&format!("{} is not a static module", decl.name), name.loc(), Some(loc));
                             None
                         }
-                        ConstantEntry::Module { value: value@&RubyObject::Module { .. }, .. } => {
+                        ConstantEntry::Module { ref loc, value: value@&RubyObject::Module { .. }, .. } => {
+                            self.check_type_parameter_match(&decl, value, loc.as_ref());
                             Some(value)
                         }
-                        ConstantEntry::Module { value: value@&RubyObject::Class { .. }, loc: ref expr_loc } |
-                        ConstantEntry::Module { value: value@&RubyObject::Metaclass { .. }, loc: ref expr_loc } => {
-                            self.constant_definition_error(&format!("{} is not a module", decl.name), name.loc(), expr_loc.as_ref());
+                        ConstantEntry::Module { ref loc, value } => {
+                            self.constant_definition_error(&format!("{} is not a module", decl.name), name.loc(), loc.as_ref());
                             Some(value)
                         }
-                        ConstantEntry::Module { value: &RubyObject::IClass { .. }, .. } =>
-                            panic!(),
                     }
                 } else {
                     let module = self.env.object.new_module(

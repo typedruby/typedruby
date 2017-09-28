@@ -21,6 +21,6 @@ end
 class SortedSet < Set
 end
 
-module Enumerable::[ElementType]
-  def to_set => Set::[ElementType]; end
+module Enumerable::[EnumType]
+  def to_set => Set::[EnumType]; end
 end

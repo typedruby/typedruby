@@ -1,0 +1,17 @@
+error: Mismatched type parameters
+
+        @ __ROOT__/tests/fixtures/type_parameter_mismatch.rb:1
+      1 |  module Enumerable::[Mismatched]
+                  ^^^^^^^^^^^^^^^^^^^^^^^^ here
+        @ (builtin stdlib):100
+    100 |  module Enumerable::[EnumType]
+                  ^^^^^^^^^^^^^^^^^^^^^^ previous definition here
+
+error: Mismatched type parameters
+
+        @ __ROOT__/tests/fixtures/type_parameter_mismatch.rb:4
+      4 |  class Array::[Nope]
+                 ^^^^^^^^^^^^^ here
+        @ (builtin stdlib):783
+    783 |  class Array::[ElementType] < Object
+                 ^^^^^^^^^^^^^^^^^^^^ previous definition here
