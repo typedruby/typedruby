@@ -2147,6 +2147,7 @@ end
 
 class Symbol < Object
   include Comparable
+  def to_sym => Symbol; end
 end
 
 class SystemExit < Exception
