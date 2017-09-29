@@ -1,3 +1,5 @@
+require 'stringio'
+
 module Zlib
   class GzipFile
   end
