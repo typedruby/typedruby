@@ -1,0 +1,14 @@
+error: conditional-send on a non-nilable receiver
+
+        @ __ROOT__/tests/fixtures/csend.rb:4
+      4 |    "hi"&.length
+             ^^^^ receiver
+        @ __ROOT__/tests/fixtures/csend.rb:4
+      4 |    "hi"&.length
+             ^^^^^^^^^^^^ in this invocationr
+
+error: Union member NilClass does not respond to #+
+
+        @ __ROOT__/tests/fixtures/csend.rb:5
+      5 |    x&.length + 1
+             ^^^^^^^^^ Integer | NilClass
