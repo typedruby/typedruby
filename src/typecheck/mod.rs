@@ -26,7 +26,8 @@ pub fn check<'object>(env: &Environment<'object>, method: Rc<MethodEntry<'object
         MethodImpl::IntrinsicClassNew |
         MethodImpl::IntrinsicProcCall |
         MethodImpl::IntrinsicKernelRaise |
-        MethodImpl::IntrinsicKernelIsA =>
+        MethodImpl::IntrinsicKernelIsA |
+        MethodImpl::IntrinsicRevealType =>
             { /* pass */ }
     }
 }
