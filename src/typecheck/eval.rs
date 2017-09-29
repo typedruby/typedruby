@@ -93,9 +93,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = body {
-            eval.process_node(body_node, locals).terminate(&|ty|
-                eval.compatible(eval.proto.retn, ty, None)
-            );
+            eval.process_node(body_node, locals).terminate(&|ty| {
+                eval.compatible(eval.proto.retn, ty, None);
+            });
         }
     }
 
@@ -183,9 +183,13 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
+    fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: Option<&Loc>)
+        -> bool {
         if let Err((err_to, err_from)) = self.tyenv.compatible(to, from) {
             self.type_error(to, from, err_to, err_from, loc);
+            false
+        } else {
+            true
         }
     }
 
@@ -374,6 +378,16 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     retn: self.tyenv.instance0(loc.clone(), self.env.object.Boolean),
                 })
             }
+            MethodImpl::IntrinsicRevealType => {
+                let var = self.tyenv.new_var(loc.clone());
+
+                Rc::new(Prototype{
+                    loc: loc.clone(),
+                    constraints: vec![],
+                    args: vec![Arg::Required { loc: loc.clone(), ty: var}],
+                    retn: var,
+                })
+            }
             MethodImpl::IntrinsicProcCall => panic!("should never happen"),
         }
     }
@@ -483,7 +497,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         for merge in merges {
             match merge {
                 LocalEntryMerge::Ok(_) => {},
-                LocalEntryMerge::MustMatch(_, to, from) => self.compatible(to, from, None),
+                LocalEntryMerge::MustMatch(_, to, from) => {
+                    self.compatible(to, from, None);
+                }
             }
         }
     }
@@ -697,7 +713,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     .map_locals(&|locals| locals.unextend());
 
                 self.extract_results(comp, loc)
-                    .map(|ty| self.compatible(block_return_type, ty, None))
+                    .map(|ty| { self.compatible(block_return_type, ty, None); })
             }
             (Some(proto_block_ty), None) => {
                 // intentionally calling tyenv.compatible so this
@@ -754,7 +770,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         )
     }
 
-    fn match_prototype_with_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, proto_loc: &Loc, proto_args: &[Arg<'ty, 'object>], args: &[CallArg<'ty, 'object>]) {
+    fn match_prototype_with_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, proto_loc: &Loc, proto_args: &[Arg<'ty, 'object>], args: &[CallArg<'ty, 'object>])
+        -> bool {
         let args = match proto_args.first() {
             Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
                 let tuple_elements = args.iter().map(|call_arg| match *call_arg {
@@ -773,8 +790,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
         let match_result = call::match_prototype_with_invocation(&self.tyenv, proto_args, &args);
 
-        for match_error in match_result.errors {
-            match match_error {
+        for match_error in match_result.errors.iter() {
+            match *match_error {
                 ArgError::TooFewArguments => {
                     self.error("Too few arguments supplied", &[
                         Detail::Loc("in this invocation", invoc_loc),
@@ -810,9 +827,15 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
         }
 
+        let mut ok = match_result.errors.is_empty();
+
         for (proto_ty, pass_ty) in match_result.matches {
-            self.compatible(proto_ty, pass_ty, Some(expr_loc));
+            if !self.compatible(proto_ty, pass_ty, Some(expr_loc)) {
+                ok = false;
+            }
         }
+
+        ok
     }
 
     fn process_intrinsic_kernel_is_a(&self, expr_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], locals: Locals<'ty, 'object>)
@@ -856,8 +879,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             match *constraint {
                 TypeConstraint::Unify { ref loc, a, b } =>
                     self.unify(a, b, Some(loc)),
-                TypeConstraint::Compatible { ref loc, sub, super_ } =>
-                    self.compatible(super_, sub, Some(loc)),
+                TypeConstraint::Compatible { ref loc, sub, super_ } => {
+                    self.compatible(super_, sub, Some(loc));
+                }
             }
         }
     }
@@ -874,7 +898,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Some(_) | None => (None, proto_args.as_slice()),
         };
 
-        self.match_prototype_with_invocation(expr_loc, invoc_loc, proto_loc, proto_args, args);
+        let ok = self.match_prototype_with_invocation(expr_loc, invoc_loc, proto_loc, proto_args, args);
 
         let comp = self.process_block(invoc_loc, block, locals, invokee.prototype.loc(), proto_block).and_then_comp(|(), locals| {
             match *invokee.method {
@@ -891,6 +915,16 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
             }
         });
+
+        if let MethodImpl::IntrinsicRevealType = *invokee.method {
+            if ok {
+                self.extract_results(comp.clone(), invoc_loc).map(|ty| {
+                    self.error(&format!("Revealed type is: {}", &self.tyenv.describe(ty)), &[
+                        Detail::Loc("expression", args[0].loc()),
+                    ]);
+                });
+            }
+        }
 
         self.apply_constraints(&invokee.prototype.constraints);
 
