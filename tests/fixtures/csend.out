@@ -5,7 +5,7 @@ error: conditional-send on a non-nilable receiver
              ^^^^ receiver
         @ __ROOT__/tests/fixtures/csend.rb:4
       4 |    "hi"&.length
-             ^^^^^^^^^^^^ in this invocationr
+             ^^^^^^^^^^^^ in this invocation
 
 error: Union member NilClass does not respond to #+
 
