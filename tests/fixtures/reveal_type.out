@@ -1,0 +1,14 @@
+error: Revealed type is: [Integer, String]
+
+        @ __ROOT__/tests/fixtures/reveal_type.rb:3
+      3 |    reveal_type(x)
+                         ^ expression
+
+error: Too few arguments supplied
+
+        @ __ROOT__/tests/fixtures/reveal_type.rb:4
+      4 |    reveal_type
+             ^^^^^^^^^^^ in this invocation
+        @ __ROOT__/tests/fixtures/reveal_type.rb:4
+      4 |    reveal_type
+             ^^^^^^^^^^^ for this prototype
