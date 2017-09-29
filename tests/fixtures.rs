@@ -47,7 +47,11 @@ fn read_file(path: &Path) -> String {
 }
 
 fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
+    let rootdir = env::current_dir().unwrap();
+
     let status = Command::new(typedruby_exe())
+        .arg("-I")
+        .arg(rootdir.join("definitions/lib"))
         .arg(&path)
         // Remove TERM to force termcolor to not output colors in
         // tests.
