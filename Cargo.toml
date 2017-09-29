@@ -2,6 +2,7 @@
 name = "typedruby"
 version = "0.1.0"
 authors = ["Charlie Somerville <charlie@github.com>"]
+license = "MIT"
 
 [dependencies]
 clap = "2.23"
