@@ -16,6 +16,7 @@ mkdir tmp/stage
 
 mkdir tmp/stage/bin
 
+cp LICENSE tmp/stage/
 cp -r definitions tmp/stage/
 cp gem/typedruby.gemspec tmp/stage/
 cp gem/bin/typedruby tmp/stage/bin/
