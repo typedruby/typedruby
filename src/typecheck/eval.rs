@@ -936,7 +936,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 Err(_) => {
                     self.error("conditional-send on a non-nilable receiver", &[
                         Detail::Loc("receiver", recv_type.loc()),
-                        Detail::Loc("in this invocationr", loc),
+                        Detail::Loc("in this invocation", loc),
                     ]);
                     recv_type
                 }
