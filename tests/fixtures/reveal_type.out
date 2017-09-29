@@ -4,8 +4,11 @@ error: Revealed type is: [Integer, String]
       3 |    reveal_type(x)
                          ^ expression
 
-error: Revealed expression does not have a value
+error: Too few arguments supplied
 
         @ __ROOT__/tests/fixtures/reveal_type.rb:4
-      4 |    reveal_type(raise ArgumentError)
-                         ^^^^^^^^^^^^^^^^^^^ expression
+      4 |    reveal_type
+             ^^^^^^^^^^^ in this invocation
+        @ __ROOT__/tests/fixtures/reveal_type.rb:4
+      4 |    reveal_type
+             ^^^^^^^^^^^ for this prototype
