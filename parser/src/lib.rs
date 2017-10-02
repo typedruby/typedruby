@@ -1,4 +1,4 @@
-#[cfg(feature = "regex")]
+#[cfg(feature = "ruby_regexp")]
 extern crate onig;
 
 mod ast;

@@ -44,7 +44,7 @@ cc = "1.0"
 
 [features]
 default = []
-regex = ["onig"]
+ruby_regexp = ["onig"]
 
 [dev-dependencies]
 glob = "0.2"

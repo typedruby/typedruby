@@ -4690,7 +4690,7 @@ fn parse_const_unscoped() {
 }
 
 #[test]
-#[cfg(feature = "regex")]
+#[cfg(feature = "ruby_regexp")]
 fn parse_lvar_injecting_match() {
 	let code = "/(?<match>bar)/ =~ 'bar'; match";
 	let sexp = r##"
