@@ -605,6 +605,10 @@ void lexer::set_state_expr_beg() {
   cs = lex_en_expr_beg;
 }
 
+void lexer::set_state_expr_endfn() {
+  cs = lex_en_expr_endfn;
+}
+
 void lexer::set_state_expr_endarg() {
   cs = lex_en_expr_endarg;
 }
