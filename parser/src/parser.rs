@@ -29,10 +29,10 @@ impl<'a> ParserOptions<'a> {
 }
 
 pub fn parse(source_file: Rc<SourceFile>) -> Ast {
-    parse_with_opts(source_file, ParserOptions::defaults())
+    parse_with_opts(SourceRef::Entire { file: source_file }, ParserOptions::defaults())
 }
 
-pub fn parse_with_opts(source_file: Rc<SourceFile>, opts: ParserOptions) -> Ast {
+pub fn parse_with_opts(source_file: SourceRef, opts: ParserOptions) -> Ast {
     let mut driver = Driver::new(opts, source_file);
     let node = driver.parse();
 

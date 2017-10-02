@@ -2,7 +2,7 @@
 
 extern crate libc;
 
-use ::ast::{Node, Loc, SourceFile, Diagnostic, Level, Error, Comment};
+use ::ast::{Node, Loc, SourceRef, Diagnostic, Level, Error, Comment};
 use ::builder::Builder;
 use ::parser::{ParserOptions, ParserMode};
 use self::libc::{size_t, c_char, c_int};
@@ -119,10 +119,12 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn location(&self, file: Rc<SourceFile>) -> Loc {
-        let begin = unsafe { rbtoken_get_start(self.token) };
-        let end = unsafe { rbtoken_get_end(self.token) };
-        Loc::new(file, begin, end)
+    pub fn begin_pos(&self) -> usize {
+        unsafe { rbtoken_get_start(self.token) }
+    }
+
+    pub fn end_pos(&self) -> usize {
+        unsafe { rbtoken_get_end(self.token) }
     }
 
     pub fn string(&self) -> String {
@@ -146,8 +148,8 @@ impl Token {
 
 pub struct Driver<'a> {
     ptr: *mut DriverPtr,
-    opt: ParserOptions<'a>,
-    pub current_file: Rc<SourceFile>,
+    pub(crate) opt: ParserOptions<'a>,
+    pub source_ref: SourceRef,
 }
 
 impl<'a> Drop for Driver<'a> {
@@ -157,14 +159,18 @@ impl<'a> Drop for Driver<'a> {
 }
 
 impl<'a> Driver<'a> {
-    pub fn new(opt: ParserOptions<'a>, file: Rc<SourceFile>) -> Self {
-        let source = file.source();
+    pub fn new(opt: ParserOptions<'a>, file: SourceRef) -> Self {
         let mode = match opt.mode {
             ParserMode::Program => 1,
             ParserMode::Prototype => 2,
         };
-        let ptr = unsafe { rbdriver_typedruby24_new(mode, source.as_ptr(), source.len(), &CALLBACKS) };
-        Driver { ptr: ptr, opt: opt, current_file: file.clone() }
+
+        let ptr = {
+            let source = file.source();
+            unsafe { rbdriver_typedruby24_new(mode, source.as_ptr(), source.len(), &CALLBACKS) }
+        };
+
+        Driver { ptr: ptr, opt: opt, source_ref: file }
     }
 
     pub fn parse(&mut self) -> Option<Rc<Node>> {
@@ -235,7 +241,7 @@ impl<'a> Driver<'a> {
                 diag
             };
 
-            let loc = Loc::new(self.current_file.clone(), cdiag.begin_pos, cdiag.end_pos);
+            let loc = self.source_ref.make_loc(cdiag.begin_pos, cdiag.end_pos);
             let cstr = unsafe { CStr::from_ptr(cdiag.data) }.to_str();
             let data = match cstr {
                 Ok(msg) => if msg.len() > 0 { Some(msg.to_owned()) } else { None },
