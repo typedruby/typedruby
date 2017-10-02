@@ -5,8 +5,8 @@ pub enum Or<L, R> {
 }
 
 impl<L, R> Or<L, R> {
-    pub fn map_left<F, Lt>(self, mut f: F) -> Or<Lt, R>
-        where F : FnMut(L) -> Lt
+    pub fn map_left<F, Lt>(self, f: F) -> Or<Lt, R>
+        where F : FnOnce(L) -> Lt
     {
         match self {
             Or::Left(l) => Or::Left(f(l)),
@@ -15,8 +15,8 @@ impl<L, R> Or<L, R> {
         }
     }
 
-    pub fn map_right<F, Rt>(self, mut f: F) -> Or<L, Rt>
-        where F : FnMut(R) -> Rt
+    pub fn map_right<F, Rt>(self, f: F) -> Or<L, Rt>
+        where F : FnOnce(R) -> Rt
     {
         match self {
             Or::Left(l) => Or::Left(l),
@@ -25,9 +25,9 @@ impl<L, R> Or<L, R> {
         }
     }
 
-    pub fn append<Lf, Rf>(self, other: Or<L, R>, mut lf: Lf, mut rf: Rf) -> Or<L, R>
-        where Lf : FnMut(L, L) -> L,
-              Rf : FnMut(R, R) -> R
+    pub fn append<Lf, Rf>(self, other: Or<L, R>, lf: Lf, rf: Rf) -> Or<L, R>
+        where Lf : FnOnce(L, L) -> L,
+              Rf : FnOnce(R, R) -> R
     {
         match (self, other) {
             (Or::Left(l1), Or::Left(l2)) => Or::Left(lf(l1, l2)),
@@ -48,8 +48,8 @@ impl<L, R> Or<L, R> {
 }
 
 impl<T> Or<T, T> {
-    pub fn flatten<F>(self, mut f: F) -> T
-        where F : FnMut(T, T) -> T
+    pub fn flatten<F>(self, f: F) -> T
+        where F : FnOnce(T, T) -> T
     {
         match self {
             Or::Left(val) | Or::Right(val) => val,
