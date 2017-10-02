@@ -13,6 +13,7 @@ use itertools::Itertools;
 use abstract_type;
 use abstract_type::{TypeScope, TypeNode};
 use typecheck::materialize::Materialize;
+use util::Or;
 
 pub struct Eval<'ty, 'object: 'ty> {
     env: &'ty Environment<'object>,
@@ -928,26 +929,21 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         -> Computation<'ty, 'object>
     {
         self.process_send_receiver(recv, id, locals).and_then_comp(|recv_type, locals| {
-            let tyvar = self.tyenv.new_var(recv_type.loc().clone());
-            let recv_type = match self.tyenv.unify(self.tyenv.nillable(recv_type.loc(), tyvar), recv_type) {
-                Ok(_) => {
-                    tyvar
-                }
-                Err(_) => {
-                    self.error("conditional-send on a non-nilable receiver", &[
-                        Detail::Loc("receiver", recv_type.loc()),
-                        Detail::Loc("in this invocation", loc),
-                    ]);
-                    recv_type
-                }
-            };
-
-            self.process_send_args(&id.0, arg_nodes, locals.clone()).
-                and_then_comp(|args, out_locals| {
-                Computation::divergent(
-                    self.process_send_dispatch(loc, recv_type, id, args, block, out_locals),
-                    Computation::result(self.tyenv.nil(loc.clone()), locals))
-            })
+            let split = self.tyenv.partition_by_class(recv_type, self.env.object.NilClass, recv_type.loc())
+                .map_left(|nil| Computation::result(nil, locals.clone()))
+                .map_right(|ty| {
+                    self.process_send_args(&id.0, arg_nodes, locals.clone()).
+                        and_then_comp(|args, locals| {
+                            self.process_send_dispatch(loc, ty, id, args, block, locals)
+                        })
+                });
+            if let Or::Right(_) = split {
+                self.error("Conditional-send on a non-nillable receiver", &[
+                    Detail::Loc("receiver", recv_type.loc()),
+                    Detail::Loc("in this invocation", loc),
+                ]);
+            }
+            split.flatten(Computation::divergent)
         })
     }
 
