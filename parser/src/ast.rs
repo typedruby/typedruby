@@ -28,6 +28,53 @@ impl Hash for SourceFile {
     }
 }
 
+pub enum SourceRef {
+    Entire {
+        file: Rc<SourceFile>,
+    },
+    Slice {
+        file: Rc<SourceFile>,
+        source: String,
+        byte_offset: usize,
+    }
+}
+
+impl SourceRef {
+    pub fn file(&self) -> Rc<SourceFile> {
+        match *self {
+            SourceRef::Entire { ref file } |
+            SourceRef::Slice { ref file, .. } => file.clone(),
+        }
+    }
+
+    pub fn byte_offset(&self) -> usize {
+        match *self {
+            SourceRef::Entire { .. } => 0,
+            SourceRef::Slice { byte_offset, .. } => byte_offset,
+        }
+    }
+
+    pub fn make_loc(&self, begin_pos: usize, end_pos: usize) -> Loc {
+        let file = self.file();
+        let offset = self.byte_offset();
+
+        let max = file.source.len();
+
+        Loc {
+            file: file,
+            begin_pos: min(max, begin_pos + offset),
+            end_pos: min(max, end_pos + offset),
+        }
+    }
+
+    pub fn source(&self) -> &str {
+        match *self {
+            SourceRef::Entire { ref file } => file.source(),
+            SourceRef::Slice { ref source, .. } => source,
+        }
+    }
+}
+
 pub struct SourceLine {
     pub number: usize,
     pub begin_pos: usize,
@@ -92,15 +139,6 @@ impl fmt::Debug for Loc {
 }
 
 impl Loc {
-    pub fn new(file: Rc<SourceFile>, begin: usize, end: usize) -> Self {
-        let max = file.source.len();
-        Loc {
-            file: file,
-            begin_pos: min(max, begin),
-            end_pos: min(max, end),
-        }
-    }
-
     pub fn join(&self, other: &Loc) -> Loc {
         if self.file.filename != other.file.filename {
             panic!("can't join Locs of disparate files");

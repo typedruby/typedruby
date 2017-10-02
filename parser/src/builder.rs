@@ -1,6 +1,6 @@
 use ffi::{Token, Driver};
 use std::rc::Rc;
-use ast::{Node, Id, Loc, SourceFile, RubyString, Error};
+use ast::{Node, Id, Loc, SourceRef, RubyString, Error};
 use std::collections::HashSet;
 use id_arena::IdArena;
 
@@ -194,12 +194,14 @@ impl<'a, 'd> Builder<'a, 'd> {
      * Helpers
      */
     fn loc(&self, tok: &Option<Token>) -> Loc {
-        tok.as_ref().unwrap().location(self.current_file())
+        let tok = tok.as_ref().unwrap();
+
+        self.source_ref().make_loc(tok.begin_pos(), tok.end_pos())
     }
 
     fn tok_split(&self, tok: &Option<Token>) -> (Loc, RubyString) {
         let tok = tok.as_ref().unwrap();
-        let loc = tok.location(self.current_file());
+        let loc = self.source_ref().make_loc(tok.begin_pos(), tok.end_pos());
         let s = RubyString::new(tok.bytes().as_slice());
         (loc, s)
     }
@@ -213,8 +215,8 @@ impl<'a, 'd> Builder<'a, 'd> {
         self.loc(left).join(&self.loc(right))
     }
 
-    fn current_file(&self) -> Rc<SourceFile> {
-        self.driver.current_file.clone()
+    fn source_ref(&self) -> &SourceRef {
+        &self.driver.source_ref
     }
 
     fn collection_map(&self, begin: Option<Token>, elements: &[Rc<Node>], end: Option<Token>) -> Option<Loc> {
