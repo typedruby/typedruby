@@ -727,13 +727,15 @@ class String < Object
 
   def *(Integer times) => String; end
 
-  def sub((String | Regexp) pattern, { |String s| => String } &) => String; end
+  # Ideally these would be overloaded to allow exactly one of `repl`
+  # and a block, but we don't support overloads.
+  def sub((String | Regexp) pattern, ~String repl=nil, ~{ |String s| => String } &) => String; end
 
-  def gsub((String | Regexp) pattern, { |String s| => String } &) => String; end
+  def gsub((String | Regexp) pattern, ~String repl=nil, ~{ |String s| => String } &) => String; end
 
-  def sub!((String | Regexp) pattern, { |String s| => String } &) => ~String; end
+  def sub!((String | Regexp) pattern, ~String repl=nil, ~{ |String s| => String } &) => ~String; end
 
-  def gsub!((String | Regexp) pattern, { |String s| => String } &) => ~String; end
+  def gsub!((String | Regexp) pattern, ~String repl=nil, ~{ |String s| => String } &) => ~String; end
 
   def size => Integer; end
 
@@ -767,7 +769,7 @@ class String < Object
 
   def chomp!(String suffix = "") => ~String; end
 
-  def split(String delim) => [String]; end
+  def split((String | Regexp) delim) => [String]; end
 
   def unpack(String format) => [:any]; end
 
@@ -2147,6 +2149,7 @@ end
 
 class Symbol < Object
   include Comparable
+  def to_sym => Symbol; end
 end
 
 class SystemExit < Exception
