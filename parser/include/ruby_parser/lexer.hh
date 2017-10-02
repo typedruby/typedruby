@@ -151,6 +151,7 @@ namespace ruby_parser {
     token_t advance();
 
     void set_state_expr_beg();
+    void set_state_expr_endfn();
     void set_state_expr_endarg();
     void set_state_expr_fname();
     void set_state_expr_value();

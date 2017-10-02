@@ -451,9 +451,14 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     {
                       driver.ast = $2;
                     }
-                | modePROTOTYPE f_arglist
+                | modePROTOTYPE
                     {
-                      driver.ast = $2;
+                      driver.lex.set_state_expr_endfn();
+                      driver.lex.cmdarg.clear();
+                    }
+                  f_arglist
+                    {
+                      driver.ast = $3;
                     }
 
          program: top_compstmt
