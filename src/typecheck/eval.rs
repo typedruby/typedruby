@@ -13,6 +13,7 @@ use itertools::Itertools;
 use abstract_type;
 use abstract_type::{TypeScope, TypeNode};
 use typecheck::materialize::Materialize;
+use util::Or;
 
 pub struct Eval<'ty, 'object: 'ty> {
     env: &'ty Environment<'object>,
@@ -958,6 +959,28 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         })
     }
 
+    fn process_csend(&self, loc: &Loc, recv: &Option<Rc<Node>>, id: &Id, arg_nodes: &[Rc<Node>], block: Option<BlockArg>, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        self.process_send_receiver(recv, id, locals).and_then_comp(|recv_type, locals| {
+            let split = self.tyenv.partition_by_class(recv_type, self.env.object.NilClass, recv_type.loc())
+                .map_left(|nil| Computation::result(nil, locals.clone()))
+                .map_right(|ty| {
+                    self.process_send_args(&id.0, arg_nodes, locals.clone()).
+                        and_then_comp(|args, locals| {
+                            self.process_send_dispatch(loc, ty, id, args, block, locals)
+                        })
+                });
+            if let Or::Right(_) = split {
+                self.error("Conditional-send on a non-nillable receiver", &[
+                    Detail::Loc("receiver", recv_type.loc()),
+                    Detail::Loc("in this invocation", loc),
+                ]);
+            }
+            split.flatten(Computation::divergent)
+        })
+    }
+
     fn process_yield(&self, loc: &Loc, invoc_loc: &Loc, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1353,6 +1376,17 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 };
 
                 self.process_send(loc, recv, mid, args, block, locals)
+            }
+            Node::CSend(ref loc, ref recv, ref mid, ref args) => {
+                let (block, args) = match args.last().map(|x| &**x) {
+                    Some(&Node::BlockPass(ref block_pass_loc, ref block_node)) =>
+                        (Some(BlockArg::Pass { loc: block_pass_loc.clone(), node: block_node.clone() }),
+                            &args[..args.len() - 1]),
+                    Some(_) => (None, args.as_slice()),
+                    None => (None, args.as_slice()),
+                };
+
+                self.process_csend(loc, recv, mid, args, block, locals)
             }
             Node::Block(ref loc, ref send, ref block_args, ref block_body) => {
                 if let Node::Send(ref send_loc, ref recv, ref mid, ref args) = **send {
