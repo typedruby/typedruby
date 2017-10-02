@@ -6,6 +6,7 @@ extern crate regex;
 extern crate typed_arena;
 extern crate termcolor;
 
+use std::rc::Rc;
 use std::path::PathBuf;
 use std::fs;
 use std::process;
@@ -13,8 +14,8 @@ use clap::{App, Arg};
 use typed_arena::Arena;
 use termcolor::{ColorChoice, StandardStream};
 
-mod ast;
 mod abstract_type;
+mod ast;
 mod config;
 mod define;
 mod environment;
@@ -22,10 +23,13 @@ mod errors;
 mod inflect;
 mod object;
 mod slice_util;
+mod strip;
 mod top_level;
 mod typecheck;
 mod util;
 
+use strip::strip;
+use ast::SourceFile;
 use environment::Environment;
 use errors::ErrorReporter;
 use config::Config;
@@ -65,6 +69,9 @@ fn config() -> (Config, Vec<PathBuf>) {
         .arg(Arg::with_name("warning")
             .short("w")
             .help("Turns on additional warnings, like Ruby's -w"))
+        .arg(Arg::with_name("strip")
+            .long("strip")
+            .help("Strip source files of type annotations in place without type checking"))
         .arg(Arg::with_name("source")
             .index(1)
             .multiple(true)
@@ -93,6 +100,8 @@ fn config() -> (Config, Vec<PathBuf>) {
 
     config.warning = matches.is_present("warning");
 
+    config.strip = matches.is_present("strip");
+
     if let Some(files_iter) = matches.values_of("source") {
         files.extend(files_iter.map(PathBuf::from));
     }
@@ -102,6 +111,14 @@ fn config() -> (Config, Vec<PathBuf>) {
 
 fn main() {
     let (config, files) = config();
+
+    if config.strip {
+        for file in files {
+            println!("{}", strip(Rc::new(SourceFile::open(file).unwrap())).unwrap());
+        }
+        return;
+    }
+
     let errors = ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto));
     let arena = Arena::new();
     let env = Environment::new(&arena, Box::new(errors), config);
