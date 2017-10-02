@@ -4,8 +4,8 @@ use ast::{Node, Id, Loc, SourceFile, RubyString, Error};
 use std::collections::HashSet;
 use id_arena::IdArena;
 
-#[cfg(feature = "regex")]
-use onig::Regex;
+#[cfg(feature = "ruby_regexp")]
+use onig::Regex as OnigRegex;
 
 pub struct Builder<'a, 'd: 'a> {
     pub driver: &'a mut Driver<'d>,
@@ -283,11 +283,11 @@ impl<'a, 'd> Builder<'a, 'd> {
     /*
      * Oniguruma methods (ENABLED)
      */
-    #[cfg(feature = "regex")]
-    fn parse_static_regexp(&mut self, loc: &Loc, parts: &[Rc<Node>]) -> Option<Regex> {
+    #[cfg(feature = "ruby_regexp")]
+    fn parse_static_regexp(&mut self, loc: &Loc, parts: &[Rc<Node>]) -> Option<OnigRegex> {
         let mut st = String::new();
         if build_static_string(&mut st, parts) {
-            match Regex::new(&st) {
+            match OnigRegex::new(&st) {
                 Ok(re) => Some(re),
                 Err(err) => {
                     self.driver.error_with_data(
@@ -300,7 +300,7 @@ impl<'a, 'd> Builder<'a, 'd> {
         }
     }
 
-    #[cfg(feature = "regex")]
+    #[cfg(feature = "ruby_regexp")]
     fn declare_static_regexp(&mut self, node: &Node) -> bool {
         if let &Node::Regexp(ref loc, ref parts, _) = node {
             match self.parse_static_regexp(loc, parts) {
@@ -317,7 +317,7 @@ impl<'a, 'd> Builder<'a, 'd> {
         }
     }
 
-    #[cfg(feature = "regex")]
+    #[cfg(feature = "ruby_regexp")]
     fn check_static_regexp(&mut self, loc: &Loc, parts: &[Rc<Node>]) -> bool {
         self.parse_static_regexp(loc, parts).is_some()
     }
@@ -325,12 +325,12 @@ impl<'a, 'd> Builder<'a, 'd> {
     /*
      * Oniguruma methods (DISABLED)
      */
-    #[cfg(not(feature = "regex"))]
+    #[cfg(not(feature = "ruby_regexp"))]
     fn check_static_regexp(&mut self, _: &Loc, _: &[Rc<Node>]) -> bool {
         true
     }
 
-    #[cfg(not(feature = "regex"))]
+    #[cfg(not(feature = "ruby_regexp"))]
     fn declare_static_regexp(&mut self, node: &Node) -> bool {
         if let &Node::Regexp(_, ref parts, _) = node {
             let mut st = Vec::new();
