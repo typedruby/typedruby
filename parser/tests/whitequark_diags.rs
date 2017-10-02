@@ -12,7 +12,8 @@ ruby_parser::ParserOptions {
   emit_file_vars_as_literals: false,
   emit_lambda: true,
   emit_procarg0: true,
-  declare_env: &["foo", "bar", "baz"]
+  declare_env: &["foo", "bar", "baz"],
+  mode: ruby_parser::ParserMode::Program,
 };
 
 #[test]

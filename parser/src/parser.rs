@@ -39,6 +39,5 @@ pub fn parse_with_opts(source_file: SourceRef, opts: ParserOptions) -> Ast {
     Ast {
         node: node,
         diagnostics: driver.diagnostics(),
-        comments: driver.comments(),
     }
 }

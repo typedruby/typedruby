@@ -146,6 +146,49 @@ impl Token {
     }
 }
 
+pub struct Comments<'d, 'a: 'd> {
+    driver: &'d Driver<'a>,
+}
+
+impl<'d, 'a> Comments<'d, 'a> {
+    pub fn len(&self) -> usize {
+        unsafe { rbdriver_comment_get_length(self.driver.ptr) }
+    }
+
+    pub fn at(&self, idx: usize) -> Comment {
+        let begin_pos = unsafe { rbdriver_comment_get_begin(self.driver.ptr, idx) };
+        let end_pos = unsafe { rbdriver_comment_get_end(self.driver.ptr, idx) };
+
+        let mut string: *const u8 = ptr::null();
+        let string_length = unsafe { rbdriver_comment_get_string(self.driver.ptr, idx, &mut string) };
+
+        let contents = unsafe {
+            String::from(str::from_utf8_unchecked(slice::from_raw_parts(string, string_length)))
+        };
+
+        Comment {
+            loc: self.driver.source_ref.make_loc(begin_pos, end_pos),
+            contents: contents,
+        }
+    }
+
+    pub fn before(&self, pos: usize) -> Option<Comment> {
+        let mut i = self.len();
+
+        while i > 0 {
+            i = i - 1;
+
+            let comment = self.at(i);
+
+            if comment.loc.end_pos <= pos {
+                return Some(comment);
+            }
+        }
+
+        None
+    }
+}
+
 pub struct Driver<'a> {
     ptr: *mut DriverPtr,
     pub(crate) opt: ParserOptions<'a>,
@@ -194,11 +237,15 @@ impl<'a> Driver<'a> {
         builder.nodes.get(ast).cloned()
     }
 
-    fn diagnostic(&mut self, level: Level, err: Error, loc: Loc, data: *const c_char) {
+    pub fn diagnostic(&mut self, level: Level, err: Error, loc: Loc, data: Option<&str>) {
+        let data = data.map(|data| CString::new(data.to_owned()).unwrap());
+
+        let ptr = data.as_ref().map(|cstr| cstr.as_ptr()).unwrap_or(ptr::null());
+
         let diag = CDiagnostic {
             level: level,
             class: err,
-            data: data,
+            data: ptr,
             begin_pos: loc.begin_pos,
             end_pos: loc.end_pos,
         };
@@ -209,13 +256,7 @@ impl<'a> Driver<'a> {
     }
 
     pub fn error(&mut self, err: Error, loc: Loc) {
-        self.diagnostic(Level::Error, err, loc, ptr::null())
-    }
-
-    #[allow(dead_code)]
-    pub fn error_with_data(&mut self, err: Error, loc: Loc, data: &str) {
-        let data = CString::new(data.to_owned()).unwrap();
-        self.diagnostic(Level::Error, err, loc, data.as_ptr())
+        self.diagnostic(Level::Error, err, loc, None)
     }
 
     pub fn is_in_definition(&self) -> bool {
@@ -244,8 +285,8 @@ impl<'a> Driver<'a> {
             let loc = self.source_ref.make_loc(cdiag.begin_pos, cdiag.end_pos);
             let cstr = unsafe { CStr::from_ptr(cdiag.data) }.to_str();
             let data = match cstr {
-                Ok(msg) => if msg.len() > 0 { Some(msg.to_owned()) } else { None },
-                Err(_) => None,
+                Ok(msg) => if msg.len() > 0 { Some(msg.to_owned()) } else { println!("None because zero length"); None },
+                Err(_) => { println!("None because error"); None },
             };
 
             vec.push(Diagnostic {
@@ -259,27 +300,7 @@ impl<'a> Driver<'a> {
         vec
     }
 
-    pub fn comments(&self) -> Vec<Comment> {
-        let len = unsafe { rbdriver_comment_get_length(self.ptr) };
-        let mut vec = Vec::with_capacity(len);
-
-        for index in 0..len {
-            let begin_pos = unsafe { rbdriver_comment_get_begin(self.ptr, index) };
-            let end_pos = unsafe { rbdriver_comment_get_end(self.ptr, index) };
-
-            let mut string: *const u8 = ptr::null();
-            let string_length = unsafe { rbdriver_comment_get_string(self.ptr, index, &mut string) };
-
-            let contents = unsafe {
-                String::from(str::from_utf8_unchecked(slice::from_raw_parts(string, string_length)))
-            };
-
-            vec.push(Comment {
-                loc: Loc::new(self.current_file.clone(), begin_pos, end_pos),
-                contents: contents,
-            });
-        }
-
-        vec
+    pub fn comments(&self) -> Comments {
+        Comments { driver: self }
     }
 }
