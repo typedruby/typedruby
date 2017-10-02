@@ -483,7 +483,6 @@ impl Node {
 pub struct Ast {
     pub node: Option<Rc<Node>>,
     pub diagnostics: Vec<Diagnostic>,
-    pub comments: Vec<Comment>,
 }
 
 fn line_map_from_source(source: &str) -> Vec<usize> {
