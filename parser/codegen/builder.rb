@@ -2,9 +2,6 @@
 
 require 'optparse'
 
-RE_BODY = /struct builder \{(.*?)\}/m
-RE_FUNC = /foreign_ptr\(\*(\w+)\)\((.*?)\);/
-
 CHECK_COOKIES = false
 TYPE_CONVERSION = {
   "foreign_ptr" => "NodeId",
@@ -107,13 +104,13 @@ end
 
 def get_definitions(filename)
   cpp = File.read(filename)
-  builder = RE_BODY.match(cpp)
+  builder = /struct builder \{(.*?)\}/m.match(cpp)
 
   abort("failed to match 'struct builder' body in #{filename}") unless builder
   defs = builder[1].split("\n").map { |d| d.strip }.reject { |d| d.empty? }
 
   defs.map do |d|
-    match = RE_FUNC.match(d)
+    match = /foreign_ptr\(\*(\w+)\)\((.*?)\);/.match(d)
     abort("bad definition: '#{d}'") unless match
     method, args = match[1], match[2]
 
