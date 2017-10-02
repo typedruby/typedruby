@@ -456,7 +456,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                       driver.lex.set_state_expr_endfn();
                       driver.lex.cmdarg.clear();
                     }
-                  f_arglist
+                  f_arglist opt_terms
                     {
                       driver.ast = $3;
                     }
