@@ -2,11 +2,18 @@ use ast::*;
 use ffi::Driver;
 use std::rc::Rc;
 
+#[derive(Copy,Clone)]
+pub enum ParserMode {
+    Program,
+    Prototype,
+}
+
 pub struct ParserOptions<'a> {
     pub emit_file_vars_as_literals: bool,
     pub emit_lambda: bool,
     pub emit_procarg0: bool,
     pub declare_env: &'a [&'a str],
+    pub mode: ParserMode,
 }
 
 impl<'a> ParserOptions<'a> {
@@ -16,17 +23,18 @@ impl<'a> ParserOptions<'a> {
             emit_lambda: true,
             emit_procarg0: true,
             declare_env: &[],
+            mode: ParserMode::Program,
         }
     }
 }
 
 pub fn parse(source_file: Rc<SourceFile>) -> Ast {
-    parse_with_opts(source_file, &ParserOptions::defaults())
+    parse_with_opts(source_file, ParserOptions::defaults())
 }
 
-pub fn parse_with_opts(source_file: Rc<SourceFile>, opts: &ParserOptions) -> Ast {
-    let mut driver = Driver::new(source_file.clone());
-    let node = driver.parse(&opts);
+pub fn parse_with_opts(source_file: Rc<SourceFile>, opts: ParserOptions) -> Ast {
+    let mut driver = Driver::new(opts, source_file);
+    let node = driver.parse();
 
     Ast {
         node: node,
