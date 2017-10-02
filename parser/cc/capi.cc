@@ -2,10 +2,11 @@
 #include <cstdio>
 
 ruby_parser::typedruby24*
-rbdriver_typedruby24_new(const char* source_ptr, size_t source_length, const ruby_parser::builder* builder)
+rbdriver_typedruby24_new(ruby_parser::parser_mode mode, const char* source_ptr, size_t source_length, const ruby_parser::builder* builder)
 {
 	std::string source { source_ptr, source_length };
-	return new ruby_parser::typedruby24(source, *builder);
+
+	return new ruby_parser::typedruby24(mode, source, *builder);
 }
 
 void

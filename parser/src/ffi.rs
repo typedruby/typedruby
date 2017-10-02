@@ -4,8 +4,8 @@ extern crate libc;
 
 use ::ast::{Node, Loc, SourceFile, Diagnostic, Level, Error, Comment};
 use ::builder::Builder;
-use ::parser::ParserOptions;
-use self::libc::{size_t, c_char};
+use ::parser::{ParserOptions, ParserMode};
+use self::libc::{size_t, c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::vec::Vec;
 use std::rc::Rc;
@@ -94,7 +94,7 @@ struct CDiagnostic {
 include!(concat!(env!("OUT_DIR"), "/ffi_builder.rs"));
 
 extern "C" {
-    fn rbdriver_typedruby24_new(source: *const u8, source_length: size_t, builder: *const BuilderInterface) -> *mut DriverPtr;
+    fn rbdriver_typedruby24_new(mode: c_int, source: *const u8, source_length: size_t, builder: *const BuilderInterface) -> *mut DriverPtr;
     fn rbdriver_typedruby24_free(driver: *mut DriverPtr);
     fn rbdriver_parse(driver: *mut DriverPtr, builder: *mut Builder) -> NodeId;
     fn rbdriver_in_definition(driver: *const DriverPtr) -> bool;
@@ -144,38 +144,43 @@ impl Token {
     }
 }
 
-pub struct Driver {
+pub struct Driver<'a> {
     ptr: *mut DriverPtr,
+    opt: ParserOptions<'a>,
     pub current_file: Rc<SourceFile>,
 }
 
-impl Drop for Driver {
+impl<'a> Drop for Driver<'a> {
     fn drop(&mut self) {
         unsafe { rbdriver_typedruby24_free(self.ptr); }
     }
 }
 
-impl Driver {
-    pub fn new(file: Rc<SourceFile>) -> Self {
+impl<'a> Driver<'a> {
+    pub fn new(opt: ParserOptions<'a>, file: Rc<SourceFile>) -> Self {
         let source = file.source();
-        let ptr = unsafe { rbdriver_typedruby24_new(source.as_ptr(), source.len(), &CALLBACKS) };
-        Driver { ptr: ptr, current_file: file.clone() }
+        let mode = match opt.mode {
+            ParserMode::Program => 1,
+            ParserMode::Prototype => 2,
+        };
+        let ptr = unsafe { rbdriver_typedruby24_new(mode, source.as_ptr(), source.len(), &CALLBACKS) };
+        Driver { ptr: ptr, opt: opt, current_file: file.clone() }
     }
 
-    pub fn parse(&mut self, opt: &ParserOptions) -> Option<Rc<Node>> {
-        for var in opt.declare_env.iter() {
+    pub fn parse(&mut self) -> Option<Rc<Node>> {
+        for var in self.opt.declare_env.iter() {
             self.declare(var);
         }
 
         let driver = self.ptr;
 
         let mut builder = Builder {
-            driver: self,
             cookie: 12345678,
-            magic_literals: opt.emit_file_vars_as_literals,
-            emit_lambda: opt.emit_lambda,
-            emit_procarg0: opt.emit_procarg0,
+            magic_literals: self.opt.emit_file_vars_as_literals,
+            emit_lambda: self.opt.emit_lambda,
+            emit_procarg0: self.opt.emit_procarg0,
             nodes: IdArena::new(),
+            driver: self,
         };
 
         let ast = unsafe { rbdriver_parse(driver, &mut builder) };

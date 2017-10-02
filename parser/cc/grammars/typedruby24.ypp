@@ -32,6 +32,8 @@ using namespace std::string_literals;
 // if any of these token values are changed here, the header must be updated
 // as well.
 %token <token>
+  modePROGRAM            1
+  modePROTOTYPE          2
   kCLASS              1001
   kMODULE             1002
   kDEF                1003
@@ -223,6 +225,7 @@ using namespace std::string_literals;
   opt_block_param
   primary
   primary_value
+  program
   qsymbols
   qwords
   regexp
@@ -412,20 +415,50 @@ void parser::error(const std::string &msg) {
 }
 
 int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
-	auto token = driver.lex.advance();
-	int token_type = static_cast<int>(token->type());
-	assert(token_type >= 0);
-	lval->token = token;
-	return token_type;
+  token_t token = nullptr;
+
+  if (driver.emitted_mode_pseudotoken) {
+    token = driver.lex.advance();
+  } else {
+    driver.emitted_mode_pseudotoken = true;
+
+    ruby_parser::token_type token_type;
+    switch (driver.mode) {
+      case parser_mode::PROGRAM:
+        token_type = ruby_parser::token_type::modePROGRAM;
+        break;
+      case parser_mode::PROTOTYPE:
+        token_type = ruby_parser::token_type::modePROTOTYPE;
+        break;
+      default:
+        abort();
+    }
+
+    token = driver.lex.alloc_token(token_type, 0, 0, "");
+  }
+
+  int token_type = static_cast<int>(token->type());
+  assert(token_type >= 0);
+  lval->token = token;
+  return token_type;
 }
 
 }}} // namespace
 } // %code
 
 %%
+           start: modePROGRAM program
+                    {
+                      driver.ast = $2;
+                    }
+                | modePROTOTYPE f_arglist
+                    {
+                      driver.ast = $2;
+                    }
+
          program: top_compstmt
                     {
-                      driver.ast = $1;
+                      $$ = $1;
                     }
 
     top_compstmt: top_stmts opt_terms

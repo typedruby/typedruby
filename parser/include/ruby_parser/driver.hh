@@ -123,8 +123,15 @@ public:
 	}
 };
 
+enum class parser_mode : int {
+	PROGRAM = 1,
+	PROTOTYPE = 2,
+};
+
 class base_driver {
 public:
+	parser_mode mode;
+	bool emitted_mode_pseudotoken;
 	diagnostics_t diagnostics;
 	const builder& build;
 	lexer lex;
@@ -134,7 +141,7 @@ public:
 	size_t def_level;
 	foreign_ptr ast;
 
-	base_driver(ruby_version version, const std::string& source, const struct builder& builder);
+	base_driver(ruby_version version, parser_mode mode, const std::string& source, const struct builder& builder);
 	virtual ~base_driver() {}
 	virtual foreign_ptr parse(self_ptr self) = 0;
 
@@ -161,7 +168,7 @@ public:
 
 class typedruby24 : public base_driver {
 public:
-	typedruby24(const std::string& source, const struct builder& builder);
+	typedruby24(parser_mode mode, const std::string& source, const struct builder& builder);
 	virtual foreign_ptr parse(self_ptr self);
 	~typedruby24() {}
 };

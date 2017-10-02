@@ -162,6 +162,11 @@ namespace ruby_parser {
     bool is_declared(const std::string& identifier) const;
 
     optional_size dedent_level();
+
+    template<typename... Args>
+    decltype(auto) alloc_token(Args&&... args) {
+      return mempool.alloc(std::forward<Args>(args)...);
+    }
   };
 }
 

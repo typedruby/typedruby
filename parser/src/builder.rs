@@ -7,8 +7,8 @@ use id_arena::IdArena;
 #[cfg(feature = "regex")]
 use onig::Regex;
 
-pub struct Builder<'a> {
-    pub driver: &'a mut Driver,
+pub struct Builder<'a, 'd: 'a> {
+    pub driver: &'a mut Driver<'d>,
     pub magic_literals: bool,
     pub emit_lambda: bool,
     pub emit_procarg0: bool,
@@ -189,7 +189,7 @@ fn call_type_for_dot(dot: Option<Token>) -> CallType {
     }
 }
 
-impl<'a> Builder<'a> {
+impl<'a, 'd> Builder<'a, 'd> {
     /*
      * Helpers
      */
