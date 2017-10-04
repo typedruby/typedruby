@@ -59,6 +59,8 @@ module Kernel
   def eql?(Object other) => Boolean; end
 
   def <=>(Object other) => ~Integer; end
+
+  def test(String command, String file1, ~String file2 = nil) => :any; end
 end
 
 class ENVClass
@@ -123,6 +125,10 @@ module Enumerable::[EnumType]
   def drop(Integer n) => [EnumType]; end
 
   def count => Integer; end
+
+  def each_slice(Integer slice_size, { |[EnumType] elements| => :any } &) => nil; end
+
+  def flat_map[ProjectedType]({ |EnumType element| => [ProjectedType] } &) => [ProjectedType]; end
 end
 
 class IO < Object
@@ -1768,6 +1774,8 @@ class Socket < BasicSocket
   AI_PASSIVE = nil
   IPV6_RECVPKTINFO = nil
   IPV6_PKTINFO = nil
+
+  def self.gethostname => String; end
 end
 
 class Socket::Option < Object
