@@ -8,7 +8,7 @@ use environment::Environment;
 use errors::Detail;
 use typed_arena::Arena;
 use typecheck::call;
-use typecheck::call::{CallArg, ArgError};
+use typecheck::call::ArgError;
 use itertools::Itertools;
 use abstract_type;
 use abstract_type::{TypeScope, TypeNode};
@@ -53,7 +53,7 @@ struct Invokee<'ty, 'object: 'ty> {
 enum Lhs<'ty, 'object: 'ty> {
     Lvar(Loc, String),
     Simple(Loc, TypeRef<'ty, 'object>),
-    Send(Loc, TypeRef<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
+    Send(Loc, TypeRef<'ty, 'object>, Id, Vec<SplatArg<'ty, 'object>>),
 }
 
 impl<'ty, 'object> Eval<'ty, 'object> {
@@ -519,7 +519,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         comp
     }
 
-    fn process_call_arg(&self, node: &Node, locals: Locals<'ty, 'object>) -> EvalResult<'ty, 'object, CallArg<'ty, 'object>> {
+    fn process_call_arg(&self, node: &Node, locals: Locals<'ty, 'object>) -> EvalResult<'ty, 'object, SplatArg<'ty, 'object>> {
         match *node {
             Node::Splat(_, ref n) => {
                 let splat_node = n.as_ref().expect("splat in call arg must have node");
@@ -527,21 +527,18 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 self.eval_node(splat_node, locals).map(|ty|
                     match *self.tyenv.prune(ty) {
                         Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
-                            CallArg::Splat(node.loc().clone(), type_parameters[0])
+                            SplatArg::Splat(self.tyenv.update_loc(type_parameters[0], node.loc().clone()))
                         }
                         _ => {
                             self.error("Cannot splat non-array", &[
                                 Detail::Loc(&self.tyenv.describe(ty), splat_node.loc()),
                             ]);
-                            CallArg::Splat(node.loc().clone(), self.tyenv.new_var(node.loc().clone()))
+                            SplatArg::Splat(self.tyenv.new_var(node.loc().clone()))
                         }
                     }
                 )
             }
-            _ =>
-                self.eval_node(node, locals).map(|ty|
-                    CallArg::Pass(node.loc().clone(), ty)
-                ),
+            _ => self.eval_node(node, locals).map(SplatArg::Value),
         }
     }
 
@@ -754,7 +751,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn process_send_args(&self, invoc_loc: &Loc, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, Vec<CallArg<'ty, 'object>>>
+        -> EvalResult<'ty, 'object, Vec<SplatArg<'ty, 'object>>>
     {
         arg_nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |result, arg_node|
             result.and_then(|mut args, locals| {
@@ -771,20 +768,20 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         )
     }
 
-    fn match_prototype_with_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, proto_loc: &Loc, proto_args: &[Arg<'ty, 'object>], args: &[CallArg<'ty, 'object>])
+    fn match_prototype_with_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, proto_loc: &Loc, proto_args: &[Arg<'ty, 'object>], args: &[SplatArg<'ty, 'object>])
         -> bool {
         let args = match proto_args.first() {
             Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
                 let tuple_elements = args.iter().map(|call_arg| match *call_arg {
-                    CallArg::Pass(_, ty) => SplatArg::Value(ty),
-                    CallArg::Splat(_, ty) => SplatArg::Splat(ty),
+                    SplatArg::Value(ty) => SplatArg::Value(ty),
+                    SplatArg::Splat(ty) => SplatArg::Splat(ty),
                 }).collect::<Vec<_>>();
 
                 let args_loc = args[0].loc().join(args.last().unwrap().loc());
 
                 let arg_ty = self.tuple_from_elements(args_loc.clone(), &tuple_elements);
 
-                vec![CallArg::Pass(args_loc, arg_ty)]
+                vec![SplatArg::Value(arg_ty)]
             }
             _ => args.to_vec(),
         };
@@ -839,7 +836,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         ok
     }
 
-    fn process_intrinsic_kernel_is_a(&self, expr_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], locals: Locals<'ty, 'object>)
+    fn process_intrinsic_kernel_is_a(&self, expr_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[SplatArg<'ty, 'object>], locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         let no_intrinsic = |locals| {
@@ -847,8 +844,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Computation::result(boolean_ty, locals)
         };
 
-        let (arg_loc, arg_ty) = if let Some(&CallArg::Pass(ref arg_loc, arg_ty)) = args.first() {
-            (arg_loc, self.tyenv.prune(arg_ty))
+        let arg_ty = if let Some(&SplatArg::Value(arg_ty)) = args.first() {
+            self.tyenv.prune(arg_ty)
         } else {
             return no_intrinsic(locals);
         };
@@ -866,7 +863,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 Computation::result(retn_ty, locals)
             };
 
-            self.tyenv.partition_by_class(invokee.recv_ty, instance_class, arg_loc)
+            self.tyenv.partition_by_class(invokee.recv_ty, instance_class, arg_ty.loc())
                 .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
                 .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
                 .flatten(Computation::divergent)
@@ -887,7 +884,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
+    fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[SplatArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         let ref proto_loc = invokee.prototype.loc;
@@ -932,7 +929,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         comp.terminate_break_scope()
     }
 
-    fn process_send_dispatch(&self, loc: &Loc, recv_type: TypeRef<'ty, 'object>, id: &Id, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
+    fn process_send_dispatch(&self, loc: &Loc, recv_type: TypeRef<'ty, 'object>, id: &Id, args: Vec<SplatArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         self.resolve_invocation(recv_type, id)
@@ -1107,7 +1104,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 let rhs_ty = self.tyenv.new_var(loc.clone());
 
                 let mut args = args.clone();
-                args.push(CallArg::Pass(loc.clone(), rhs_ty));
+                args.push(SplatArg::Value(rhs_ty));
 
                 let comp = self.process_send_dispatch(loc, recv_ty,  &id, args, None, locals);
 
@@ -1220,7 +1217,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Lhs::Send(_, recv_ty, ref id, ref args) => {
                 let mut args = args.clone();
-                args.push(CallArg::Pass(rty.loc().clone(), rty));
+                args.push(SplatArg::Value(rty));
 
                 let id = Id(id.0.clone(), id.1.clone() + "=");
 
@@ -1631,7 +1628,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                     lhs_ty.and_then(|lhs_ty, locals| {
                         self.eval_node(rhs, locals).and_then(|rhs_ty, locals| {
-                            let args = vec![CallArg::Pass(rhs.loc().clone(), rhs_ty)];
+                            let args = vec![SplatArg::Value(rhs_ty)];
                             let op_comp = self.process_send_dispatch(loc, lhs_ty, op, args, None, locals);
                             self.extract_results(op_comp, loc)
                         })
@@ -1794,7 +1791,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                                     Some(scrut_ty) => self.extract_results(cond_comp, when_expr.loc()).and_then_comp(|cond_ty, locals| {
                                         self.process_send_dispatch(when_expr.loc(), cond_ty,
                                             &Id(when_expr.loc().clone(), "===".to_owned()),
-                                            vec![CallArg::Pass(scrut_ty.loc().clone(), scrut_ty)],
+                                            vec![SplatArg::Value(scrut_ty)],
                                             None, locals)
                                     }),
                                     None => cond_comp,
