@@ -772,14 +772,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         -> bool {
         let args = match proto_args.first() {
             Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
-                let tuple_elements = args.iter().map(|call_arg| match *call_arg {
-                    SplatArg::Value(ty) => SplatArg::Value(ty),
-                    SplatArg::Splat(ty) => SplatArg::Splat(ty),
-                }).collect::<Vec<_>>();
-
                 let args_loc = args[0].loc().join(args.last().unwrap().loc());
 
-                let arg_ty = self.tuple_from_elements(args_loc.clone(), &tuple_elements);
+                let arg_ty = self.tuple_from_elements(args_loc.clone(), args);
 
                 vec![SplatArg::Value(arg_ty)]
             }
