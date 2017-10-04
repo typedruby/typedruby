@@ -968,10 +968,19 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug,Clone)]
 pub enum SplatArg<'ty, 'object: 'ty> {
     Value(TypeRef<'ty, 'object>),
     Splat(TypeRef<'ty, 'object>),
+}
+
+impl<'ty, 'object> SplatArg<'ty, 'object> {
+    pub fn loc(&self) -> &Loc {
+        match *self {
+            SplatArg::Value(ref ty) |
+            SplatArg::Splat(ref ty) => ty.loc(),
+        }
+    }
 }
 
 pub enum KwsplatResult<'ty, 'object: 'ty> {
