@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, TupleElement, TypeConstraint};
+use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, SplatArg, TypeConstraint};
 use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -211,21 +211,21 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     match *ty {
                         Type::Tuple { ref lead, ref splat, ref post, .. } => {
                             for lead_ty in lead {
-                                elements.push(TupleElement::Value(*lead_ty));
+                                elements.push(SplatArg::Value(*lead_ty));
                             }
 
                             if let Some(splat_ty) = *splat {
-                                elements.push(TupleElement::Splat(splat_ty));
+                                elements.push(SplatArg::Splat(splat_ty));
                             }
 
                             for post_ty in post {
-                                elements.push(TupleElement::Value(*post_ty));
+                                elements.push(SplatArg::Value(*post_ty));
                             }
                         }
                         Type::Instance { class, ref type_parameters, .. }
                             if class == self.env.object.array_class()
                         => {
-                            elements.push(TupleElement::Splat(type_parameters[0]));
+                            elements.push(SplatArg::Splat(type_parameters[0]));
                         }
                         _ => {
                             self.error("Cannot splat non-array", &[
@@ -234,7 +234,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                         }
                     }
                 } else {
-                    elements.push(TupleElement::Value(ty));
+                    elements.push(SplatArg::Value(ty));
                 }
             });
         }
@@ -244,7 +244,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }).into_computation()
     }
 
-    fn tuple_from_elements(&self, loc: Loc, elements: &[TupleElement<'ty, 'object>]) -> TypeRef<'ty, 'object> {
+    fn tuple_from_elements(&self, loc: Loc, elements: &[SplatArg<'ty, 'object>]) -> TypeRef<'ty, 'object> {
         use slice_util::View;
 
         assert!(!elements.is_empty());
@@ -254,12 +254,12 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         let mut lead_types = Vec::new();
         let mut post_types = Vec::new();
 
-        while let Some(&TupleElement::Value(ty)) = v.first() {
+        while let Some(&SplatArg::Value(ty)) = v.first() {
             lead_types.push(ty);
             v.consume_front();
         }
 
-        while let Some(&TupleElement::Value(ty)) = v.last() {
+        while let Some(&SplatArg::Value(ty)) = v.last() {
             post_types.push(ty);
             v.consume_back();
         }
@@ -776,8 +776,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         let args = match proto_args.first() {
             Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
                 let tuple_elements = args.iter().map(|call_arg| match *call_arg {
-                    CallArg::Pass(_, ty) => TupleElement::Value(ty),
-                    CallArg::Splat(_, ty) => TupleElement::Splat(ty),
+                    CallArg::Pass(_, ty) => SplatArg::Value(ty),
+                    CallArg::Splat(_, ty) => SplatArg::Splat(ty),
                 }).collect::<Vec<_>>();
 
                 let args_loc = args[0].loc().join(args.last().unwrap().loc());

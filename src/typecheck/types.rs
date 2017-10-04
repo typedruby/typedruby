@@ -311,14 +311,14 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 let from_elems = self.elements_from_tuple(from);
                 let mut from_elems = View(&from_elems);
 
-                while let Some(&TupleElement::Value(to_ty)) = to_elems.first() {
+                while let Some(&SplatArg::Value(to_ty)) = to_elems.first() {
                     match from_elems.first() {
-                        Some(&TupleElement::Value(from_ty)) => {
+                        Some(&SplatArg::Value(from_ty)) => {
                             to_elems.consume_front();
                             from_elems.consume_front();
                             self.compatible(to_ty, from_ty)?;
                         }
-                        Some(&TupleElement::Splat(from_ty)) => {
+                        Some(&SplatArg::Splat(from_ty)) => {
                             to_elems.consume_front();
                             self.compatible(to_ty, from_ty)?;
                         }
@@ -328,14 +328,14 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     }
                 }
 
-                while let Some(&TupleElement::Value(to_ty)) = to_elems.last() {
+                while let Some(&SplatArg::Value(to_ty)) = to_elems.last() {
                     match from_elems.last() {
-                        Some(&TupleElement::Value(from_ty)) => {
+                        Some(&SplatArg::Value(from_ty)) => {
                             to_elems.consume_back();
                             from_elems.consume_back();
                             self.compatible(to_ty, from_ty)?;
                         }
-                        Some(&TupleElement::Splat(from_ty)) => {
+                        Some(&SplatArg::Splat(from_ty)) => {
                             to_elems.consume_front();
                             self.compatible(to_ty, from_ty)?;
                         }
@@ -345,15 +345,15 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     }
                 }
 
-                if let Some(&TupleElement::Splat(from_ty)) = from_elems.first() {
-                    if let Some(&TupleElement::Splat(to_ty)) = to_elems.first() {
+                if let Some(&SplatArg::Splat(from_ty)) = from_elems.first() {
+                    if let Some(&SplatArg::Splat(to_ty)) = to_elems.first() {
                         to_elems.consume_front();
                         from_elems.consume_front();
                         self.compatible(to_ty, from_ty)?;
                     } else {
                         return Err((to, from));
                     }
-                } else if let Some(&TupleElement::Splat(_)) = to_elems.first() {
+                } else if let Some(&SplatArg::Splat(_)) = to_elems.first() {
                     to_elems.consume_front();
                 }
 
@@ -953,13 +953,13 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         }
     }
 
-    fn elements_from_tuple(&self, tuple: TypeRef<'ty, 'object>) -> Vec<TupleElement<'ty, 'object>> {
+    fn elements_from_tuple(&self, tuple: TypeRef<'ty, 'object>) -> Vec<SplatArg<'ty, 'object>> {
         if let Type::Tuple { ref lead, splat, ref post, .. } = *self.prune(tuple) {
             let mut elements = Vec::new();
 
-            elements.extend(lead.iter().map(|&ty| TupleElement::Value(ty)));
-            elements.extend(splat.iter().map(|&ty| TupleElement::Splat(ty)));
-            elements.extend(post.iter().map(|&ty| TupleElement::Value(ty)));
+            elements.extend(lead.iter().map(|&ty| SplatArg::Value(ty)));
+            elements.extend(splat.iter().map(|&ty| SplatArg::Splat(ty)));
+            elements.extend(post.iter().map(|&ty| SplatArg::Value(ty)));
 
             elements
         } else {
@@ -969,7 +969,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 }
 
 #[derive(Debug)]
-pub enum TupleElement<'ty, 'object: 'ty> {
+pub enum SplatArg<'ty, 'object: 'ty> {
     Value(TypeRef<'ty, 'object>),
     Splat(TypeRef<'ty, 'object>),
 }
