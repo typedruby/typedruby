@@ -1,5 +1,8 @@
 extern crate difference;
 extern crate glob;
+extern crate regex;
+#[macro_use]
+extern crate lazy_static;
 
 use difference::{Changeset, Difference};
 use glob::glob;
@@ -9,6 +12,7 @@ use std::io::Read;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use regex::{Regex, Captures};
 
 // Path to our executables
 fn bin_dir() -> PathBuf {
@@ -46,6 +50,23 @@ fn read_file(path: &Path) -> String {
     contents
 }
 
+lazy_static! {
+    static ref STDLIB_LINE_NUMBER_RE: Regex = Regex::new(r"(?m)^ {8}@ \(builtin stdlib\):(\d+)\n\s+(\d+) \|").unwrap();
+    static ref NUMBER_RE: Regex = Regex::new(r"\d+").unwrap();
+}
+
+fn clean_stdlib_line_numbers(output: &str) -> String {
+    STDLIB_LINE_NUMBER_RE.replace_all(output, |caps: &Captures|
+        NUMBER_RE.replace_all(&caps[0], "###").into_owned()).into_owned()
+}
+
+fn clean_typecheck_output(output: &str, rootdir: &Path) -> String {
+    let output = output.replace(
+        rootdir.to_str().expect("rootdir to be a valid utf-8 path"), "__ROOT__");
+
+    clean_stdlib_line_numbers(&output)
+}
+
 fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
     let rootdir = env::current_dir().unwrap();
 
@@ -70,10 +91,10 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
         status.status.code()
             .expect("process to exit cleanly with a status code"));
 
-    let rootdir = env::current_dir().unwrap();
     let stderr = String::from_utf8(status.stderr)
-        .expect("Output was invalid UTF-8")
-        .replace(rootdir.to_str().expect("invalid utf-8 in path"), "__ROOT__");
+        .expect("output to be utf-8");
+
+    let stderr = clean_typecheck_output(&stderr, &rootdir);
 
     if stderr != expected {
         return Some(Mismatch{

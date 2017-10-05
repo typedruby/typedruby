@@ -3,8 +3,8 @@ error: Could not match types:
         @ __ROOT__/tests/fixtures/generic_method_constraints.rb:3
       3 |  def f[T : Numeric](T x, T y) => T
                      ^^^^^^^ Numeric, with:
-        @ (builtin stdlib):680
-    680 |    def <(Numeric other) => Boolean; end
+        @ (builtin stdlib):###
+    ### |    def <(Numeric other) => Boolean; end
                                      ^^^^^^^ Boolean
 
         - arising from an attempt to match:
