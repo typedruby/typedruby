@@ -62,73 +62,75 @@ impl<'ty, 'object> LocalEntry<'ty, 'object> {
 }
 
 #[derive(Debug)]
-pub struct Locals_<'ty, 'object: 'ty> {
+struct LocalScope<'ty, 'object: 'ty> {
     parent: Option<Locals<'ty, 'object>>,
     vars: TreeMap<String, LocalEntry<'ty, 'object>>,
     autopin: usize,
 }
 
 #[derive(Clone)]
-pub struct Locals<'ty, 'object: 'ty>(Rc<Locals_<'ty, 'object>>);
+pub struct Locals<'ty, 'object: 'ty> {
+    sc: Rc<LocalScope<'ty, 'object>>,
+}
 
 impl<'ty, 'object> fmt::Debug for Locals<'ty, 'object> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.0.fmt(f)
+        self.sc.fmt(f)
     }
 }
 
 impl<'ty, 'object> Locals<'ty, 'object> {
-    fn new_(l: Locals_<'ty, 'object>) -> Locals<'ty, 'object>{
-        Locals(Rc::new(l))
+    fn new_(l: LocalScope<'ty, 'object>) -> Locals<'ty, 'object>{
+        Locals { sc: Rc::new(l) }
     }
 
     pub fn new() -> Locals<'ty, 'object> {
-        Self::new_(Locals_ { parent: None, vars: TreeMap::new(), autopin: 0 })
+        Self::new_(LocalScope { parent: None, vars: TreeMap::new(), autopin: 0 })
     }
 
     pub fn extend(&self) -> Locals<'ty, 'object> {
-        Self::new_(Locals_ { parent: Some(self.clone()), vars: TreeMap::new(), autopin: 0 })
+        Self::new_(LocalScope { parent: Some(self.clone()), vars: TreeMap::new(), autopin: 0 })
     }
 
     pub fn unextend(&self) -> Locals<'ty, 'object> {
-        self.0.parent.as_ref().expect("unbalanced extend/unextend (parent is None)").clone()
+        self.sc.parent.as_ref().expect("unbalanced extend/unextend (parent is None)").clone()
     }
 
     pub fn autopin(&self) -> Locals<'ty, 'object> {
-        Self::new_(Locals_ { parent: self.0.parent.clone(), vars: self.0.vars.clone(), autopin: self.0.autopin + 1 })
+        Self::new_(LocalScope { parent: self.sc.parent.clone(), vars: self.sc.vars.clone(), autopin: self.sc.autopin + 1 })
     }
 
     pub fn unautopin(&self) -> Locals<'ty, 'object> {
-        Self::new_(Locals_ { parent: self.0.parent.clone(), vars: self.0.vars.clone(), autopin: self.0.autopin - 1 })
+        Self::new_(LocalScope { parent: self.sc.parent.clone(), vars: self.sc.vars.clone(), autopin: self.sc.autopin - 1 })
     }
 
     fn update_parent(&self, parent: Option<Locals<'ty, 'object>>) -> Locals<'ty, 'object> {
-        Self::new_(Locals_ { parent: parent, vars: self.0.vars.clone(), autopin: self.0.autopin })
+        Self::new_(LocalScope { parent: parent, vars: self.sc.vars.clone(), autopin: self.sc.autopin })
     }
 
     fn update_vars(&self, vars: TreeMap<String, LocalEntry<'ty, 'object>>) -> Locals<'ty, 'object> {
-        Self::new_(Locals_ { parent: self.0.parent.clone(), vars: vars, autopin: self.0.autopin })
+        Self::new_(LocalScope { parent: self.sc.parent.clone(), vars: vars, autopin: self.sc.autopin })
     }
 
     fn get_var_direct(&self, name: &str) -> LocalEntry<'ty, 'object> {
-        match self.0.vars.get(name) {
+        match self.sc.vars.get(name) {
             Some(entry) => entry.clone(),
             None => LocalEntry::Unbound,
         }
     }
 
     fn insert_var(&self, name: String, entry: LocalEntry<'ty, 'object>) -> Locals<'ty, 'object> {
-        self.update_vars(self.0.vars.insert(name, entry))
+        self.update_vars(self.sc.vars.insert(name, entry))
     }
 
     fn update_upvar<F>(&self, name: &str, f: &F) -> (LocalEntry<'ty, 'object>, Option<Locals<'ty, 'object>>)
         where F: Fn(&LocalEntry<'ty, 'object>) -> (LocalEntry<'ty, 'object>)
     {
-        if let Some(local) = self.0.vars.get(name) {
+        if let Some(local) = self.sc.vars.get(name) {
             let new_local = f(local);
 
             (new_local.clone(), Some(self.insert_var(name.to_owned(), new_local)))
-        } else if let Some(ref parent) = self.0.parent {
+        } else if let Some(ref parent) = self.sc.parent {
             let (x, parent) = parent.update_upvar(name, f);
 
             (x, parent.map(|parent| self.update_parent(Some(parent))))
@@ -138,7 +140,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     }
 
     pub fn lookup(&self, name: &str) -> (LocalEntry<'ty, 'object>, Locals<'ty, 'object>) {
-        if let Some(local) = self.0.vars.get(name) {
+        if let Some(local) = self.sc.vars.get(name) {
             (local.clone(), self.clone())
         } else {
             let updated = self.update_upvar(name, &|local|
@@ -162,9 +164,9 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     }
 
     pub fn assign(&self, name: String, ty: TypeRef<'ty, 'object>) -> (Option<TypeRef<'ty, 'object>>, Locals<'ty, 'object>) {
-        if let Some(local) = self.0.vars.get(&name) {
+        if let Some(local) = self.sc.vars.get(&name) {
             return match *local {
-                LocalEntry::Bound(_) if self.0.autopin == 0 => (None, self.insert_var(name, LocalEntry::Bound(ty))),
+                LocalEntry::Bound(_) if self.sc.autopin == 0 => (None, self.insert_var(name, LocalEntry::Bound(ty))),
                 LocalEntry::Bound(ty) => (Some(ty), self.insert_var(name, LocalEntry::Pinned(ty))),
                 LocalEntry::Pinned(ty) => (Some(ty), self.clone()),
                 LocalEntry::ConditionallyPinned(ty) => (Some(ty), self.clone()),
@@ -172,7 +174,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
             }
         }
 
-        if let Some(ref parent) = self.0.parent {
+        if let Some(ref parent) = self.sc.parent {
             let (entry, locals) = parent.update_upvar(&name, &|local| {
                 match *local {
                     LocalEntry::Bound(ty) |
@@ -203,11 +205,11 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     }
 
     pub fn merge(&self, other: Locals<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Locals<'ty, 'object> {
-        assert!(self.0.autopin == other.0.autopin);
+        assert!(self.sc.autopin == other.sc.autopin);
 
         let mut names = HashSet::new();
-        names.extend(self.0.vars.keys());
-        names.extend(other.0.vars.keys());
+        names.extend(self.sc.vars.keys());
+        names.extend(other.sc.vars.keys());
 
         let vars = names.into_iter().fold(TreeMap::new(), |map, name| {
             let merge = self.get_var_direct(name).merge(other.get_var_direct(name), tyenv);
