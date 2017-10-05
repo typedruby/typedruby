@@ -8,10 +8,11 @@ license = "MIT"
 clap = "2.23"
 immutable-map = "0.1.2"
 itertools = "0.6"
+lazy_static = "0.2"
 regex = "0.2"
 ruby_parser = { path = "parser" }
-typed-arena = "1.2.0"
 termcolor = "0.3"
+typed-arena = "1.2.0"
 
 [dev-dependencies]
 glob = "0.2"
