@@ -227,8 +227,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         post_types.reverse();
 
         let splat_type = if !v.is_empty() {
-            // first tuple remaining at this point must be a splat:
-            panic!("splats unsupported for now");
+            v.into_iter().map(|splat_arg| match *splat_arg {
+                SplatArg::Value(ty) => ty,
+                SplatArg::Splat(ty) => ty,
+            }).fold1(|a, b| self.tyenv.union(&loc, a, b))
         } else {
             None
         };
