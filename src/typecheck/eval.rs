@@ -195,51 +195,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn process_array_tuple(&self, loc: &Loc, exprs: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
-        let mut elements = Vec::new();
-        let mut result = EvalResult::Ok((), locals);
-
-        for expr in exprs {
-            let (splat, node) = match **expr {
-                Node::Splat(_, Some(ref node)) => (true, node),
-                _ => (false, expr),
-            };
-
-            result = result.and_then(|(), locals| {
-                self.eval_node(node, locals)
-            }).map(|ty| {
-                if splat {
-                    match *ty {
-                        Type::Tuple { ref lead, ref splat, ref post, .. } => {
-                            for lead_ty in lead {
-                                elements.push(SplatArg::Value(*lead_ty));
-                            }
-
-                            if let Some(splat_ty) = *splat {
-                                elements.push(SplatArg::Splat(splat_ty));
-                            }
-
-                            for post_ty in post {
-                                elements.push(SplatArg::Value(*post_ty));
-                            }
-                        }
-                        Type::Instance { class, ref type_parameters, .. }
-                            if class == self.env.object.array_class()
-                        => {
-                            elements.push(SplatArg::Splat(type_parameters[0]));
-                        }
-                        _ => {
-                            self.error("Cannot splat non-array", &[
-                                Detail::Loc(&self.tyenv.describe(ty), node.loc()),
-                            ]);
-                        }
-                    }
-                } else {
-                    elements.push(SplatArg::Value(ty));
-                }
-            });
-        }
-
-        result.map(|()| {
+        self.process_splat_args(exprs, locals, |loc| {
+            self.warning("Useless expression", &[
+                Detail::Loc("Sub-expression never evaluates to a result", loc),
+            ]);
+        }).map(|elements| {
             self.tuple_from_elements(loc.clone(), &elements)
         }).into_computation()
     }
@@ -519,27 +479,60 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         comp
     }
 
-    fn process_call_arg(&self, node: &Node, locals: Locals<'ty, 'object>) -> EvalResult<'ty, 'object, SplatArg<'ty, 'object>> {
+    fn process_splat_arg(&self, node: &Node, mut splat_args: Vec<SplatArg<'ty, 'object>>, locals: Locals<'ty, 'object>)
+        -> EvalResult<'ty, 'object, Vec<SplatArg<'ty, 'object>>>
+    {
         match *node {
-            Node::Splat(_, ref n) => {
-                let splat_node = n.as_ref().expect("splat in call arg must have node");
-
-                self.eval_node(splat_node, locals).map(|ty|
+            Node::Splat(_, ref inner) => {
+                self.eval_node(inner.as_ref().expect("splat inner node to be Some"), locals).map(|ty| {
                     match *self.tyenv.prune(ty) {
                         Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
-                            SplatArg::Splat(self.tyenv.update_loc(type_parameters[0], node.loc().clone()))
+                            let splat_ty = self.tyenv.update_loc(type_parameters[0], node.loc().clone());
+                            splat_args.push(SplatArg::Splat(splat_ty));
+                        }
+                        Type::Tuple { ref lead, ref splat, ref post, .. } => {
+                            for lead_ty in lead {
+                                splat_args.push(SplatArg::Value(*lead_ty));
+                            }
+
+                            if let Some(splat_ty) = *splat {
+                                splat_args.push(SplatArg::Splat(splat_ty));
+                            }
+
+                            for post_ty in post {
+                                splat_args.push(SplatArg::Value(*post_ty));
+                            }
                         }
                         _ => {
                             self.error("Cannot splat non-array", &[
-                                Detail::Loc(&self.tyenv.describe(ty), splat_node.loc()),
+                                Detail::Loc(&self.tyenv.describe(ty), node.loc()),
                             ]);
-                            SplatArg::Splat(self.tyenv.new_var(node.loc().clone()))
+
+                            splat_args.push(SplatArg::Splat(self.tyenv.new_var(node.loc().clone())));
                         }
                     }
-                )
+
+                    splat_args
+                })
             }
-            _ => self.eval_node(node, locals).map(SplatArg::Value),
+             _ => {
+                self.eval_node(node, locals).map(|ty| {
+                    splat_args.push(SplatArg::Value(ty));
+                    splat_args
+                })
+            }
         }
+    }
+
+    fn process_splat_args<F>(&self, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>, useless: F)
+        -> EvalResult<'ty, 'object, Vec<SplatArg<'ty, 'object>>>
+        where F: Fn(&Loc)
+    {
+        arg_nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |result, arg_node|
+            result.and_then(|args, locals| {
+                self.process_splat_arg(arg_node, args, locals).if_not(|| useless(arg_node.loc()))
+            })
+        )
     }
 
     fn prototype_from_procish_type(&self, procish_ty: TypeRef<'ty, 'object>)
@@ -753,19 +746,12 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn process_send_args(&self, invoc_loc: &Loc, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Vec<SplatArg<'ty, 'object>>>
     {
-        arg_nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |result, arg_node|
-            result.and_then(|mut args, locals| {
-                self.process_call_arg(arg_node, locals).and_then(|call_arg, locals| {
-                    args.push(call_arg);
-                    EvalResult::Ok(args, locals)
-                }).if_not(|| {
-                    self.warning("Useless invocation", &[
-                        Detail::Loc("here", invoc_loc),
-                        Detail::Loc("argument never evaluates to a result", arg_node.loc()),
-                    ]);
-                })
-            })
-        )
+        self.process_splat_args(arg_nodes, locals, |loc| {
+            self.warning("Useless invocation", &[
+                Detail::Loc("here", invoc_loc),
+                Detail::Loc("argument never evaluates to a result", loc),
+            ]);
+        })
     }
 
     fn match_prototype_with_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, proto_loc: &Loc, proto_args: &[Arg<'ty, 'object>], args: &[SplatArg<'ty, 'object>])
