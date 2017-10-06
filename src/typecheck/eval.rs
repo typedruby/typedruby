@@ -456,6 +456,13 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         merged_locals
     }
 
+    fn uncertain_locals(&self, uncertain: Locals<'ty, 'object>, since: Locals<'ty, 'object>) -> Locals<'ty, 'object> {
+        let mut merges = Vec::new();
+        let merged_locals = uncertain.uncertain(since, &self.tyenv, &mut merges);
+        self.process_local_merges(merges);
+        merged_locals
+    }
+
     fn process_local_merges(&self, merges: Vec<LocalEntryMerge<'ty, 'object>>) {
         for merge in merges {
             match merge {
@@ -1705,11 +1712,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 })
             }
             Node::Rescue(ref loc, ref body, ref resbodies, ref else_) => {
-                let body_comp = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.autopin())
-                    .map_locals(&|l| l.unautopin());
+                let body_comp = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.clone());
 
                 let uncertain_comp = body_comp.seq(&|ty, l|
-                    Computation::result(ty, self.merge_locals(locals.clone(), l)));
+                    Computation::result(ty, self.uncertain_locals(l, locals.clone())));
 
                 let rescue_comps = resbodies.iter().map(|resbody| {
                     self.seq_process(uncertain_comp.clone(), resbody)
