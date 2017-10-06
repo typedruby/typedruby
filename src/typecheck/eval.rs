@@ -481,34 +481,72 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         comp
     }
 
+    fn process_splat_type(&self, loc: &Loc, ty: TypeRef<'ty, 'object>, mut splat_args: Vec<SplatArg<'ty, 'object>>)
+        -> Vec<SplatArg<'ty, 'object>>
+    {
+        match *self.tyenv.prune(ty) {
+            Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
+                let splat_ty = self.tyenv.update_loc(type_parameters[0], loc.clone());
+                splat_args.push(SplatArg::Splat(splat_ty));
+            }
+            Type::Tuple { ref lead, ref splat, ref post, .. } => {
+                splat_args.extend(
+                    lead.iter().cloned().map(SplatArg::Value)
+                        .chain(splat.clone().map(SplatArg::Splat))
+                        .chain(post.iter().cloned().map(SplatArg::Value)));
+            }
+            Type::Union { ref types, .. } => {
+                // TODO - save/restore the type state around this degrade to
+                // instance so that we can roll back and not unnecessarily
+                // degrade types to their instance versions if it's not useful
+                // to do so.
+
+                let array_element_tys = types.iter().cloned()
+                    .map(|ty| self.tyenv.degrade_to_instance(ty))
+                    .map(|ty| {
+                        match *self.tyenv.prune(ty) {
+                            Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
+                                Ok(type_parameters[0])
+                            }
+                            _ => Err(ty)
+                        }
+                    });
+
+                let union_element_ty = array_element_tys
+                    .fold1(|a, b|
+                        a.and_then(|a|
+                            b.map(|b|
+                                self.tyenv.union(loc, a, b)))).unwrap()
+                    .unwrap_or_else(|err_ty| {
+                        self.error("Cannot splat union type:", &[
+                            Detail::Loc(&format!("{}, because", self.tyenv.describe(ty)), ty.loc()),
+                            Detail::Loc(&format!("{} is not an array type", self.tyenv.describe(err_ty)), err_ty.loc()),
+                        ]);
+
+                        self.tyenv.new_var(loc.clone())
+                    });
+
+                splat_args.push(SplatArg::Splat(union_element_ty));
+            }
+            _ => {
+                self.error("Cannot splat non-array", &[
+                    Detail::Loc(&self.tyenv.describe(ty), loc),
+                ]);
+
+                splat_args.push(SplatArg::Splat(self.tyenv.new_var(loc.clone())));
+            }
+        }
+
+        splat_args
+    }
+
     fn process_splat_arg(&self, node: &Node, mut splat_args: Vec<SplatArg<'ty, 'object>>, locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Vec<SplatArg<'ty, 'object>>>
     {
         match *node {
             Node::Splat(_, ref inner) => {
-                self.eval_node(inner, locals).map(|ty| {
-                    match *self.tyenv.prune(ty) {
-                        Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
-                            let splat_ty = self.tyenv.update_loc(type_parameters[0], node.loc().clone());
-                            splat_args.push(SplatArg::Splat(splat_ty));
-                        }
-                        Type::Tuple { ref lead, ref splat, ref post, .. } => {
-                            splat_args.extend(
-                                lead.iter().cloned().map(SplatArg::Value)
-                                    .chain(splat.clone().map(SplatArg::Splat))
-                                    .chain(post.iter().cloned().map(SplatArg::Value)));
-                        }
-                        _ => {
-                            self.error("Cannot splat non-array", &[
-                                Detail::Loc(&self.tyenv.describe(ty), node.loc()),
-                            ]);
-
-                            splat_args.push(SplatArg::Splat(self.tyenv.new_var(node.loc().clone())));
-                        }
-                    }
-
-                    splat_args
-                })
+                self.eval_node(inner, locals).map(|ty|
+                    self.process_splat_type(node.loc(), ty, splat_args))
             }
              _ => {
                 self.eval_node(node, locals).map(|ty| {
