@@ -1322,10 +1322,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 Computation::result(self.tyenv.nil(loc.clone()), locals)
             }
             Node::True(ref loc) => {
-                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.TrueClass), locals)
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Boolean), locals)
             }
             Node::False(ref loc) => {
-                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.FalseClass), locals)
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Boolean), locals)
             }
             Node::Self_(ref loc) => {
                 Computation::result(self.tyenv.update_loc(self.type_context.self_type(&self.tyenv, loc.clone()), loc.clone()), locals)
