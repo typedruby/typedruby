@@ -1,7 +1,6 @@
 use std::fmt;
 use std::rc::Rc;
-use std::collections::HashSet;
-use immutable_map::TreeMap;
+use std::collections::{HashMap, HashSet};
 
 use typecheck::types::{TypeEnv, TypeRef};
 
@@ -62,9 +61,62 @@ impl<'ty, 'object> LocalEntry<'ty, 'object> {
 }
 
 #[derive(Debug)]
+struct LocalNode<'ty, 'object: 'ty> {
+    name: String,
+    entry: LocalEntry<'ty, 'object>,
+    next: LocalTable<'ty, 'object>,
+}
+
+#[derive(Debug,Clone)]
+struct LocalTable<'ty, 'object: 'ty> {
+    node: Option<Rc<LocalNode<'ty, 'object>>>,
+}
+
+impl<'ty, 'object> LocalTable<'ty, 'object> {
+    pub fn new() -> Self {
+        LocalTable { node: None }
+    }
+
+    fn extend(&self, node: LocalNode<'ty, 'object>) -> Self {
+        LocalTable { node: Some(Rc::new(node)) }
+    }
+
+    pub fn insert(&self, name: String, entry: LocalEntry<'ty, 'object>) -> Self {
+        self.extend(LocalNode { name: name, entry: entry, next: self.clone() })
+    }
+
+    pub fn get(&self, name: &str) -> Option<LocalEntry<'ty, 'object>> {
+        let mut tbl = self;
+
+        while let Some(ref node) = tbl.node {
+            if node.name == name {
+                return Some(node.entry.clone());
+            }
+
+            tbl = &node.next;
+        }
+
+        None
+    }
+
+    pub fn current_map(&self) -> HashMap<String, LocalEntry<'ty, 'object>> {
+        let mut map = HashMap::new();
+        let mut tbl = self;
+
+        while let Some(ref node) = tbl.node {
+            map.insert(node.name.clone(), node.entry.clone());
+
+            tbl = &node.next;
+        }
+
+        map
+    }
+}
+
+#[derive(Debug)]
 struct LocalScope<'ty, 'object: 'ty> {
     parent: Option<Locals<'ty, 'object>>,
-    vars: TreeMap<String, LocalEntry<'ty, 'object>>,
+    vars: LocalTable<'ty, 'object>,
     autopin: usize,
 }
 
@@ -85,11 +137,11 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     }
 
     pub fn new() -> Locals<'ty, 'object> {
-        Self::new_(LocalScope { parent: None, vars: TreeMap::new(), autopin: 0 })
+        Self::new_(LocalScope { parent: None, vars: LocalTable::new(), autopin: 0 })
     }
 
     pub fn extend(&self) -> Locals<'ty, 'object> {
-        Self::new_(LocalScope { parent: Some(self.clone()), vars: TreeMap::new(), autopin: 0 })
+        Self::new_(LocalScope { parent: Some(self.clone()), vars: LocalTable::new(), autopin: 0 })
     }
 
     pub fn unextend(&self) -> Locals<'ty, 'object> {
@@ -108,15 +160,12 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         Self::new_(LocalScope { parent: parent, vars: self.sc.vars.clone(), autopin: self.sc.autopin })
     }
 
-    fn update_vars(&self, vars: TreeMap<String, LocalEntry<'ty, 'object>>) -> Locals<'ty, 'object> {
+    fn update_vars(&self, vars: LocalTable<'ty, 'object>) -> Locals<'ty, 'object> {
         Self::new_(LocalScope { parent: self.sc.parent.clone(), vars: vars, autopin: self.sc.autopin })
     }
 
     fn get_var_direct(&self, name: &str) -> LocalEntry<'ty, 'object> {
-        match self.sc.vars.get(name) {
-            Some(entry) => entry.clone(),
-            None => LocalEntry::Unbound,
-        }
+        self.sc.vars.get(name).unwrap_or(LocalEntry::Unbound)
     }
 
     fn insert_var(&self, name: String, entry: LocalEntry<'ty, 'object>) -> Locals<'ty, 'object> {
@@ -124,7 +173,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     }
 
     fn update_upvar<F>(&self, name: &str, f: &F) -> (LocalEntry<'ty, 'object>, Option<Locals<'ty, 'object>>)
-        where F: Fn(&LocalEntry<'ty, 'object>) -> (LocalEntry<'ty, 'object>)
+        where F: Fn(LocalEntry<'ty, 'object>) -> (LocalEntry<'ty, 'object>)
     {
         if let Some(local) = self.sc.vars.get(name) {
             let new_local = f(local);
@@ -144,7 +193,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
             (local.clone(), self.clone())
         } else {
             let updated = self.update_upvar(name, &|local|
-                match *local {
+                match local {
                     LocalEntry::Unbound => LocalEntry::Unbound,
                     LocalEntry::Bound(ty) => LocalEntry::Pinned(ty),
                     LocalEntry::Pinned(ty) => LocalEntry::Pinned(ty),
@@ -165,7 +214,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
 
     pub fn assign(&self, name: String, ty: TypeRef<'ty, 'object>) -> (Option<TypeRef<'ty, 'object>>, Locals<'ty, 'object>) {
         if let Some(local) = self.sc.vars.get(&name) {
-            return match *local {
+            return match local {
                 LocalEntry::Bound(_) if self.sc.autopin == 0 => (None, self.insert_var(name, LocalEntry::Bound(ty))),
                 LocalEntry::Bound(ty) => (Some(ty), self.insert_var(name, LocalEntry::Pinned(ty))),
                 LocalEntry::Pinned(ty) => (Some(ty), self.clone()),
@@ -176,7 +225,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
 
         if let Some(ref parent) = self.sc.parent {
             let (entry, locals) = parent.update_upvar(&name, &|local| {
-                match *local {
+                match local {
                     LocalEntry::Bound(ty) |
                     LocalEntry::Pinned(ty) |
                     LocalEntry::ConditionallyPinned(ty) => LocalEntry::Pinned(ty),
@@ -207,11 +256,14 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     pub fn merge(&self, other: Locals<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Locals<'ty, 'object> {
         assert!(self.sc.autopin == other.sc.autopin);
 
-        let mut names = HashSet::new();
-        names.extend(self.sc.vars.keys());
-        names.extend(other.sc.vars.keys());
+        let self_map = self.sc.vars.current_map();
+        let other_map = other.sc.vars.current_map();
 
-        let vars = names.into_iter().fold(TreeMap::new(), |map, name| {
+        let mut names = HashSet::new();
+        names.extend(self_map.keys());
+        names.extend(other_map.keys());
+
+        let vars = names.into_iter().fold(LocalTable::new(), |tbl, name| {
             let merge = self.get_var_direct(name).merge(other.get_var_direct(name), tyenv);
 
             merges.push(merge.clone());
@@ -219,7 +271,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
             match merge {
                 LocalEntryMerge::Ok(entry) |
                 LocalEntryMerge::MustMatch(entry, ..) =>
-                    map.insert(name.clone(), entry)
+                    tbl.insert(name.clone(), entry)
             }
         });
 
