@@ -484,7 +484,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     {
         match *node {
             Node::Splat(_, ref inner) => {
-                self.eval_node(inner.as_ref().expect("splat inner node to be Some"), locals).map(|ty| {
+                self.eval_node(inner, locals).map(|ty| {
                     match *self.tyenv.prune(ty) {
                         Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
                             let splat_ty = self.tyenv.update_loc(type_parameters[0], node.loc().clone());
@@ -1122,7 +1122,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 for node in nodes {
                     let (splat, node) = match **node {
-                        Node::Splat(_, Some(ref node)) => (true, node),
+                        Node::SplatLhs(_, Some(ref node)) => (true, node),
                         _ => (false, node),
                     };
 
