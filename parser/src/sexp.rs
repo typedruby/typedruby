@@ -808,6 +808,12 @@ impl Sexp for Node {
             (&Node::Splat(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("splat");
                 let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                builder.finish()
+            }
+            (&Node::SplatLhs(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("splat");
+                let _ = builder.field(__self_0);
                 if __self_1.is_some() {
                     let _ = builder.field(__self_1);
                 }

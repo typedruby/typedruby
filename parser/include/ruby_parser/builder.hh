@@ -108,6 +108,7 @@ struct builder {
 	foreign_ptr(*self_)(self_ptr builder, const token* tok);
 	foreign_ptr(*shadowarg)(self_ptr builder, const token* name);
 	foreign_ptr(*splat)(self_ptr builder, const token* star, foreign_ptr arg);
+	foreign_ptr(*splat_mlhs)(self_ptr builder, const token* star, foreign_ptr arg);
 	foreign_ptr(*string)(self_ptr builder, const token* string_);
 	foreign_ptr(*string_compose)(self_ptr builder, const token* begin, const node_list* parts, const token* end);
 	foreign_ptr(*string_internal)(self_ptr builder, const token* string_);
