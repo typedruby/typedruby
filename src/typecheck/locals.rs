@@ -111,6 +111,14 @@ impl<'ty, 'object> LocalTable<'ty, 'object> {
 
         map
     }
+
+    pub fn ref_eq(&self, other: &LocalTable<'ty, 'object>) -> bool {
+        fn key<'ty, 'object>(tbl: &LocalTable<'ty, 'object>) -> Option<*const LocalNode<'ty, 'object>> {
+            tbl.node.as_ref().map(|rc| Rc::as_ref(rc) as *const _)
+        }
+
+        key(self) == key(other)
+    }
 }
 
 #[derive(Debug)]
@@ -276,5 +284,34 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         });
 
         self.update_vars(vars)
+    }
+
+    pub fn uncertain(&self, since: Locals<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Locals<'ty, 'object> {
+        let mut bindings = Vec::new();
+
+        let mut tbl = &self.sc.vars;
+
+        loop {
+            if tbl.ref_eq(&since.sc.vars) {
+                break;
+            }
+
+            let binding = tbl.node.as_ref().expect("node to be Some because we have not hit 'since' yet");
+            bindings.push((binding.name.clone(), binding.entry.clone()));
+            tbl = &binding.next;
+        }
+
+        bindings.into_iter().rev().fold(since, |locals, (name, entry)| {
+            let before_entry = locals.get_var_direct(&name);
+            let merge = before_entry.merge(entry, tyenv);
+
+            merges.push(merge.clone());
+
+            match merge {
+                LocalEntryMerge::Ok(entry) |
+                LocalEntryMerge::MustMatch(entry, ..) =>
+                    locals.update_vars(locals.sc.vars.insert(name, entry))
+            }
+        })
     }
 }
