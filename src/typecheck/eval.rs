@@ -493,17 +493,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                             splat_args.push(SplatArg::Splat(splat_ty));
                         }
                         Type::Tuple { ref lead, ref splat, ref post, .. } => {
-                            for lead_ty in lead {
-                                splat_args.push(SplatArg::Value(*lead_ty));
-                            }
-
-                            if let Some(splat_ty) = *splat {
-                                splat_args.push(SplatArg::Splat(splat_ty));
-                            }
-
-                            for post_ty in post {
-                                splat_args.push(SplatArg::Value(*post_ty));
-                            }
+                            splat_args.extend(
+                                lead.iter().cloned().map(SplatArg::Value)
+                                    .chain(splat.clone().map(SplatArg::Splat))
+                                    .chain(post.iter().cloned().map(SplatArg::Value)));
                         }
                         _ => {
                             self.error("Cannot splat non-array", &[
