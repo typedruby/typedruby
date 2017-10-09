@@ -710,15 +710,6 @@ impl Sexp for Node {
                 };
                 builder.finish()
             }
-            (&Node::Prototype(ref __self_0, ref __self_1, ref __self_2,
-                              ref __self_3),) => {
-                let mut builder = __arg_0.new_node("prototype");
-                let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
-                let _ = builder.field(__self_3);
-                builder.finish()
-            }
             (&Node::Rational(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("rational");
                 let _ = builder.field(__self_0);
@@ -953,17 +944,19 @@ impl Sexp for Node {
                 let _ = builder.field(__self_2);
                 builder.finish()
             }
-            (&Node::TypedArg(ref __self_0, ref __self_1, ref __self_2),) => {
-                let mut builder = __arg_0.new_node("typed-arg");
-                let _ = builder.field(__self_0);
-                let _ = builder.field(__self_1);
-                let _ = builder.field(__self_2);
-                builder.finish()
-            }
             (&Node::TyProc(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("ty-proc");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
+                builder.finish()
+            }
+            (&Node::TyPrototype(ref __self_0, ref __self_1, ref __self_2,
+                              ref __self_3),) => {
+                let mut builder = __arg_0.new_node("ty-prototype");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
+                let _ = builder.field(__self_3);
                 builder.finish()
             }
             (&Node::TyReturnSig(ref __self_0, ref __self_1),) => {
@@ -981,6 +974,13 @@ impl Sexp for Node {
                 let mut builder = __arg_0.new_node("ty-tuple");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
+                builder.finish()
+            }
+            (&Node::TyTypedArg(ref __self_0, ref __self_1, ref __self_2),) => {
+                let mut builder = __arg_0.new_node("ty-typed-arg");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                let _ = builder.field(__self_2);
                 builder.finish()
             }
             (&Node::Undef(ref __self_0, ref __self_1),) => {

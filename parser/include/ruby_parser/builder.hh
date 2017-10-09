@@ -96,7 +96,6 @@ struct builder {
 	foreign_ptr(*postexe)(self_ptr builder, const token* begin, foreign_ptr node, const token* rbrace);
 	foreign_ptr(*preexe)(self_ptr builder, const token* begin, foreign_ptr node, const token* rbrace);
 	foreign_ptr(*procarg0)(self_ptr builder, foreign_ptr arg);
-	foreign_ptr(*prototype)(self_ptr builder, foreign_ptr genargs, foreign_ptr args, foreign_ptr return_type);
 	foreign_ptr(*range_exclusive)(self_ptr builder, foreign_ptr lhs, const token* oper, foreign_ptr rhs);
 	foreign_ptr(*range_inclusive)(self_ptr builder, foreign_ptr lhs, const token* oper, foreign_ptr rhs);
 	foreign_ptr(*rational)(self_ptr builder, const token* tok);
@@ -135,11 +134,12 @@ struct builder {
 	foreign_ptr(*tr_nillable)(self_ptr builder, const token* tilde, foreign_ptr type_);
 	foreign_ptr(*tr_or)(self_ptr builder, foreign_ptr a, foreign_ptr b);
 	foreign_ptr(*tr_proc)(self_ptr builder, const token* begin, foreign_ptr args, const token* end);
+	foreign_ptr(*tr_prototype)(self_ptr builder, foreign_ptr genargs, foreign_ptr args, foreign_ptr return_type);
 	foreign_ptr(*tr_returnsig)(self_ptr builder, const token* arrow, foreign_ptr ret);
 	foreign_ptr(*tr_self)(self_ptr builder, const token* special);
 	foreign_ptr(*tr_tuple)(self_ptr builder, const token* begin, const node_list* types, const token* end);
+	foreign_ptr(*tr_typed_arg)(self_ptr builder, foreign_ptr type_, foreign_ptr arg);
 	foreign_ptr(*true_)(self_ptr builder, const token* tok);
-	foreign_ptr(*typed_arg)(self_ptr builder, foreign_ptr type_, foreign_ptr arg);
 	foreign_ptr(*unary_op)(self_ptr builder, const token* oper, foreign_ptr receiver);
 	foreign_ptr(*undef_method)(self_ptr builder, const token* undef, const node_list* name_list);
 	foreign_ptr(*when)(self_ptr builder, const token* when, const node_list* patterns, const token* then, foreign_ptr body);
