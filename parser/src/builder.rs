@@ -1,8 +1,7 @@
 use ffi::{Token, Driver};
 use std::rc::Rc;
-use ast::{Node, Id, Loc, SourceFile, RubyString};
+use ast::{Node, Id, Loc, SourceFile, RubyString, Error};
 use std::collections::HashSet;
-use diagnostics::Error;
 
 #[cfg(feature = "regex")]
 use onig::Regex;
