@@ -449,13 +449,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn merge_locals(&self, a: Locals<'ty, 'object>, b: Locals<'ty, 'object>) -> Locals<'ty, 'object> {
-        let mut merges = Vec::new();
-        let merged_locals = a.merge(b, &self.tyenv, &mut merges);
-        self.process_local_merges(merges);
-        merged_locals
-    }
-
     fn uncertain_locals(&self, uncertain: Locals<'ty, 'object>, since: Locals<'ty, 'object>) -> Locals<'ty, 'object> {
         let mut merges = Vec::new();
         let merged_locals = uncertain.uncertain(since, &self.tyenv, &mut merges);
@@ -1700,11 +1693,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 Computation::result(ty, locals)
             }
             Node::Ensure(ref loc, ref body, ref ensure) => {
-                let body_result = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.autopin())
-                    .map_locals(&|l| l.unautopin());
+                let body_result = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.clone());
 
                 body_result.seq(&|ty, l| {
-                    let uncertain_locals = self.merge_locals(locals.clone(), l);
+                    let uncertain_locals = self.uncertain_locals(l, locals.clone());
 
                     self.process_option_node(loc, ensure.as_ref().map(Rc::as_ref), uncertain_locals).seq(&|_, l| {
                         Computation::result(ty, l)
@@ -1714,8 +1706,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::Rescue(ref loc, ref body, ref resbodies, ref else_) => {
                 let body_comp = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.clone());
 
-                let uncertain_comp = body_comp.seq(&|ty, l|
-                    Computation::result(ty, self.uncertain_locals(l, locals.clone())));
+                let uncertain_comp = body_comp.seq(&|ty, l| {
+                    let uncertain = self.uncertain_locals(l, locals.clone());
+                    Computation::result(ty, uncertain)
+                });
 
                 let rescue_comps = resbodies.iter().map(|resbody| {
                     self.seq_process(uncertain_comp.clone(), resbody)
