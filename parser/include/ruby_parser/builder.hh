@@ -129,7 +129,7 @@ struct builder {
 	foreign_ptr(*tr_geninst)(self_ptr builder, foreign_ptr cpath, const token* begin, const node_list* genargs, const token* end);
 	foreign_ptr(*tr_hash)(self_ptr builder, const token* begin, foreign_ptr key_type, const token* assoc, foreign_ptr value_type, const token* end);
 	foreign_ptr(*tr_instance)(self_ptr builder, const token* special);
-	foreign_ptr(*tr_ivardecl)(self_ptr builder, const token* name, foreign_ptr type_);
+	foreign_ptr(*tr_ivardecl)(self_ptr builder, const token* def, const token* name, foreign_ptr type_);
 	foreign_ptr(*tr_nil)(self_ptr builder, const token* nil);
 	foreign_ptr(*tr_nillable)(self_ptr builder, const token* tilde, foreign_ptr type_);
 	foreign_ptr(*tr_or)(self_ptr builder, foreign_ptr a, foreign_ptr b);

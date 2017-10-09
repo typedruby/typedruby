@@ -1440,11 +1440,12 @@ impl<'a> Builder<'a> {
         Node::TyInstance(self.loc(&special))
     }
 
-    pub fn tr_ivardecl(&self, name: Option<Token>, type_: Option<Rc<Node>>) -> Node {
+    pub fn tr_ivardecl(&self, def: Option<Token>, name: Option<Token>, type_: Option<Rc<Node>>) -> Node {
+        let decl_loc = self.tok_join(&def, &name);
         let name = self.tok_id(&name);
         let type_ = type_.unwrap();
 
-        Node::TyIvardecl(name.0.join(type_.loc()), name, type_)
+        Node::TyIvardecl(decl_loc.join(type_.loc()), name, type_)
     }
 
     pub fn tr_nil(&self, nil: Option<Token>) -> Node {
