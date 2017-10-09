@@ -450,7 +450,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
                     post: vec![],
                 }),
             _ =>
-                panic!("unknown node type: {:?}"),
+                panic!("unknown node type: {:?}", node),
         }
     }
 
@@ -593,8 +593,15 @@ impl<'env, 'object> ResolveType<'env, 'object> {
         }
 
         let (genargs, args, retn) = match *node {
-            Node::Prototype(_, ref genargs, ref args, ref retn) =>
-                (option_rc_ref(genargs), option_rc_ref(args), option_rc_ref(retn)),
+            Node::Prototype(_, ref genargs, ref args, ref retn) => {
+                // Peel the ReturnSig to get the actual value
+                // TODO: handle other (future) return structures here
+                let retn = match option_rc_ref(retn) {
+                    Some(&Node::TyReturnSig(_, ref cpath)) => Some(cpath.as_ref()),
+                    _ => None,
+                };
+                (option_rc_ref(genargs), option_rc_ref(args), retn)
+            }
             Node::Args(..) => (None, Some(node), None),
             _ => panic!("unexpected node type in resolve_prototype"),
         };
