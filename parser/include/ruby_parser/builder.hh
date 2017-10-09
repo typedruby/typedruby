@@ -135,6 +135,7 @@ struct builder {
 	foreign_ptr(*tr_nillable)(self_ptr builder, const token* tilde, foreign_ptr type_);
 	foreign_ptr(*tr_or)(self_ptr builder, foreign_ptr a, foreign_ptr b);
 	foreign_ptr(*tr_proc)(self_ptr builder, const token* begin, foreign_ptr args, const token* end);
+	foreign_ptr(*tr_returnsig)(self_ptr builder, const token* arrow, foreign_ptr ret);
 	foreign_ptr(*tr_self)(self_ptr builder, const token* special);
 	foreign_ptr(*tr_tuple)(self_ptr builder, const token* begin, const node_list* types, const token* end);
 	foreign_ptr(*true_)(self_ptr builder, const token* tok);
