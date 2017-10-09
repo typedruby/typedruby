@@ -1,6 +1,9 @@
 use std::fmt;
 use std::rc::Rc;
 use std::collections::{HashMap, HashSet};
+use std::cmp::PartialEq;
+use std::hash::{Hash, Hasher};
+use std::iter::{Iterator, IntoIterator};
 
 use typecheck::types::{TypeEnv, TypeRef};
 
@@ -99,25 +102,66 @@ impl<'ty, 'object> LocalTable<'ty, 'object> {
         None
     }
 
-    pub fn current_map(&self) -> HashMap<String, LocalEntry<'ty, 'object>> {
-        let mut map = HashMap::new();
-        let mut tbl = self;
+    pub fn bindings_since(&self, since: &LocalTable<'ty, 'object>) -> HashMap<String, LocalEntry<'ty, 'object>> {
+        self.iter()
+            .take_while(|tbl| tbl != since)
+            .map(|tbl| {
+                let node = tbl.node.as_ref().expect("node to be Some given we're not yet at LCA");
+                (node.name.clone(), node.entry.clone())
+            })
+            .fold(HashMap::new(), |mut map, (name, entry)| {
+                map.entry(name).or_insert(entry);
+                map
+            })
+    }
 
-        while let Some(ref node) = tbl.node {
-            map.insert(node.name.clone(), node.entry.clone());
-
-            tbl = &node.next;
-        }
-
-        map
+    pub fn identity_key(&self) -> Option<*const LocalNode<'ty, 'object>> {
+        self.node.as_ref().map(|rc| Rc::as_ref(rc) as *const _)
     }
 
     pub fn ref_eq(&self, other: &LocalTable<'ty, 'object>) -> bool {
-        fn key<'ty, 'object>(tbl: &LocalTable<'ty, 'object>) -> Option<*const LocalNode<'ty, 'object>> {
-            tbl.node.as_ref().map(|rc| Rc::as_ref(rc) as *const _)
-        }
+        self.identity_key() == other.identity_key()
+    }
 
-        key(self) == key(other)
+    pub fn iter(&self) -> LocalTableIterator<'ty, 'object> {
+        self.clone().into_iter()
+    }
+}
+
+impl<'ty, 'object> Hash for LocalTable<'ty, 'object> {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.identity_key().hash(state)
+    }
+}
+
+impl<'ty, 'object> PartialEq for LocalTable<'ty, 'object> {
+    fn eq(&self, other: &Self) -> bool {
+        self.identity_key() == other.identity_key()
+    }
+}
+
+impl<'ty, 'object> Eq for LocalTable<'ty, 'object> {}
+
+struct LocalTableIterator<'ty, 'object: 'ty> {
+    tbl: Option<LocalTable<'ty, 'object>>,
+}
+
+impl<'ty, 'object> Iterator for LocalTableIterator<'ty, 'object> {
+    type Item = LocalTable<'ty, 'object>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let tbl = self.tbl.clone();
+        self.tbl = tbl.as_ref().and_then(|tbl| tbl.node.as_ref().map(|node| node.next.clone()));
+        tbl
+    }
+}
+
+impl<'ty, 'object> IntoIterator for LocalTable<'ty, 'object> {
+    type IntoIter = LocalTableIterator<'ty, 'object>;
+    type Item = LocalTable<'ty, 'object>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        LocalTableIterator { tbl: Some(self) }
     }
 }
 
@@ -264,14 +308,37 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     pub fn merge(&self, other: Locals<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Locals<'ty, 'object> {
         assert!(self.sc.autopin == other.sc.autopin);
 
-        let self_map = self.sc.vars.current_map();
-        let other_map = other.sc.vars.current_map();
+        let children = self.sc.vars.iter()
+            .filter_map(|tbl| tbl.node.as_ref().map(|node| (node.next.clone(), tbl.clone())))
+            .collect::<HashMap<_, _>>();
+
+        let (lca, other_entries) = {
+            let mut lca = None;
+            let mut other_entries = Vec::new();
+
+            for tbl in other.sc.vars.iter() {
+                if let Some(ref node) = tbl.node {
+                    other_entries.push((node.name.clone(), node.entry.clone()));
+                }
+
+                if children.contains_key(&tbl) {
+                    lca = Some(tbl);
+                    break;
+                }
+            }
+
+            other_entries.reverse();
+            (lca.expect("lca to be Some"), other_entries)
+        };
+
+        let self_map = self.sc.vars.bindings_since(&lca);
+        let other_map = self.sc.vars.bindings_since(&lca);
 
         let mut names = HashSet::new();
         names.extend(self_map.keys());
         names.extend(other_map.keys());
 
-        let vars = names.into_iter().fold(LocalTable::new(), |tbl, name| {
+        let vars = names.into_iter().map(|name| {
             let merge = self.get_var_direct(name).merge(other.get_var_direct(name), tyenv);
 
             merges.push(merge.clone());
@@ -279,9 +346,13 @@ impl<'ty, 'object> Locals<'ty, 'object> {
             match merge {
                 LocalEntryMerge::Ok(entry) |
                 LocalEntryMerge::MustMatch(entry, ..) =>
-                    tbl.insert(name.clone(), entry)
+                    (name.clone(), entry)
             }
         });
+
+        let vars = other_entries.into_iter().chain(vars)
+            .fold(self.sc.vars.clone(), |tbl, (name, entry)|
+                tbl.insert(name, entry));
 
         self.update_vars(vars)
     }
@@ -298,6 +369,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
 
             let binding = tbl.node.as_ref().expect("node to be Some because we have not hit 'since' yet");
             bindings.push((binding.name.clone(), binding.entry.clone()));
+
             tbl = &binding.next;
         }
 
