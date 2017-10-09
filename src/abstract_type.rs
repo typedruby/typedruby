@@ -477,7 +477,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
         let arg_loc = node.loc().clone();
 
         let (anno, ty, arg_node) = match *node {
-            Node::TypedArg(_, ref type_node, ref arg_node) =>
+            Node::TyTypedArg(_, ref type_node, ref arg_node) =>
                 (AnnotationStatus::Typed, Some(self.resolve_type(type_node)), arg_node.as_ref()),
             _ =>
                 (AnnotationStatus::Untyped, None, node),
@@ -593,7 +593,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
         }
 
         let (genargs, args, retn) = match *node {
-            Node::Prototype(_, ref genargs, ref args, ref retn) =>
+            Node::TyPrototype(_, ref genargs, ref args, ref retn) =>
                 (option_rc_ref(genargs), option_rc_ref(args), option_rc_ref(retn)),
             Node::Args(..) => (None, Some(node), None),
             _ => panic!("unexpected node type in resolve_prototype"),
