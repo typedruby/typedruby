@@ -81,7 +81,10 @@ impl<'a, 'b: 'a> SexpNode<'a, 'b> {
         self.result = self.result.and_then(|_| {
             if self.fmt.print_str {
                 self.fmt.buf.write_char(' ')?;
-                escape_rb(self.fmt, value.string().unwrap())
+                match value.string() {
+                    Some(ref string) => escape_rb(self.fmt, string),
+                    None => write!(self.fmt, "[BINARY STRING]"),
+                }
             } else {
                 write!(self.fmt, " [STRING]")
             }
