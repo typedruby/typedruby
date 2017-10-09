@@ -63,14 +63,13 @@ impl<'ty, 'object> LocalEntry<'ty, 'object> {
     }
 }
 
-#[derive(Debug)]
 struct LocalNode<'ty, 'object: 'ty> {
     name: String,
     entry: LocalEntry<'ty, 'object>,
     next: LocalTable<'ty, 'object>,
 }
 
-#[derive(Debug,Clone)]
+#[derive(Clone)]
 struct LocalTable<'ty, 'object: 'ty> {
     node: Option<Rc<LocalNode<'ty, 'object>>>,
 }
@@ -165,7 +164,6 @@ impl<'ty, 'object> IntoIterator for LocalTable<'ty, 'object> {
     }
 }
 
-#[derive(Debug)]
 struct LocalScope<'ty, 'object: 'ty> {
     parent: Option<Locals<'ty, 'object>>,
     vars: LocalTable<'ty, 'object>,
@@ -179,7 +177,19 @@ pub struct Locals<'ty, 'object: 'ty> {
 
 impl<'ty, 'object> fmt::Debug for Locals<'ty, 'object> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        self.sc.fmt(f)
+        let mut scope = Some(&self.sc);
+
+        while let Some(sc) = scope {
+            write!(f, "+ LocalScope:\n")?;
+            let mut tbl = &sc.vars;
+            while let Some(ref node) = tbl.node.as_ref() {
+                write!(f, "| - {}: {:?}\n", node.name, node.entry)?;
+                tbl = &node.next;
+            }
+            scope = sc.parent.as_ref().map(|l| &l.sc);
+        }
+
+        write!(f, "- end\n")
     }
 }
 
