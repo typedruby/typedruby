@@ -460,7 +460,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         for merge in merges {
             match merge {
                 LocalEntryMerge::Ok(_) => {},
-                LocalEntryMerge::MustMatch(_, to, from) => {
+                LocalEntryMerge::MustMatch(to, from, _) => {
                     self.compatible(to, from, None);
                 }
             }
@@ -1051,17 +1051,18 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn lookup_lvar(&self, loc: &Loc, name: &str, locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Option<TypeRef<'ty, 'object>>>
     {
-        let (ty, locals) = locals.lookup(name);
+        let (ty, locals) = locals.lookup(name, loc);
 
         let ty = match ty {
-            LocalEntry::Bound(ty) |
-            LocalEntry::Pinned(ty) => {
-                let lv_ty = self.tyenv.local_variable(loc.clone(), name.to_owned(), ty);
-                Some(lv_ty)
+            LocalEntry::Bound(ty) => {
+                Some(self.tyenv.local_variable(loc.clone(), name.to_owned(), ty))
             }
-            LocalEntry::ConditionallyPinned(ty) => {
-                let lv_ty = self.tyenv.nillable(loc, self.tyenv.local_variable(loc.clone(), name.to_owned(), ty));
-                Some(lv_ty)
+            LocalEntry::Pinned(pin) => {
+                Some(self.tyenv.local_variable(loc.clone(), name.to_owned(), pin.ty))
+            }
+            LocalEntry::ConditionallyPinned(pin) => {
+                Some(self.tyenv.nillable(loc,
+                    self.tyenv.local_variable(loc.clone(), name.to_owned(), pin.ty)))
             }
             LocalEntry::Unbound => None,
         };
@@ -1086,15 +1087,15 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn assign_lvar(&self, name: &str, ty: TypeRef<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
         -> Locals<'ty, 'object>
     {
-        match locals.assign(name.to_owned(), ty) {
+        match locals.assign(name.to_owned(), ty, loc) {
             // in the none case, the assignment happened
             // successfully and the local variable entry is now set
             // to the type we passed in:
             (None, l) => l,
             // in the some case, the local variable is already
             // pinned to a type and we must check type compatibility:
-            (Some(lvar_ty), l) => {
-                self.compatible(lvar_ty, ty, Some(loc));
+            (Some(pin), l) => {
+                self.compatible(pin.ty, ty, Some(loc));
                 l
             }
         }
@@ -1106,8 +1107,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         match *lhs {
             Lhs::Lvar(ref loc, ref name) => {
                 let lv_ty = self.tyenv.new_var(loc.clone());
-                match locals.assign(name.clone(), lv_ty) {
-                    (Some(ty), locals) => EvalResult::Ok(ty, locals),
+                match locals.assign(name.clone(), lv_ty, loc) {
+                    (Some(pin), locals) => EvalResult::Ok(pin.ty, locals),
                     (None, locals) => EvalResult::Ok(lv_ty, locals),
                 }
             }
@@ -1215,9 +1216,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     {
         match lhs {
             Lhs::Lvar(_, name) => {
-                match locals.assign(name, rty) {
-                    (Some(ty), locals) => {
-                        self.compatible(ty, rty, Some(loc));
+                match locals.assign(name, rty, loc) {
+                    (Some(pin), locals) => {
+                        self.compatible(pin.ty, rty, Some(loc));
                         EvalResult::Ok((), locals)
                     }
                     (None, locals) => {
