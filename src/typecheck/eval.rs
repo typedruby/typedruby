@@ -1054,8 +1054,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         let (ty, locals) = locals.lookup(name, loc);
 
         let ty = match ty {
-            LocalEntry::Bound(ty) => {
-                Some(self.tyenv.local_variable(loc.clone(), name.to_owned(), ty))
+            LocalEntry::Bound(bind) => {
+                Some(self.tyenv.local_variable(loc.clone(), name.to_owned(), bind.ty))
             }
             LocalEntry::Pinned(pin) => {
                 Some(self.tyenv.local_variable(loc.clone(), name.to_owned(), pin.ty))

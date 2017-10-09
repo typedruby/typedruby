@@ -88,7 +88,7 @@ impl<'a, 'ty, 'object> Materialize<'a, 'ty, 'object> {
         match *lhs {
             ArgLhs::Lvar { name: Id(ref loc, ref name) } => {
                 let ty = self.tyenv.new_var(loc.clone());
-                (ty, locals.assign_shadow(name.clone(), ty))
+                (ty, locals.assign_shadow(name.clone(), ty, loc))
             }
             ArgLhs::Mlhs { ref loc, ref items } => {
                 let (tys, locals) = items.iter().fold((Vec::new(), locals), |(mut tys, locals), item| {
@@ -140,30 +140,31 @@ impl<'a, 'ty, 'object> Materialize<'a, 'ty, 'object> {
             }
             ArgNode::Optional { name: Id(_, ref name), ref default, .. } =>
                 (Arg::Optional { loc: loc.clone(), ty: ty, expr: default.expr.clone() },
-                    locals.assign_shadow(name.clone(), ty)),
+                    locals.assign_shadow(name.clone(), ty, loc)),
             ArgNode::Rest { name: None, .. } =>
                 (Arg::Rest { loc: loc.clone(), ty: ty }, locals),
             ArgNode::Rest { name: Some(Id(_, ref name)), .. } =>
                 (Arg::Rest { loc: loc.clone(), ty: ty },
-                    locals.assign_shadow(name.clone(), self.tyenv.array(loc.clone(), ty))),
+                    locals.assign_shadow(name.clone(), self.tyenv.array(loc.clone(), ty), loc)),
             ArgNode::Kwarg { name: Id(_, ref name), .. } =>
                 (Arg::Kwarg { loc: loc.clone(), name: name.clone(), ty: ty },
-                    locals.assign_shadow(name.clone(), ty)),
+                    locals.assign_shadow(name.clone(), ty, loc)),
             ArgNode::Kwoptarg { name: Id(_, ref name), ref default, .. } =>
                 (Arg::Kwoptarg { loc: loc.clone(), name: name.clone(), ty: ty, expr: default.expr.clone() },
-                    locals.assign_shadow(name.clone(), ty)),
+                    locals.assign_shadow(name.clone(), ty, loc)),
             ArgNode::Kwrest { name: None, .. } =>
                 (Arg::Kwrest { loc: loc.clone(), ty: ty }, locals),
-            ArgNode::Kwrest { name: Some(Id(_, ref name)), .. } =>
+            ArgNode::Kwrest { name: Some(Id(_, ref name)), .. } => {
+                let hash_ty = self.tyenv.hash(loc.clone(),
+                    self.tyenv.instance0(loc.clone(), self.env.object.Symbol), ty);
                 (Arg::Kwrest { loc: loc.clone(), ty: ty },
-                    locals.assign_shadow(name.clone(), self.tyenv.hash(loc.clone(),
-                        self.tyenv.instance0(loc.clone(), self.env.object.Symbol),
-                        ty))),
+                    locals.assign_shadow(name.clone(), hash_ty, loc))
+            }
             ArgNode::Block { name: None, .. } =>
                 (Arg::Block { loc: loc.clone(), ty: ty }, locals),
             ArgNode::Block { name: Some(Id(_, ref name)), .. } =>
                 (Arg::Block { loc: loc.clone(), ty: ty },
-                    locals.assign_shadow(name.clone(), ty)),
+                    locals.assign_shadow(name.clone(), ty, loc)),
             ArgNode::Procarg0 { .. } =>
                 panic!("impossible")
         };
