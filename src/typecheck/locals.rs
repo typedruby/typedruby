@@ -167,7 +167,6 @@ impl<'ty, 'object> IntoIterator for LocalTable<'ty, 'object> {
 struct LocalScope<'ty, 'object: 'ty> {
     parent: Option<Locals<'ty, 'object>>,
     vars: LocalTable<'ty, 'object>,
-    autopin: usize,
 }
 
 #[derive(Clone)]
@@ -199,31 +198,23 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     }
 
     pub fn new() -> Locals<'ty, 'object> {
-        Self::new_(LocalScope { parent: None, vars: LocalTable::new(), autopin: 0 })
+        Self::new_(LocalScope { parent: None, vars: LocalTable::new() })
     }
 
     pub fn extend(&self) -> Locals<'ty, 'object> {
-        Self::new_(LocalScope { parent: Some(self.clone()), vars: LocalTable::new(), autopin: 0 })
+        Self::new_(LocalScope { parent: Some(self.clone()), vars: LocalTable::new() })
     }
 
     pub fn unextend(&self) -> Locals<'ty, 'object> {
         self.sc.parent.as_ref().expect("unbalanced extend/unextend (parent is None)").clone()
     }
 
-    pub fn autopin(&self) -> Locals<'ty, 'object> {
-        Self::new_(LocalScope { parent: self.sc.parent.clone(), vars: self.sc.vars.clone(), autopin: self.sc.autopin + 1 })
-    }
-
-    pub fn unautopin(&self) -> Locals<'ty, 'object> {
-        Self::new_(LocalScope { parent: self.sc.parent.clone(), vars: self.sc.vars.clone(), autopin: self.sc.autopin - 1 })
-    }
-
     fn update_parent(&self, parent: Option<Locals<'ty, 'object>>) -> Locals<'ty, 'object> {
-        Self::new_(LocalScope { parent: parent, vars: self.sc.vars.clone(), autopin: self.sc.autopin })
+        Self::new_(LocalScope { parent: parent, vars: self.sc.vars.clone() })
     }
 
     fn update_vars(&self, vars: LocalTable<'ty, 'object>) -> Locals<'ty, 'object> {
-        Self::new_(LocalScope { parent: self.sc.parent.clone(), vars: vars, autopin: self.sc.autopin })
+        Self::new_(LocalScope { parent: self.sc.parent.clone(), vars: vars })
     }
 
     fn get_var_direct(&self, name: &str) -> LocalEntry<'ty, 'object> {
@@ -277,8 +268,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     pub fn assign(&self, name: String, ty: TypeRef<'ty, 'object>) -> (Option<TypeRef<'ty, 'object>>, Locals<'ty, 'object>) {
         if let Some(local) = self.sc.vars.get(&name) {
             return match local {
-                LocalEntry::Bound(_) if self.sc.autopin == 0 => (None, self.insert_var(name, LocalEntry::Bound(ty))),
-                LocalEntry::Bound(ty) => (Some(ty), self.insert_var(name, LocalEntry::Pinned(ty))),
+                LocalEntry::Bound(_) => (None, self.insert_var(name, LocalEntry::Bound(ty))),
                 LocalEntry::Pinned(ty) => (Some(ty), self.clone()),
                 LocalEntry::ConditionallyPinned(ty) => (Some(ty), self.clone()),
                 LocalEntry::Unbound => panic!("should not happen"),
@@ -316,8 +306,6 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     }
 
     pub fn merge(&self, other: Locals<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Locals<'ty, 'object> {
-        assert!(self.sc.autopin == other.sc.autopin);
-
         let children = self.sc.vars.iter()
             .filter_map(|tbl| tbl.node.as_ref().map(|node| (node.next.clone(), tbl.clone())))
             .collect::<HashMap<_, _>>();
