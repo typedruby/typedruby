@@ -7,7 +7,6 @@ use std::vec::Vec;
 use std::io::prelude::*;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use diagnostics::Error;
 
 pub struct SourceFile {
     filename: PathBuf,
@@ -71,6 +70,8 @@ pub struct Diagnostic {
     pub loc: Loc,
     pub data: Option<String>,
 }
+
+include!(concat!(env!("OUT_DIR"), "/ffi_diagnostics.rs"));
 
 impl fmt::Display for Loc {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
