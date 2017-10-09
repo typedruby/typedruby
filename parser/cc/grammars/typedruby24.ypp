@@ -573,7 +573,7 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                     }
                 | kDEF tIVAR tCOLON tr_type
                     {
-                      $$ = driver.build.tr_ivardecl(self, $2, $4);
+                      $$ = driver.build.tr_ivardecl(self, $1, $2, $4);
                     }
                 | expr
 
