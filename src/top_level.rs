@@ -862,12 +862,12 @@ impl<'env, 'object> Eval<'env, 'object> {
                     self.eval_node(arg);
                 }
             }
-            Node::Prototype(_, ref genargs, ref args, ref retn) => {
+            Node::TyPrototype(_, ref genargs, ref args, ref retn) => {
                 self.eval_maybe_node(genargs);
                 self.eval_maybe_node(args);
                 self.eval_maybe_node(retn);
             }
-            Node::TypedArg(_, ref ty, ref arg) => {
+            Node::TyTypedArg(_, ref ty, ref arg) => {
                 self.eval_node(ty);
                 self.eval_node(arg);
             }
