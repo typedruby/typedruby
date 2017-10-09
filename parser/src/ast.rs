@@ -7,7 +7,6 @@ use std::vec::Vec;
 use std::io::prelude::*;
 use std::fmt;
 use std::hash::{Hash, Hasher};
-use diagnostics::Error;
 
 pub struct SourceFile {
     filename: PathBuf,
@@ -71,6 +70,8 @@ pub struct Diagnostic {
     pub loc: Loc,
     pub data: Option<String>,
 }
+
+include!(concat!(env!("OUT_DIR"), "/ffi_diagnostics.rs"));
 
 impl fmt::Display for Loc {
     fn fmt(&self, f: &mut fmt::Formatter) -> Result<(), fmt::Error> {
@@ -247,7 +248,6 @@ pub enum Node {
     Postexe         (Loc,   Option<Rc<Node>>),
     Preexe          (Loc,   Option<Rc<Node>>),
     Procarg0        (Loc,   Rc<Node>),
-    Prototype       (Loc,   Option<Rc<Node>>, Option<Rc<Node>>, Option<Rc<Node>>),
     Rational        (Loc,   String),
     Redo            (Loc),
     Regexp          (Loc,   Vec<Rc<Node>>, Option<Rc<Node>>),
@@ -285,10 +285,12 @@ pub enum Node {
     TyNil           (Loc),
     TyNillable      (Loc,   Rc<Node>),
     TyOr            (Loc,   Rc<Node>, Rc<Node>),
-    TypedArg        (Loc,   Rc<Node>, Rc<Node>),
     TyProc          (Loc,   Rc<Node>),
+    TyPrototype     (Loc,   Option<Rc<Node>>, Option<Rc<Node>>, Option<Rc<Node>>),
+    TyReturnSig     (Loc,   Rc<Node>),
     TySelf          (Loc),
     TyTuple         (Loc,   Vec<Rc<Node>>),
+    TyTypedArg      (Loc,   Rc<Node>, Rc<Node>),
     Undef           (Loc,   Vec<Rc<Node>>),
     Until           (Loc,   Rc<Node>, Option<Rc<Node>>),
     UntilPost       (Loc,   Rc<Node>, Rc<Node>),
@@ -377,7 +379,6 @@ impl Node {
             &Node::Postexe(ref loc, _) => loc,
             &Node::Preexe(ref loc, _) => loc,
             &Node::Procarg0(ref loc, _) => loc,
-            &Node::Prototype(ref loc, _, _, _) => loc,
             &Node::Rational(ref loc, _) => loc,
             &Node::Redo(ref loc) => loc,
             &Node::Regexp(ref loc, _, _) => loc,
@@ -415,10 +416,12 @@ impl Node {
             &Node::TyNil(ref loc) => loc,
             &Node::TyNillable(ref loc, _) => loc,
             &Node::TyOr(ref loc, _, _) => loc,
-            &Node::TypedArg(ref loc, _, _) => loc,
             &Node::TyProc(ref loc, _) => loc,
+            &Node::TyPrototype(ref loc, _, _, _) => loc,
+            &Node::TyReturnSig(ref loc, _) => loc,
             &Node::TySelf(ref loc) => loc,
             &Node::TyTuple(ref loc, _) => loc,
+            &Node::TyTypedArg(ref loc, _, _) => loc,
             &Node::Undef(ref loc, _) => loc,
             &Node::Until(ref loc, _, _) => loc,
             &Node::UntilPost(ref loc, _, _) => loc,

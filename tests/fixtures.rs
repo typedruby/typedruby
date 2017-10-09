@@ -81,15 +81,16 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
         .expect("Failed to execute typedruby");
 
     let expected = read_file(&output_path(&path));
-
     let expected_code = match expected.len() {
         0 => 0,
         _ => 1,
     };
 
-    assert_eq!(expected_code,
-        status.status.code()
-            .expect("process to exit cleanly with a status code"));
+    let exit_code = status.status.code().expect("process to exit cleanly with a status code");
+
+    assert_eq!(expected_code, exit_code,
+        "unexpected exit code when typechecking '{}' (want: {}, got: {})",
+        path.display(), expected_code, exit_code);
 
     let stderr = String::from_utf8(status.stderr)
         .expect("output to be utf-8");
