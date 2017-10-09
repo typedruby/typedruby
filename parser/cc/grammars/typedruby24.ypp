@@ -3184,7 +3184,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs tr_constraints rbracket
 
     tr_returnsig: tASSOC tr_type
                     {
-                      $$ = $2;
+                      $$ = driver.build.tr_returnsig(self, $1, $2);
                     }
                 |
                     {

@@ -966,6 +966,12 @@ impl Sexp for Node {
                 let _ = builder.field(__self_1);
                 builder.finish()
             }
+            (&Node::TyReturnSig(ref __self_0, ref __self_1),) => {
+                let mut builder = __arg_0.new_node("ty-return-sig");
+                let _ = builder.field(__self_0);
+                let _ = builder.field(__self_1);
+                builder.finish()
+            }
             (&Node::TySelf(ref __self_0),) => {
                 let mut builder = __arg_0.new_node("ty-self");
                 let _ = builder.field(__self_0);
@@ -1036,6 +1042,25 @@ impl Sexp for Node {
                 builder.finish()
             }
         }
+    }
+}
+
+impl Node {
+    pub fn debug_ast(&self) -> String {
+        let mut output = String::new();
+
+        let result = {
+            let mut formatter = SexpFormatter {
+                indent: 0,
+                buf: &mut output,
+                print_loc: false,
+                print_str: true,
+            };
+            self.sexp(&mut formatter)
+        };
+
+        result.unwrap();
+        output
     }
 }
 
