@@ -1474,6 +1474,12 @@ impl<'a> Builder<'a> {
         Node::TyProc(self.tok_join(&begin, &end), args)
     }
 
+    pub fn tr_returnsig(&self, arrow: Option<Token>, ret: Option<Rc<Node>>) -> Node {
+        let loc = self.loc(&arrow);
+        let ret = ret.unwrap();
+        Node::TyReturnSig(loc.join(ret.loc()), ret)
+    }
+
     pub fn tr_self(&self, special: Option<Token>) -> Node {
         Node::TySelf(self.loc(&special))
     }
