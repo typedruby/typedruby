@@ -762,46 +762,46 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
                 | mlhs_head tSTAR mlhs_node
                     {
                       auto &list = $1;
-                      list->push_back(driver.build.splat(self, $2, $3));
+                      list->push_back(driver.build.splat_mlhs(self, $2, $3));
                       $$ = list;
                     }
                 | mlhs_head tSTAR mlhs_node tCOMMA mlhs_post
                     {
                       auto &head = $1;
-                      head->push_back(driver.build.splat(self, $2, $3));
+                      head->push_back(driver.build.splat_mlhs(self, $2, $3));
                       head->concat($5);
                       $$ = head;
                     }
                 | mlhs_head tSTAR
                     {
                       auto &list = $1;
-                      list->push_back(driver.build.splat(self, $2, nullptr));
+                      list->push_back(driver.build.splat_mlhs(self, $2, nullptr));
                       $$ = list;
                     }
                 | mlhs_head tSTAR tCOMMA mlhs_post
                     {
                       auto &head = $1;
-                      head->push_back(driver.build.splat(self, $2, nullptr));
+                      head->push_back(driver.build.splat_mlhs(self, $2, nullptr));
                       head->concat($4);
                       $$ = head;
                     }
                 | tSTAR mlhs_node
                     {
-                      $$ = driver.alloc.node_list(driver.build.splat(self, $1, $2));
+                      $$ = driver.alloc.node_list(driver.build.splat_mlhs(self, $1, $2));
                     }
                 | tSTAR mlhs_node tCOMMA mlhs_post
                     {
-                      node_list *items = driver.alloc.node_list(driver.build.splat(self, $1, $2));
+                      node_list *items = driver.alloc.node_list(driver.build.splat_mlhs(self, $1, $2));
                       items->concat($4);
                       $$ = items;
                     }
                 | tSTAR
                     {
-                      $$ = driver.alloc.node_list(driver.build.splat(self, $1, nullptr));
+                      $$ = driver.alloc.node_list(driver.build.splat_mlhs(self, $1, nullptr));
                     }
                 | tSTAR tCOMMA mlhs_post
                     {
-                      node_list *items = driver.alloc.node_list(driver.build.splat(self, $1, nullptr));
+                      node_list *items = driver.alloc.node_list(driver.build.splat_mlhs(self, $1, nullptr));
                       items->concat($3);
                       $$ = items;
                     }

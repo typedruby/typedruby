@@ -926,6 +926,9 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::True(..) |
             Node::ZSuper(..) => {}
             Node::Splat(_, ref expr) => {
+                self.eval_node(expr);
+            }
+            Node::SplatLhs(_, ref expr) => {
                 self.eval_maybe_node(expr);
             }
             Node::Kwsplat(_, ref expr) => {

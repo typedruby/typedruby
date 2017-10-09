@@ -1277,11 +1277,17 @@ impl<'a> Builder<'a> {
     }
 
     pub fn splat(&self, star: Option<Token>, arg: Option<Rc<Node>>) -> Node {
+        let arg = arg.unwrap();
+
+        Node::Splat(self.loc(&star).join(arg.loc()), arg)
+    }
+
+    pub fn splat_mlhs(&self, star: Option<Token>, arg: Option<Rc<Node>>) -> Node {
         let loc = match arg {
             Some(ref box_arg) => self.loc(&star).join(box_arg.loc()),
             None => self.loc(&star),
         };
-        Node::Splat(loc, arg)
+        Node::SplatLhs(loc, arg)
     }
 
     pub fn string(&self, string_: Option<Token>) -> Node {

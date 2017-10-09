@@ -1,14 +1,14 @@
 use std::rc::Rc;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, TupleElement, TypeConstraint};
+use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, SplatArg, TypeConstraint};
 use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
 use typed_arena::Arena;
 use typecheck::call;
-use typecheck::call::{CallArg, ArgError};
+use typecheck::call::ArgError;
 use itertools::Itertools;
 use abstract_type;
 use abstract_type::{TypeScope, TypeNode};
@@ -53,7 +53,7 @@ struct Invokee<'ty, 'object: 'ty> {
 enum Lhs<'ty, 'object: 'ty> {
     Lvar(Loc, String),
     Simple(Loc, TypeRef<'ty, 'object>),
-    Send(Loc, TypeRef<'ty, 'object>, Id, Vec<CallArg<'ty, 'object>>),
+    Send(Loc, TypeRef<'ty, 'object>, Id, Vec<SplatArg<'ty, 'object>>),
 }
 
 impl<'ty, 'object> Eval<'ty, 'object> {
@@ -195,56 +195,16 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn process_array_tuple(&self, loc: &Loc, exprs: &[Rc<Node>], locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
-        let mut elements = Vec::new();
-        let mut result = EvalResult::Ok((), locals);
-
-        for expr in exprs {
-            let (splat, node) = match **expr {
-                Node::Splat(_, Some(ref node)) => (true, node),
-                _ => (false, expr),
-            };
-
-            result = result.and_then(|(), locals| {
-                self.eval_node(node, locals)
-            }).map(|ty| {
-                if splat {
-                    match *ty {
-                        Type::Tuple { ref lead, ref splat, ref post, .. } => {
-                            for lead_ty in lead {
-                                elements.push(TupleElement::Value(*lead_ty));
-                            }
-
-                            if let Some(splat_ty) = *splat {
-                                elements.push(TupleElement::Splat(splat_ty));
-                            }
-
-                            for post_ty in post {
-                                elements.push(TupleElement::Value(*post_ty));
-                            }
-                        }
-                        Type::Instance { class, ref type_parameters, .. }
-                            if class == self.env.object.array_class()
-                        => {
-                            elements.push(TupleElement::Splat(type_parameters[0]));
-                        }
-                        _ => {
-                            self.error("Cannot splat non-array", &[
-                                Detail::Loc(&self.tyenv.describe(ty), node.loc()),
-                            ]);
-                        }
-                    }
-                } else {
-                    elements.push(TupleElement::Value(ty));
-                }
-            });
-        }
-
-        result.map(|()| {
+        self.process_splat_args(exprs, locals, |loc| {
+            self.warning("Useless expression", &[
+                Detail::Loc("Sub-expression never evaluates to a result", loc),
+            ]);
+        }).map(|elements| {
             self.tuple_from_elements(loc.clone(), &elements)
         }).into_computation()
     }
 
-    fn tuple_from_elements(&self, loc: Loc, elements: &[TupleElement<'ty, 'object>]) -> TypeRef<'ty, 'object> {
+    fn tuple_from_elements(&self, loc: Loc, elements: &[SplatArg<'ty, 'object>]) -> TypeRef<'ty, 'object> {
         use slice_util::View;
 
         assert!(!elements.is_empty());
@@ -254,12 +214,12 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         let mut lead_types = Vec::new();
         let mut post_types = Vec::new();
 
-        while let Some(&TupleElement::Value(ty)) = v.first() {
+        while let Some(&SplatArg::Value(ty)) = v.first() {
             lead_types.push(ty);
             v.consume_front();
         }
 
-        while let Some(&TupleElement::Value(ty)) = v.last() {
+        while let Some(&SplatArg::Value(ty)) = v.last() {
             post_types.push(ty);
             v.consume_back();
         }
@@ -267,8 +227,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         post_types.reverse();
 
         let splat_type = if !v.is_empty() {
-            // first tuple remaining at this point must be a splat:
-            panic!("splats unsupported for now");
+            v.into_iter().map(|splat_arg| match *splat_arg {
+                SplatArg::Value(ty) => ty,
+                SplatArg::Splat(ty) => ty,
+            }).fold1(|a, b| self.tyenv.union(&loc, a, b))
         } else {
             None
         };
@@ -519,30 +481,91 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         comp
     }
 
-    fn process_call_arg(&self, node: &Node, locals: Locals<'ty, 'object>) -> EvalResult<'ty, 'object, CallArg<'ty, 'object>> {
-        match *node {
-            Node::Splat(_, ref n) => {
-                let splat_node = n.as_ref().expect("splat in call arg must have node");
-
-                self.eval_node(splat_node, locals).map(|ty|
-                    match *self.tyenv.prune(ty) {
-                        Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
-                            CallArg::Splat(node.loc().clone(), type_parameters[0])
-                        }
-                        _ => {
-                            self.error("Cannot splat non-array", &[
-                                Detail::Loc(&self.tyenv.describe(ty), splat_node.loc()),
-                            ]);
-                            CallArg::Splat(node.loc().clone(), self.tyenv.new_var(node.loc().clone()))
-                        }
-                    }
-                )
+    fn process_splat_type(&self, loc: &Loc, ty: TypeRef<'ty, 'object>, mut splat_args: Vec<SplatArg<'ty, 'object>>)
+        -> Vec<SplatArg<'ty, 'object>>
+    {
+        match *self.tyenv.prune(ty) {
+            Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
+                let splat_ty = self.tyenv.update_loc(type_parameters[0], loc.clone());
+                splat_args.push(SplatArg::Splat(splat_ty));
             }
-            _ =>
-                self.eval_node(node, locals).map(|ty|
-                    CallArg::Pass(node.loc().clone(), ty)
-                ),
+            Type::Tuple { ref lead, ref splat, ref post, .. } => {
+                splat_args.extend(
+                    lead.iter().cloned().map(SplatArg::Value)
+                        .chain(splat.clone().map(SplatArg::Splat))
+                        .chain(post.iter().cloned().map(SplatArg::Value)));
+            }
+            Type::Union { ref types, .. } => {
+                // TODO - save/restore the type state around this degrade to
+                // instance so that we can roll back and not unnecessarily
+                // degrade types to their instance versions if it's not useful
+                // to do so.
+
+                let array_element_tys = types.iter().cloned()
+                    .map(|ty| self.tyenv.degrade_to_instance(ty))
+                    .map(|ty| {
+                        match *self.tyenv.prune(ty) {
+                            Type::Instance { class, ref type_parameters, .. } if class.is_a(self.env.object.array_class()) => {
+                                Ok(type_parameters[0])
+                            }
+                            _ => Err(ty)
+                        }
+                    });
+
+                let union_element_ty = array_element_tys
+                    .fold1(|a, b|
+                        a.and_then(|a|
+                            b.map(|b|
+                                self.tyenv.union(loc, a, b)))).unwrap()
+                    .unwrap_or_else(|err_ty| {
+                        self.error("Cannot splat union type:", &[
+                            Detail::Loc(&format!("{}, because", self.tyenv.describe(ty)), ty.loc()),
+                            Detail::Loc(&format!("{} is not an array type", self.tyenv.describe(err_ty)), err_ty.loc()),
+                        ]);
+
+                        self.tyenv.new_var(loc.clone())
+                    });
+
+                splat_args.push(SplatArg::Splat(union_element_ty));
+            }
+            _ => {
+                self.error("Cannot splat non-array", &[
+                    Detail::Loc(&self.tyenv.describe(ty), loc),
+                ]);
+
+                splat_args.push(SplatArg::Splat(self.tyenv.new_var(loc.clone())));
+            }
         }
+
+        splat_args
+    }
+
+    fn process_splat_arg(&self, node: &Node, mut splat_args: Vec<SplatArg<'ty, 'object>>, locals: Locals<'ty, 'object>)
+        -> EvalResult<'ty, 'object, Vec<SplatArg<'ty, 'object>>>
+    {
+        match *node {
+            Node::Splat(_, ref inner) => {
+                self.eval_node(inner, locals).map(|ty|
+                    self.process_splat_type(node.loc(), ty, splat_args))
+            }
+             _ => {
+                self.eval_node(node, locals).map(|ty| {
+                    splat_args.push(SplatArg::Value(ty));
+                    splat_args
+                })
+            }
+        }
+    }
+
+    fn process_splat_args<F>(&self, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>, useless: F)
+        -> EvalResult<'ty, 'object, Vec<SplatArg<'ty, 'object>>>
+        where F: Fn(&Loc)
+    {
+        arg_nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |result, arg_node|
+            result.and_then(|args, locals| {
+                self.process_splat_arg(arg_node, args, locals).if_not(|| useless(arg_node.loc()))
+            })
+        )
     }
 
     fn prototype_from_procish_type(&self, procish_ty: TypeRef<'ty, 'object>)
@@ -754,37 +777,25 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn process_send_args(&self, invoc_loc: &Loc, arg_nodes: &[Rc<Node>], locals: Locals<'ty, 'object>)
-        -> EvalResult<'ty, 'object, Vec<CallArg<'ty, 'object>>>
+        -> EvalResult<'ty, 'object, Vec<SplatArg<'ty, 'object>>>
     {
-        arg_nodes.iter().fold(EvalResult::Ok(Vec::new(), locals), |result, arg_node|
-            result.and_then(|mut args, locals| {
-                self.process_call_arg(arg_node, locals).and_then(|call_arg, locals| {
-                    args.push(call_arg);
-                    EvalResult::Ok(args, locals)
-                }).if_not(|| {
-                    self.warning("Useless invocation", &[
-                        Detail::Loc("here", invoc_loc),
-                        Detail::Loc("argument never evaluates to a result", arg_node.loc()),
-                    ]);
-                })
-            })
-        )
+        self.process_splat_args(arg_nodes, locals, |loc| {
+            self.warning("Useless invocation", &[
+                Detail::Loc("here", invoc_loc),
+                Detail::Loc("argument never evaluates to a result", loc),
+            ]);
+        })
     }
 
-    fn match_prototype_with_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, proto_loc: &Loc, proto_args: &[Arg<'ty, 'object>], args: &[CallArg<'ty, 'object>])
+    fn match_prototype_with_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, proto_loc: &Loc, proto_args: &[Arg<'ty, 'object>], args: &[SplatArg<'ty, 'object>])
         -> bool {
         let args = match proto_args.first() {
             Some(&Arg::Procarg0 { .. }) if args.len() > 1 => {
-                let tuple_elements = args.iter().map(|call_arg| match *call_arg {
-                    CallArg::Pass(_, ty) => TupleElement::Value(ty),
-                    CallArg::Splat(_, ty) => TupleElement::Splat(ty),
-                }).collect::<Vec<_>>();
-
                 let args_loc = args[0].loc().join(args.last().unwrap().loc());
 
-                let arg_ty = self.tuple_from_elements(args_loc.clone(), &tuple_elements);
+                let arg_ty = self.tuple_from_elements(args_loc.clone(), args);
 
-                vec![CallArg::Pass(args_loc, arg_ty)]
+                vec![SplatArg::Value(arg_ty)]
             }
             _ => args.to_vec(),
         };
@@ -839,7 +850,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         ok
     }
 
-    fn process_intrinsic_kernel_is_a(&self, expr_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], locals: Locals<'ty, 'object>)
+    fn process_intrinsic_kernel_is_a(&self, expr_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[SplatArg<'ty, 'object>], locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         let no_intrinsic = |locals| {
@@ -847,8 +858,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Computation::result(boolean_ty, locals)
         };
 
-        let (arg_loc, arg_ty) = if let Some(&CallArg::Pass(ref arg_loc, arg_ty)) = args.first() {
-            (arg_loc, self.tyenv.prune(arg_ty))
+        let arg_ty = if let Some(&SplatArg::Value(arg_ty)) = args.first() {
+            self.tyenv.prune(arg_ty)
         } else {
             return no_intrinsic(locals);
         };
@@ -866,7 +877,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 Computation::result(retn_ty, locals)
             };
 
-            self.tyenv.partition_by_class(invokee.recv_ty, instance_class, arg_loc)
+            self.tyenv.partition_by_class(invokee.recv_ty, instance_class, arg_ty.loc())
                 .map_left(|refine_ty| refine(self.env.object.TrueClass, refine_ty))
                 .map_right(|refine_ty| refine(self.env.object.FalseClass, refine_ty))
                 .flatten(Computation::divergent)
@@ -887,7 +898,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[CallArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
+    fn process_invocation(&self, expr_loc: &Loc, invoc_loc: &Loc, invokee: &Invokee<'ty, 'object>, args: &[SplatArg<'ty, 'object>], block: Option<&BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         let ref proto_loc = invokee.prototype.loc;
@@ -932,7 +943,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         comp.terminate_break_scope()
     }
 
-    fn process_send_dispatch(&self, loc: &Loc, recv_type: TypeRef<'ty, 'object>, id: &Id, args: Vec<CallArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
+    fn process_send_dispatch(&self, loc: &Loc, recv_type: TypeRef<'ty, 'object>, id: &Id, args: Vec<SplatArg<'ty, 'object>>, block: Option<BlockArg>, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
         self.resolve_invocation(recv_type, id)
@@ -1107,7 +1118,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 let rhs_ty = self.tyenv.new_var(loc.clone());
 
                 let mut args = args.clone();
-                args.push(CallArg::Pass(loc.clone(), rhs_ty));
+                args.push(SplatArg::Value(rhs_ty));
 
                 let comp = self.process_send_dispatch(loc, recv_ty,  &id, args, None, locals);
 
@@ -1144,7 +1155,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 for node in nodes {
                     let (splat, node) = match **node {
-                        Node::Splat(_, Some(ref node)) => (true, node),
+                        Node::SplatLhs(_, Some(ref node)) => (true, node),
                         _ => (false, node),
                     };
 
@@ -1220,7 +1231,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Lhs::Send(_, recv_ty, ref id, ref args) => {
                 let mut args = args.clone();
-                args.push(CallArg::Pass(rty.loc().clone(), rty));
+                args.push(SplatArg::Value(rty));
 
                 let id = Id(id.0.clone(), id.1.clone() + "=");
 
@@ -1631,7 +1642,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                     lhs_ty.and_then(|lhs_ty, locals| {
                         self.eval_node(rhs, locals).and_then(|rhs_ty, locals| {
-                            let args = vec![CallArg::Pass(rhs.loc().clone(), rhs_ty)];
+                            let args = vec![SplatArg::Value(rhs_ty)];
                             let op_comp = self.process_send_dispatch(loc, lhs_ty, op, args, None, locals);
                             self.extract_results(op_comp, loc)
                         })
@@ -1794,7 +1805,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                                     Some(scrut_ty) => self.extract_results(cond_comp, when_expr.loc()).and_then_comp(|cond_ty, locals| {
                                         self.process_send_dispatch(when_expr.loc(), cond_ty,
                                             &Id(when_expr.loc().clone(), "===".to_owned()),
-                                            vec![CallArg::Pass(scrut_ty.loc().clone(), scrut_ty)],
+                                            vec![SplatArg::Value(scrut_ty)],
                                             None, locals)
                                     }),
                                     None => cond_comp,

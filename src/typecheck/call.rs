@@ -1,22 +1,7 @@
 use ast::{Loc};
-use typecheck::types::{Arg, Type, TypeEnv, TypeRef};
+use typecheck::types::{Arg, Type, TypeEnv, TypeRef, SplatArg};
 use slice_util::{View, Consumer, ForwardConsumer, ReverseConsumer};
 use std::collections::HashMap;
-
-#[derive(Debug,Clone)]
-pub enum CallArg<'ty, 'object: 'ty> {
-    Pass(Loc, TypeRef<'ty, 'object>),
-    Splat(Loc, TypeRef<'ty, 'object>),
-}
-
-impl<'ty, 'object> CallArg<'ty, 'object> {
-    pub fn loc(&self) -> &Loc {
-        match *self {
-            CallArg::Pass(ref loc, _) => loc,
-            CallArg::Splat(ref loc, _) => loc,
-        }
-    }
-}
 
 #[derive(Debug)]
 pub enum ArgError {
@@ -69,7 +54,7 @@ enum KeywordHashArgument<'a, 'ty: 'a, 'object: 'ty> {
 fn keyword_hash_argument<'a, 'ty: 'a, 'object: 'ty>(
     tyenv: &TypeEnv<'ty, 'object>,
     prototype_args: &mut View<'a, Arg<'ty, 'object>>,
-    args: &mut View<'a, CallArg<'ty, 'object>>,
+    args: &mut View<'a, SplatArg<'ty, 'object>>,
 ) -> KeywordHashArgument<'a, 'ty, 'object>
 {
     let required_argc = prototype_args.iter().filter(|arg|
@@ -83,7 +68,7 @@ fn keyword_hash_argument<'a, 'ty: 'a, 'object: 'ty>(
         return KeywordHashArgument::None;
     }
 
-    if let Some(&CallArg::Pass(_, ty)) = args.last() {
+    if let Some(&SplatArg::Value(ty)) = args.last() {
         match *tyenv.prune(ty).deref() {
             Type::KeywordHash { ref keywords, splat, .. } => {
                 args.consume_back();
@@ -107,7 +92,7 @@ fn keyword_hash_argument<'a, 'ty: 'a, 'object: 'ty>(
 fn match_keyword_hash_argument<'a, 'ty: 'a, 'object: 'ty>(
     tyenv: &TypeEnv<'ty, 'object>,
     prototype_args: &mut View<'a, Arg<'ty, 'object>>,
-    args: &mut View<'a, CallArg<'ty, 'object>>,
+    args: &mut View<'a, SplatArg<'ty, 'object>>,
     result: &mut MatchResult<'ty, 'object>
 ) {
     let kw_loc = match prototype_args.last() {
@@ -202,16 +187,16 @@ fn match_prototype_argument<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
     args: &mut PassedConsumer,
     result: &mut MatchResult<'ty, 'object>
 ) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
-        PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
+        PassedConsumer : Consumer<'a, SplatArg<'ty, 'object>>
 {
     match args.peek() {
-        Some(&CallArg::Pass(_, pass_ty)) => {
+        Some(&SplatArg::Value(pass_ty)) => {
             prototype_args.consume();
             args.consume();
 
             match_argument(prototype_arg_type, pass_ty, result);
         }
-        Some(&CallArg::Splat(_, pass_ty)) => {
+        Some(&SplatArg::Splat(pass_ty)) => {
             // consume the prototype arg but *not* this splat arg -
             // since we don't know ahead of time how many arguments this
             // splat will produce we need to match it against the remaining
@@ -229,7 +214,7 @@ fn match_required_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
     args: &mut PassedConsumer,
     result: &mut MatchResult<'ty, 'object>
 ) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
-        PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
+        PassedConsumer : Consumer<'a, SplatArg<'ty, 'object>>
 {
     while let Some(..) = args.peek() {
         let proto_arg = prototype_args.peek().map(|a| a.unwrap_procarg0());
@@ -247,7 +232,7 @@ fn match_optional_arguments<'a, 'ty: 'a, 'object: 'ty, PrototypeConsumer, Passed
     args: &mut PassedConsumer,
     result: &mut MatchResult<'ty, 'object>
 ) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
-        PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
+        PassedConsumer : Consumer<'a, SplatArg<'ty, 'object>>
 {
     while let Some(..) = args.peek() {
         let proto_arg = prototype_args.peek().map(|a| a.unwrap_procarg0());
@@ -270,18 +255,18 @@ fn match_rest_argument<'a, 'ty: 'a, 'object, PrototypeConsumer, PassedConsumer>(
     args: &mut PassedConsumer,
     result: &mut MatchResult<'ty, 'object>
 ) where PrototypeConsumer : Consumer<'a, Arg<'ty, 'object>>,
-        PassedConsumer : Consumer<'a, CallArg<'ty, 'object>>
+        PassedConsumer : Consumer<'a, SplatArg<'ty, 'object>>
 {
     if let Some(&Arg::Rest { ty: proto_ty, .. }) = prototype_args.peek() {
         prototype_args.consume();
 
         loop {
             match args.peek() {
-                Some(&CallArg::Pass(_, pass_ty)) => {
+                Some(&SplatArg::Value(pass_ty)) => {
                     args.consume();
                     match_argument(proto_ty, pass_ty, result);
                 }
-                Some(&CallArg::Splat(_, splat_ty)) => {
+                Some(&SplatArg::Splat(splat_ty)) => {
                     args.consume();
                     match_argument(proto_ty, splat_ty, result);
                 }
@@ -294,7 +279,7 @@ fn match_rest_argument<'a, 'ty: 'a, 'object, PrototypeConsumer, PassedConsumer>(
 pub fn match_prototype_with_invocation<'ty, 'object: 'ty>(
     tyenv: &TypeEnv<'ty, 'object>,
     prototype_args: &[Arg<'ty, 'object>],
-    call_args: &[CallArg<'ty, 'object>],
+    call_args: &[SplatArg<'ty, 'object>],
 ) -> MatchResult<'ty, 'object>
 {
     let mut result = MatchResult {

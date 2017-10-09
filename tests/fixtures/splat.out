@@ -1,0 +1,80 @@
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/splat.rb:4
+      4 |  def test1 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/splat.rb:5
+      5 |    [*splat1]
+             ^^^^^^^^^ Array::[Integer]
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/splat.rb:4
+      4 |  def test1 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/splat.rb:5
+      5 |    [*splat1]
+             ^^^^^^^^^ Array::[Integer]
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/splat.rb:11
+     11 |  def test2 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/splat.rb:12
+     12 |    [*splat2]
+             ^^^^^^^^^ Array::[Integer | String]
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/splat.rb:11
+     11 |  def test2 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/splat.rb:12
+     12 |    [*splat2]
+             ^^^^^^^^^ Array::[Integer | String]
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/splat.rb:18
+     18 |  def test3 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/splat.rb:19
+     19 |    [*splat3]
+             ^^^^^^^^^ Array::[Integer | String]
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/splat.rb:18
+     18 |  def test3 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/splat.rb:19
+     19 |    [*splat3]
+             ^^^^^^^^^ Array::[Integer | String]
+
+error: Cannot splat union type:
+
+        @ __ROOT__/tests/fixtures/splat.rb:26
+     26 |    [*splat4]
+               ^^^^^^ Array::[Integer] | String, because
+        @ __ROOT__/tests/fixtures/splat.rb:22
+     22 |  def splat4 => ([Integer] | String)
+                                      ^^^^^^ String is not an array type
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/splat.rb:25
+     25 |  def test4 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/splat.rb:26
+     26 |    [*splat4]
+             ^^^^^^^^^ Array::[t2]
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/splat.rb:25
+     25 |  def test4 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/splat.rb:26
+     26 |    [*splat4]
+             ^^^^^^^^^ Array::[t2]
