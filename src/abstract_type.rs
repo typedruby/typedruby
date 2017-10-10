@@ -434,6 +434,8 @@ impl<'env, 'object> ResolveType<'env, 'object> {
                         self.resolve_type(ty),
                     ]
                 }),
+            Node::TyParen(_, ref inner) =>
+                self.resolve_type(inner),
             Node::TyOr(ref loc, ref a, ref b) =>
                 Rc::new(TypeNode::Union {
                     loc: loc.clone(),
