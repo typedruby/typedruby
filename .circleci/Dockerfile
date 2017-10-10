@@ -16,7 +16,7 @@ RUN apt-get update \
     ruby \
   && rm -rf /var/lib/apt/lists/*
 
-ARG RUST_VERSION=1.18.0
+ARG RUST_VERSION=1.20.0
 ARG RUST_NAME=rust-$RUST_VERSION-x86_64-unknown-linux-gnu
 ARG RUST_ARCHIVE=$RUST_NAME.tar.gz
 ARG RUST_URL=https://static.rust-lang.org/dist/$RUST_ARCHIVE
