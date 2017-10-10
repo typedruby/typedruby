@@ -473,17 +473,19 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         for merge in merges {
             match merge {
                 LocalEntryMerge::Ok(_) => {},
-                LocalEntryMerge::MustMatch(to_ty, from_ty, to_entry, from_entry) => {
+                LocalEntryMerge::MustMatch(to_entry, from_entry) => {
                     match to_entry {
                         LocalEntry::Pinned(pin) |
                         LocalEntry::ConditionallyPinned(pin) => {
                             match from_entry {
                                 LocalEntry::Bound(bind) => {
-                                    self.compatible_asgn(&pin, from_ty, &bind.asgn_loc);
+                                    self.compatible_asgn(&pin, bind.ty, &bind.asgn_loc);
                                 }
-                                _ => {
-                                    self.compatible(to_ty, from_ty, None);
+                                LocalEntry::Pinned(sub_pin) |
+                                LocalEntry::ConditionallyPinned(sub_pin) => {
+                                    self.compatible(pin.ty, sub_pin.ty, None);
                                 }
+                                LocalEntry::Unbound => panic!("should not happen"),
                             }
                         }
                         _ => panic!("should not happen"),
