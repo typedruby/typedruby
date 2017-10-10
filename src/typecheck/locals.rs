@@ -31,7 +31,7 @@ pub enum LocalEntry<'ty, 'object: 'ty> {
 #[derive(Debug,Clone)]
 pub enum LocalEntryMerge<'ty, 'object: 'ty> {
     Ok(LocalEntry<'ty, 'object>),
-    MustMatch(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>, LocalEntry<'ty, 'object>, LocalEntry<'ty, 'object>),
+    MustMatch(LocalEntry<'ty, 'object>, LocalEntry<'ty, 'object>),
 }
 
 impl<'ty, 'object> LocalEntry<'ty, 'object> {
@@ -55,27 +55,27 @@ impl<'ty, 'object> LocalEntry<'ty, 'object> {
                         asgn_loc: a.asgn_loc, // TODO incorporate b.asgn_loc too
                     })),
             (LocalEntry::Bound(bind), LocalEntry::Pinned(pin)) =>
-                LocalEntryMerge::MustMatch(pin.ty, bind.ty, LocalEntry::Pinned(pin), LocalEntry::Bound(bind)),
+                LocalEntryMerge::MustMatch(LocalEntry::Pinned(pin), LocalEntry::Bound(bind)),
             (LocalEntry::Bound(bind), LocalEntry::ConditionallyPinned(pin)) =>
-                LocalEntryMerge::MustMatch(pin.ty, bind.ty, LocalEntry::ConditionallyPinned(pin), LocalEntry::Bound(bind)),
+                LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(pin), LocalEntry::Bound(bind)),
 
             (LocalEntry::Pinned(pin), LocalEntry::Unbound) =>
                 LocalEntryMerge::Ok(LocalEntry::ConditionallyPinned(pin)),
             (LocalEntry::Pinned(pin), LocalEntry::Bound(bind)) =>
-                LocalEntryMerge::MustMatch(pin.ty, bind.ty, LocalEntry::Pinned(pin), LocalEntry::Bound(bind)),
+                LocalEntryMerge::MustMatch(LocalEntry::Pinned(pin), LocalEntry::Bound(bind)),
             (LocalEntry::Pinned(a), LocalEntry::Pinned(b)) =>
-                LocalEntryMerge::MustMatch(a.ty, b.ty, LocalEntry::Pinned(a), LocalEntry::Pinned(b)),
+                LocalEntryMerge::MustMatch(LocalEntry::Pinned(a), LocalEntry::Pinned(b)),
             (LocalEntry::Pinned(a), LocalEntry::ConditionallyPinned(b)) =>
-                LocalEntryMerge::MustMatch(b.ty, a.ty, LocalEntry::ConditionallyPinned(b), LocalEntry::Pinned(a)),
+                LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(b), LocalEntry::Pinned(a)),
 
             (LocalEntry::ConditionallyPinned(pin), LocalEntry::Unbound) =>
                 LocalEntryMerge::Ok(LocalEntry::ConditionallyPinned(pin)),
             (LocalEntry::ConditionallyPinned(pin), LocalEntry::Bound(bind)) =>
-                LocalEntryMerge::MustMatch(pin.ty, bind.ty, LocalEntry::ConditionallyPinned(pin), LocalEntry::Bound(bind)),
+                LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(pin), LocalEntry::Bound(bind)),
             (LocalEntry::ConditionallyPinned(a), LocalEntry::Pinned(b)) =>
-                LocalEntryMerge::MustMatch(a.ty, b.ty, LocalEntry::ConditionallyPinned(a), LocalEntry::Pinned(b)),
+                LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(a), LocalEntry::Pinned(b)),
             (LocalEntry::ConditionallyPinned(a), LocalEntry::ConditionallyPinned(b)) =>
-                LocalEntryMerge::MustMatch(a.ty, b.ty, LocalEntry::ConditionallyPinned(a), LocalEntry::ConditionallyPinned(b)),
+                LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(a), LocalEntry::ConditionallyPinned(b)),
         }
     }
 }
@@ -367,7 +367,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
 
             match merge {
                 LocalEntryMerge::Ok(entry) |
-                LocalEntryMerge::MustMatch(_, _, entry, _) =>
+                LocalEntryMerge::MustMatch(entry, _) =>
                     (name.clone(), entry)
             }
         });
@@ -403,7 +403,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
 
             match merge {
                 LocalEntryMerge::Ok(entry) |
-                LocalEntryMerge::MustMatch(_, _, entry, _) =>
+                LocalEntryMerge::MustMatch(entry, _) =>
                     locals.update_vars(locals.sc.vars.insert(name, entry))
             }
         })
