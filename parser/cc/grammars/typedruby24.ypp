@@ -3162,7 +3162,7 @@ tr_methodgenargs: tLBRACK2 tr_gendeclargs tr_constraints rbracket
                     }
                 | tLPAREN tr_union_type rparen
                     {
-                      $$ = $2;
+                      $$ = driver.build.tr_paren(self, $1, $2, $3);
                     }
 
    tr_union_type: tr_union_type tPIPE tr_type
