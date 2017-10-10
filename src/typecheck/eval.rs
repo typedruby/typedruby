@@ -179,16 +179,13 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn compatible_asgn(&self, to: &PinnedType<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: &Loc) {
-        let (err_to, err_from) = match self.tyenv.compatible(to.ty, from) {
-            Err(err) => err,
-            _ => return,
-        };
-
-        self.error("Cannot assign value of type:", &[
-            Detail::Loc(&self.tyenv.describe(from), from.loc()),
-            Detail::Loc(&format!("to {} in this expression", self.tyenv.describe(to.ty)), loc),
-            Detail::Loc("because this variable is referenced from a block", &to.pinned_loc),
-        ]);
+        if self.tyenv.compatible(to.ty, from).is_err() {
+            self.error("Cannot assign value of type:", &[
+                Detail::Loc(&self.tyenv.describe(from), from.loc()),
+                Detail::Loc(&format!("to {} in this expression", self.tyenv.describe(to.ty)), loc),
+                Detail::Loc("because this variable is referenced from a block", &to.pinned_loc),
+            ]);
+        }
     }
 
     fn unify(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
