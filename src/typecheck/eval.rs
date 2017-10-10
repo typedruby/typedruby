@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
-use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
+use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge, PinnedType};
 use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, SplatArg, TypeConstraint};
 use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
@@ -176,6 +176,19 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
 
         self.error("Could not match types:", &details);
+    }
+
+    fn compatible_asgn(&self, to: &PinnedType<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: &Loc) {
+        let (err_to, err_from) = match self.tyenv.compatible(to.ty, from) {
+            Err(err) => err,
+            _ => return,
+        };
+
+        self.error("Cannot assign value of type:", &[
+            Detail::Loc(&self.tyenv.describe(from), from.loc()),
+            Detail::Loc(&format!("to {} in this expression", self.tyenv.describe(to.ty)), loc),
+            Detail::Loc("because this variable is referenced from a block", &to.pinned_loc),
+        ]);
     }
 
     fn unify(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
@@ -460,8 +473,21 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         for merge in merges {
             match merge {
                 LocalEntryMerge::Ok(_) => {},
-                LocalEntryMerge::MustMatch(to, from, _) => {
-                    self.compatible(to, from, None);
+                LocalEntryMerge::MustMatch(to_ty, from_ty, to_entry, from_entry) => {
+                    match to_entry {
+                        LocalEntry::Pinned(pin) |
+                        LocalEntry::ConditionallyPinned(pin) => {
+                            match from_entry {
+                                LocalEntry::Bound(bind) => {
+                                    self.compatible_asgn(&pin, from_ty, &bind.asgn_loc);
+                                }
+                                _ => {
+                                    self.compatible(to_ty, from_ty, None);
+                                }
+                            }
+                        }
+                        _ => panic!("should not happen"),
+                    }
                 }
             }
         }
@@ -1095,7 +1121,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             // in the some case, the local variable is already
             // pinned to a type and we must check type compatibility:
             (Some(pin), l) => {
-                self.compatible(pin.ty, ty, Some(loc));
+                self.compatible_asgn(&pin, ty, loc);
                 l
             }
         }
@@ -1218,7 +1244,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Lhs::Lvar(_, name) => {
                 match locals.assign(name, rty, loc) {
                     (Some(pin), locals) => {
-                        self.compatible(pin.ty, rty, Some(loc));
+                        self.compatible_asgn(&pin, rty, loc);
                         EvalResult::Ok((), locals)
                     }
                     (None, locals) => {
