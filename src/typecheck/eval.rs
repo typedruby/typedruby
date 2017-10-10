@@ -482,7 +482,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                                 LocalEntry::ConditionallyPinned(sub_pin) => {
                                     self.compatible(pin.ty, sub_pin.ty, None);
                                 }
-                                LocalEntry::Unbound => panic!("should not happen"),
                             }
                         }
                         _ => panic!("should not happen"),
@@ -1076,21 +1075,20 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn lookup_lvar(&self, loc: &Loc, name: &str, locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Option<TypeRef<'ty, 'object>>>
     {
-        let (ty, locals) = locals.lookup(name, loc);
+        let (entry, locals) = locals.lookup(name, loc);
 
-        let ty = match ty {
+        let ty = entry.map(|entry| match entry {
             LocalEntry::Bound(bind) => {
-                Some(self.tyenv.local_variable(loc.clone(), name.to_owned(), bind.ty))
+                self.tyenv.local_variable(loc.clone(), name.to_owned(), bind.ty)
             }
             LocalEntry::Pinned(pin) => {
-                Some(self.tyenv.local_variable(loc.clone(), name.to_owned(), pin.ty))
+                self.tyenv.local_variable(loc.clone(), name.to_owned(), pin.ty)
             }
             LocalEntry::ConditionallyPinned(pin) => {
-                Some(self.tyenv.nillable(loc,
-                    self.tyenv.local_variable(loc.clone(), name.to_owned(), pin.ty)))
+                self.tyenv.nillable(loc,
+                    self.tyenv.local_variable(loc.clone(), name.to_owned(), pin.ty))
             }
-            LocalEntry::Unbound => None,
-        };
+        });
 
         EvalResult::Ok(ty, locals)
     }

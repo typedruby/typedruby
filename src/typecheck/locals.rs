@@ -22,7 +22,6 @@ pub struct PinnedType<'ty, 'object: 'ty> {
 
 #[derive(Debug,Clone)]
 pub enum LocalEntry<'ty, 'object: 'ty> {
-    Unbound,
     Bound(BoundType<'ty, 'object>),
     Pinned(PinnedType<'ty, 'object>),
     ConditionallyPinned(PinnedType<'ty, 'object>),
@@ -35,46 +34,46 @@ pub enum LocalEntryMerge<'ty, 'object: 'ty> {
 }
 
 impl<'ty, 'object> LocalEntry<'ty, 'object> {
-    pub fn merge(self, other: LocalEntry<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>) -> LocalEntryMerge<'ty, 'object> {
-        match (self, other) {
-            (LocalEntry::Unbound, LocalEntry::Unbound) =>
-                LocalEntryMerge::Ok(LocalEntry::Unbound),
-            (LocalEntry::Unbound, LocalEntry::Bound(bind)) =>
+    pub fn merge(a: Option<LocalEntry<'ty, 'object>>, b: Option<LocalEntry<'ty, 'object>>, tyenv: &TypeEnv<'ty, 'object>) -> LocalEntryMerge<'ty, 'object> {
+        match (a, b) {
+            (None, None) =>
+                panic!("should not happen"),
+            (None, Some(LocalEntry::Bound(bind))) =>
                 LocalEntryMerge::Ok(LocalEntry::Bound(BoundType { ty: tyenv.nillable(bind.ty.loc(), bind.ty), asgn_loc: bind.asgn_loc })),
-            (LocalEntry::Unbound, LocalEntry::Pinned(pin)) =>
+            (None, Some(LocalEntry::Pinned(pin))) =>
                 LocalEntryMerge::Ok(LocalEntry::ConditionallyPinned(pin)),
-            (LocalEntry::Unbound, LocalEntry::ConditionallyPinned(pin)) =>
+            (None, Some(LocalEntry::ConditionallyPinned(pin))) =>
                 LocalEntryMerge::Ok(LocalEntry::ConditionallyPinned(pin)),
 
-            (LocalEntry::Bound(bind), LocalEntry::Unbound) =>
+            (Some(LocalEntry::Bound(bind)), None) =>
                 LocalEntryMerge::Ok(LocalEntry::Bound(BoundType { ty: tyenv.nillable(bind.ty.loc(), bind.ty), asgn_loc: bind.asgn_loc })),
-            (LocalEntry::Bound(a), LocalEntry::Bound(b)) =>
+            (Some(LocalEntry::Bound(a)), Some(LocalEntry::Bound(b))) =>
                 LocalEntryMerge::Ok(LocalEntry::Bound(
                     BoundType {
                         ty: tyenv.union(a.ty.loc() /* TODO incorporate b.ty too */, a.ty, b.ty),
                         asgn_loc: a.asgn_loc, // TODO incorporate b.asgn_loc too
                     })),
-            (LocalEntry::Bound(bind), LocalEntry::Pinned(pin)) =>
+            (Some(LocalEntry::Bound(bind)), Some(LocalEntry::Pinned(pin))) =>
                 LocalEntryMerge::MustMatch(LocalEntry::Pinned(pin), LocalEntry::Bound(bind)),
-            (LocalEntry::Bound(bind), LocalEntry::ConditionallyPinned(pin)) =>
+            (Some(LocalEntry::Bound(bind)), Some(LocalEntry::ConditionallyPinned(pin))) =>
                 LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(pin), LocalEntry::Bound(bind)),
 
-            (LocalEntry::Pinned(pin), LocalEntry::Unbound) =>
+            (Some(LocalEntry::Pinned(pin)), None) =>
                 LocalEntryMerge::Ok(LocalEntry::ConditionallyPinned(pin)),
-            (LocalEntry::Pinned(pin), LocalEntry::Bound(bind)) =>
+            (Some(LocalEntry::Pinned(pin)), Some(LocalEntry::Bound(bind))) =>
                 LocalEntryMerge::MustMatch(LocalEntry::Pinned(pin), LocalEntry::Bound(bind)),
-            (LocalEntry::Pinned(a), LocalEntry::Pinned(b)) =>
+            (Some(LocalEntry::Pinned(a)), Some(LocalEntry::Pinned(b))) =>
                 LocalEntryMerge::MustMatch(LocalEntry::Pinned(a), LocalEntry::Pinned(b)),
-            (LocalEntry::Pinned(a), LocalEntry::ConditionallyPinned(b)) =>
+            (Some(LocalEntry::Pinned(a)), Some(LocalEntry::ConditionallyPinned(b))) =>
                 LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(b), LocalEntry::Pinned(a)),
 
-            (LocalEntry::ConditionallyPinned(pin), LocalEntry::Unbound) =>
+            (Some(LocalEntry::ConditionallyPinned(pin)), None) =>
                 LocalEntryMerge::Ok(LocalEntry::ConditionallyPinned(pin)),
-            (LocalEntry::ConditionallyPinned(pin), LocalEntry::Bound(bind)) =>
+            (Some(LocalEntry::ConditionallyPinned(pin)), Some(LocalEntry::Bound(bind))) =>
                 LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(pin), LocalEntry::Bound(bind)),
-            (LocalEntry::ConditionallyPinned(a), LocalEntry::Pinned(b)) =>
+            (Some(LocalEntry::ConditionallyPinned(a)), Some(LocalEntry::Pinned(b))) =>
                 LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(a), LocalEntry::Pinned(b)),
-            (LocalEntry::ConditionallyPinned(a), LocalEntry::ConditionallyPinned(b)) =>
+            (Some(LocalEntry::ConditionallyPinned(a)), Some(LocalEntry::ConditionallyPinned(b))) =>
                 LocalEntryMerge::MustMatch(LocalEntry::ConditionallyPinned(a), LocalEntry::ConditionallyPinned(b)),
         }
     }
@@ -234,37 +233,36 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         Self::new_(LocalScope { parent: self.sc.parent.clone(), vars: vars })
     }
 
-    fn get_var_direct(&self, name: &str) -> LocalEntry<'ty, 'object> {
-        self.sc.vars.get(name).unwrap_or(LocalEntry::Unbound)
+    fn get_var_direct(&self, name: &str) -> Option<LocalEntry<'ty, 'object>> {
+        self.sc.vars.get(name)
     }
 
     fn insert_var(&self, name: String, entry: LocalEntry<'ty, 'object>) -> Locals<'ty, 'object> {
         self.update_vars(self.sc.vars.insert(name, entry))
     }
 
-    fn update_upvar<F>(&self, name: &str, f: &F) -> (LocalEntry<'ty, 'object>, Option<Locals<'ty, 'object>>)
+    fn update_upvar<F>(&self, name: &str, f: &F) -> (Option<LocalEntry<'ty, 'object>>, Option<Locals<'ty, 'object>>)
         where F: Fn(LocalEntry<'ty, 'object>) -> (LocalEntry<'ty, 'object>)
     {
         if let Some(local) = self.sc.vars.get(name) {
             let new_local = f(local);
 
-            (new_local.clone(), Some(self.insert_var(name.to_owned(), new_local)))
+            (Some(new_local.clone()), Some(self.insert_var(name.to_owned(), new_local)))
         } else if let Some(ref parent) = self.sc.parent {
             let (x, parent) = parent.update_upvar(name, f);
 
             (x, parent.map(|parent| self.update_parent(Some(parent))))
         } else {
-            (LocalEntry::Unbound, None)
+            (None, None)
         }
     }
 
-    pub fn lookup(&self, name: &str, loc: &Loc) -> (LocalEntry<'ty, 'object>, Locals<'ty, 'object>) {
+    pub fn lookup(&self, name: &str, loc: &Loc) -> (Option<LocalEntry<'ty, 'object>>, Locals<'ty, 'object>) {
         if let Some(local) = self.sc.vars.get(name) {
-            (local.clone(), self.clone())
+            (Some(local.clone()), self.clone())
         } else {
             let updated = self.update_upvar(name, &|local|
                 match local {
-                    LocalEntry::Unbound => LocalEntry::Unbound,
                     LocalEntry::Bound(bind) => LocalEntry::Pinned(PinnedType { ty: bind.ty, pinned_loc: loc.clone() }),
                     LocalEntry::Pinned(pin) => LocalEntry::Pinned(pin),
                     LocalEntry::ConditionallyPinned(pin) => LocalEntry::ConditionallyPinned(pin),
@@ -293,7 +291,6 @@ impl<'ty, 'object> Locals<'ty, 'object> {
                 LocalEntry::Bound(_) => (None, self.insert_var(name, LocalEntry::Bound(bind))),
                 LocalEntry::Pinned(pin) => (Some(pin), self.clone()),
                 LocalEntry::ConditionallyPinned(pin) => (Some(pin), self.clone()),
-                LocalEntry::Unbound => panic!("should not happen"),
             }
         }
 
@@ -303,11 +300,10 @@ impl<'ty, 'object> Locals<'ty, 'object> {
                     LocalEntry::Bound(bind) => LocalEntry::Pinned(PinnedType { ty: bind.ty, pinned_loc: loc.clone() }),
                     LocalEntry::Pinned(pin) |
                     LocalEntry::ConditionallyPinned(pin) => LocalEntry::Pinned(pin),
-                    LocalEntry::Unbound => panic!("should not happen"),
                 }
             });
 
-            if let LocalEntry::Pinned(pinned_ty) = entry {
+            if let Some(LocalEntry::Pinned(pinned_ty)) = entry {
                 return (Some(pinned_ty), locals.map(|l| self.update_parent(Some(l))).unwrap_or_else(|| self.clone()))
             }
         }
@@ -317,15 +313,12 @@ impl<'ty, 'object> Locals<'ty, 'object> {
 
     pub fn refine(&self, name: &str, ty: TypeRef<'ty, 'object>) -> Locals<'ty, 'object> {
         match self.get_var_direct(&name) {
-            LocalEntry::Unbound => {
-                // TODO - can't refine type of variable not in the immediate scope
-                self.clone()
-            }
-            LocalEntry::Bound(bind) =>
+            Some(LocalEntry::Bound(bind)) =>
                 self.insert_var(name.to_owned(),
                     LocalEntry::Bound(BoundType { ty, asgn_loc: bind.asgn_loc })),
-            LocalEntry::Pinned(_) => self.clone(),
-            LocalEntry::ConditionallyPinned(_) => self.clone(),
+            None |
+            Some(LocalEntry::Pinned(_)) |
+            Some(LocalEntry::ConditionallyPinned(_)) => self.clone(),
         }
     }
 
@@ -361,7 +354,9 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         names.extend(other_map.keys());
 
         let vars = names.into_iter().map(|name| {
-            let merge = self.get_var_direct(name).merge(other.get_var_direct(name), tyenv);
+            let merge = LocalEntry::merge(
+                self.get_var_direct(name),
+                other.get_var_direct(name), tyenv);
 
             merges.push(merge.clone());
 
@@ -397,7 +392,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
 
         bindings.into_iter().rev().fold(since, |locals, (name, entry)| {
             let before_entry = locals.get_var_direct(&name);
-            let merge = before_entry.merge(entry, tyenv);
+            let merge = LocalEntry::merge(before_entry, Some(entry), tyenv);
 
             merges.push(merge.clone());
 
