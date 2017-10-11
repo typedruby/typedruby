@@ -151,7 +151,7 @@ lexer::lexer(diagnostics_t &diag, ruby_version version, const std::string& sourc
 }
 
 void lexer::check_stack_capacity() {
-    if (stack.size() == (uint)top) {
+    if (stack.size() == (size_t)top) {
     stack.resize(stack.size() * 2);
   }
 }
