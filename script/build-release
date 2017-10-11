@@ -6,8 +6,8 @@ if [[ "$(uname -ms)" != "Darwin x86_64" ]]; then
     exit 1
 fi
 
-script/build-darwin
-script/build-linux
+release/build-darwin
+release/build-linux
 
 mkdir -p tmp
 
@@ -22,7 +22,7 @@ cp gem/typedruby.gemspec tmp/stage/
 cp gem/bin/typedruby tmp/stage/bin/
 
 cp target/x86_64-darwin/release/typedruby tmp/stage/typedruby-x86_64-darwin
-cp target/x86_64-linux/release/typedruby tmp/stage/typedruby-x86_64-linux
+cp target/x86_64-unknown-linux-musl/release/typedruby tmp/stage/typedruby-x86_64-linux
 
 cd tmp/stage/
 
