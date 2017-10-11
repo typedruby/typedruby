@@ -1,0 +1,41 @@
+#!/bin/bash -e
+cd "$(dirname "$0")/.."
+
+TARGET_DIR="$(pwd)/target"
+
+IMAGE_ID="$(docker build -q release)"
+
+mkdir -p "$TARGET_DIR"
+
+docker run -t -i \
+    --volume "$(pwd)":/workspace/src:ro \
+    --volume "$TARGET_DIR":/workspace/target \
+    --workdir /workspace \
+    "$IMAGE_ID" \
+    /bin/bash -c '
+        set -e
+
+        if [[ "$(uname -ms)" != "Linux x86_64" ]]; then
+            echo "fatal: must run script/build-linux on a Linux x86_64 host" >&2
+            exit 1
+        fi
+
+        export PATH=/toolchain/x86_64-unknown-linux-musl/bin:/root/.cargo/bin:$PATH
+        export CC=x86_64-unknown-linux-musl-gcc
+        export CXX=x86_64-unknown-linux-musl-g++
+        export LD="$CXX"
+        export CFLAGS="-static --sysroot=/toolchain/x86_64-unknown-linux-musl -I /toolchain/x86_64-unknown-linux-musl/include -I /toolchain/x86_64-unknown-linux-musl/include/c++/6.1.0 -I /toolchain/x86_64-unknown-linux-musl/include/c++/6.1.0/x86_64-unknown-linux-musl"
+        export CXXFLAGS="$CFLAGS"
+        export RUSTFLAGS="-Clink-arg=/toolchain/x86_64-unknown-linux-musl/lib/gcc/x86_64-unknown-linux-musl/6.1.0/crtbegin.o -Clink-arg=/toolchain/x86_64-unknown-linux-musl/lib/gcc/x86_64-unknown-linux-musl/6.1.0/crtend.o"
+        export CARGO_HOME=/workspace/.cargo
+        export CARGO_TARGET_DIR=/workspace/target
+
+        mkdir -p "$CARGO_HOME"
+        cat > "$CARGO_HOME/config" <<CONFIG
+[target.x86_64-unknown-linux-musl]
+linker = "/toolchain/x86_64-unknown-linux-musl/bin/x86_64-unknown-linux-musl-g++"
+CONFIG
+
+        cd src
+        cargo build --release --target=x86_64-unknown-linux-musl
+    '
