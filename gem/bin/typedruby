@@ -2,9 +2,7 @@
 require "etc"
 
 def typedruby_bin_path
-  if bin = ENV["TYPEDRUBY_BIN"]
-    bin
-  else
+  ENV.fetch("TYPEDRUBY_BIN") {
     uname = Etc.uname
 
     system = "#{uname[:machine]}-#{uname[:sysname]}".downcase
@@ -16,11 +14,15 @@ def typedruby_bin_path
     end
 
     bin
-  end
+  }
 end
 
-defs_path = File.expand_path("../definitions/lib", __dir__)
+def typedruby_lib_path
+  ENV.fetch("TYPEDRUBY_LIB") {
+    File.expand_path("../definitions/lib", __dir__)
+  }
+end
 
 exec [typedruby_bin_path, $0],
-  "-I#{defs_path}",
+  "-I#{typedruby_lib_path}",
   *ARGV
