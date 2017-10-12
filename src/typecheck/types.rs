@@ -215,25 +215,39 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
     {
         let mat = Materialize::new(self.env, self);
 
-        let include_chain = type_context.class.include_chain(module);
+        match *module {
+            RubyObject::Module { .. } |
+            RubyObject::IClass { .. } => {
+                let include_chain = type_context.class.include_chain(module);
 
-        include_chain.iter().rev()
-            .fold(type_context, |context, site| {
-                let type_params = site.type_parameters.iter()
-                    .map(|param| mat.materialize_type(param, &context))
-                    .collect::<Vec<_>>();
+                include_chain.iter().rev()
+                    .fold(type_context, |context, site| {
+                        let type_params = site.type_parameters.iter()
+                            .map(|param| mat.materialize_type(param, &context))
+                            .collect::<Vec<_>>();
 
-                let type_names = site.module.type_parameters().iter()
-                    .map(|&Id(_, ref name)| name.to_owned())
-                    .zip(type_params.iter().cloned())
+                        let type_names = site.module.type_parameters().iter()
+                            .map(|&Id(_, ref name)| name.to_owned())
+                            .zip(type_params.iter().cloned())
+                            .collect();
+
+                        TypeContext {
+                            class: site.module,
+                            type_parameters: type_params,
+                            type_names: type_names,
+                        }
+                    })
+            }
+            RubyObject::Class { .. } |
+            RubyObject::Metaclass { .. } => {
+                let type_params = type_context.type_parameters
+                    .into_iter()
+                    .take(module.type_parameters().len())
                     .collect();
 
-                TypeContext {
-                    class: site.module,
-                    type_parameters: type_params,
-                    type_names: type_names,
-                }
-            })
+                TypeContext::new(module, type_params)
+            }
+        }
     }
 
     pub fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
