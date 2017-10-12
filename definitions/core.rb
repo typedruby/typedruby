@@ -115,6 +115,7 @@ module Enumerable::[EnumType]
   def group_by[GroupKey]({ |EnumType element| => GroupKey } &) => { GroupKey => [EnumType] }; end
 
   def find({ |EnumType element| => Boolean } &) => ~EnumType; end
+  alias :detect :find
 
   def any?({ |EnumType element| => Boolean } &) => Boolean; end
 
