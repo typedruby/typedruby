@@ -146,14 +146,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         };
 
         let ref_ = if let Node::Const(_, ref base, ref id) = *name {
-            match *base {
-                Some(ref base_node) =>
-                    self.resolve_cpath(base_node).and_then(|constant|
-                        constant.module()
-                            .map(|constant| (constant, id))
-                            .ok_or((base_node, "Not a static class/module"))),
-                None => Ok((self.scope.module, id)),
-            }
+            self.resolve_cbase(base).map(|object| (object, id))
         } else {
             Err((name, "Class name is not a static constant"))
         };
