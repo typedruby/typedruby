@@ -683,11 +683,12 @@ end
 class Numeric < Object
   include Comparable
 
+  def <=>(Object other) => ~Integer; end
+
   def <(Numeric other) => Boolean; end
   def <=(Numeric other) => Boolean; end
   def >(Numeric other) => Boolean; end
   def >=(Numeric other) => Boolean; end
-  def <=>(Numeric other) => Boolean; end
   def ==(Numeric other) => Boolean; end
   def !=(Numeric other) => Boolean; end
 end
