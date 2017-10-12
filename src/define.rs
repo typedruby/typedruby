@@ -4,7 +4,7 @@ use std::rc::Rc;
 use ast::{Id, Node};
 use errors::Detail;
 use environment::Environment;
-use object::{RubyObject, Scope, MethodEntry, MethodImpl, ObjectGraph, IvarEntry};
+use object::{RubyObject, Scope, MethodEntry, MethodImpl, MethodInfo, ObjectGraph, IvarEntry};
 use abstract_type::{TypeNode, TypeScope, Prototype, AnnotationStatus};
 
 #[derive(Copy,Clone,Debug)]
@@ -137,15 +137,13 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
 
             let impl_ = if anno == AnnotationStatus::Typed {
                 MethodImpl::TypedRuby {
-                    name: name.clone(),
+                    info: MethodInfo { name: name.clone(), proto: proto },
                     body: body.clone(),
-                    proto: proto,
                     scope: scope,
                 }
             } else {
                 MethodImpl::Ruby {
-                    name: name.clone(),
-                    proto: proto,
+                    info: MethodInfo { name: name.clone(), proto: proto },
                 }
             };
 

@@ -17,8 +17,8 @@ pub fn check<'object>(env: &Environment<'object>, method: Rc<MethodEntry<'object
     let types = TypeEnv::new(&arena, env);
 
     match *method.implementation {
-        MethodImpl::TypedRuby { ref scope, ref body, ref proto, .. } =>
-            Eval::process(env, types, scope.clone(), method.owner, body.clone(), proto),
+        MethodImpl::TypedRuby { ref scope, ref body, ref info, .. } =>
+            Eval::process(env, types, scope.clone(), method.owner, body.clone(), info),
         MethodImpl::Ruby { .. } |
         MethodImpl::AttrReader { .. } |
         MethodImpl::AttrWriter { .. } |

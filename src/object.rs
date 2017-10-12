@@ -611,16 +611,20 @@ pub struct MethodEntry<'object> {
 }
 
 #[derive(Debug)]
+pub struct MethodInfo<'object> {
+    pub name: String,
+    pub proto: Prototype<'object>,
+}
+
+#[derive(Debug)]
 pub enum MethodImpl<'object> {
     TypedRuby {
-        name: String,
-        proto: Prototype<'object>,
+        info: MethodInfo<'object>,
         body: Option<Rc<Node>>,
         scope: Rc<Scope<'object>>,
     },
     Ruby {
-        name: String,
-        proto: Prototype<'object>,
+        info: MethodInfo<'object>,
     },
     AttrReader {
         ivar: String,

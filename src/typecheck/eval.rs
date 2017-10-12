@@ -2,7 +2,7 @@ use std::rc::Rc;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
 use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, SplatArg, TypeConstraint};
-use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
+use object::{Scope, RubyObject, MethodEntry, MethodImpl, MethodInfo, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
 use errors::Detail;
@@ -57,18 +57,19 @@ enum Lhs<'ty, 'object: 'ty> {
 }
 
 impl<'ty, 'object> Eval<'ty, 'object> {
-    pub fn process(env: &'ty Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, body: Option<Rc<Node>>, proto: &abstract_type::Prototype<'object>) {
+    pub fn process(env: &'ty Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, body: Option<Rc<Node>>, info: &MethodInfo<'object>) {
         let class_type_parameters = class.type_parameters().iter().map(|&Id(ref loc, _)|
             tyenv.new_var(loc.clone())
         ).collect();
 
         let mut type_context = TypeContext::new(class, class_type_parameters);
 
-        let type_scope = proto.type_vars.iter().fold(TypeScope::new(scope, class),
-            |scope, &Id(_, ref name)| TypeScope::extend(scope, name.clone()));
+        let type_scope = info.proto.type_vars.iter()
+            .fold(TypeScope::new(scope, class),
+                |scope, &Id(_, ref name)| TypeScope::extend(scope, name.clone()));
 
         let (proto, locals) = Materialize::new(env, &tyenv)
-            .materialize_prototype(proto, Locals::new(), &mut type_context);
+            .materialize_prototype(&info.proto, Locals::new(), &mut type_context);
 
         let eval = Eval {
             env: env,
@@ -240,13 +241,13 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
     fn prototype_from_method_impl(&self, loc: &Loc, impl_: &MethodImpl<'object>, mut type_context: TypeContext<'ty, 'object>) -> Rc<Prototype<'ty, 'object>> {
         match *impl_ {
-            MethodImpl::TypedRuby { ref proto, .. } => {
-                let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
+            MethodImpl::TypedRuby { ref info, .. } => {
+                let (proto, _) = self.materialize_prototype(&info.proto, Locals::new(), &mut type_context);
 
                 proto
             }
-            MethodImpl::Ruby { ref proto, .. } => {
-                let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
+            MethodImpl::Ruby { ref info, .. } => {
+                let (proto, _) = self.materialize_prototype(&info.proto, Locals::new(), &mut type_context);
 
                 self.tyenv.unify(proto.retn, self.tyenv.any(proto.retn.loc().clone()))
                     .expect("retn to unify");
