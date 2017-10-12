@@ -1,0 +1,53 @@
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/class_def.rb:12
+     12 |  def test1 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/class_def.rb:13
+     13 |    A.new
+               ^^^ A
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/class_def.rb:12
+     12 |  def test1 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/class_def.rb:13
+     13 |    A.new
+             ^^^^^ A
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/class_def.rb:16
+     16 |  def test2 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/class_def.rb:17
+     17 |    B::C.new
+                  ^^^ B::C
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/class_def.rb:16
+     16 |  def test2 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/class_def.rb:17
+     17 |    B::C.new
+             ^^^^^^^^ B::C
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/class_def.rb:20
+     20 |  def test3 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/class_def.rb:21
+     21 |    B::C::D.new
+                     ^^^ B::C::D
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/class_def.rb:20
+     20 |  def test3 => nil
+                        ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/class_def.rb:21
+     21 |    B::C::D.new
+             ^^^^^^^^^^^ B::C::D
