@@ -93,8 +93,38 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
         }
 
+        // validate that this prototype is compatible with superclass prototype
+        // we must allow #initialize to be incompatible as a special case for
+        // now though. eventually we need to figure out a way for certain methods
+        // to be incompatible with their super definitions and disallow
+        // substitutability when those methods are invoked.
+        if info.name != "initialize" {
+            let super_ancestors = class.ancestors().skip(1);
+
+            let super_method = eval.lookup_method_in(
+                super_ancestors, &info.name, eval.type_context.clone());
+
+            if let Some((super_tyctx, super_entry)) = super_method {
+                let super_class = super_tyctx.class;
+
+                let super_proto = eval.prototype_from_method_impl(
+                    eval.proto.loc() /* TODO */, &super_entry.implementation, super_tyctx);
+
+                match eval.tyenv.compatible_prototype(&super_proto, &eval.proto) {
+                    None | Some(Err(_)) => {
+                        eval.error("Method prototype is incompatible with ancestor definition:", &[
+                            Detail::Loc(&format!("in {}#{}", class.name(), info.name), eval.proto.loc()),
+                            Detail::Loc(&format!("must be compatible with {}'s definition", super_class.name()), super_proto.loc()),
+                        ]);
+                    }
+                    _ => {}
+                }
+            }
+        }
+
         // don't typecheck a method if it has no body
         if let Some(ref body_node) = body {
+
             eval.process_node(body_node, locals).terminate(&|ty| {
                 eval.compatible(eval.proto.retn, ty, None);
             });
