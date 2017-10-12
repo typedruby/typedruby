@@ -359,7 +359,14 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn lookup_method(&self, name: &str, type_context: TypeContext<'ty, 'object>)
         -> Option<(TypeContext<'ty, 'object>, Rc<MethodEntry<'object>>)>
     {
-        for module in type_context.class.ancestors() {
+        self.lookup_method_in(type_context.class.ancestors(), name, type_context)
+    }
+
+    fn lookup_method_in<Ancestors>(&self, ancestors: Ancestors, name: &str, type_context: TypeContext<'ty, 'object>)
+        -> Option<(TypeContext<'ty, 'object>, Rc<MethodEntry<'object>>)>
+        where Ancestors: Iterator<Item = &'object RubyObject<'object>>
+    {
+        for module in ancestors {
             if let Some(method) = self.env.object.lookup_method_direct(module, name) {
                 let type_context = self.tyenv.map_type_context(type_context, module);
 
