@@ -277,7 +277,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             MethodImpl::Untyped => self.tyenv.any_prototype(loc.clone()),
             MethodImpl::IntrinsicClassNew => {
-                match *type_context.class {
+                match *type_context.self_class(&self.tyenv) {
                     RubyObject::Metaclass { of, .. } => {
                         let tyctx = TypeContext::new(None, of,
                             of.type_parameters().iter().map(|_|

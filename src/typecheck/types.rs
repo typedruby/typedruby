@@ -42,6 +42,21 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
         }
     }
 
+    pub fn self_class(&self, tyenv: &TypeEnv<'ty, 'object>) -> &'object RubyObject<'object> {
+        match self.self_type {
+            Some(ty) => {
+                match *tyenv.prune(ty) {
+                    Type::Instance { class, .. } => class,
+                    Type::Proc { .. } => tyenv.env.object.Proc,
+                    Type::Tuple { .. } => tyenv.env.object.array_class(),
+                    Type::KeywordHash { .. } => tyenv.env.object.hash_class(),
+                    ref ty => panic!("illegal self_type in TypeContext: {:?}", ty),
+                }
+            }
+            None => self.class,
+        }
+    }
+
     pub fn self_type(&self, tyenv: &TypeEnv<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
         match self.self_type {
             Some(ty) => tyenv.update_loc(ty, loc),
