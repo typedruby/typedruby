@@ -118,6 +118,19 @@ impl Strip {
         }
     }
 
+    fn is_anonymous_block(&self, node: Option<&Rc<Node>>) -> bool {
+        match node {
+            Some(node) => {
+                match **node {
+                    Node::TyTypedArg(_, _, ref arg) => self.is_anonymous_block(Some(arg)),
+                    Node::Blockarg(_, ref id) => id.is_none(),
+                    _ => false,
+                }
+            },
+            None => false,
+        }
+    }
+
     fn strip_node<'a, T: IntoNode<'a>>(&mut self, node: T) {
         let node = match node.into_node() {
             Some(node) => node,
@@ -167,6 +180,27 @@ impl Strip {
                 panic!("node {:?} should be unreachable by prune", node);
             }
 
+            Node::Args(ref loc, ref nodes) => {
+                let blockarg = nodes.last();
+
+                if self.is_anonymous_block(blockarg) {
+                    match nodes.len() {
+                        0 => unreachable!(),
+                        1 => self.remove(loc),
+                        _ => {
+                            let before = nodes.get(nodes.len() - 2);
+                            self.remove.push(ByteRange(
+                                before.unwrap().loc().end_pos,
+                                blockarg.unwrap().loc().end_pos
+                            ));
+                            self.strip_nodes(&nodes[0..nodes.len()-1]);
+                        }
+                    }
+                } else {
+                    self.strip_nodes(nodes);
+                }
+            }
+
             Node::Alias(_, ref a, ref b) |
             Node::And(_, ref a, ref b) |
             Node::AndAsgn(_, ref a, ref b) |
@@ -214,7 +248,6 @@ impl Strip {
                 // No-op
             }
 
-            Node::Args(_, ref nodes) |
             Node::Array(_, ref nodes) |
             Node::Begin(_, ref nodes) |
             Node::Break(_, ref nodes) |
