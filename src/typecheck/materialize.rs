@@ -48,32 +48,34 @@ impl<'a, 'ty, 'object> Materialize<'a, 'ty, 'object> {
                 self.tyenv.alloc(Type::Proc { loc: loc.clone(), proto: proto })
             }
             TypeNode::SpecialSelf { ref loc } =>
-                context.self_type(&self.tyenv, loc.clone()),
+                context.self_type(self.tyenv, loc.clone()),
             TypeNode::SpecialInstance { ref loc } =>
-                match *context.class {
+                match *context.self_class(self.tyenv) {
                     RubyObject::Metaclass { of, .. } => {
                         // if the class we're trying to instantiate has type parameters just fill them with new
                         // type variables. TODO revisit this logic and see if there's something better we could do?
                         let type_parameters = of.type_parameters().iter().map(|_| self.tyenv.new_var(loc.clone())).collect();
                         self.tyenv.instance(loc.clone(), of, type_parameters)
                     },
-                    _ => {
+                    ref class => {
                         // special case to allow the Class#allocate definition in the stdlib:
-                        if context.class != self.env.object.Class {
+                        if class != self.env.object.Class {
                             // TODO: we need to move this check out to abstract_type
                             // we should not ever error while materializing a type!
                             let mut sink = self.env.error_sink.borrow_mut();
                             sink.error("Cannot instatiate instance type", &[
-                                Detail::Loc(&format!("Self here is {}, which is not a Class", context.class.name()), loc),
+                                Detail::Loc(&format!("Self here is {}, which is not a Class", class.name()), loc),
                             ]);
                         }
 
                         self.tyenv.new_var(loc.clone())
                     },
                 },
-            TypeNode::SpecialClass { ref loc } =>
+            TypeNode::SpecialClass { ref loc } => {
+                let metaclass = self.env.object.metaclass(context.self_class(self.tyenv));
                 // metaclasses never have type parameters:
-                self.tyenv.instance(loc.clone(), self.env.object.metaclass(context.class), Vec::new()),
+                self.tyenv.instance(loc.clone(), metaclass, Vec::new())
+            }
             TypeNode::Error { ref loc } =>
                 // an error was already printed, just make a fresh type var:
                 self.tyenv.new_var(loc.clone()),
