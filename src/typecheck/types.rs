@@ -22,7 +22,7 @@ pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'obj
 pub struct TypeContext<'ty, 'object: 'ty> {
     self_type: Option<TypeRef<'ty, 'object>>,
     pub class: &'object RubyObject<'object>,
-    pub type_parameters: Vec<TypeRef<'ty, 'object>>,
+    type_parameters: Vec<TypeRef<'ty, 'object>>,
     pub type_names: HashMap<String, TypeRef<'ty, 'object>>,
 }
 
