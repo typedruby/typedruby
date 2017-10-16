@@ -62,7 +62,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             tyenv.new_var(loc.clone())
         ).collect();
 
-        let mut type_context = TypeContext::new(None, class, class_type_parameters);
+        let mut type_context = TypeContext::instance(class, class_type_parameters);
 
         let type_scope = proto.type_vars.iter().fold(TypeScope::new(scope, class),
             |scope, &Id(_, ref name)| TypeScope::extend(scope, name.clone()));
@@ -279,7 +279,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             MethodImpl::IntrinsicClassNew => {
                 match *type_context.self_class(&self.tyenv) {
                     RubyObject::Metaclass { of, .. } => {
-                        let tyctx = TypeContext::new(None, of,
+                        let tyctx = TypeContext::instance(of,
                             of.type_parameters().iter().map(|_|
                                 self.tyenv.new_var(loc.clone())
                             ).collect()
@@ -375,7 +375,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
         match *degraded_recv_type {
             Type::Instance { class, type_parameters: ref tp, .. } => {
-                match self.lookup_method(&id.1, TypeContext::new(Some(recv_type), class, tp.clone())) {
+                match self.lookup_method(&id.1, TypeContext::with_type(recv_type, class, tp.clone())) {
                     Some((tyctx, method)) => vec![Invokee {
                         recv_ty: recv_type,
                         method: method.implementation.clone(),
@@ -385,7 +385,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 }
             }
             Type::Proc { ref proto, .. } => {
-                match self.lookup_method(&id.1, TypeContext::new(Some(recv_type), self.env.object.Proc, vec![])) {
+                match self.lookup_method(&id.1, TypeContext::with_type(recv_type, self.env.object.Proc, vec![])) {
                     Some((tyctx, method)) => match *method.implementation {
                         MethodImpl::IntrinsicProcCall => vec![Invokee {
                             recv_ty: recv_type,
@@ -1542,7 +1542,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     Ok(object) => {
                         let ty = match *object {
                             ConstantEntry::Expression { ref ty, scope_self, .. } => {
-                                let constant_type_context = TypeContext::new(None,
+                                let constant_type_context = TypeContext::instance(
                                     self.env.object.metaclass(scope_self), vec![]);
 
                                 self.materialize_type(ty, &constant_type_context)
