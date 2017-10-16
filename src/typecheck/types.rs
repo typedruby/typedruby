@@ -20,13 +20,14 @@ pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'obj
 
 #[derive(Debug,Clone)]
 pub struct TypeContext<'ty, 'object: 'ty> {
+    self_type: Option<TypeRef<'ty, 'object>>,
     pub class: &'object RubyObject<'object>,
     pub type_parameters: Vec<TypeRef<'ty, 'object>>,
     pub type_names: HashMap<String, TypeRef<'ty, 'object>>,
 }
 
 impl<'ty, 'object> TypeContext<'ty, 'object> {
-    pub fn new(class: &'object RubyObject<'object>, type_parameters: Vec<TypeRef<'ty, 'object>>) -> TypeContext<'ty, 'object> {
+    pub fn new(self_type: Option<TypeRef<'ty, 'object>>, class: &'object RubyObject<'object>, type_parameters: Vec<TypeRef<'ty, 'object>>) -> TypeContext<'ty, 'object> {
         let type_names =
             class.type_parameters().iter()
                 .map(|&Id(_, ref name)| name.clone())
@@ -34,14 +35,18 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
                 .collect();
 
         TypeContext {
-            class: class,
-            type_parameters: type_parameters,
-            type_names: type_names,
+            self_type,
+            class,
+            type_parameters,
+            type_names,
         }
     }
 
     pub fn self_type(&self, tyenv: &TypeEnv<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
-        tyenv.instance(loc, self.class, self.type_parameters.clone())
+        match self.self_type {
+            Some(ty) => tyenv.update_loc(ty, loc),
+            None => tyenv.instance(loc, self.class, self.type_parameters.clone()),
+        }
     }
 }
 
@@ -217,6 +222,8 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
         let include_chain = type_context.class.include_chain(module);
 
+        let self_type = type_context.self_type;
+
         include_chain.iter().rev()
             .fold(type_context, |context, site| {
                 let type_params = site.type_parameters.iter()
@@ -229,6 +236,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     .collect();
 
                 TypeContext {
+                    self_type: self_type,
                     class: site.module,
                     type_parameters: type_params,
                     type_names: type_names,
@@ -250,7 +258,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     return Err((to, from));
                 }
 
-                let from_tyctx = TypeContext::new(from_class, from_tp.clone());
+                let from_tyctx = TypeContext::new(Some(from), from_class, from_tp.clone());
 
                 let to_tyctx = self.map_type_context(from_tyctx, to_class);
 
