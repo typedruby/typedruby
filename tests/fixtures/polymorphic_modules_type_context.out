@@ -1,0 +1,11 @@
+error: Revealed type is: Integer
+
+        @ __ROOT__/tests/fixtures/polymorphic_modules_type_context.rb:12
+     12 |    reveal_type(Bar.get_t)
+                         ^^^^^^^^^ expression
+
+error: Revealed type is: Class::[Bar]
+
+        @ __ROOT__/tests/fixtures/polymorphic_modules_type_context.rb:13
+     13 |    reveal_type(Bar.get_self)
+                         ^^^^^^^^^^^^ expression
