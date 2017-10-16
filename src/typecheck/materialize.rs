@@ -48,7 +48,7 @@ impl<'a, 'ty, 'object> Materialize<'a, 'ty, 'object> {
                 self.tyenv.alloc(Type::Proc { loc: loc.clone(), proto: proto })
             }
             TypeNode::SpecialSelf { ref loc } =>
-                context.self_type(&self.tyenv, loc.clone()),
+                context.self_type(self.tyenv, loc.clone()),
             TypeNode::SpecialInstance { ref loc } =>
                 match *context.class {
                     RubyObject::Metaclass { of, .. } => {
