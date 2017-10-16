@@ -130,6 +130,12 @@ module Enumerable::[EnumType]
   def each_slice(Integer slice_size, { |[EnumType] elements| => :any } &) => nil; end
 
   def flat_map[ProjectedType]({ |EnumType element| => [ProjectedType] } &) => [ProjectedType]; end
+
+  # TODO enforce that CompareKey is Comparable:
+
+  def max_by[CompareKey]({ |EnumType element| => CompareKey } &) => ~EnumType; end
+
+  def min_by[CompareKey]({ |EnumType element| => CompareKey } &) => ~EnumType; end
 end
 
 class IO < Object
@@ -691,6 +697,13 @@ class Numeric < Object
   def <=>(Numeric other) => Boolean; end
   def ==(Numeric other) => Boolean; end
   def !=(Numeric other) => Boolean; end
+
+  def real? => Boolean; end
+  def integer? => Boolean; end
+  def zero? => Boolean; end
+  def nonzero? => Boolean; end
+  def finite? => Boolean; end
+  def infinite? => Boolean; end
 end
 
 class Integer < Numeric
@@ -855,6 +868,8 @@ class Array::[ElementType] < Object
   # or perhaps that it's comparable?
   def sort_by[SortKey]({ |ElementType element| => SortKey } &) => [ElementType]; end
   def sort_by![SortKey]({ |ElementType element| => SortKey } &) => :self; end
+
+  def reverse => [ElementType]; end
 end
 
 class Hash::[KeyType, ValueType] < Object
@@ -2166,6 +2181,8 @@ end
 
 class Proc < Object
   alias :[] :call
+
+  def self.new[T](T &) => T; end
 end
 
 class Module < Object
