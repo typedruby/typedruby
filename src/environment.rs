@@ -209,6 +209,10 @@ impl<'object> Environment<'object> {
         Self::search_paths(file, &self.config.require_paths)
     }
 
+    pub fn search_autoload_path(&self, file: &str) -> Option<PathBuf> {
+        Self::search_paths(file, &self.config.autoload_paths)
+    }
+
     pub fn search_relative_path(&self, file: &str, from: &SourceFile) -> Option<PathBuf> {
         from.filename().parent().and_then(|parent| {
             Self::search_paths(file, &[parent])

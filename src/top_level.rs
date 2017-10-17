@@ -63,8 +63,9 @@ struct DeclRef<'object> {
 }
 
 enum RequireType {
-    LoadPath,
-    Relative,
+    Require,
+    RequireDependency,
+    RequireRelative,
 }
 
 impl<'env, 'object> Eval<'env, 'object> {
@@ -146,14 +147,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         };
 
         let ref_ = if let Node::Const(_, ref base, ref id) = *name {
-            match *base {
-                Some(ref base_node) =>
-                    self.resolve_cpath(base_node).and_then(|constant|
-                        constant.module()
-                            .map(|constant| (constant, id))
-                            .ok_or((base_node, "Not a static class/module"))),
-                None => Ok((self.scope.module, id)),
-            }
+            self.resolve_cbase(base).map(|object| (object, id))
         } else {
             Err((name, "Class name is not a static constant"))
         };
@@ -601,8 +595,13 @@ impl<'env, 'object> Eval<'env, 'object> {
 
         if let Some(pathstr) = string.string() {
             let path = match require_type {
-                RequireType::LoadPath => self.env.search_require_path(&pathstr),
-                RequireType::Relative => self.env.search_relative_path(&pathstr, &args[0].loc().file()),
+                RequireType::Require =>
+                    self.env.search_require_path(&pathstr),
+                RequireType::RequireDependency =>
+                    self.env.search_autoload_path(&pathstr).or_else(||
+                        self.env.search_require_path(&pathstr)),
+                RequireType::RequireRelative =>
+                    self.env.search_relative_path(&pathstr, &args[0].loc().file()),
             };
 
             if let Some(path) = path {
@@ -638,10 +637,10 @@ impl<'env, 'object> Eval<'env, 'object> {
         match id.1.as_str() {
             "include" => self.process_module_inclusion(id, self.scope.module, args),
             "extend" => self.process_module_inclusion(id, self.env.object.metaclass(self.scope.module), args),
-            "require" => self.process_require(id, args, RequireType::LoadPath),
+            "require" => self.process_require(id, args, RequireType::Require),
             // TODO guard require_dependency behind a rails-mode flag:
-            "require_dependency" => self.process_require(id, args, RequireType::LoadPath),
-            "require_relative" => self.process_require(id, args, RequireType::Relative),
+            "require_dependency" => self.process_require(id, args, RequireType::RequireDependency),
+            "require_relative" => self.process_require(id, args, RequireType::RequireRelative),
             "alias_method" => self.process_alias_method(id, args),
             "attr_reader" => self.process_attr(AttrType::Reader, args),
             "attr_writer" => self.process_attr(AttrType::Writer, args),
@@ -1077,6 +1076,9 @@ impl<'env, 'object> Eval<'env, 'object> {
             }
             Node::TyReturnSig(_, ref ret) => {
                 self.eval_node(ret);
+            }
+            Node::TyParen(_, ref inner) => {
+                self.eval_node(inner);
             }
             _ => panic!("unknown node: {:?}", node),
         }
