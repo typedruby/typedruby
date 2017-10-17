@@ -323,11 +323,9 @@ impl<'ty, 'object> Locals<'ty, 'object> {
     }
 
     pub fn merge(&self, other: Locals<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Locals<'ty, 'object> {
-        let children = self.sc.vars.iter()
-            .filter_map(|tbl| tbl.node.as_ref().map(|node| (node.next.clone(), tbl.clone())))
-            .collect::<HashMap<_, _>>();
-
         let (lca, other_entries) = {
+            let seen = self.sc.vars.iter().collect::<HashSet<_>>();
+
             let mut lca = None;
             let mut other_entries = Vec::new();
 
@@ -336,7 +334,7 @@ impl<'ty, 'object> Locals<'ty, 'object> {
                     other_entries.push((node.name.clone(), node.entry.clone()));
                 }
 
-                if children.contains_key(&tbl) {
+                if seen.contains(&tbl) {
                     lca = Some(tbl);
                     break;
                 }
