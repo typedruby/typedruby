@@ -1,6 +1,5 @@
 use std::env;
 use std::rc::Rc;
-use std::string::FromUtf8Error;
 use ast::{parse, Ast, SourceFile, Diagnostic, Node, Loc};
 use debug::annotate_file;
 
@@ -10,7 +9,6 @@ pub struct ByteRange(pub usize, pub usize);
 #[derive(Debug)]
 pub enum StripError {
     SyntaxError(Vec<Diagnostic>),
-    BadEncoding(FromUtf8Error),
 }
 
 trait IntoNode<'a> {
@@ -60,10 +58,10 @@ impl Strip {
             Err(..) => {},
         };
 
-        strip.process_source(file.source())
+        Ok(strip.process_source(file.source()))
     }
 
-    fn process_source(&mut self, source: &str) -> Result<String, StripError> {
+    fn process_source(&mut self, source: &str) -> String {
         let source = source.as_bytes();
         let mut result : Vec<u8> = Vec::new();
         let mut src_pos : usize = 0;
@@ -85,7 +83,7 @@ impl Strip {
             result.extend_from_slice(&source[src_pos..])
         }
 
-        String::from_utf8(result).map_err(|e| StripError::BadEncoding(e))
+        String::from_utf8(result).expect("malformed UTF8 when processing file")
     }
 
     fn remove(&mut self, loc: &Loc) {
