@@ -351,25 +351,35 @@ impl<'ty, 'object> Locals<'ty, 'object> {
         names.extend(self_map.keys());
         names.extend(other_map.keys());
 
-        let vars = names.into_iter().map(|name| {
-            let merge = LocalEntry::merge(
-                self.get_var_direct(name),
-                other.get_var_direct(name), tyenv);
+        let vars = {
+            let var_merges = names.into_iter().map(|name| {
+                let merge = LocalEntry::merge(
+                    self.get_var_direct(name),
+                    other.get_var_direct(name), tyenv);
 
-            merges.push(merge.clone());
+                merges.push(merge.clone());
 
-            match merge {
-                LocalEntryMerge::Ok(entry) |
-                LocalEntryMerge::MustMatch(entry, _) =>
-                    (name.clone(), entry)
-            }
-        });
+                match merge {
+                    LocalEntryMerge::Ok(entry) |
+                    LocalEntryMerge::MustMatch(entry, _) =>
+                        (name.clone(), entry)
+                }
+            });
 
-        let vars = other_entries.into_iter().chain(vars)
-            .fold(self.sc.vars.clone(), |tbl, (name, entry)|
-                tbl.insert(name, entry));
+            other_entries.into_iter()
+                .chain(var_merges)
+                .fold(self.sc.vars.clone(), |tbl, (name, entry)|
+                    tbl.insert(name, entry))
+        };
 
-        self.update_vars(vars)
+        let merged_parent = match (self.sc.parent.clone(), other.sc.parent.clone()) {
+            (Some(a), Some(b)) => Some(a.merge(b, tyenv, merges)),
+            (None, None) => None,
+            _ => panic!("should never happen"),
+        };
+
+        self.update_parent(merged_parent)
+            .update_vars(vars)
     }
 
     pub fn uncertain(&self, since: Locals<'ty, 'object>, tyenv: &TypeEnv<'ty, 'object>, merges: &mut Vec<LocalEntryMerge<'ty, 'object>>) -> Locals<'ty, 'object> {
