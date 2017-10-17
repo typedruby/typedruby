@@ -1077,6 +1077,9 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::TyReturnSig(_, ref ret) => {
                 self.eval_node(ret);
             }
+            Node::TyParen(_, ref inner) => {
+                self.eval_node(inner);
+            }
             _ => panic!("unknown node: {:?}", node),
         }
     }
