@@ -1,10 +1,11 @@
 use std::rc::Rc;
+use std::io;
 use std::io::Write;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use ast::SourceFile;
 use strip::ByteRange;
 
-pub fn annotate_file(file: &Rc<SourceFile>, ranges: &[ByteRange]) {
+pub fn annotate_file(file: &Rc<SourceFile>, ranges: &[ByteRange]) -> io::Result<()> {
     let mut stderr = StandardStream::stderr(ColorChoice::Always);
 
     let mut red = ColorSpec::new();
@@ -13,9 +14,9 @@ pub fn annotate_file(file: &Rc<SourceFile>, ranges: &[ByteRange]) {
     let mut dark = ColorSpec::new();
     dark.set_fg(Some(Color::Green));
 
-    stderr.set_color(&dark).unwrap();
-    writeln!(&mut stderr, "###### src: {}", file.filename().display()).unwrap();
-    stderr.reset().unwrap();
+    stderr.set_color(&dark)?;
+    writeln!(&mut stderr, "###### src: {}", file.filename().display())?;
+    stderr.reset()?;
 
     let source = file.source();
     let mut offset = 0;
@@ -23,10 +24,10 @@ pub fn annotate_file(file: &Rc<SourceFile>, ranges: &[ByteRange]) {
     for line in source.split("\n") {
         let end = offset + line.len();
 
-        stderr.set_color(&dark).unwrap();
-        write!(&mut stderr, "{:4} | ", lineno).unwrap();
-        stderr.reset().unwrap();
-        writeln!(&mut stderr, "{}", line).unwrap();
+        stderr.set_color(&dark)?;
+        write!(&mut stderr, "{:4} | ", lineno)?;
+        stderr.reset()?;
+        writeln!(&mut stderr, "{}", line)?;
 
         for range in ranges.iter() {
             let &ByteRange(range_start, range_end) = range;
@@ -34,9 +35,9 @@ pub fn annotate_file(file: &Rc<SourceFile>, ranges: &[ByteRange]) {
                 let pos = range_start - offset;
                 let len = range_end - range_start;
 
-                stderr.set_color(&red).unwrap();
-                writeln!(&mut stderr, "       {0:1$}{2}", "", pos, "^".repeat(len)).unwrap();
-                stderr.reset().unwrap();
+                stderr.set_color(&red)?;
+                writeln!(&mut stderr, "       {0:1$}{2}", "", pos, "^".repeat(len))?;
+                stderr.reset()?;
             }
         }
 
@@ -44,5 +45,5 @@ pub fn annotate_file(file: &Rc<SourceFile>, ranges: &[ByteRange]) {
         lineno = lineno + 1;
     }
 
-    writeln!(&mut stderr, "").unwrap();
+    writeln!(&mut stderr, "")
 }

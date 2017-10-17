@@ -54,7 +54,7 @@ impl Strip {
                     eprintln!("{}", node.debug_ast());
                 }
                 if debug.contains("annotate") {
-                    annotate_file(&file, &strip.remove);
+                    annotate_file(&file, &strip.remove).unwrap();
                 }
             } 
             Err(..) => {},
