@@ -86,3 +86,25 @@ def test_pin_uncertain => nil
 
   a
 end
+
+def test_pin_parent_through_merge => nil
+  a = 123
+
+  tap do |_|
+    tap do |_|
+      if rand < 0.5
+        if rand < 0.5
+          nil
+        else
+          a
+        end
+      else
+        nil
+      end
+    end
+  end
+
+  a = "foo"
+
+  nil
+end
