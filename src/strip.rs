@@ -1,6 +1,6 @@
 use std::env;
 use std::rc::Rc;
-use ast::{parse, Ast, SourceFile, Diagnostic, Node, Loc};
+use ast::{parse, Ast, SourceFile, Diagnostic, Node, Loc, Level};
 use debug::annotate_file;
 
 #[derive(Debug)]
@@ -37,12 +37,19 @@ impl Strip {
     }
 
     pub fn strip(file: Rc<SourceFile>) -> Result<String, StripError> {
-        if file.source().len() == 0 {
-            return Ok("".to_owned())
+        let Ast { node, diagnostics } = parse(file.clone());
+
+        // Return early if any errors found
+        if diagnostics.iter().any(|d| d.level == Level::Error) {
+            return Err(StripError::SyntaxError(diagnostics));
         }
 
-        let Ast { node, diagnostics } = parse(file.clone());
-        let node = node.ok_or_else(|| StripError::SyntaxError(diagnostics))?;
+        // Handle empty source file
+        let node = match node {
+            Some(node) => node,
+            None => return Ok("".to_owned()),
+        };
+            
         let mut strip = Strip::new();
         strip.strip_node(&node);
 
