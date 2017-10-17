@@ -5,6 +5,6 @@ module JSON
   def self.generate(:any object, :any options) => String
   end
   
-  def self.parse(String json) => ~Hash::[String, T]
+  def self.parse(String json) => :any
   end
 end
