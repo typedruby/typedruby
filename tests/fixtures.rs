@@ -4,6 +4,8 @@ extern crate regex;
 #[macro_use]
 extern crate lazy_static;
 
+mod common;
+
 use difference::{Changeset, Difference};
 use glob::glob;
 use std::env;
@@ -14,22 +16,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use regex::{Regex, Captures};
 
-// Path to our executables
-fn bin_dir() -> PathBuf {
-    env::current_exe().ok().map(|mut path| {
-        path.pop();
-        if path.ends_with("deps") {
-            path.pop();
-        }
-        path
-    }).unwrap_or_else(|| {
-        panic!("Can't find bin directory.")
-    })
-}
-
-fn typedruby_exe() -> PathBuf {
-    bin_dir().join(format!("typedruby{}", env::consts::EXE_SUFFIX))
-}
 
 struct Mismatch {
     path: PathBuf,
@@ -70,7 +56,7 @@ fn clean_typecheck_output(output: &str, rootdir: &Path) -> String {
 fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
     let rootdir = env::current_dir().unwrap();
 
-    let status = Command::new(typedruby_exe())
+    let status = Command::new(common::typedruby_exe())
         .arg("-I")
         .arg(rootdir.join("definitions/lib"))
         .arg(&path)
