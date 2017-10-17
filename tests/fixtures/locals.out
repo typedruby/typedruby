@@ -183,3 +183,15 @@ error: Could not match types:
         @ __ROOT__/tests/fixtures/locals.rb:87
      87 |    a
              ^ String
+
+error: Cannot assign value of type:
+
+        @ __ROOT__/tests/fixtures/locals.rb:107
+    107 |    a = "foo"
+                 ^^^^^ String
+        @ __ROOT__/tests/fixtures/locals.rb:107
+    107 |    a = "foo"
+             ^^^^^^^^^ to Integer in this expression
+        @ __ROOT__/tests/fixtures/locals.rb:99
+     99 |            a
+                     ^ because this variable is referenced from a block
