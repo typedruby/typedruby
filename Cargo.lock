@@ -1,6 +1,6 @@
 [root]
 name = "typedruby"
-version = "0.1.1"
+version = "0.2.0"
 dependencies = [
  "clap 2.24.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "difference 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
