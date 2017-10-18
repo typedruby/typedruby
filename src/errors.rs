@@ -16,12 +16,8 @@ pub trait ErrorSink {
 
     fn parser_diagnostic(&mut self, diagnostic: &Diagnostic) {
         match diagnostic.level {
-            Level::Note => {},
-            Level::Warning => {
-                self.warning(&format!("{}", diagnostic), &[
-                    Detail::Loc("here", &diagnostic.loc),
-                ]);
-            }
+            Level::Note => {}
+            Level::Warning => {}
             Level::Error | Level::Fatal => {
                 self.error(&format!("{}", diagnostic), &[
                     Detail::Loc("here", &diagnostic.loc),
