@@ -6,7 +6,6 @@ extern crate regex;
 extern crate typed_arena;
 extern crate termcolor;
 
-use std::rc::Rc;
 use std::path::PathBuf;
 use std::fs;
 use std::process;
@@ -29,8 +28,6 @@ mod top_level;
 mod typecheck;
 mod util;
 
-use strip::Strip;
-use ast::SourceFile;
 use environment::Environment;
 use errors::ErrorReporter;
 use config::{Command, CheckConfig, StripConfig};
@@ -172,8 +169,7 @@ fn check(config: CheckConfig, files: Vec<PathBuf>) -> bool {
 
 fn strip(config: StripConfig, files: Vec<PathBuf>) -> bool {
     for file in files {
-        let source = Rc::new(SourceFile::open(file).unwrap());
-        println!("{}", Strip::strip(source).unwrap());
+        strip::strip_file(file, &config).unwrap();
     }
 
     true
