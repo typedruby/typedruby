@@ -8,7 +8,7 @@ use std::fs;
 use typed_arena::Arena;
 
 use ast::{parse, SourceFile, Node, Id, Level};
-use config::Config;
+use config::CheckConfig;
 use define::Definitions;
 use errors::{ErrorSink, Detail};
 use inflect::Inflector;
@@ -65,7 +65,7 @@ impl PhaseCell {
 pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<Box<ErrorSink>>,
-    pub config: Config,
+    pub config: CheckConfig,
     pub defs: Definitions<'object>,
     phase: PhaseCell,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
@@ -76,7 +76,7 @@ pub struct Environment<'object> {
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
 
 impl<'object> Environment<'object> {
-    pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: Config) -> Environment<'object> {
+    pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: CheckConfig) -> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
 
         let env = Environment {
