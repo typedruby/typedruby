@@ -1,6 +1,9 @@
-use std::env;
+use std::io::{self, Write};
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::fs::File;
 use ast::{parse, Ast, SourceFile, Diagnostic, Node, Loc, Level};
+use config::StripConfig;
 use debug::annotate_file;
 
 #[derive(Debug)]
@@ -8,7 +11,8 @@ pub struct ByteRange(pub usize, pub usize);
 
 #[derive(Debug)]
 pub enum StripError {
-    SyntaxError(Vec<Diagnostic>),
+    Io(io::Error),
+    Syntax(Vec<Diagnostic>),
 }
 
 trait IntoNode<'a> {
@@ -27,6 +31,58 @@ impl<'a> IntoNode<'a> for &'a Option<Rc<Node>> {
     }
 }
 
+pub fn strip_file(path: PathBuf, config: &StripConfig) -> Result<(), StripError> {
+    let source_file = Rc::new(SourceFile::open(path).map_err(StripError::Io)?);
+
+    let remove = Strip::strip(source_file.clone())?;
+
+    if config.annotate {
+        return annotate_file(&source_file, &remove).map_err(StripError::Io);
+    }
+
+    if remove.is_empty() {
+        if config.print {
+            print!("{}", source_file.source());
+        }
+
+        return Ok(());
+    }
+
+    let stripped = remove_byte_ranges(source_file.source(), remove);
+
+    if config.print {
+        print!("{}", stripped);
+        Ok(())
+    } else {
+        File::create(source_file.filename())
+            .and_then(|mut file| file.write_all(stripped.as_bytes()))
+            .map_err(StripError::Io)
+    }
+}
+
+pub fn remove_byte_ranges(source: &str, mut remove: Vec<ByteRange>) -> String {
+    let source = source.as_bytes();
+    let mut result : Vec<u8> = Vec::new();
+    let mut src_pos : usize = 0;
+
+    remove.sort_by_key(|&ByteRange(start, _)| start);
+
+    for ByteRange(start, end) in remove {
+        if src_pos < start {
+            result.extend_from_slice(&source[src_pos..start]);
+        }
+        if end > src_pos {
+            src_pos = end;
+        }
+    }
+
+    if src_pos < source.len() {
+        result.extend_from_slice(&source[src_pos..])
+    }
+
+    String::from_utf8(result).expect("malformed UTF8 when processing file")
+}
+
 pub struct Strip {
     remove: Vec<ByteRange>,
 }
@@ -36,61 +92,24 @@ impl Strip {
         Strip { remove: Vec::new() }
     }
 
-    pub fn strip(file: Rc<SourceFile>) -> Result<String, StripError> {
+    pub fn strip(file: Rc<SourceFile>) -> Result<Vec<ByteRange>, StripError> {
         let Ast { node, diagnostics } = parse(file.clone());
 
         // Return early if any errors found
         if diagnostics.iter().any(|d| d.level == Level::Error) {
-            return Err(StripError::SyntaxError(diagnostics));
+            return Err(StripError::Syntax(diagnostics));
         }
 
         // Handle empty source file
         let node = match node {
             Some(node) => node,
-            None => return Ok("".to_owned()),
+            None => return Ok(vec![]),
         };
-            
+
         let mut strip = Strip::new();
         strip.strip_node(&node);
 
-        match env::var("TYPEDRUBY_STRIP_DEBUG") {
-            Ok(ref debug) => {
-                if debug.contains("ast") {
-                    eprintln!("{}", node.debug_ast());
-                }
-                if debug.contains("annotate") {
-                    annotate_file(&file, &strip.remove).unwrap();
-                }
-            } 
-            Err(..) => {},
-        };
-
-        Ok(strip.process_source(file.source()))
-    }
-
-    fn process_source(&mut self, source: &str) -> String {
-        let source = source.as_bytes();
-        let mut result : Vec<u8> = Vec::new();
-        let mut src_pos : usize = 0;
-
-        self.remove.sort_by_key(|&ByteRange(start, _)| start);
-
-        for range in self.remove.iter() {
-            let &ByteRange(start, end) = range;
-
-            if src_pos < start {
-                result.extend_from_slice(&source[src_pos..start]);
-            }
-            if end > src_pos {
-                src_pos = end;
-            }
-        }
-
-        if src_pos < source.len() {
-            result.extend_from_slice(&source[src_pos..])
-        }
-
-        String::from_utf8(result).expect("malformed UTF8 when processing file")
+        Ok(strip.remove)
     }
 
     fn remove(&mut self, loc: &Loc) {
@@ -313,8 +332,9 @@ mod tests {
     use super::*;
 
     fn verify_stripped_syntax(path: PathBuf) {
-        let source = SourceFile::open(path.clone()).expect("failed to open source");
-        let stripped = Strip::strip(Rc::new(source)).unwrap();
+        let source = Rc::new(SourceFile::open(path.clone()).expect("failed to open source"));
+        let remove = Strip::strip(source.clone()).unwrap();
+        let stripped = remove_byte_ranges(source.source(), remove);
         let mut ruby_child = Command::new("ruby")
             .arg("-c")
             .stdin(Stdio::piped())
@@ -341,6 +361,8 @@ mod tests {
 
     #[test]
     fn test_annotation_stripping() {
+        use std::env;
+
         verify_stripped_sources("tests/fixtures/*.rb");
         verify_stripped_sources("definitions/lib/*.rb");
 
