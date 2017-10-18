@@ -42,12 +42,12 @@ Our Ruby fork patches the Ruby parser to accept the TypedRuby syntax extensions 
 
 ### Using
 
-Invoke the `typedruby` binary and pass the paths to the source files that should be checked:
+Invoke the `typedruby check` command and pass the paths to the source files that should be checked:
 
 ```
-$ bundle exec typedruby lib/*.rb
+$ bundle exec typedruby check lib/*.rb
 ```
 
 TypedRuby will load the files you pass and any other source files required by your application.
 
-The `typedruby` binary also supports a number of command line options that allow you to manipulate the load path, enable Rails-style autoloading, and more. Pass `--help` to `typedruby` for more details on these options.
+The `typedruby check` command also supports a number of command line options that allow you to manipulate the load path, enable Rails-style autoloading, and more. Pass `--help` to `typedruby check` for more details on these options.
