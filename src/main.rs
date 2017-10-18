@@ -28,8 +28,9 @@ mod top_level;
 mod typecheck;
 mod util;
 
+use strip::StripError;
 use environment::Environment;
-use errors::ErrorReporter;
+use errors::{ErrorReporter, ErrorSink};
 use config::{Command, CheckConfig, StripConfig};
 
 fn command() -> Command {
@@ -141,10 +142,9 @@ fn command() -> Command {
     }
 }
 
-fn check(config: CheckConfig, files: Vec<PathBuf>) -> bool {
-    let errors = ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto));
+fn check(errors: Box<ErrorSink>, config: CheckConfig, files: Vec<PathBuf>) -> bool {
     let arena = Arena::new();
-    let env = Environment::new(&arena, Box::new(errors), config);
+    let env = Environment::new(&arena, errors, config);
 
     let success = files.iter().all(|file|
         match env.require(&file) {
@@ -167,18 +167,38 @@ fn check(config: CheckConfig, files: Vec<PathBuf>) -> bool {
         errors.warning_count() == 0
 }
 
-fn strip(config: StripConfig, files: Vec<PathBuf>) -> bool {
+fn strip(mut errors: Box<ErrorSink>, config: StripConfig, files: Vec<PathBuf>) -> bool {
+    let mut success = true;
+
     for file in files {
-        strip::strip_file(file, &config).unwrap();
+        match strip::strip_file(file.clone(), &config) {
+            Ok(()) => {},
+            Err(err) => {
+                success = false;
+
+                match err {
+                    StripError::Syntax(diagnostics) => {
+                        for diagnostic in diagnostics {
+                            errors.parser_diagnostic(&diagnostic);
+                        }
+                    }
+                    StripError::Io(err) => {
+                        errors.error(&format!("Could not open {}: {}", file.display(), err), &[]);
+                    }
+                }
+            }
+        }
     }
 
-    true
+    success
 }
 
 fn main() {
+    let errors = Box::new(ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto)));
+
     let success = match command() {
-        Command::Check(config, files) => check(config, files),
-        Command::Strip(config, files) => strip(config, files),
+        Command::Check(config, files) => check(errors, config, files),
+        Command::Strip(config, files) => strip(errors, config, files),
     };
 
     process::exit(match success {

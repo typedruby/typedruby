@@ -12,7 +12,7 @@ pub struct ByteRange(pub usize, pub usize);
 #[derive(Debug)]
 pub enum StripError {
     Io(io::Error),
-    SyntaxError(Vec<Diagnostic>),
+    Syntax(Vec<Diagnostic>),
 }
 
 trait IntoNode<'a> {
@@ -89,7 +89,7 @@ impl Strip {
 
         // Return early if any errors found
         if diagnostics.iter().any(|d| d.level == Level::Error) {
-            return Err(StripError::SyntaxError(diagnostics));
+            return Err(StripError::Syntax(diagnostics));
         }
 
         // Handle empty source file
