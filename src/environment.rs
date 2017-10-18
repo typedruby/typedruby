@@ -7,10 +7,10 @@ use std::fs;
 
 use typed_arena::Arena;
 
-use ast::{parse, SourceFile, Node, Id, Level};
-use config::Config;
+use ast::{parse, SourceFile, Node, Id};
+use config::CheckConfig;
 use define::Definitions;
-use errors::{ErrorSink, Detail};
+use errors::ErrorSink;
 use inflect::Inflector;
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope, ConstantEntry};
 use top_level;
@@ -65,7 +65,7 @@ impl PhaseCell {
 pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<Box<ErrorSink>>,
-    pub config: Config,
+    pub config: CheckConfig,
     pub defs: Definitions<'object>,
     phase: PhaseCell,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
@@ -76,7 +76,7 @@ pub struct Environment<'object> {
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
 
 impl<'object> Environment<'object> {
-    pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: Config) -> Environment<'object> {
+    pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: CheckConfig) -> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
 
         let env = Environment {
@@ -121,22 +121,7 @@ impl<'object> Environment<'object> {
         let ast = parse(source_file.clone());
 
         for diag in ast.diagnostics {
-            match diag.level {
-                Level::Note => {},
-                Level::Warning => {
-                    if self.config.warning {
-                        self.error_sink.borrow_mut().warning(&format!("{}", diag), &[
-                            Detail::Loc("here", &diag.loc),
-                        ]);
-                    }
-                },
-                Level::Error |
-                Level::Fatal => {
-                    self.error_sink.borrow_mut().error(&format!("{}", diag), &[
-                        Detail::Loc("here", &diag.loc),
-                    ]);
-                }
-            }
+            self.error_sink.borrow_mut().parser_diagnostic(&diag);
         }
 
         if let Some(ref node) = ast.node {
