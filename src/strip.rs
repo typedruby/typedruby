@@ -324,8 +324,9 @@ mod tests {
     use super::*;
 
     fn verify_stripped_syntax(path: PathBuf) {
-        let source = SourceFile::open(path.clone()).expect("failed to open source");
-        let stripped = Strip::strip(Rc::new(source)).unwrap();
+        let source = Rc::new(SourceFile::open(path.clone()).expect("failed to open source"));
+        let remove = Strip::strip(source.clone()).unwrap();
+        let stripped = remove_byte_ranges(source.source(), remove);
         let mut ruby_child = Command::new("ruby")
             .arg("-c")
             .stdin(Stdio::piped())
@@ -352,6 +353,8 @@ mod tests {
 
     #[test]
     fn test_annotation_stripping() {
+        use std::env;
+
         verify_stripped_sources("tests/fixtures/*.rb");
         verify_stripped_sources("definitions/lib/*.rb");
 
