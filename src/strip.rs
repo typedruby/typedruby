@@ -43,7 +43,7 @@ pub fn strip_file(path: PathBuf, config: &StripConfig) -> Result<(), StripError>
     let stripped = remove_byte_ranges(source_file.source(), remove);
 
     if config.print {
-        println!("{}", stripped);
+        print!("{}", stripped);
         Ok(())
     } else {
         File::create(source_file.filename())
