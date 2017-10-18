@@ -57,6 +57,7 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
     let rootdir = env::current_dir().unwrap();
 
     let status = Command::new(common::typedruby_exe())
+        .arg("check")
         .arg("-I")
         .arg(rootdir.join("definitions/lib"))
         .arg(&path)
