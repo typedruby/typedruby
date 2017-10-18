@@ -1063,7 +1063,7 @@ void lexer::set_state_expr_value() {
     if (current_literal.heredoc()) {
       auto line = tok(herebody_s, ts);
 
-      while (line.back() == '\r') {
+      while (!line.empty() && line.back() == '\r') {
         line.pop_back();
       }
 
