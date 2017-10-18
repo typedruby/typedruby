@@ -49,7 +49,7 @@ impl Strip {
             Some(node) => node,
             None => return Ok("".to_owned()),
         };
-            
+
         let mut strip = Strip::new();
         strip.strip_node(&node);
 
@@ -61,7 +61,7 @@ impl Strip {
                 if debug.contains("annotate") {
                     annotate_file(&file, &strip.remove).unwrap();
                 }
-            } 
+            }
             Err(..) => {},
         };
 
