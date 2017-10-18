@@ -40,6 +40,14 @@ pub fn strip_file(path: PathBuf, config: &StripConfig) -> Result<(), StripError>
         return annotate_file(&source_file, &remove).map_err(StripError::Io);
     }
 
+    if remove.is_empty() {
+        if config.print {
+            print!("{}", source_file.source());
+        }
+
+        return Ok(());
+    }
+
     let stripped = remove_byte_ranges(source_file.source(), remove);
 
     if config.print {
