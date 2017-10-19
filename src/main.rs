@@ -6,6 +6,7 @@ extern crate regex;
 extern crate typed_arena;
 extern crate termcolor;
 
+use std::env;
 use std::path::PathBuf;
 use std::fs;
 use std::process;
@@ -143,8 +144,15 @@ fn command() -> Command {
     }
 }
 
-fn check(errors: Box<ErrorSink>, config: CheckConfig, files: Vec<PathBuf>) -> bool {
+fn check(mut errors: Box<ErrorSink>, mut config: CheckConfig, files: Vec<PathBuf>) -> bool {
     let arena = Arena::new();
+
+    if let Some(lib_path) = env::var("TYPEDRUBY_LIB").ok() {
+        config.require_paths.insert(0, PathBuf::from(lib_path));
+    } else {
+        errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
+    }
+
     let env = Environment::new(&arena, errors, config);
 
     let success = files.iter().all(|file|
