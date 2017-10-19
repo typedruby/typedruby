@@ -136,7 +136,7 @@ impl<T: WriteColor> ErrorReporter<T> {
             }
         }
 
-        self.need_newline_padding = true;
+        self.need_newline_padding = details.len() > 0;
         Ok(())
     }
 }
