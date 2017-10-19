@@ -58,12 +58,11 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
 
     let status = Command::new(common::typedruby_exe())
         .arg("check")
-        .arg("-I")
-        .arg(rootdir.join("definitions/lib"))
         .arg(&path)
         // Remove TERM to force termcolor to not output colors in
         // tests.
         .env_remove("TERM")
+        .env("TYPEDRUBY_LIB", rootdir.join("definitions/lib"))
         .output()
         .expect("Failed to execute typedruby");
 
