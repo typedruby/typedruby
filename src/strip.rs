@@ -317,8 +317,6 @@ impl Strip {
                 self.strip_node(args);
                 self.strip_node(body);
             }
-
-            _ => {}
         }
     }
 }
