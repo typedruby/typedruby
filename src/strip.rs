@@ -60,7 +60,43 @@ pub fn strip_file(path: PathBuf, config: &StripConfig) -> Result<(), StripError>
     }
 }
 
-pub fn remove_byte_ranges(source: &str, mut remove: Vec<ByteRange>) -> String {
+fn trim_around_range(source: &str, ByteRange(start, end): ByteRange) -> ByteRange {
+    // first try to expand the byte range to the end of its line:
+    let (trimmed_end, nl) = source[end..].char_indices()
+        .skip_while(|&(_, c)| line_whitespace(c))
+        .nth(0)
+        .map(|(i, c)| (i + end, c))
+        .unwrap_or((source.len(), '\n'));
+
+    if !newline(nl) {
+        // range was not at the end of the line
+        return ByteRange(start, end);
+    }
+
+    // if the range was at the end of its line, it's safe to try trimming
+    // whitespace backwards from the start:
+    let trimmed_start = source[..start].char_indices().rev()
+        .take_while(|&(_, c)| line_whitespace(c))
+        .last()
+        .map(|(i, _)| i)
+        .unwrap_or(start);
+
+    return ByteRange(trimmed_start, trimmed_end);
+
+    fn newline(c: char) -> bool {
+        c == '\r' || c == '\n'
+    }
+
+    fn line_whitespace(c: char) -> bool {
+        !newline(c) && (c == ' ' || c == '\t')
+    }
+}
+
+fn strip_trailing_whitespace(source: &str, remove: Vec<ByteRange>) -> Vec<ByteRange> {
+    remove.into_iter().map(|range| trim_around_range(source, range)).collect()
+}
+
+fn remove_byte_ranges(source: &str, mut remove: Vec<ByteRange>) -> String {
     let source = source.as_bytes();
     let mut result : Vec<u8> = Vec::new();
     let mut src_pos : usize = 0;
@@ -109,7 +145,9 @@ impl Strip {
         let mut strip = Strip::new();
         strip.strip_node(&node);
 
-        Ok(strip.remove)
+        let remove = strip_trailing_whitespace(file.source(), strip.remove);
+
+        Ok(remove)
     }
 
     fn remove(&mut self, loc: &Loc) {
@@ -397,14 +435,17 @@ impl Strip {
 mod tests {
     extern crate glob;
     use std::io::Write;
-    use std::path::PathBuf;
     use std::process::{Command, Stdio};
     use super::*;
 
-    fn verify_stripped_syntax(path: PathBuf) {
-        let source = Rc::new(SourceFile::open(path.clone()).expect("failed to open source"));
+    fn strip(source: Rc<SourceFile>) -> String {
         let remove = Strip::strip(source.clone()).unwrap();
-        let stripped = remove_byte_ranges(source.source(), remove);
+        remove_byte_ranges(source.source(), remove)
+    }
+
+    fn verify_stripped_syntax(source: Rc<SourceFile>) {
+        let stripped = strip(source.clone());
+
         let mut ruby_child = Command::new("ruby")
             .arg("-c")
             .stdin(Stdio::piped())
@@ -418,14 +459,16 @@ mod tests {
         let ruby_result = ruby_child.wait_with_output().unwrap();
         assert!(ruby_result.status.success(),
             "stripped syntax for '{}' is not valid Ruby.\nruby -c output:\n\n{}\n",
-            path.display(), String::from_utf8_lossy(&ruby_result.stderr)
+            source.filename().display(), String::from_utf8_lossy(&ruby_result.stderr)
         );
     }
 
     fn verify_stripped_sources(path: &str) {
         for path in glob::glob(path).unwrap().filter_map(Result::ok) {
             println!("checking: {}...", path.display());
-            verify_stripped_syntax(path);
+            let source = Rc::new(SourceFile::open(path.clone())
+                .expect("failed to open source"));
+            verify_stripped_syntax(source);
         }
     }
 
@@ -440,5 +483,14 @@ mod tests {
             Ok(ref path) => verify_stripped_sources(path),
             Err(..) => {},
         };
+    }
+
+    #[test]
+    fn strips_trailing_whitespace() {
+        let source = Rc::new(SourceFile::new("(test)".into(), "def foo => T  \n\n  123\nend".to_owned()));
+
+        let stripped = strip(source);
+
+        assert_eq!("def foo\n\n  123\nend", stripped);
     }
 }
