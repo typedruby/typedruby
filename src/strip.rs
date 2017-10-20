@@ -197,6 +197,7 @@ impl Strip {
             Node::TyNil(..) |
             Node::TyNillable(..) |
             Node::TyOr(..) |
+            Node::TyParen(..) |
             Node::TyProc(..) |
             Node::TyReturnSig(..) |
             Node::TySelf(..) |
@@ -233,8 +234,10 @@ impl Strip {
             Node::IFlipflop(_, ref a, ref b) |
             Node::IRange(_, ref a, ref b) |
             Node::Masgn(_, ref a, ref b) |
+            Node::MatchAsgn(_, ref a, ref b) |
             Node::Or(_, ref a, ref b) |
             Node::OrAsgn(_, ref a, ref b) |
+            Node::OpAsgn(_, ref a, _, ref b) |
             Node::Pair(_, ref a, ref b) |
             Node::UntilPost(_, ref a, ref b) |
             Node::WhilePost(_, ref a, ref b) => {
@@ -261,22 +264,59 @@ impl Strip {
                 self.strip_node(expr);
             }
             Node::Arg(..) |
+            Node::Kwarg(..) |
             Node::Backref(..) |
             Node::Blockarg(..) |
             Node::Cbase(..) |
             Node::Complex(..) |
             Node::Cvar(..) |
-            Node::Ivar(..) |
             Node::CvarLhs(..) |
-            Node::EncodingLiteral(..) => {
+            Node::EncodingLiteral(..) |
+            Node::False(..) |
+            Node::FileLiteral(..) |
+            Node::Float(..) |
+            Node::Gvar(.. ) |
+            Node::GvarLhs(..) |
+            Node::Ident(..) |
+            Node::Integer(..) |
+            Node::Ivar(..) |
+            Node::IvarLhs(..) |
+            Node::Kwrestarg(..) |
+            Node::Lambda(..) |
+            Node::LineLiteral(..) |
+            Node::Lvar(..) |
+            Node::LvarLhs(..) |
+            Node::Nil(..) |
+            Node::NthRef(..) |
+            Node::Rational(..) |
+            Node::Redo(..) |
+            Node::Regopt(..) |
+            Node::Restarg(..) |
+            Node::Retry(..) |
+            Node::Self_(..) |
+            Node::ShadowArg(..) |
+            Node::String(..) |
+            Node::Symbol(..) |
+            Node::True(..) |
+            Node::ZSuper(..) => {
                 // No-op
             }
 
             Node::Array(_, ref nodes) |
+            Node::Hash(_, ref nodes) |
             Node::Begin(_, ref nodes) |
             Node::Break(_, ref nodes) |
             Node::DString(_, ref nodes) |
-            Node::DSymbol(_, ref nodes) => {
+            Node::DSymbol(_, ref nodes) |
+            Node::Kwbegin(_, ref nodes) |
+            Node::Mlhs(_, ref nodes) |
+            Node::Next(_, ref nodes) |
+            Node::Regexp(_, ref nodes, _) |
+            Node::Return(_, ref nodes) |
+            Node::Super(_, ref nodes) |
+            Node::Undef(_, ref nodes) |
+            Node::XString(_, ref nodes) |
+            Node::Yield(_, ref nodes) => {
                 self.strip_nodes(nodes);
             }
             Node::Block(_, ref send, ref args, ref body) => {
@@ -286,11 +326,23 @@ impl Strip {
             }
             Node::BlockPass(_, ref node) |
             Node::CvarAsgn(_, _, ref node) |
-            Node::Defined(_, ref node) => {
+            Node::Defined(_, ref node) |
+            Node::GvarAsgn(_, _, ref node) |
+            Node::IvarAsgn(_, _, ref node) |
+            Node::Kwoptarg(_, _, ref node) |
+            Node::Kwsplat(_, ref node) |
+            Node::LvarAsgn(_, _, ref node) |
+            Node::MatchCurLine(_, ref node) |
+            Node::Optarg(_, _, ref node) |
+            Node::Procarg0(_, ref node) |
+            Node::Splat(_, ref node) => {
                 self.strip_node(node);
             }
             Node::Const(_, ref node, _) |
-            Node::ConstLhs(_, ref node, _) => {
+            Node::ConstLhs(_, ref node, _) |
+            Node::Postexe(_, ref node) |
+            Node::Preexe(_, ref node) |
+            Node::SplatLhs(_, ref node) => {
                 self.strip_node(node);
             }
             Node::Case(_, ref scrut, ref whens, ref else_) => {
@@ -317,8 +369,26 @@ impl Strip {
                 self.strip_node(args);
                 self.strip_node(body);
             }
-
-            _ => {}
+            Node::For(_, ref lhs, ref rhs, ref body) => {
+                self.strip_node(lhs);
+                self.strip_node(rhs);
+                self.strip_node(body);
+            }
+            Node::If(_, ref cond, ref then, ref else_) => {
+                self.strip_node(cond);
+                self.strip_node(then);
+                self.strip_node(else_);
+            }
+            Node::Resbody(_, ref class, ref var, ref body) => {
+                self.strip_node(class);
+                self.strip_node(var);
+                self.strip_node(body);
+            }
+            Node::Rescue(_, ref body, ref resbodies, ref else_) => {
+                self.strip_node(body);
+                self.strip_nodes(resbodies);
+                self.strip_node(else_);
+            }
         }
     }
 }
