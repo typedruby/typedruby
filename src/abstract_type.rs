@@ -178,6 +178,7 @@ pub struct Prototype<'object> {
     pub type_constraints: Vec<TypeConstraint<'object>>,
     pub args: Vec<ArgNode<'object>>,
     pub retn: Option<TypeNodeRef<'object>>,
+    pub is_stub: bool,
 }
 
 impl<'object> Prototype<'object> {
@@ -202,6 +203,7 @@ impl<'object> Prototype<'object> {
                     type_constraints: vec![],
                     args: vec![],
                     retn: None,
+                    is_stub: false,
                 };
                 (AnnotationStatus::Untyped, proto)
             }
@@ -637,6 +639,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             type_constraints: type_constraints,
             args: args,
             retn: retn,
+            is_stub: false,
         })
     }
 }

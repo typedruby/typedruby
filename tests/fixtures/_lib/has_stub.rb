@@ -1,0 +1,2 @@
+class HasStub
+end

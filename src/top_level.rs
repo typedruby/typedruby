@@ -24,6 +24,16 @@ struct Eval<'env, 'object: 'env> {
 pub enum SourceType {
     TypedRuby,
     Ruby,
+    Typestub,
+}
+
+impl SourceType {
+    fn is_typed_ruby(self) -> bool {
+        match self {
+            SourceType::TypedRuby | SourceType::Typestub => true,
+            SourceType::Ruby => false,
+        }
+    }
 }
 
 enum ErrorType {
@@ -89,15 +99,15 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn emit_errors(&self) -> bool {
-        self.source_type == SourceType::TypedRuby &&
+        self.source_type.is_typed_ruby() &&
             self.env.should_emit_errors(self.source_file.filename())
     }
 
     fn error(&self, error_type: ErrorType, message: &str, details: &[Detail]) {
         let emit = match error_type {
             ErrorType::Ruby |
-            ErrorType::TypedRuby => true,
-            ErrorType::Strict => self.source_type == SourceType::TypedRuby,
+            ErrorType::TypedRuby |
+            ErrorType::Strict => self.source_type != SourceType::Ruby,
         };
 
         if emit && self.env.should_emit_errors(self.source_file.filename()) {
@@ -395,13 +405,23 @@ impl<'env, 'object> Eval<'env, 'object> {
     }
 
     fn decl_method(&self, target: &'object RubyObject<'object>, name: Id, def_node: &Rc<Node>, visi: MethodVisibility) {
-        self.defs.add_method(MethodDef::Def {
-            module: target,
-            visi: visi,
-            name: name,
-            node: def_node.clone(),
-            scope: self.scope.clone(),
-        });
+        if self.source_type == SourceType::Typestub {
+            self.defs.add_method(MethodDef::Prototype {
+                module: target,
+                visi: visi,
+                name: name,
+                node: def_node.clone(),
+                scope: self.scope.clone(),
+            });
+        } else {
+            self.defs.add_method(MethodDef::Def {
+                module: target,
+                visi: visi,
+                name: name,
+                node: def_node.clone(),
+                scope: self.scope.clone(),
+            });
+        }
     }
 
     fn symbol_name<'node>(&self, node: &'node Rc<Node>, msg: &str) -> Option<Id> {
@@ -768,8 +788,10 @@ impl<'env, 'object> Eval<'env, 'object> {
                                 ConstantEntry::Module { ref loc, .. } => loc.as_ref(),
                             };
 
-                            self.constant_definition_error("Duplicate constant definition", &loc, existing_loc);
-                            return;
+                            if self.source_type != SourceType::Typestub {
+                                self.constant_definition_error("Duplicate constant definition", &loc, existing_loc);
+                                return;
+                            }
                         }
 
                         let constant = match **expr {
@@ -805,8 +827,7 @@ impl<'env, 'object> Eval<'env, 'object> {
 
                         match constant {
                             Ok(constant) => {
-                                self.env.object.set_const(&cbase, name, Rc::new(constant))
-                                    .expect("constant to not already exist");
+                                self.env.object.replace_const(&cbase, name, Rc::new(constant));
                             }
                             Err((node, message)) => {
                                 self.error(ErrorType::Strict, "Could not statically resolve expression in constant assignment", &[
@@ -1086,6 +1107,12 @@ impl<'env, 'object> Eval<'env, 'object> {
 }
 
 fn source_type_for_file(source_file: &SourceFile) -> SourceType {
+    if source_file.filename().extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or_else(|| "") == "rbi" {
+        return SourceType::Typestub
+    }
+
     let is_typedruby = source_file.source()
         .lines()
         .take_while(|line| line.starts_with("#"))

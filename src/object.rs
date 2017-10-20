@@ -379,6 +379,10 @@ impl<'a> ObjectGraph<'a> {
         }
     }
 
+    pub fn replace_const(&self, object: &'a RubyObject<'a>, name: &str, entry: Rc<ConstantEntry<'a>>) {
+        Self::class_table_insert(&self.constants, object, name.to_owned(), entry);
+    }
+
     pub fn get_own_const(&self, object: &'a RubyObject<'a>, name: &str) -> Option<Rc<ConstantEntry<'a>>> {
         match *object {
             RubyObject::Module { .. } |
@@ -621,6 +625,7 @@ pub enum MethodImpl<'object> {
     Ruby {
         name: String,
         proto: Prototype<'object>,
+        body: Option<Rc<Node>>,
     },
     AttrReader {
         ivar: String,
