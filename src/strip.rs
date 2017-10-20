@@ -435,14 +435,17 @@ impl Strip {
 mod tests {
     extern crate glob;
     use std::io::Write;
-    use std::path::PathBuf;
     use std::process::{Command, Stdio};
     use super::*;
 
-    fn verify_stripped_syntax(path: PathBuf) {
-        let source = Rc::new(SourceFile::open(path.clone()).expect("failed to open source"));
+    fn strip(source: Rc<SourceFile>) -> String {
         let remove = Strip::strip(source.clone()).unwrap();
-        let stripped = remove_byte_ranges(source.source(), remove);
+        remove_byte_ranges(source.source(), remove)
+    }
+
+    fn verify_stripped_syntax(source: Rc<SourceFile>) {
+        let stripped = strip(source.clone());
+
         let mut ruby_child = Command::new("ruby")
             .arg("-c")
             .stdin(Stdio::piped())
@@ -456,14 +459,16 @@ mod tests {
         let ruby_result = ruby_child.wait_with_output().unwrap();
         assert!(ruby_result.status.success(),
             "stripped syntax for '{}' is not valid Ruby.\nruby -c output:\n\n{}\n",
-            path.display(), String::from_utf8_lossy(&ruby_result.stderr)
+            source.filename().display(), String::from_utf8_lossy(&ruby_result.stderr)
         );
     }
 
     fn verify_stripped_sources(path: &str) {
         for path in glob::glob(path).unwrap().filter_map(Result::ok) {
             println!("checking: {}...", path.display());
-            verify_stripped_syntax(path);
+            let source = Rc::new(SourceFile::open(path.clone())
+                .expect("failed to open source"));
+            verify_stripped_syntax(source);
         }
     }
 
@@ -478,5 +483,14 @@ mod tests {
             Ok(ref path) => verify_stripped_sources(path),
             Err(..) => {},
         };
+    }
+
+    #[test]
+    fn strips_trailing_whitespace() {
+        let source = Rc::new(SourceFile::new("(test)".into(), "def foo => T  \n\n  123\nend".to_owned()));
+
+        let stripped = strip(source);
+
+        assert_eq!("def foo\n\n  123\nend", stripped);
     }
 }
