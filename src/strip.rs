@@ -88,7 +88,7 @@ fn trim_around_range(source: &str, ByteRange(start, end): ByteRange) -> ByteRang
     }
 
     fn line_whitespace(c: char) -> bool {
-        !newline(c) && c.is_whitespace()
+        !newline(c) && (c == ' ' || c == '\t')
     }
 }
 
