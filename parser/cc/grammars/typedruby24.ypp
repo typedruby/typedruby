@@ -253,6 +253,8 @@ using namespace std::string_literals;
   words
   xstring
 
+%destructor { driver.build.free_node(self, $$); } <node>
+
 %type <list>
   aref_args
   args
@@ -303,6 +305,8 @@ using namespace std::string_literals;
   word
   word_list
   xstring_contents
+
+%destructor { driver.build.free_node_list(self, $$); } <list>
 
 %type <token>
   blkarg_mark
