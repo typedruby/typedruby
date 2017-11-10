@@ -336,6 +336,8 @@ using namespace std::string_literals;
   opt_paren_args
   paren_args
 
+%destructor { driver.build.free_node_list(self, $$->inner); } <delimited_list>
+
 %type <delimited_block>
   brace_block
   brace_body
@@ -345,6 +347,11 @@ using namespace std::string_literals;
   lambda
   lambda_body
 
+%destructor {
+  driver.build.free_node(self, $$->args);
+  driver.build.free_node(self, $$->body);
+} <delimited_block>
+
 %type <with_token>
   exc_var
   if_tail
@@ -352,9 +359,24 @@ using namespace std::string_literals;
   opt_ensure
   superclass
 
+%destructor {
+  driver.build.free_node(self, $$->nod);
+} <with_token>
+
 %type <case_body>
   case_body
   cases
+
+%destructor {
+  driver.build.free_node_list(self, &$$->whens);
+  if ($$->els)
+    driver.build.free_node(self, $$->els->nod);
+} <case_body>
+
+%destructor {
+  driver.build.free_node(self, driver.ast);
+  driver.ast = nullptr;
+} program
 
 %nonassoc tLOWEST
 %nonassoc tLBRACE_ARG
