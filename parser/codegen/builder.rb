@@ -7,7 +7,7 @@ RE_FUNC = /foreign_ptr\(\*(\w+)\)\((.*?)\);/
 
 CHECK_COOKIES = false
 TYPE_CONVERSION = {
-  "foreign_ptr" => "*mut Rc<Node>",
+  "foreign_ptr" => "NodeId",
   "const token*" => "*const TokenPtr",
   "const node_list*" => "*mut NodeListPtr",
   "bool" => "bool",
@@ -34,7 +34,7 @@ class Argument
     end
 
     t = case type
-        when "*mut Rc<Node>"
+        when "NodeId"
           "Option<Rc<Node>>"
         when "*mut NodeListPtr"
           "Vec<Rc<Node>>"
@@ -55,7 +55,7 @@ class Argument
 
   def convert
     case type
-    when "*mut Rc<Node>"
+    when "NodeId"
       "let #{name} = node_from_c(#{name})"
     when "*mut NodeListPtr"
       "let #{name} = node_list_from_c(#{name})"
@@ -81,7 +81,7 @@ class Interface
   end
 
   def signature
-    "pub #{name}: unsafe extern \"C\" fn(#{arg_block}) -> *mut Rc<Node>"
+    "pub #{name}: unsafe extern \"C\" fn(#{arg_block}) -> NodeId"
   end
 
   def signature_safe
@@ -90,7 +90,7 @@ class Interface
   end
 
   def definition
-    "unsafe extern \"C\" fn #{name}(#{arg_block}) -> *mut Rc<Node>"
+    "unsafe extern \"C\" fn #{name}(#{arg_block}) -> NodeId"
   end
 
   def callsite

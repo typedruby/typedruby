@@ -14,12 +14,14 @@ use std::slice;
 use std::str;
 use std::mem;
 
+type NodeId = *mut Rc<Node>;
+
 trait ToRaw {
-    fn to_raw(self) -> *mut Rc<Node>;
+    fn to_raw(self) -> NodeId;
 }
 
 impl ToRaw for Option<Rc<Node>> {
-    fn to_raw(self) -> *mut Rc<Node> {
+    fn to_raw(self) -> NodeId {
         match self {
             None => ptr::null_mut(),
             Some(x) => x.to_raw(),
@@ -28,13 +30,13 @@ impl ToRaw for Option<Rc<Node>> {
 }
 
 impl ToRaw for Rc<Node> {
-    fn to_raw(self) -> *mut Rc<Node> {
+    fn to_raw(self) -> NodeId {
         Box::into_raw(Box::new(self))
     }
 }
 
 impl ToRaw for Option<Node> {
-    fn to_raw(self) -> *mut Rc<Node> {
+    fn to_raw(self) -> NodeId {
         match self {
             None => ptr::null_mut(),
             Some(x) => Box::new(x).to_raw(),
@@ -43,13 +45,13 @@ impl ToRaw for Option<Node> {
 }
 
 impl ToRaw for Node {
-    fn to_raw(self) -> *mut Rc<Node> {
+    fn to_raw(self) -> NodeId {
         Box::into_raw(Box::new(Rc::new(self)))
     }
 }
 
 #[inline(always)]
-unsafe fn node_from_c(p: *mut Rc<Node>) -> Option<Rc<Node>> {
+unsafe fn node_from_c(p: NodeId) -> Option<Rc<Node>> {
     if p.is_null() {
         None
     } else {
@@ -102,7 +104,7 @@ include!(concat!(env!("OUT_DIR"), "/ffi_builder.rs"));
 extern "C" {
     fn rbdriver_typedruby24_new(source: *const u8, source_length: size_t, builder: *const BuilderInterface) -> *mut DriverPtr;
     fn rbdriver_typedruby24_free(driver: *mut DriverPtr);
-    fn rbdriver_parse(driver: *mut DriverPtr, builder: *mut Builder) -> *mut Rc<Node>;
+    fn rbdriver_parse(driver: *mut DriverPtr, builder: *mut Builder) -> NodeId;
     fn rbdriver_in_definition(driver: *const DriverPtr) -> bool;
     fn rbdriver_env_is_declared(driver: *const DriverPtr, name: *const u8, len: size_t) -> bool;
     fn rbdriver_env_declare(driver: *mut DriverPtr, name: *const u8, len: size_t);
@@ -110,7 +112,7 @@ extern "C" {
     fn rbtoken_get_end(token: *const TokenPtr) -> size_t;
     fn rbtoken_get_string(token: *const TokenPtr, ptr: *mut *const u8) -> size_t;
     fn rblist_get_length(list: *mut NodeListPtr) -> size_t;
-    fn rblist_index(list: *mut NodeListPtr, index: size_t) -> *mut Rc<Node>;
+    fn rblist_index(list: *mut NodeListPtr, index: size_t) -> NodeId;
     fn rbdriver_diag_get_length(driver: *const DriverPtr) -> size_t;
     fn rbdriver_diag_get(driver: *const DriverPtr, index: size_t, diag: *mut CDiagnostic);
     fn rbdriver_diag_report(driver: *const DriverPtr, diag: *const CDiagnostic);
