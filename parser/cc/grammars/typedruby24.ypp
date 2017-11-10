@@ -373,11 +373,6 @@ using namespace std::string_literals;
     driver.build.free_node(self, $$->els->nod);
 } <case_body>
 
-%destructor {
-  driver.build.free_node(self, driver.ast);
-  driver.ast = nullptr;
-} program
-
 %nonassoc tLOWEST
 %nonassoc tLBRACE_ARG
 %nonassoc kIF_MOD kUNLESS_MOD kWHILE_MOD kUNTIL_MOD
@@ -451,6 +446,8 @@ int yylex(parser::semantic_type *lval, ruby_parser::typedruby24 &driver) {
 %%
          program: top_compstmt
                     {
+                      if (driver.ast != nullptr)
+                        driver.build.free_node(self, driver.ast);
                       driver.ast = $1;
                     }
 
