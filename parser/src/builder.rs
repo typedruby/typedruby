@@ -2,6 +2,7 @@ use ffi::{Token, Driver};
 use std::rc::Rc;
 use ast::{Node, Id, Loc, SourceFile, RubyString, Error};
 use std::collections::HashSet;
+use seq_map::SeqMap;
 
 #[cfg(feature = "regex")]
 use onig::Regex;
@@ -12,6 +13,7 @@ pub struct Builder<'a> {
     pub emit_lambda: bool,
     pub emit_procarg0: bool,
     pub cookie: usize,
+    pub nodes: SeqMap<Rc<Node>>,
 }
 
 fn collapse_string_parts(parts: &[Rc<Node>]) -> bool {
