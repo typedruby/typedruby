@@ -13,8 +13,9 @@ use std::ptr;
 use std::slice;
 use std::str;
 use std::mem;
+use seq_map::{SeqMap, NULL_ID};
 
-type NodeId = *mut Rc<Node>;
+type NodeId = usize;
 
 trait ToRaw {
     fn to_raw(self, builder: &mut Builder) -> NodeId;
@@ -23,40 +24,33 @@ trait ToRaw {
 impl ToRaw for Option<Rc<Node>> {
     fn to_raw(self, builder: &mut Builder) -> NodeId {
         match self {
-            None => ptr::null_mut(),
+            None => NULL_ID,
             Some(x) => x.to_raw(builder),
         }
     }
 }
 
 impl ToRaw for Rc<Node> {
-    fn to_raw(self, _builder: &mut Builder) -> NodeId {
-        Box::into_raw(Box::new(self))
+    fn to_raw(self, builder: &mut Builder) -> NodeId {
+        builder.nodes.insert(Some(self))
     }
 }
 
 impl ToRaw for Option<Node> {
     fn to_raw(self, builder: &mut Builder) -> NodeId {
-        match self {
-            None => ptr::null_mut(),
-            Some(x) => Box::new(x).to_raw(builder),
-        }
+        builder.nodes.insert(self.map(Rc::new))
     }
 }
 
 impl ToRaw for Node {
-    fn to_raw(self, _builder: &mut Builder) -> NodeId {
-        Box::into_raw(Box::new(Rc::new(self)))
+    fn to_raw(self, builder: &mut Builder) -> NodeId {
+        builder.nodes.insert(Some(Rc::new(self)))
     }
 }
 
 #[inline(always)]
-unsafe fn node_from_c(p: NodeId) -> Option<Rc<Node>> {
-    if p.is_null() {
-        None
-    } else {
-        Some(*Box::from_raw(p))
-    }
+unsafe fn node_from_c(builder: &Builder, p: NodeId) -> Option<Rc<Node>> {
+    builder.nodes.get(p).cloned()
 }
 
 #[inline(always)]
@@ -69,7 +63,7 @@ unsafe fn token_from_c(t: *const TokenPtr) -> Option<Token> {
 }
 
 #[inline(always)]
-unsafe fn node_list_from_c(list: *mut NodeListPtr) -> Vec<Rc<Node>> {
+unsafe fn node_list_from_c(builder: &Builder, list: *mut NodeListPtr) -> Vec<Rc<Node>> {
     if list.is_null() {
         Vec::new()
     } else {
@@ -78,8 +72,9 @@ unsafe fn node_list_from_c(list: *mut NodeListPtr) -> Vec<Rc<Node>> {
 
         for index in 0..len {
             let node_ptr = rblist_index(list, index);
-            assert!(node_ptr != ptr::null_mut());
-            vec.push(*Box::from_raw(node_ptr));
+            let node = builder.nodes.get(node_ptr).cloned()
+                .expect("node list should not contain None node");
+            vec.push(node);
         }
 
         vec
@@ -166,7 +161,7 @@ impl Driver {
         Driver { ptr: ptr, current_file: file.clone() }
     }
 
-    pub fn parse(&mut self, opt: &ParserOptions) -> Option<Box<Rc<Node>>> {
+    pub fn parse(&mut self, opt: &ParserOptions) -> Option<Rc<Node>> {
         for var in opt.declare_env.iter() {
             self.declare(var);
         }
@@ -178,14 +173,11 @@ impl Driver {
             magic_literals: opt.emit_file_vars_as_literals,
             emit_lambda: opt.emit_lambda,
             emit_procarg0: opt.emit_procarg0,
+            nodes: SeqMap::new(),
         });
         let ast = unsafe { rbdriver_parse(driver, &mut *builder) };
 
-        if ast.is_null() {
-            None
-        } else {
-            Some(unsafe { Box::from_raw(ast) })
-        }
+        builder.nodes.get(ast).cloned()
     }
 
     fn diagnostic(&mut self, level: Level, err: Error, loc: Loc, data: *const c_char) {
