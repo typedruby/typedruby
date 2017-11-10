@@ -17,35 +17,35 @@ use std::mem;
 type NodeId = *mut Rc<Node>;
 
 trait ToRaw {
-    fn to_raw(self) -> NodeId;
+    fn to_raw(self, builder: &mut Builder) -> NodeId;
 }
 
 impl ToRaw for Option<Rc<Node>> {
-    fn to_raw(self) -> NodeId {
+    fn to_raw(self, builder: &mut Builder) -> NodeId {
         match self {
             None => ptr::null_mut(),
-            Some(x) => x.to_raw(),
+            Some(x) => x.to_raw(builder),
         }
     }
 }
 
 impl ToRaw for Rc<Node> {
-    fn to_raw(self) -> NodeId {
+    fn to_raw(self, _builder: &mut Builder) -> NodeId {
         Box::into_raw(Box::new(self))
     }
 }
 
 impl ToRaw for Option<Node> {
-    fn to_raw(self) -> NodeId {
+    fn to_raw(self, builder: &mut Builder) -> NodeId {
         match self {
             None => ptr::null_mut(),
-            Some(x) => Box::new(x).to_raw(),
+            Some(x) => Box::new(x).to_raw(builder),
         }
     }
 }
 
 impl ToRaw for Node {
-    fn to_raw(self) -> NodeId {
+    fn to_raw(self, _builder: &mut Builder) -> NodeId {
         Box::into_raw(Box::new(Rc::new(self)))
     }
 }

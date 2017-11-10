@@ -30,7 +30,7 @@ class Argument
 
   def as_safe_arg
     if type == "*mut Builder"
-      return "&self"
+      return "&mut self"
     end
 
     t = case type
@@ -55,6 +55,8 @@ class Argument
 
   def convert
     case type
+    when "*mut Builder"
+      "let #{name} = &mut *#{name}"
     when "NodeId"
       "let #{name} = node_from_c(#{name})"
     when "*mut NodeListPtr"
@@ -150,7 +152,7 @@ def generate_rs(apis, out)
       out.puts "\t#{cv};" if cv
     end
     out.puts "\t#{api.cookie_check};" if CHECK_COOKIES
-    out.puts "\t#{api.callsite}.to_raw()"
+    out.puts "\t#{api.callsite}.to_raw(builder)"
     out.puts "}"
   end
 
