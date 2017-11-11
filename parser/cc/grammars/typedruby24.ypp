@@ -360,7 +360,8 @@ using namespace std::string_literals;
   superclass
 
 %destructor {
-  driver.build.free_node(self, $$->nod);
+  if ($$ != nullptr)
+    driver.build.free_node(self, $$->nod);
 } <with_token>
 
 %type <case_body>
@@ -368,9 +369,11 @@ using namespace std::string_literals;
   cases
 
 %destructor {
-  driver.build.free_node_list(self, &$$->whens);
-  if ($$->els)
-    driver.build.free_node(self, $$->els->nod);
+  if ($$ != nullptr) {
+    driver.build.free_node_list(self, &$$->whens);
+    if ($$->els)
+      driver.build.free_node(self, $$->els->nod);
+  }
 } <case_body>
 
 %nonassoc tLOWEST
