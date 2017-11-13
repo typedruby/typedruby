@@ -1716,6 +1716,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::FileLiteral(ref loc) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.String), locals)
             }
+            Node::LineLiteral(ref loc) => {
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Integer), locals)
+            }
             Node::EncodingLiteral(ref loc) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Encoding), locals)
             }
