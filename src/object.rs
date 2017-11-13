@@ -76,6 +76,7 @@ pub struct ObjectGraph<'a> {
     pub Integer: &'a RubyObject<'a>,
     pub Float: &'a RubyObject<'a>,
     pub Complex: &'a RubyObject<'a>,
+    pub Rational: &'a RubyObject<'a>,
     pub Regexp: &'a RubyObject<'a>,
     pub Proc: &'a RubyObject<'a>,
     pub Exception: &'a RubyObject<'a>,
@@ -173,6 +174,7 @@ impl<'a> ObjectGraph<'a> {
             Integer: object,
             Float: object,
             Complex: object,
+            Rational: object,
             Regexp: object,
             Proc: object,
             Exception: object,
@@ -200,6 +202,7 @@ impl<'a> ObjectGraph<'a> {
         o.Integer = o.define_class(None, o.Object, "Integer", o.Numeric, Vec::new());
         o.Float = o.define_class(None, o.Object, "Float", o.Numeric, Vec::new());
         o.Complex = o.define_class(None, o.Object, "Complex", o.Numeric, Vec::new());
+        o.Rational = o.define_class(None, o.Object, "Rational", o.Numeric, Vec::new());
         o.Regexp = o.define_class(None, o.Object, "Regexp", o.Object, Vec::new());
         o.Proc = o.define_class(None, o.Object, "Proc", o.Object, Vec::new());
         o.Exception = o.define_class(None, o.Object, "Exception", o.Object, Vec::new());
