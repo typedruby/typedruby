@@ -1198,6 +1198,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     None => EvalResult::Ok(lhs, locals),
                 }
             }
+            Node::ConstLhs(..) => {
+                // this should never happen - the parser will emit a diagnostic
+                // on a ConstLhs inside a method and will emit just the rhs node
+                unreachable!()
+            }
             _ => panic!("unknown node type in lhs: {:?}", lhs),
         }
     }
