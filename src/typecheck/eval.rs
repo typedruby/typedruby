@@ -49,6 +49,16 @@ struct Invokee<'ty, 'object: 'ty> {
     prototype: Rc<Prototype<'ty, 'object>>,
 }
 
+enum GvarAccess {
+    Read,
+    ReadWrite,
+}
+
+struct Gvar<'ty, 'object: 'ty> {
+    ty: TypeRef<'ty, 'object>,
+    access: GvarAccess,
+}
+
 #[derive(Debug)]
 enum Lhs<'ty, 'object: 'ty> {
     Lvar(Loc, String),
@@ -1048,6 +1058,26 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         })
     }
 
+    fn lookup_gvar(&self, &Id(ref loc, ref gvar): &Id) -> Option<Gvar<'ty, 'object>> {
+        match gvar.as_str() {
+            "$$" => Some(Gvar {
+                ty: self.tyenv.instance0(loc.clone(), self.env.object.Integer),
+                access: GvarAccess::Read,
+            }),
+            _ => None
+        }
+    }
+
+    fn lookup_gvar_or_error(&self, id: &Id) -> Gvar<'ty, 'object> {
+        self.lookup_gvar(id).unwrap_or_else(|| {
+            self.error("Unknown global variable", &[
+                Detail::Loc("here", &id.0),
+            ]);
+
+            Gvar { ty: self.tyenv.any(id.0.clone()), access: GvarAccess::ReadWrite }
+        })
+    }
+
     fn lookup_lvar(&self, loc: &Loc, name: &str, locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Option<TypeRef<'ty, 'object>>>
     {
@@ -1198,7 +1228,22 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     None => EvalResult::Ok(lhs, locals),
                 }
             }
+            Node::ConstLhs(..) => {
+                // this should never happen - the parser will emit a diagnostic
+                // on a ConstLhs inside a method and will emit just the rhs node
+                unreachable!()
+            }
             _ => panic!("unknown node type in lhs: {:?}", lhs),
+        }
+    }
+
+    fn process_lhs_comp(&self, lhs: &Lhs<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        match *lhs {
+            Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
+            Lhs::Simple(_, ty) => Computation::result(ty, locals),
+            Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
+                self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
+            }
         }
     }
 
@@ -1275,6 +1320,40 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
+    fn process_dstring(&self, loc: &Loc, class: &'object RubyObject<'object>, parts: &[Rc<Node>], locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        let ty = self.tyenv.instance0(loc.clone(), class);
+        let mut comp = Computation::result(ty, locals);
+
+        for part in parts {
+            // TODO - verify that each element responds to #to_s
+            comp = self.seq_process(comp, part);
+        }
+
+        comp.seq(&|_, l| Computation::result(ty, l))
+    }
+
+    fn unimplemented(&self, message: &str, node: &Node, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        self.error(&format!("{} not yet implemented", message), &[
+            Detail::Loc("here", node.loc()),
+        ]);
+
+        Computation::result(self.tyenv.new_var(node.loc().clone()), locals)
+    }
+
+    fn not_allowed(&self, message: &str, node: &Node, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        self.error(&format!("{} not allowed in method body", message), &[
+            Detail::Loc("here", node.loc()),
+        ]);
+
+        Computation::result(self.tyenv.new_var(node.loc().clone()), locals)
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1323,8 +1402,67 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     Computation::result(ty, l)
                 })
             }
+            Node::Cvar(ref loc, _) |
+            Node::CvarLhs(ref loc, _) => {
+                // TODO implement class variables
+                self.error("Class variables not yet supported", &[
+                    Detail::Loc("used here", loc),
+                ]);
+
+                Computation::result(self.tyenv.new_var(loc.clone()), locals)
+            }
+            Node::CvarAsgn(ref loc, ref _name, ref expr) => {
+                // TODO implement class variables
+                self.error("Class variables not yet supported", &[
+                    Detail::Loc("used here", loc),
+                ]);
+
+                self.process_node(expr, locals)
+            }
+            Node::Gvar(ref loc, ref name) => {
+                let gvar = self.lookup_gvar_or_error(&Id(loc.clone(), name.clone()));
+
+                Computation::result(gvar.ty, locals)
+            }
+            Node::GvarLhs(ref loc, ref name) => {
+                let gvar = self.lookup_gvar_or_error(name);
+
+                match gvar.access {
+                    GvarAccess::Read => {
+                        self.error("Read-only global variable used in left hand side of assignment", &[
+                            Detail::Loc("here", loc),
+                        ]);
+                    }
+                    GvarAccess::ReadWrite => {}
+                }
+
+                Computation::result(gvar.ty, locals)
+            }
+            Node::GvarAsgn(ref loc, ref name, ref expr) => {
+                let gvar = self.lookup_gvar_or_error(name);
+
+                match gvar.access {
+                    GvarAccess::Read => {
+                        self.error("Read-only global variable used in left hand side of assignment", &[
+                            Detail::Loc("here", loc),
+                        ]);
+                    }
+                    GvarAccess::ReadWrite => {}
+                }
+
+                self.process_node(expr, locals).seq(&|ty, l| {
+                    self.compatible(gvar.ty, ty, Some(loc));
+                    Computation::result(ty, l)
+                })
+            }
             Node::Integer(ref loc, _) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Integer), locals)
+            }
+            Node::Complex(ref loc, _) => {
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Complex), locals)
+            }
+            Node::Rational(ref loc, _) => {
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Rational), locals)
             }
             Node::String(ref loc, _) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.String), locals)
@@ -1400,15 +1538,19 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 self.process_csend(loc, recv, mid, args, block, locals)
             }
             Node::Block(ref loc, ref send, ref block_args, ref block_body) => {
-                if let Node::Send(ref send_loc, ref recv, ref mid, ref args) = **send {
-                    let mut block_loc = loc.clone();
-                    block_loc.begin_pos = send_loc.end_pos + 1;
+                match **send {
+                    Node::Send(ref send_loc, ref recv, ref mid, ref args) => {
+                        let mut block_loc = loc.clone();
+                        block_loc.begin_pos = send_loc.end_pos + 1;
 
-                    let block = BlockArg::Literal { loc: block_loc, args: block_args.clone(), body: block_body.clone() };
+                        let block = BlockArg::Literal { loc: block_loc, args: block_args.clone(), body: block_body.clone() };
 
-                    self.process_send(loc, recv, mid, args, Some(block), locals)
-                } else {
-                    panic!("expected Node::Send inside Node::Block")
+                        self.process_send(loc, recv, mid, args, Some(block), locals)
+                    }
+                    Node::Lambda(_) => {
+                        self.unimplemented("Lambdas", node, locals)
+                    }
+                    _ => panic!("unexpected node inside Node::Block: {:?}", send)
                 }
             }
             Node::Yield(ref loc, ref args) => {
@@ -1527,15 +1669,13 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 result.map(|()| hash_ty).into_computation()
             }
             Node::DString(ref loc, ref parts) => {
-                let string_ty = self.tyenv.instance0(loc.clone(), self.env.object.String);
-                let mut comp = Computation::result(string_ty, locals);
-
-                for part in parts {
-                    // TODO - verify that each string element responds to #to_s
-                    comp = self.seq_process(comp, part);
-                }
-
-                comp.seq(&|_, l| Computation::result(string_ty, l))
+                self.process_dstring(loc, self.env.object.String, parts, locals)
+            }
+            Node::DSymbol(ref loc, ref parts) => {
+                self.process_dstring(loc, self.env.object.Symbol, parts, locals)
+            }
+            Node::XString(ref loc, ref parts) => {
+                self.process_dstring(loc, self.env.object.String, parts, locals)
             }
             Node::Const(..) => {
                 match self.env.resolve_cpath(node, self.type_scope.constant_scope()) {
@@ -1587,13 +1727,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Node::OrAsgn(ref loc, ref lhs_node, ref rhs) => {
                 self.process_lhs(lhs_node, locals).and_then_comp(|lhs, locals| {
-                    let lhs_comp = match lhs {
-                        Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
-                        Lhs::Simple(_, ty) => Computation::result(ty, locals),
-                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
-                            self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
-                        }
-                    };
+                    let lhs_comp = self.process_lhs_comp(&lhs, locals);
 
                     let lhs_pred = lhs_comp.predicate(lhs_node.loc(), &self.tyenv);
 
@@ -1609,13 +1743,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Node::AndAsgn(ref loc, ref lhs_node, ref rhs) => {
                 self.process_lhs(lhs_node, locals).and_then_comp(|lhs, locals| {
-                    let lhs_comp = match lhs {
-                        Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
-                        Lhs::Simple(_, ty) => Computation::result(ty, locals),
-                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
-                            self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
-                        }
-                    };
+                    let lhs_comp = self.process_lhs_comp(&lhs, locals);
 
                     let lhs_pred = lhs_comp.predicate(lhs_node.loc(), &self.tyenv);
 
@@ -1684,11 +1812,28 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::FileLiteral(ref loc) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.String), locals)
             }
+            Node::LineLiteral(ref loc) => {
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Integer), locals)
+            }
+            Node::EncodingLiteral(ref loc) => {
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Encoding), locals)
+            }
             Node::NthRef(ref loc, _) => {
                 // TODO perhaps analyse regex to figure out what nthrefs are
                 // always present:
                 let ty = self.tyenv.nillable(loc,
                     self.tyenv.instance0(loc.clone(), self.env.object.String));
+
+                Computation::result(ty, locals)
+            }
+            Node::Backref(ref loc, ref backref) => {
+                let ty = match backref.as_str() {
+                    "$&" | "$`" | "$'" | "$+" => {
+                        self.tyenv.nillable(loc,
+                            self.tyenv.instance0(loc.clone(), self.env.object.String))
+                    }
+                    _ => panic!("unknown backref")
+                };
 
                 Computation::result(ty, locals)
             }
@@ -1873,20 +2018,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     Computation::result(ty, l)
                 })
             }
-            Node::Gvar(ref loc, ref name) => {
-                let ty = match name.as_ref() {
-                    "$$" => self.tyenv.instance0(loc.clone(), self.env.object.Integer),
-                    _ => {
-                        self.error("Unknown global variable", &[
-                            Detail::Loc("here", loc),
-                        ]);
-
-                        self.tyenv.any(loc.clone())
-                    }
-                };
-
-                Computation::result(ty, locals)
-            }
             Node::TyConstInstance(ref loc, ref cpath, _) => {
                 self.error("Bare type instance not valid in expression", &[
                     Detail::Loc("here", loc),
@@ -1894,7 +2025,107 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 self.process_node(cpath, locals)
             }
-            _ => panic!("node: {:?}", node),
+            Node::Alias(..) => {
+                self.not_allowed("Alias statements", node, locals)
+            }
+            Node::Def(..) |
+            Node::Defs(..) => {
+                self.not_allowed("Method definitions", node, locals)
+            }
+            Node::Postexe(..) => {
+                self.not_allowed("END", node, locals)
+            }
+            Node::Preexe(..) => {
+                self.not_allowed("BEGIN", node, locals)
+            }
+            Node::TyIvardecl(..) => {
+                self.not_allowed("Instance variable declarations", node, locals)
+            }
+            Node::Undef(..) => {
+                self.not_allowed("Undef statements", node, locals)
+            }
+            Node::EFlipflop(ref loc, _, _) |
+            Node::IFlipflop(ref loc, _, _) => {
+                self.error("Flip flops are not supported", &[
+                    Detail::Loc("here", loc),
+                ]);
+
+                Computation::result(self.tyenv.new_var(loc.clone()), locals)
+            }
+            Node::For(..) => {
+                self.unimplemented("For loops", node, locals)
+            }
+            Node::MatchAsgn(..) => {
+                self.unimplemented("Match assignments", node, locals)
+            }
+            Node::MatchCurLine(..) => {
+                self.unimplemented("Regexp-as-conditional", node, locals)
+            }
+            Node::SClass(..) => {
+                self.unimplemented("Singleton classes", node, locals)
+            }
+            Node::Super(..) | Node::ZSuper(..) => {
+                self.unimplemented("Super invocations", node, locals)
+            }
+            Node::Until(..) | Node::UntilPost(..) => {
+                self.unimplemented("Until loops", node, locals)
+            }
+            Node::While(..) | Node::WhilePost(..) => {
+                self.unimplemented("While loops", node, locals)
+            }
+            Node::Class(..) |
+            Node::ConstLhs(..) |
+            Node::ConstAsgn(..) |
+            Node::Module(..) => {
+                // parser ensures that we'll never hit one of these nodes
+                // inside a method def
+                unreachable!()
+            }
+            Node::Arg(..) |
+            Node::Args(..) |
+            Node::Blockarg(..) |
+            Node::BlockPass(..) |
+            Node::Cbase(..) |
+            Node::Ident(..) |
+            Node::Kwarg(..) |
+            Node::Kwoptarg(..) |
+            Node::Kwrestarg(..) |
+            Node::Kwsplat(..) |
+            Node::Lambda(..) |
+            Node::Mlhs(..) |
+            Node::Optarg(..) |
+            Node::Pair(..) |
+            Node::Procarg0(..) |
+            Node::Regopt(..) |
+            Node::Restarg(..) |
+            Node::ShadowArg(..) |
+            Node::Splat(..) |
+            Node::SplatLhs(..) |
+            Node::TyAny(..) |
+            Node::TyArray(..) |
+            Node::TyClass(..) |
+            Node::TyConSubtype(..) |
+            Node::TyConUnify(..) |
+            Node::TyCpath(..) |
+            Node::TyGenargs(..) |
+            Node::TyGendecl(..) |
+            Node::TyGendeclarg(..) |
+            Node::TyGeninst(..) |
+            Node::TyHash(..) |
+            Node::TyInstance(..) |
+            Node::TyNil(..) |
+            Node::TyNillable(..) |
+            Node::TyOr(..) |
+            Node::TyParen(..) |
+            Node::TyProc(..) |
+            Node::TyPrototype(..) |
+            Node::TyReturnSig(..) |
+            Node::TySelf(..) |
+            Node::TyTuple(..) |
+            Node::TyTypedArg(..) |
+            Node::When(..) => {
+                panic!("node not expected here: {:?}", node);
+            }
         }
     }
 }
