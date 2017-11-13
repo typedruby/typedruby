@@ -1290,6 +1290,20 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
+    fn process_dstring(&self, loc: &Loc, class: &'object RubyObject<'object>, parts: &[Rc<Node>], locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        let ty = self.tyenv.instance0(loc.clone(), class);
+        let mut comp = Computation::result(ty, locals);
+
+        for part in parts {
+            // TODO - verify that each element responds to #to_s
+            comp = self.seq_process(comp, part);
+        }
+
+        comp.seq(&|_, l| Computation::result(ty, l))
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1562,15 +1576,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 result.map(|()| hash_ty).into_computation()
             }
             Node::DString(ref loc, ref parts) => {
-                let string_ty = self.tyenv.instance0(loc.clone(), self.env.object.String);
-                let mut comp = Computation::result(string_ty, locals);
-
-                for part in parts {
-                    // TODO - verify that each string element responds to #to_s
-                    comp = self.seq_process(comp, part);
-                }
-
-                comp.seq(&|_, l| Computation::result(string_ty, l))
+                self.process_dstring(loc, self.env.object.String, parts, locals)
+            }
+            Node::DSymbol(ref loc, ref parts) => {
+                self.process_dstring(loc, self.env.object.Symbol, parts, locals)
             }
             Node::Const(..) => {
                 match self.env.resolve_cpath(node, self.type_scope.constant_scope()) {
