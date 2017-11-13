@@ -1944,6 +1944,16 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 Computation::result(self.tyenv.nil(node.loc().clone()), locals)
             }
+            Node::Def(ref loc, Id(ref name_loc, _), _, _) |
+            Node::Defs(ref loc, _, Id(ref name_loc, _), _, _) => {
+                let def_loc = loc.with_end(name_loc.end_pos);
+
+                self.error("Method definitions not allowed in method body", &[
+                    Detail::Loc("here", &def_loc)
+                ]);
+
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Symbol), locals)
+            }
             _ => panic!("node: {:?}", node),
         }
     }
