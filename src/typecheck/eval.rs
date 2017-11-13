@@ -1538,15 +1538,19 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 self.process_csend(loc, recv, mid, args, block, locals)
             }
             Node::Block(ref loc, ref send, ref block_args, ref block_body) => {
-                if let Node::Send(ref send_loc, ref recv, ref mid, ref args) = **send {
-                    let mut block_loc = loc.clone();
-                    block_loc.begin_pos = send_loc.end_pos + 1;
+                match **send {
+                    Node::Send(ref send_loc, ref recv, ref mid, ref args) => {
+                        let mut block_loc = loc.clone();
+                        block_loc.begin_pos = send_loc.end_pos + 1;
 
-                    let block = BlockArg::Literal { loc: block_loc, args: block_args.clone(), body: block_body.clone() };
+                        let block = BlockArg::Literal { loc: block_loc, args: block_args.clone(), body: block_body.clone() };
 
-                    self.process_send(loc, recv, mid, args, Some(block), locals)
-                } else {
-                    panic!("expected Node::Send inside Node::Block")
+                        self.process_send(loc, recv, mid, args, Some(block), locals)
+                    }
+                    Node::Lambda(_) => {
+                        self.unimplemented("Lambdas", node, locals)
+                    }
+                    _ => panic!("unexpected node inside Node::Block: {:?}", send)
                 }
             }
             Node::Yield(ref loc, ref args) => {
@@ -1669,6 +1673,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Node::DSymbol(ref loc, ref parts) => {
                 self.process_dstring(loc, self.env.object.Symbol, parts, locals)
+            }
+            Node::XString(ref loc, ref parts) => {
+                self.process_dstring(loc, self.env.object.String, parts, locals)
             }
             Node::Const(..) => {
                 match self.env.resolve_cpath(node, self.type_scope.constant_scope()) {
@@ -2031,6 +2038,12 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::Preexe(..) => {
                 self.not_allowed("BEGIN", node, locals)
             }
+            Node::TyIvardecl(..) => {
+                self.not_allowed("Instance variable declarations", node, locals)
+            }
+            Node::Undef(..) => {
+                self.not_allowed("Undef statements", node, locals)
+            }
             Node::EFlipflop(ref loc, _, _) |
             Node::IFlipflop(ref loc, _, _) => {
                 self.error("Flip flops are not supported", &[
@@ -2048,7 +2061,71 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::MatchCurLine(..) => {
                 self.unimplemented("Regexp-as-conditional", node, locals)
             }
-            _ => panic!("node: {:?}", node),
+            Node::SClass(..) => {
+                self.unimplemented("Singleton classes", node, locals)
+            }
+            Node::Super(..) | Node::ZSuper(..) => {
+                self.unimplemented("Super invocations", node, locals)
+            }
+            Node::Until(..) | Node::UntilPost(..) => {
+                self.unimplemented("Until loops", node, locals)
+            }
+            Node::While(..) | Node::WhilePost(..) => {
+                self.unimplemented("While loops", node, locals)
+            }
+            Node::Class(..) |
+            Node::ConstLhs(..) |
+            Node::ConstAsgn(..) |
+            Node::Module(..) => {
+                // parser ensures that we'll never hit one of these nodes
+                // inside a method def
+                unreachable!()
+            }
+            Node::Arg(..) |
+            Node::Args(..) |
+            Node::Blockarg(..) |
+            Node::BlockPass(..) |
+            Node::Cbase(..) |
+            Node::Ident(..) |
+            Node::Kwarg(..) |
+            Node::Kwoptarg(..) |
+            Node::Kwrestarg(..) |
+            Node::Kwsplat(..) |
+            Node::Lambda(..) |
+            Node::Mlhs(..) |
+            Node::Optarg(..) |
+            Node::Pair(..) |
+            Node::Procarg0(..) |
+            Node::Regopt(..) |
+            Node::Restarg(..) |
+            Node::ShadowArg(..) |
+            Node::Splat(..) |
+            Node::SplatLhs(..) |
+            Node::TyAny(..) |
+            Node::TyArray(..) |
+            Node::TyClass(..) |
+            Node::TyConSubtype(..) |
+            Node::TyConUnify(..) |
+            Node::TyCpath(..) |
+            Node::TyGenargs(..) |
+            Node::TyGendecl(..) |
+            Node::TyGendeclarg(..) |
+            Node::TyGeninst(..) |
+            Node::TyHash(..) |
+            Node::TyInstance(..) |
+            Node::TyNil(..) |
+            Node::TyNillable(..) |
+            Node::TyOr(..) |
+            Node::TyParen(..) |
+            Node::TyProc(..) |
+            Node::TyPrototype(..) |
+            Node::TyReturnSig(..) |
+            Node::TySelf(..) |
+            Node::TyTuple(..) |
+            Node::TyTypedArg(..) |
+            Node::When(..) => {
+                panic!("node not expected here: {:?}", node);
+            }
         }
     }
 }
