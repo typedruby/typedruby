@@ -1716,6 +1716,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::FileLiteral(ref loc) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.String), locals)
             }
+            Node::EncodingLiteral(ref loc) => {
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Encoding), locals)
+            }
             Node::NthRef(ref loc, _) => {
                 // TODO perhaps analyse regex to figure out what nthrefs are
                 // always present:

@@ -80,6 +80,7 @@ pub struct ObjectGraph<'a> {
     pub Proc: &'a RubyObject<'a>,
     pub Exception: &'a RubyObject<'a>,
     pub StandardError: &'a RubyObject<'a>,
+    pub Encoding: &'a RubyObject<'a>,
 
     constants: ClassTable<'a, ConstantEntry<'a>>,
     methods: ClassTable<'a, MethodEntry<'a>>,
@@ -176,6 +177,7 @@ impl<'a> ObjectGraph<'a> {
             Proc: object,
             Exception: object,
             StandardError: object,
+            Encoding: object,
 
             constants: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
@@ -202,6 +204,7 @@ impl<'a> ObjectGraph<'a> {
         o.Proc = o.define_class(None, o.Object, "Proc", o.Object, Vec::new());
         o.Exception = o.define_class(None, o.Object, "Exception", o.Object, Vec::new());
         o.StandardError = o.define_class(None, o.Object, "StandardError", o.Exception, Vec::new());
+        o.Encoding = o.define_class(None, o.Encoding, "Encoding", o.Object, Vec::new());
 
         for (class, mid, impl_) in [
             (o.Class,  "new",   Rc::new(MethodImpl::IntrinsicClassNew)),
