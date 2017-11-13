@@ -1202,6 +1202,16 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
+    fn process_lhs_comp(&self, lhs: &Lhs<'ty, 'object>, locals: Locals<'ty, 'object>) -> Computation<'ty, 'object> {
+        match *lhs {
+            Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
+            Lhs::Simple(_, ty) => Computation::result(ty, locals),
+            Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
+                self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
+            }
+        }
+    }
+
     fn process_asgn(&self, lhs: &Node, rty: TypeRef<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
         -> EvalResult<'ty, 'object, ()>
     {
@@ -1587,13 +1597,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Node::OrAsgn(ref loc, ref lhs_node, ref rhs) => {
                 self.process_lhs(lhs_node, locals).and_then_comp(|lhs, locals| {
-                    let lhs_comp = match lhs {
-                        Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
-                        Lhs::Simple(_, ty) => Computation::result(ty, locals),
-                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
-                            self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
-                        }
-                    };
+                    let lhs_comp = self.process_lhs_comp(&lhs, locals);
 
                     let lhs_pred = lhs_comp.predicate(lhs_node.loc(), &self.tyenv);
 
@@ -1609,13 +1613,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             }
             Node::AndAsgn(ref loc, ref lhs_node, ref rhs) => {
                 self.process_lhs(lhs_node, locals).and_then_comp(|lhs, locals| {
-                    let lhs_comp = match lhs {
-                        Lhs::Lvar(ref lvar_loc, ref name) => self.lookup_lvar_or_error(lvar_loc, name, locals).into_computation(),
-                        Lhs::Simple(_, ty) => Computation::result(ty, locals),
-                        Lhs::Send(ref lhs_loc, recv_ty, ref id, ref args) => {
-                            self.process_send_dispatch(lhs_loc, recv_ty, id, args.clone(), None, locals)
-                        }
-                    };
+                    let lhs_comp = self.process_lhs_comp(&lhs, locals);
 
                     let lhs_pred = lhs_comp.predicate(lhs_node.loc(), &self.tyenv);
 
