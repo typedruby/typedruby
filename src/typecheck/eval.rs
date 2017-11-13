@@ -1338,6 +1338,23 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                     Computation::result(ty, l)
                 })
             }
+            Node::Cvar(ref loc, _) |
+            Node::CvarLhs(ref loc, _) => {
+                // TODO implement class variables
+                self.error("Class variables not yet supported", &[
+                    Detail::Loc("used here", loc),
+                ]);
+
+                Computation::result(self.tyenv.new_var(loc.clone()), locals)
+            }
+            Node::CvarAsgn(ref loc, ref _name, ref expr) => {
+                // TODO implement class variables
+                self.error("Class variables not yet supported", &[
+                    Detail::Loc("used here", loc),
+                ]);
+
+                self.process_node(expr, locals)
+            }
             Node::Integer(ref loc, _) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Integer), locals)
             }
