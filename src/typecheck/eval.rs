@@ -49,6 +49,16 @@ struct Invokee<'ty, 'object: 'ty> {
     prototype: Rc<Prototype<'ty, 'object>>,
 }
 
+enum GvarAccess {
+    Read,
+    ReadWrite,
+}
+
+struct Gvar<'ty, 'object: 'ty> {
+    ty: TypeRef<'ty, 'object>,
+    access: GvarAccess,
+}
+
 #[derive(Debug)]
 enum Lhs<'ty, 'object: 'ty> {
     Lvar(Loc, String),
@@ -1048,6 +1058,26 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         })
     }
 
+    fn lookup_gvar(&self, &Id(ref loc, ref gvar): &Id) -> Option<Gvar<'ty, 'object>> {
+        match gvar.as_str() {
+            "$$" => Some(Gvar {
+                ty: self.tyenv.instance0(loc.clone(), self.env.object.Integer),
+                access: GvarAccess::Read,
+            }),
+            _ => None
+        }
+    }
+
+    fn lookup_gvar_or_error(&self, id: &Id) -> Gvar<'ty, 'object> {
+        self.lookup_gvar(id).unwrap_or_else(|| {
+            self.error("Unknown global variable", &[
+                Detail::Loc("here", &id.0),
+            ]);
+
+            Gvar { ty: self.tyenv.any(id.0.clone()), access: GvarAccess::ReadWrite }
+        })
+    }
+
     fn lookup_lvar(&self, loc: &Loc, name: &str, locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Option<TypeRef<'ty, 'object>>>
     {
@@ -1368,6 +1398,42 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 ]);
 
                 self.process_node(expr, locals)
+            }
+            Node::Gvar(ref loc, ref name) => {
+                let gvar = self.lookup_gvar_or_error(&Id(loc.clone(), name.clone()));
+
+                Computation::result(gvar.ty, locals)
+            }
+            Node::GvarLhs(ref loc, ref name) => {
+                let gvar = self.lookup_gvar_or_error(name);
+
+                match gvar.access {
+                    GvarAccess::Read => {
+                        self.error("Read-only global variable used in left hand side of assignment", &[
+                            Detail::Loc("here", loc),
+                        ]);
+                    }
+                    GvarAccess::ReadWrite => {}
+                }
+
+                Computation::result(gvar.ty, locals)
+            }
+            Node::GvarAsgn(ref loc, ref name, ref expr) => {
+                let gvar = self.lookup_gvar_or_error(name);
+
+                match gvar.access {
+                    GvarAccess::Read => {
+                        self.error("Read-only global variable used in left hand side of assignment", &[
+                            Detail::Loc("here", loc),
+                        ]);
+                    }
+                    GvarAccess::ReadWrite => {}
+                }
+
+                self.process_node(expr, locals).seq(&|ty, l| {
+                    self.compatible(gvar.ty, ty, Some(loc));
+                    Computation::result(ty, l)
+                })
             }
             Node::Integer(ref loc, _) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Integer), locals)
@@ -1921,20 +1987,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                     Computation::result(ty, l)
                 })
-            }
-            Node::Gvar(ref loc, ref name) => {
-                let ty = match name.as_ref() {
-                    "$$" => self.tyenv.instance0(loc.clone(), self.env.object.Integer),
-                    _ => {
-                        self.error("Unknown global variable", &[
-                            Detail::Loc("here", loc),
-                        ]);
-
-                        self.tyenv.any(loc.clone())
-                    }
-                };
-
-                Computation::result(ty, locals)
             }
             Node::TyConstInstance(ref loc, ref cpath, _) => {
                 self.error("Bare type instance not valid in expression", &[
