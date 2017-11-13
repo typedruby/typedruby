@@ -13,7 +13,7 @@ use std::ptr;
 use std::slice;
 use std::str;
 use std::mem;
-use seq_map::{SeqMap, NULL_ID};
+use id_arena::IdArena;
 
 type NodeId = usize;
 
@@ -23,10 +23,7 @@ trait ToRaw {
 
 impl ToRaw for Option<Rc<Node>> {
     fn to_raw(self, builder: &mut Builder) -> NodeId {
-        match self {
-            None => NULL_ID,
-            Some(x) => x.to_raw(builder),
-        }
+        builder.nodes.insert(self)
     }
 }
 
@@ -174,7 +171,7 @@ impl Driver {
             magic_literals: opt.emit_file_vars_as_literals,
             emit_lambda: opt.emit_lambda,
             emit_procarg0: opt.emit_procarg0,
-            nodes: SeqMap::new(),
+            nodes: IdArena::new(),
         };
 
         let ast = unsafe { rbdriver_parse(driver, &mut builder) };

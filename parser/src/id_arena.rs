@@ -1,14 +1,14 @@
 pub type Id = usize;
 
-pub const NULL_ID: Id = 0;
+const NULL_ID: Id = 0;
 
-pub struct SeqMap<T> {
+pub struct IdArena<T> {
     vec: Vec<T>,
 }
 
-impl<T> SeqMap<T> {
+impl<T> IdArena<T> {
     pub fn new() -> Self {
-        SeqMap { vec: Vec::new() }
+        IdArena { vec: Vec::new() }
     }
 
     pub fn insert(&mut self, value: Option<T>) -> Id {
@@ -24,7 +24,7 @@ impl<T> SeqMap<T> {
 
     /// Panics if id is out of bounds
     pub fn get(&self, id: Id) -> Option<&T> {
-        if id == 0 {
+        if id == NULL_ID {
             None
         } else {
             Some(&self.vec[id - 1])
