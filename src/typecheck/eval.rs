@@ -1334,6 +1334,26 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         comp.seq(&|_, l| Computation::result(ty, l))
     }
 
+    fn unimplemented(&self, message: &str, node: &Node, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        self.error(&format!("{} not yet implemented", message), &[
+            Detail::Loc("here", node.loc()),
+        ]);
+
+        Computation::result(self.tyenv.new_var(node.loc().clone()), locals)
+    }
+
+    fn not_allowed(&self, message: &str, node: &Node, locals: Locals<'ty, 'object>)
+        -> Computation<'ty, 'object>
+    {
+        self.error(&format!("{} not allowed in method body", message), &[
+            Detail::Loc("here", node.loc()),
+        ]);
+
+        Computation::result(self.tyenv.new_var(node.loc().clone()), locals)
+    }
+
     fn process_node(&self, node: &Node, locals: Locals<'ty, 'object>)
         -> Computation<'ty, 'object>
     {
@@ -1996,21 +2016,17 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 self.process_node(cpath, locals)
             }
             Node::Alias(..) => {
-                self.error("Alias statements not allowed in method body", &[
-                    Detail::Loc("here", node.loc()),
-                ]);
-
-                Computation::result(self.tyenv.nil(node.loc().clone()), locals)
+                self.not_allowed("Alias statements", node, locals)
             }
-            Node::Def(ref loc, Id(ref name_loc, _), _, _) |
-            Node::Defs(ref loc, _, Id(ref name_loc, _), _, _) => {
-                let def_loc = loc.with_end(name_loc.end_pos);
-
-                self.error("Method definitions not allowed in method body", &[
-                    Detail::Loc("here", &def_loc)
-                ]);
-
-                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Symbol), locals)
+            Node::Def(..) |
+            Node::Defs(..) => {
+                self.not_allowed("Method definitions", node, locals)
+            }
+            Node::Postexe(..) => {
+                self.not_allowed("END", node, locals)
+            }
+            Node::Preexe(..) => {
+                self.not_allowed("BEGIN", node, locals)
             }
             Node::EFlipflop(ref loc, _, _) |
             Node::IFlipflop(ref loc, _, _) => {
@@ -2019,6 +2035,15 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 ]);
 
                 Computation::result(self.tyenv.new_var(loc.clone()), locals)
+            }
+            Node::For(..) => {
+                self.unimplemented("For loops", node, locals)
+            }
+            Node::MatchAsgn(..) => {
+                self.unimplemented("Match assignments", node, locals)
+            }
+            Node::MatchCurLine(..) => {
+                self.unimplemented("Regexp-as-conditional", node, locals)
             }
             _ => panic!("node: {:?}", node),
         }
