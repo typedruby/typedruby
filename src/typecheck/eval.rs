@@ -1695,6 +1695,17 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 Computation::result(ty, locals)
             }
+            Node::Backref(ref loc, ref backref) => {
+                let ty = match backref.as_str() {
+                    "$&" | "$`" | "$'" | "$+" => {
+                        self.tyenv.nillable(loc,
+                            self.tyenv.instance0(loc.clone(), self.env.object.String))
+                    }
+                    _ => panic!("unknown backref")
+                };
+
+                Computation::result(ty, locals)
+            }
             Node::Ensure(ref loc, ref body, ref ensure) => {
                 let body_result = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.autopin())
                     .map_locals(&|l| l.unautopin());
