@@ -167,15 +167,17 @@ impl Driver {
         }
 
         let driver = self.ptr;
-        let mut builder = Box::new(Builder {
+
+        let mut builder = Builder {
             driver: self,
             cookie: 12345678,
             magic_literals: opt.emit_file_vars_as_literals,
             emit_lambda: opt.emit_lambda,
             emit_procarg0: opt.emit_procarg0,
             nodes: SeqMap::new(),
-        });
-        let ast = unsafe { rbdriver_parse(driver, &mut *builder) };
+        };
+
+        let ast = unsafe { rbdriver_parse(driver, &mut builder) };
 
         builder.nodes.get(ast).cloned()
     }
