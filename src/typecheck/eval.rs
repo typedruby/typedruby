@@ -1461,6 +1461,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::Complex(ref loc, _) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Complex), locals)
             }
+            Node::Rational(ref loc, _) => {
+                Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Rational), locals)
+            }
             Node::String(ref loc, _) => {
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.String), locals)
             }
