@@ -1954,6 +1954,14 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 Computation::result(self.tyenv.instance0(loc.clone(), self.env.object.Symbol), locals)
             }
+            Node::EFlipflop(ref loc, _, _) |
+            Node::IFlipflop(ref loc, _, _) => {
+                self.error("Flip flops are not supported", &[
+                    Detail::Loc("here", loc),
+                ]);
+
+                Computation::result(self.tyenv.new_var(loc.clone()), locals)
+            }
             _ => panic!("node: {:?}", node),
         }
     }
