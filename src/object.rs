@@ -75,10 +75,13 @@ pub struct ObjectGraph<'a> {
     pub Numeric: &'a RubyObject<'a>,
     pub Integer: &'a RubyObject<'a>,
     pub Float: &'a RubyObject<'a>,
+    pub Complex: &'a RubyObject<'a>,
+    pub Rational: &'a RubyObject<'a>,
     pub Regexp: &'a RubyObject<'a>,
     pub Proc: &'a RubyObject<'a>,
     pub Exception: &'a RubyObject<'a>,
     pub StandardError: &'a RubyObject<'a>,
+    pub Encoding: &'a RubyObject<'a>,
 
     constants: ClassTable<'a, ConstantEntry<'a>>,
     methods: ClassTable<'a, MethodEntry<'a>>,
@@ -170,10 +173,13 @@ impl<'a> ObjectGraph<'a> {
             Numeric: object,
             Integer: object,
             Float: object,
+            Complex: object,
+            Rational: object,
             Regexp: object,
             Proc: object,
             Exception: object,
             StandardError: object,
+            Encoding: object,
 
             constants: RefCell::new(HashMap::new()),
             methods: RefCell::new(HashMap::new()),
@@ -195,10 +201,13 @@ impl<'a> ObjectGraph<'a> {
         o.Numeric = o.define_class(None, o.Object, "Numeric", o.Object, Vec::new());
         o.Integer = o.define_class(None, o.Object, "Integer", o.Numeric, Vec::new());
         o.Float = o.define_class(None, o.Object, "Float", o.Numeric, Vec::new());
+        o.Complex = o.define_class(None, o.Object, "Complex", o.Numeric, Vec::new());
+        o.Rational = o.define_class(None, o.Object, "Rational", o.Numeric, Vec::new());
         o.Regexp = o.define_class(None, o.Object, "Regexp", o.Object, Vec::new());
         o.Proc = o.define_class(None, o.Object, "Proc", o.Object, Vec::new());
         o.Exception = o.define_class(None, o.Object, "Exception", o.Object, Vec::new());
         o.StandardError = o.define_class(None, o.Object, "StandardError", o.Exception, Vec::new());
+        o.Encoding = o.define_class(None, o.Encoding, "Encoding", o.Object, Vec::new());
 
         for (class, mid, impl_) in [
             (o.Class,  "new",   Rc::new(MethodImpl::IntrinsicClassNew)),
