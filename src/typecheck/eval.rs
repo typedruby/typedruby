@@ -1937,6 +1937,13 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 self.process_node(cpath, locals)
             }
+            Node::Alias(..) => {
+                self.error("Alias statements not allowed in method body", &[
+                    Detail::Loc("here", node.loc()),
+                ]);
+
+                Computation::result(self.tyenv.nil(node.loc().clone()), locals)
+            }
             _ => panic!("node: {:?}", node),
         }
     }
