@@ -18,9 +18,15 @@ pub type TypeVarId = usize;
 #[derive(Debug)]
 pub enum UnificationError<'ty, 'object: 'ty> {
     Incompatible(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
+    UnionAmbiguity(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
 }
 
 pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
+
+enum UnionCompatibilityError<'ty, 'object: 'ty> {
+    NoMatch,
+    Ambiguity(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
+}
 
 #[derive(Debug,Clone)]
 enum SelfInfo<'ty, 'object: 'ty> {
@@ -238,6 +244,14 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         self.instance(loc, self.env.object.hash_class(), vec![key_type, value_type])
     }
 
+    fn type_state(&self) -> TreeMap<TypeVarId, TypeRef<'ty, 'object>> {
+        self.instance_map.borrow().clone()
+    }
+
+    fn set_type_state(&self, state: TreeMap<TypeVarId, TypeRef<'ty, 'object>>) {
+        *self.instance_map.borrow_mut() = state;
+    }
+
     fn set_var(&self, id: TypeVarId, ty: TypeRef<'ty, 'object>) {
         let mut instance_map_ref = self.instance_map.borrow_mut();
 
@@ -292,6 +306,46 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             })
     }
 
+    fn union_compatible(&self, union_tys: &[TypeRef<'ty, 'object>], from_ty: TypeRef<'ty, 'object>)
+        -> Result<TypeRef<'ty, 'object>, UnionCompatibilityError<'ty, 'object>>
+    {
+        if union_tys.len() == 0 {
+            return Err(UnionCompatibilityError::NoMatch);
+        }
+
+        let head_ty = union_tys[0];
+        let tail_tys = &union_tys[1..];
+
+        let state0 = self.type_state();
+
+        match self.compatible(head_ty, from_ty) {
+            Err(_) => {
+                self.set_type_state(state0);
+                self.union_compatible(tail_tys, from_ty)
+            }
+            Ok(()) => {
+                let state1 = self.type_state();
+                self.set_type_state(state0.clone());
+                let rest_result = self.union_compatible(tail_tys, from_ty);
+                let state2 = self.type_state();
+
+                match rest_result {
+                    Ok(matched_ty) => {
+                        if state1.len() == state2.len() {
+                            self.set_type_state(state1);
+                            Ok(head_ty)
+                        } else {
+                            self.set_type_state(state0);
+                            Err(UnionCompatibilityError::Ambiguity(head_ty, matched_ty))
+                        }
+                    }
+                    Err(UnionCompatibilityError::NoMatch) => Ok(head_ty),
+                    Err(ambig@UnionCompatibilityError::Ambiguity(..)) => Err(ambig),
+                }
+            }
+        }
+    }
+
     pub fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let to = self.prune(to);
         let from = self.prune(from);
@@ -326,13 +380,13 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 Ok(())
             },
             (&Type::Union { types: ref to_types, .. }, _) => {
-                for to_type in to_types {
-                    if let Ok(()) = self.compatible(*to_type, from) {
-                        return Ok(());
-                    }
+                match self.union_compatible(to_types, from) {
+                    Ok(_) => Ok(()),
+                    Err(UnionCompatibilityError::NoMatch) =>
+                        Err(UnificationError::Incompatible(to, from)),
+                    Err(UnionCompatibilityError::Ambiguity(a, b)) =>
+                        Err(UnificationError::UnionAmbiguity(a, b)),
                 }
-
-                Err(UnificationError::Incompatible(to, from))
             },
             (&Type::Any { .. }, _) => Ok(()),
             (_, &Type::Any { .. }) => Ok(()),
