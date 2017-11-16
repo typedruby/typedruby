@@ -1,6 +1,7 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
+use std::cmp::Ordering;
 use ast::{Loc, Node, Id};
 use environment::Environment;
 use object::RubyObject;
@@ -18,14 +19,14 @@ pub type TypeVarId = usize;
 #[derive(Debug)]
 pub enum UnificationError<'ty, 'object: 'ty> {
     Incompatible(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
-    UnionAmbiguity(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
+    UnionAmbiguity(Vec<TypeRef<'ty, 'object>>),
 }
 
 pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
 
 enum UnionCompatibilityError<'ty, 'object: 'ty> {
     NoMatch,
-    Ambiguity(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
+    Ambiguity(Vec<TypeRef<'ty, 'object>>),
 }
 
 #[derive(Debug,Clone)]
@@ -244,12 +245,13 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         self.instance(loc, self.env.object.hash_class(), vec![key_type, value_type])
     }
 
-    fn type_state(&self) -> TreeMap<TypeVarId, TypeRef<'ty, 'object>> {
-        self.instance_map.borrow().clone()
-    }
-
-    fn set_type_state(&self, state: TreeMap<TypeVarId, TypeRef<'ty, 'object>>) {
-        *self.instance_map.borrow_mut() = state;
+    fn type_transaction<F, T>(&self, f: F) -> T
+        where F: FnOnce() -> T
+    {
+        let type_state = self.instance_map.borrow().clone();
+        let val = f();
+        *self.instance_map.borrow_mut() = type_state;
+        val
     }
 
     fn set_var(&self, id: TypeVarId, ty: TypeRef<'ty, 'object>) {
@@ -306,43 +308,44 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             })
     }
 
-    fn union_compatible(&self, union_tys: &[TypeRef<'ty, 'object>], from_ty: TypeRef<'ty, 'object>)
+    fn compatible_candidate_from_union(&self, union_tys: &[TypeRef<'ty, 'object>], from_ty: TypeRef<'ty, 'object>)
         -> Result<TypeRef<'ty, 'object>, UnionCompatibilityError<'ty, 'object>>
     {
-        if union_tys.len() == 0 {
-            return Err(UnionCompatibilityError::NoMatch);
-        }
+        let mut candidates = union_tys.iter()
+            .filter_map(|ty| {
+                let depth = self.type_var_depth(*ty);
+                let result = self.type_transaction(||
+                    self.compatible(*ty, from_ty));
+                result.ok().map(|()| (depth, ty))
+            })
+            .collect::<Vec<_>>();
 
-        let head_ty = union_tys[0];
-        let tail_tys = &union_tys[1..];
-
-        let state0 = self.type_state();
-
-        match self.compatible(head_ty, from_ty) {
-            Err(_) => {
-                self.set_type_state(state0);
-                self.union_compatible(tail_tys, from_ty)
-            }
-            Ok(()) => {
-                let state1 = self.type_state();
-                self.set_type_state(state0.clone());
-                let rest_result = self.union_compatible(tail_tys, from_ty);
-                let state2 = self.type_state();
-
-                match rest_result {
-                    Ok(matched_ty) => {
-                        if state1.len() == state2.len() {
-                            self.set_type_state(state1);
-                            Ok(head_ty)
-                        } else {
-                            self.set_type_state(state0);
-                            Err(UnionCompatibilityError::Ambiguity(head_ty, matched_ty))
-                        }
-                    }
-                    Err(UnionCompatibilityError::NoMatch) => Ok(head_ty),
-                    Err(ambig@UnionCompatibilityError::Ambiguity(..)) => Err(ambig),
+        candidates.sort_by(|&(a_depth, _), &(b_depth, _)|
+            match (a_depth, b_depth) {
+                (None, None) => Ordering::Equal,
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+                (Some(a), Some(b)) => {
+                    // This cmp is intentionally flipped - we want to sort
+                    // candidates so that those with depth None are first,
+                    // followed by candidates with Some depth in descending
+                    // order:
+                    b.cmp(&a)
                 }
-            }
+            });
+
+        let preferred_depth = candidates.get(0).map(|&(depth, _)| depth);
+
+        let preferred_candidates = candidates.into_iter()
+            .take_while(|&(depth, _)| Some(depth) == preferred_depth)
+            .map(|(_, ty)| ty)
+            .cloned()
+            .collect::<Vec<_>>();
+
+        match preferred_candidates.len() {
+            0 => Err(UnionCompatibilityError::NoMatch),
+            1 => Ok(preferred_candidates[0]),
+            _ => Err(UnionCompatibilityError::Ambiguity(preferred_candidates)),
         }
     }
 
@@ -380,12 +383,13 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 Ok(())
             },
             (&Type::Union { types: ref to_types, .. }, _) => {
-                match self.union_compatible(to_types, from) {
-                    Ok(_) => Ok(()),
+                match self.compatible_candidate_from_union(to_types, from) {
+                    Ok(to_ty) =>
+                        self.compatible(to_ty, from),
                     Err(UnionCompatibilityError::NoMatch) =>
                         Err(UnificationError::Incompatible(to, from)),
-                    Err(UnionCompatibilityError::Ambiguity(a, b)) =>
-                        Err(UnificationError::UnionAmbiguity(a, b)),
+                    Err(UnionCompatibilityError::Ambiguity(tys)) =>
+                        Err(UnificationError::UnionAmbiguity(tys)),
                 }
             },
             (&Type::Any { .. }, _) => Ok(()),
@@ -627,7 +631,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             Type::Proc { ref proto, .. } =>
                 proto.args.iter()
                     .map(|arg| match *arg.unwrap_procarg0() {
-                        Arg::Procarg0 { .. } => panic!("impossible"),
+                        Arg::Procarg0 { .. } => unreachable!(),
                         Arg::Required { ty, .. } |
                         Arg::Optional { ty, .. } |
                         Arg::Rest { ty, .. } |
@@ -638,7 +642,53 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     })
                     .chain(iter::once(proto.retn))
                     .any(|t| self.occurs(t, id)),
-            Type::LocalVariable { .. } => panic!("should not happen"),
+            Type::LocalVariable { .. } => unreachable!(),
+        }
+    }
+
+    fn type_var_depth(&self, ty: TypeRef<'ty, 'object>) -> Option<usize> {
+        match *self.prune(ty).deref() {
+            Type::Var { .. } => Some(0),
+            Type::Instance { ref type_parameters, .. } =>
+                type_parameters.iter()
+                    .filter_map(|ty| self.type_var_depth(*ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::Tuple { ref lead, ref splat, ref post, .. } =>
+                lead.iter().chain(splat).chain(post)
+                    .filter_map(|ty| self.type_var_depth(*ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::Union { ref types, .. } =>
+                types.iter()
+                    .filter_map(|ty| self.type_var_depth(*ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::KeywordHash { ref keywords, .. } =>
+                keywords.iter()
+                    .map(|&(_, ty)| ty)
+                    .filter_map(|ty| self.type_var_depth(ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::Proc { ref proto, .. } =>
+                proto.args.iter()
+                    .map(|arg| match *arg.unwrap_procarg0() {
+                        Arg::Procarg0 { .. } => unreachable!(),
+                        Arg::Required { ty, .. } |
+                        Arg::Optional { ty, .. } |
+                        Arg::Rest { ty, .. } |
+                        Arg::Kwarg { ty, .. } |
+                        Arg::Kwoptarg { ty, .. } |
+                        Arg::Kwrest { ty, .. } |
+                        Arg::Block { ty, .. } => ty
+                    })
+                    .chain(iter::once(proto.retn))
+                    .filter_map(|ty| self.type_var_depth(ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::Any { .. } |
+            Type::TypeParameter { .. } => None,
+            Type::LocalVariable { .. } => unreachable!(),
         }
     }
 
