@@ -1,0 +1,32 @@
+error: Revealed type is: Integer
+
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:16
+     16 |    reveal_type(123)
+                         ^^^ expression
+
+error: Revealed type is: P::[Integer]
+
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:17
+     17 |    reveal_type(P.new(123))
+                         ^^^^^^^^^^ expression
+
+error: Could not decide between ambiguous types in union:
+
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:21
+     21 |  def ambiguous[T, U]((T | U) x) => nil; end
+                                ^ t1, or:
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:21
+     21 |  def ambiguous[T, U]((T | U) x) => nil; end
+                                    ^ t2
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:24
+     24 |    ambiguous(123)
+                       ^^^ Integer, with:
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:21
+     21 |  def ambiguous[T, U]((T | U) x) => nil; end
+                                ^^^^^ t1 | t2
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:24
+     24 |    ambiguous(123)
+             ^^^^^^^^^^^^^^ in this expression
