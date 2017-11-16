@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, SplatArg, TypeConstraint};
+use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, SplatArg, TypeConstraint, UnificationError};
 use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -167,40 +167,49 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         self.tyenv.instance(loc.clone(), class, type_parameters)
     }
 
-    fn type_error(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, err_a: TypeRef<'ty, 'object>, err_b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
+    fn type_error(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, reason: UnificationError<'ty, 'object>, loc: Option<&Loc>) {
         let strs = Arena::new();
 
-        let mut details = vec![
-            Detail::Loc(strs.alloc(self.tyenv.describe(err_a) + ", with:"), err_a.loc()),
-            Detail::Loc(strs.alloc(self.tyenv.describe(err_b)), err_b.loc()),
-        ];
+        match reason {
+            UnificationError::Incompatible(inner_to, inner_from) => {
+                let mut details = Vec::new();
 
-        if !err_a.ref_eq(&a) || !err_b.ref_eq(&b) {
-            details.push(Detail::Message("arising from an attempt to match:"));
-            details.push(Detail::Loc(strs.alloc(self.tyenv.describe(a) + ", with:"), a.loc()));
-            details.push(Detail::Loc(strs.alloc(self.tyenv.describe(b)), b.loc()));
+                if !inner_to.ref_eq(&to) || !inner_from.ref_eq(&from) {
+                    details.push(Detail::Loc(
+                        strs.alloc(self.tyenv.describe(inner_to) + ", with:"), inner_to.loc()));
+
+                    details.push(Detail::Loc(
+                        strs.alloc(self.tyenv.describe(inner_from)), inner_from.loc()));
+
+                    details.push(Detail::Message("arising from an attempt to match:"));
+                }
+
+                details.push(Detail::Loc(strs.alloc(self.tyenv.describe(to) + ", with:"), to.loc()));
+                details.push(Detail::Loc(strs.alloc(self.tyenv.describe(from)), from.loc()));
+
+                if let Some(loc) = loc {
+                    details.push(Detail::Loc("in this expression", loc));
+                }
+
+                self.error("Could not match types:", &details);
+            }
         }
-
-        if let Some(loc) = loc {
-            details.push(Detail::Loc("in this expression", loc));
-        }
-
-        self.error("Could not match types:", &details);
     }
 
     fn unify(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
-        if let Err((err_a, err_b)) = self.tyenv.unify(a, b) {
-            self.type_error(a, b, err_a, err_b, loc);
+        match self.tyenv.unify(a, b) {
+            Ok(()) => {}
+            Err(reason) => self.type_error(a, b, reason, loc)
         }
     }
 
-    fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: Option<&Loc>)
-        -> bool {
-        if let Err((err_to, err_from)) = self.tyenv.compatible(to, from) {
-            self.type_error(to, from, err_to, err_from, loc);
-            false
-        } else {
-            true
+    fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: Option<&Loc>) -> bool {
+        match self.tyenv.compatible(to, from) {
+            Ok(()) => true,
+            Err(reason) => {
+                self.type_error(to, from, reason, loc);
+                false
+            }
         }
     }
 
