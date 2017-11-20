@@ -196,13 +196,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn unify(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
-        match self.tyenv.unify(a, b) {
-            Ok(()) => {}
-            Err(reason) => self.type_error(a, b, reason, loc)
-        }
-    }
-
     fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: Option<&Loc>) -> bool {
         match self.tyenv.compatible(to, from) {
             Ok(()) => true,
@@ -908,8 +901,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn apply_constraints(&self, constraints: &[TypeConstraint<'ty, 'object>]) {
         for constraint in constraints {
             match *constraint {
-                TypeConstraint::Unify { ref loc, a, b } =>
-                    self.unify(a, b, Some(loc)),
                 TypeConstraint::Compatible { ref loc, sub, super_ } => {
                     self.compatible(super_, sub, Some(loc));
                 }
@@ -2114,7 +2105,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::TyArray(..) |
             Node::TyClass(..) |
             Node::TyConSubtype(..) |
-            Node::TyConUnify(..) |
             Node::TyCpath(..) |
             Node::TyGenargs(..) |
             Node::TyGendecl(..) |

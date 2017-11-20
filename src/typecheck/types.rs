@@ -1418,11 +1418,6 @@ pub enum Type<'ty, 'object: 'ty> {
 
 #[derive(Debug)]
 pub enum TypeConstraint<'ty, 'object: 'ty> {
-    Unify {
-        loc: Loc,
-        a: TypeRef<'ty, 'object>,
-        b: TypeRef<'ty, 'object>,
-    },
     Compatible {
         loc: Loc,
         sub: TypeRef<'ty, 'object>,

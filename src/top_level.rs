@@ -1058,7 +1058,6 @@ impl<'env, 'object> Eval<'env, 'object> {
             Node::TyGendeclarg(_, _, ref constraint) => {
                 self.eval_maybe_node(constraint);
             }
-            Node::TyConUnify(_, ref a, ref b) |
             Node::TyConSubtype(_, ref a, ref b) |
             Node::TyOr(_, ref a, ref b) => {
                 self.eval_node(a);
