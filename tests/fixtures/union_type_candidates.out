@@ -1,32 +1,35 @@
-error: Revealed type is: Integer
+error: Revealed type is: P::[Integer]
 
         @ __ROOT__/tests/fixtures/union_type_candidates.rb:16
-     16 |    reveal_type(123)
-                         ^^^ expression
+     16 |    reveal_type(wrap(123))
+                         ^^^^^^^^^ expression
 
 error: Revealed type is: P::[Integer]
 
         @ __ROOT__/tests/fixtures/union_type_candidates.rb:17
-     17 |    reveal_type(P.new(123))
-                         ^^^^^^^^^^ expression
+     17 |    reveal_type(wrap(P.new(123)))
+                         ^^^^^^^^^^^^^^^^ expression
 
-error: Could not decide between ambiguous types in union:
+error: Revealed type is: P::[:any]
 
-        @ __ROOT__/tests/fixtures/union_type_candidates.rb:21
-     21 |  def ambiguous[T, U]((T | U) x) => nil; end
-                                ^ t1, or:
-        @ __ROOT__/tests/fixtures/union_type_candidates.rb:21
-     21 |  def ambiguous[T, U]((T | U) x) => nil; end
-                                    ^ t2
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:22
+     22 |    reveal_type(wrap((nil : :any)))
+                         ^^^^^^^^^^^^^^^^^^ expression
 
-        - arising from an attempt to match:
+error: Revealed type is: P::[Integer]
 
-        @ __ROOT__/tests/fixtures/union_type_candidates.rb:24
-     24 |    ambiguous(123)
-                       ^^^ Integer, with:
-        @ __ROOT__/tests/fixtures/union_type_candidates.rb:21
-     21 |  def ambiguous[T, U]((T | U) x) => nil; end
-                                ^^^^^ t1 | t2
-        @ __ROOT__/tests/fixtures/union_type_candidates.rb:24
-     24 |    ambiguous(123)
-             ^^^^^^^^^^^^^^ in this expression
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:30
+     30 |    reveal_type(wrap2([123]))
+                         ^^^^^^^^^^^^ expression
+
+error: Revealed type is: P::[String]
+
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:31
+     31 |    reveal_type(wrap2(P.new("foo")))
+                         ^^^^^^^^^^^^^^^^^^^ expression
+
+error: Revealed type is: P::[t23]
+
+        @ __ROOT__/tests/fixtures/union_type_candidates.rb:32
+     32 |    reveal_type(wrap2((nil : :any)))
+                         ^^^^^^^^^^^^^^^^^^^ expression
