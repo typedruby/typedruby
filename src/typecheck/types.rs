@@ -19,14 +19,12 @@ pub type TypeVarId = usize;
 #[derive(Debug)]
 pub enum UnificationError<'ty, 'object: 'ty> {
     Incompatible(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
-    UnionAmbiguity(Vec<TypeRef<'ty, 'object>>),
 }
 
 pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
 
-enum UnionCompatibilityError<'ty, 'object: 'ty> {
+enum UnionCompatibilityError {
     NoMatch,
-    Ambiguity(Vec<TypeRef<'ty, 'object>>),
 }
 
 #[derive(Debug,Clone)]
@@ -87,10 +85,6 @@ impl<T: Clone> TypeMapData<T> {
 
     pub fn get(&self, id: TypeVarId) -> Option<T> {
         self.map.get(id).cloned()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.log.is_empty()
     }
 }
 
@@ -391,7 +385,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
     }
 
     fn compatible_into_union(&self, union_tys: &[TypeRef<'ty, 'object>], from_ty: TypeRef<'ty, 'object>)
-        -> Result<(), UnionCompatibilityError<'ty, 'object>>
+        -> Result<(), UnionCompatibilityError>
     {
         let mut candidates = union_tys.iter()
             .filter_map(|ty| {
@@ -473,8 +467,6 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     Ok(()) => Ok(()),
                     Err(UnionCompatibilityError::NoMatch) =>
                         Err(UnificationError::Incompatible(to, from)),
-                    Err(UnionCompatibilityError::Ambiguity(tys)) =>
-                        Err(UnificationError::UnionAmbiguity(tys)),
                 }
             },
             (&Type::Any { .. }, _) => Ok(()),

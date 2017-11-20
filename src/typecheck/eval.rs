@@ -193,30 +193,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 self.error("Could not match types:", &details);
             }
-            UnificationError::UnionAmbiguity(tys) => {
-                let mut details = Vec::new();
-
-                for (index, ty) in tys.iter().enumerate() {
-                    let mut description = self.tyenv.describe(*ty);
-
-                    if index + 1 < tys.len() {
-                        description += ", or:"
-                    }
-
-                    details.push(Detail::Loc(strs.alloc(description), ty.loc()));
-                }
-
-                details.push(Detail::Message("arising from an attempt to match:"));
-
-                details.push(Detail::Loc(strs.alloc(self.tyenv.describe(from) + ", with:"), from.loc()));
-                details.push(Detail::Loc(strs.alloc(self.tyenv.describe(to)), to.loc()));
-
-                if let Some(loc) = loc {
-                    details.push(Detail::Loc("in this expression", loc));
-                }
-
-                self.error("Could not decide between ambiguous types in union:", &details);
-            }
         }
     }
 
