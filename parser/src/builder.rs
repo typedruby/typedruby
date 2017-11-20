@@ -1402,14 +1402,6 @@ impl<'a> Builder<'a> {
         Node::TyConSubtype(loc, sub, super_)
     }
 
-    pub fn tr_conunify(&self, a: Option<Rc<Node>>, b: Option<Rc<Node>>) -> Node {
-        let a = a.unwrap();
-        let b = b.unwrap();
-        let loc = a.loc().join(b.loc());
-
-        Node::TyConUnify(loc, a, b)
-    }
-
     pub fn tr_cpath(&self, cpath: Option<Rc<Node>>) -> Node {
         let cpath = cpath.unwrap();
         Node::TyCpath(cpath.loc().clone(), cpath)

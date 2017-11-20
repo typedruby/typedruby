@@ -122,7 +122,6 @@ struct builder {
 	foreign_ptr(*tr_cast)(self_ptr builder, const token* begin, foreign_ptr expr, const token* colon, foreign_ptr type_, const token* end);
 	foreign_ptr(*tr_class)(self_ptr builder, const token* special);
 	foreign_ptr(*tr_consubtype)(self_ptr builder, foreign_ptr sub, foreign_ptr super_);
-	foreign_ptr(*tr_conunify)(self_ptr builder, foreign_ptr a, foreign_ptr b);
 	foreign_ptr(*tr_cpath)(self_ptr builder, foreign_ptr cpath);
 	foreign_ptr(*tr_genargs)(self_ptr builder, const token* begin, const node_list* genargs, const node_list* constraints, const token* end);
 	foreign_ptr(*tr_gendecl)(self_ptr builder, foreign_ptr cpath, const token* begin, const node_list* genargs, const node_list* constraints, const token* end);
