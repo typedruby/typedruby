@@ -94,7 +94,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         // unresolved to that they can be constrained. unify any unresolved
         // type variables with their named parameters:
         for (name, ty) in &eval.type_context.type_names {
-            if eval.tyenv.is_unresolved_var(*ty) {
+            if eval.tyenv.is_uninstantiated_var(*ty) {
                 eval.tyenv.unify(*ty, eval.tyenv.alloc(Type::TypeParameter {
                     name: name.clone(),
                     loc: ty.loc().clone(),
