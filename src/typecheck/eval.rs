@@ -95,10 +95,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         // type variables with their named parameters:
         for (name, ty) in &eval.type_context.type_names {
             if eval.tyenv.is_uninstantiated_var(*ty) {
-                eval.tyenv.unify(*ty, eval.tyenv.alloc(Type::TypeParameter {
+                eval.tyenv.instantiate_var(*ty, eval.tyenv.alloc(Type::TypeParameter {
                     name: name.clone(),
                     loc: ty.loc().clone(),
-                })).expect("unifying unresolved typevar should succeed");
+                }));
             }
         }
 
@@ -260,8 +260,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             MethodImpl::Ruby { ref proto, .. } => {
                 let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
 
-                self.tyenv.unify(proto.retn, self.tyenv.any(proto.retn.loc().clone()))
-                    .expect("retn to unify");
+                self.tyenv.instantiate_var(proto.retn, self.tyenv.any(proto.retn.loc().clone()));
 
                 proto
             }
