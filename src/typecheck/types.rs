@@ -670,7 +670,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         }
     }
 
-    pub fn is_unresolved_var(&self, ty: TypeRef<'ty, 'object>) -> bool {
+    pub fn is_uninstantiated_var(&self, ty: TypeRef<'ty, 'object>) -> bool {
         if let Type::Var { .. } = *self.prune(ty) {
             true
         } else {
@@ -838,11 +838,11 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
                 // attempt to unify all concrete types first:
                 for (idx2, &ty2) in types2.iter().enumerate() {
-                    if self.is_unresolved_var(ty2) { continue }
+                    if self.is_uninstantiated_var(ty2) { continue }
 
                     for (idx1, &ty1) in types1.iter().enumerate() {
                         if marked1[idx1] { continue }
-                        if self.is_unresolved_var(ty1) { continue }
+                        if self.is_uninstantiated_var(ty1) { continue }
 
                         match self.unify(ty1, ty2) {
                             Ok(()) => {
