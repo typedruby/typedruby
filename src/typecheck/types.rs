@@ -670,6 +670,14 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         }
     }
 
+    pub fn instantiate_var(&self, tyvar: TypeRef<'ty, 'object>, ty: TypeRef<'ty, 'object>) {
+        if let Type::Var { id, .. } = *self.prune(tyvar) {
+            self.set_var(id, ty);
+        } else {
+            panic!("attempting to instantiate already instantiated type: {:?}", tyvar);
+        }
+    }
+
     pub fn is_uninstantiated_var(&self, ty: TypeRef<'ty, 'object>) -> bool {
         if let Type::Var { .. } = *self.prune(ty) {
             true
