@@ -1,77 +1,44 @@
-error: Could not match types:
+error: Revealed type is: Array::[Integer]
 
-        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:3
-      3 |  def array_compact => nil
-                                ^^^ NilClass, with:
-        @ (builtin stdlib):###
-    ### |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
-                                                                     ^^^^^^^^^^^^^ Array::[Integer]
-
-        - arising from an attempt to match:
-
-        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:3
-      3 |  def array_compact => nil
-                                ^^^ NilClass, with:
         @ __ROOT__/tests/fixtures/constrained_core_methods.rb:4
-      4 |    [1, nil, 3].compact
-             ^^^^^^^^^^^^^^^^^^^ Array::[Integer]
+      4 |    reveal_type [1, nil, 3].compact
+                         ^^^^^^^^^^^^^^^^^^^ expression
+
+error: Revealed type is: Array::[Integer]
+
+        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:9
+      9 |    reveal_type [nil, 2, 3].compact
+                         ^^^^^^^^^^^^^^^^^^^ expression
+
+error: Revealed type is: Array::[Integer]
+
+        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:14
+     14 |    reveal_type [1, 2, 3].compact
+                         ^^^^^^^^^^^^^^^^^ expression
+
+error: Revealed type is: Hash::[String, Integer]
+
+        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:19
+     19 |    reveal_type [["one", 1], ["two", 2]].to_h
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ expression
 
 error: Could not match types:
 
         @ (builtin stdlib):###
-    ### |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
-                                      ^^^^^^^^^^^^ NilClass | t2, with:
-        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:8
-      8 |    [1, 2, 3].compact
-              ^ Integer
+    ### |    def to_h[K, V; ElementType : [K, V]] => { K => V }; end
+                                          ^^^^^^ [t3, t4], with:
+        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:24
+     24 |    [["one", 1], 2].to_h
+             ^^^^^^^^^^^^^^^ [String, Integer] | Integer
 
         - arising from an attempt to match:
 
         @ (builtin stdlib):###
-    ### |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
-                                      ^^^^^^^^^^^^ NilClass | t2, with:
+    ### |    def to_h[K, V; ElementType : [K, V]] => { K => V }; end
+                                          ^^^^^^ [t3, t4], with:
         @ (builtin stdlib):###
-    ### |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
-                                                     ^^^^^^^^^^^ Integer
+    ### |    def to_h[K, V; ElementType : [K, V]] => { K => V }; end
+                            ^^^^^^^^^^^ [String, Integer] | Integer
         @ (builtin stdlib):###
-    ### |    def compact[NonNullType; ~NonNullType = ElementType] => [NonNullType]; end
-                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^ in this expression
-
-error: Could not match types:
-
-        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:11
-     11 |  def array_to_h => nil
-                             ^^^ NilClass, with:
-        @ (builtin stdlib):###
-    ### |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
-                                                     ^^^^^^^^^^ Hash::[String, Integer]
-
-        - arising from an attempt to match:
-
-        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:11
-     11 |  def array_to_h => nil
-                             ^^^ NilClass, with:
-        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:12
-     12 |    [["one", 1], ["two", 2]].to_h
-             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ Hash::[String, Integer]
-
-error: Could not match types:
-
-        @ __ROOT__/tests/fixtures/constrained_core_methods.rb:16
-     16 |    [["one", 1], 2].to_h
-             ^^^^^^^^^^^^^^^ [String, Integer] | Integer, with:
-        @ (builtin stdlib):###
-    ### |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
-                                          ^^^^^^ [t3, t4]
-
-        - arising from an attempt to match:
-
-        @ (builtin stdlib):###
-    ### |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
-                            ^^^^^^^^^^^ [String, Integer] | Integer, with:
-        @ (builtin stdlib):###
-    ### |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
-                                          ^^^^^^ [t3, t4]
-        @ (builtin stdlib):###
-    ### |    def to_h[K, V; ElementType = [K, V]] => { K => V }; end
+    ### |    def to_h[K, V; ElementType : [K, V]] => { K => V }; end
                             ^^^^^^^^^^^^^^^^^^^^ in this expression
