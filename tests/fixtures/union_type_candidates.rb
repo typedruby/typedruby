@@ -13,13 +13,46 @@ end
 def wrap[T]((T | P::[T]) p) => P::[T]; end
 
 def test2 => nil
-  reveal_type(123)
-  reveal_type(P.new(123))
+  reveal_type(wrap(123))
+  reveal_type(wrap(P.new(123)))
   nil
 end
 
-def ambiguous[T, U]((T | U) x) => nil; end
-
 def test3 => nil
-  ambiguous(123)
+  reveal_type(wrap((nil : :any)))
+  nil
+end
+
+def wrap2[T]((Array::[T] | P::[T]) x) => P::[T]
+end
+
+def test4 => nil
+  reveal_type(wrap2([123]))
+  reveal_type(wrap2(P.new("foo")))
+  reveal_type(wrap2((nil : :any)))
+  nil
+end
+
+def ambiguous_var[T, U]((T | U) x) => nil; end
+
+def test5 => nil
+  ambiguous_var(123)
+  nil
+end
+
+module A
+end
+
+module B
+end
+
+class C
+  include A
+  include B
+end
+
+def ambiguous_module((A | B) x) => nil; end
+
+def test6 => nil
+  ambiguous_module(C.new)
 end
