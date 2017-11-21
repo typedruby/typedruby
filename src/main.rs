@@ -3,8 +3,9 @@ extern crate clap;
 extern crate immutable_map;
 extern crate itertools;
 extern crate regex;
-extern crate typed_arena;
 extern crate termcolor;
+extern crate typed_arena;
+extern crate vec_map;
 
 use std::env;
 use std::path::PathBuf;

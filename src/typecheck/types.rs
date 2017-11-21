@@ -6,27 +6,25 @@ use ast::{Loc, Node, Id};
 use environment::Environment;
 use object::RubyObject;
 use typed_arena::Arena;
-use immutable_map::TreeMap;
 use util::Or;
 use itertools::Itertools;
 use std::ops::Deref;
-use std::iter;
+use std::iter::{self, FromIterator};
 use std::collections::HashMap;
 use typecheck::materialize::Materialize;
+use vec_map::VecMap;
 
 pub type TypeVarId = usize;
 
 #[derive(Debug)]
 pub enum UnificationError<'ty, 'object: 'ty> {
     Incompatible(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
-    UnionAmbiguity(Vec<TypeRef<'ty, 'object>>),
 }
 
 pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
 
-enum UnionCompatibilityError<'ty, 'object: 'ty> {
+enum UnionCompatibilityError {
     NoMatch,
-    Ambiguity(Vec<TypeRef<'ty, 'object>>),
 }
 
 #[derive(Debug,Clone)]
@@ -59,6 +57,99 @@ impl<'ty, 'object> SelfInfo<'ty, 'object> {
                 }
             }
             SelfInfo::Instance(class, _) => class,
+        }
+    }
+}
+
+pub struct TypeMapData<T> {
+    map: VecMap<T>,
+    log: Vec<(TypeVarId, T)>,
+}
+
+impl<T: Clone> TypeMapData<T> {
+    pub fn new() -> Self {
+        TypeMapData { map: VecMap::new(), log: Vec::new() }
+    }
+
+    pub fn insert(&mut self, id: TypeVarId, val: T) {
+        match self.map.insert(id, val.clone()) {
+            None => {
+                // insert into log:
+                self.log.push((id, val));
+            }
+            Some(_) => {
+                panic!("tried to set already-set TypeVarId in TypeMap - this is a critical logic error");
+            }
+        }
+    }
+
+    pub fn get(&self, id: TypeVarId) -> Option<T> {
+        self.map.get(id).cloned()
+    }
+}
+
+impl<T: Clone> FromIterator<(TypeVarId, T)> for TypeMapData<T> {
+    fn from_iter<It: IntoIterator<Item = (TypeVarId, T)>>(iter: It) -> Self {
+        let mut map = Self::new();
+
+        for (id, val) in iter {
+            map.insert(id, val)
+        }
+
+        map
+    }
+}
+
+pub enum TransactionFlag<U> {
+    Commit(U),
+    Rollback(U),
+}
+
+pub enum TransactionResult<T> {
+    Committed,
+    RolledBack(TypeMapData<T>)
+}
+
+struct TypeMap<T> {
+    inner: RefCell<TypeMapData<T>>,
+}
+
+impl<T: Clone> TypeMap<T> {
+    pub fn new() -> Self {
+        TypeMap { inner: RefCell::new(TypeMapData::new()) }
+    }
+
+    pub fn insert(&self, id: TypeVarId, val: T) {
+        self.inner.borrow_mut().insert(id, val)
+    }
+
+    pub fn get(&self, id: TypeVarId) -> Option<T> {
+        self.inner.borrow().get(id)
+    }
+
+    pub fn transaction<F, U>(&self, f: F) -> (U, TransactionResult<T>)
+        where F: FnOnce() -> TransactionFlag<U>
+    {
+        let log_len = {
+            self.inner.borrow().log.len()
+        };
+
+        match f() {
+            TransactionFlag::Commit(val) => (val, TransactionResult::Committed),
+            TransactionFlag::Rollback(val) => {
+                let mut inner = self.inner.borrow_mut();
+
+                let changes = inner.log.split_off(log_len);
+
+                for &(id, _) in &changes {
+                    match inner.map.remove(id) {
+                        None => { panic!("expected TypeVarId to be mapped to a type"); }
+                        Some(_) => { /* ok */ }
+                    }
+                }
+
+                (val, TransactionResult::RolledBack(changes.into_iter().collect()))
+            }
         }
     }
 }
@@ -105,11 +196,10 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
     }
 }
 
-#[derive(Clone)]
 pub struct TypeEnv<'ty, 'object: 'ty> {
     arena: &'ty Arena<Type<'ty, 'object>>,
     next_id: Rc<Cell<TypeVarId>>,
-    instance_map: RefCell<TreeMap<TypeVarId, TypeRef<'ty, 'object>>>,
+    type_map: TypeMap<TypeRef<'ty, 'object>>,
     env: &'ty Environment<'object>,
 }
 
@@ -118,7 +208,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         TypeEnv {
             arena: arena,
             env: env,
-            instance_map: RefCell::new(TreeMap::new()),
+            type_map: TypeMap::new(),
             next_id: Rc::new(Cell::new(1)),
         }
     }
@@ -245,31 +335,17 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         self.instance(loc, self.env.object.hash_class(), vec![key_type, value_type])
     }
 
-    fn type_transaction<F, T>(&self, f: F) -> T
-        where F: FnOnce() -> T
-    {
-        let type_state = self.instance_map.borrow().clone();
-        let val = f();
-        *self.instance_map.borrow_mut() = type_state;
-        val
-    }
-
     fn set_var(&self, id: TypeVarId, ty: TypeRef<'ty, 'object>) {
-        let mut instance_map_ref = self.instance_map.borrow_mut();
-
-        *instance_map_ref = instance_map_ref.insert_or_update(id, ty.clone(), |v|
-            panic!("attempted to set typevar {} to {:?}, but is already {:?}",
-                id, ty, v)
-        );
+        self.type_map.insert(id, ty);
     }
 
     pub fn prune(&self, ty: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
         match *ty {
-            Type::Var { ref id, .. } |
-            Type::LocalVariable { ref id, .. } |
-            Type::KeywordHash { ref id, .. } |
-            Type::Tuple { ref id, .. } => {
-                if let Some(&instance) = { self.instance_map.borrow().get(id) } {
+            Type::Var { id, .. } |
+            Type::LocalVariable { id, .. } |
+            Type::KeywordHash { id, .. } |
+            Type::Tuple { id, .. } => {
+                if let Some(instance) = { self.type_map.get(id) } {
                     return self.prune(instance)
                 }
             },
@@ -308,15 +384,15 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             })
     }
 
-    fn compatible_candidate_from_union(&self, union_tys: &[TypeRef<'ty, 'object>], from_ty: TypeRef<'ty, 'object>)
-        -> Result<TypeRef<'ty, 'object>, UnionCompatibilityError<'ty, 'object>>
+    fn compatible_into_union(&self, union_tys: &[TypeRef<'ty, 'object>], from_ty: TypeRef<'ty, 'object>)
+        -> Result<(), UnionCompatibilityError>
     {
         let mut candidates = union_tys.iter()
             .filter_map(|ty| {
                 let depth = self.type_var_depth(*ty);
-                let result = self.type_transaction(||
-                    self.compatible(*ty, from_ty));
-                result.ok().map(|()| (depth, ty))
+                let (result, _) = self.type_map.transaction(||
+                    TransactionFlag::Rollback(self.compatible(*ty, from_ty)));
+                result.ok().map(|()| (depth, *ty))
             })
             .collect::<Vec<_>>();
 
@@ -334,18 +410,22 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 }
             });
 
-        let preferred_depth = candidates.get(0).map(|&(depth, _)| depth);
+        let mut success = false;
 
-        let preferred_candidates = candidates.into_iter()
-            .take_while(|&(depth, _)| Some(depth) == preferred_depth)
-            .map(|(_, ty)| ty)
-            .cloned()
-            .collect::<Vec<_>>();
+        for (_, candidate) in candidates {
+            let (result, _) = self.type_map.transaction(||
+                match self.compatible(candidate, from_ty) {
+                    result@Ok(_) => TransactionFlag::Commit(result),
+                    result@Err(_) => TransactionFlag::Rollback(result),
+                });
 
-        match preferred_candidates.len() {
-            0 => Err(UnionCompatibilityError::NoMatch),
-            1 => Ok(preferred_candidates[0]),
-            _ => Err(UnionCompatibilityError::Ambiguity(preferred_candidates)),
+            success = success || result.is_ok();
+        }
+
+        if success {
+            Ok(())
+        } else {
+            Err(UnionCompatibilityError::NoMatch)
         }
     }
 
@@ -383,13 +463,10 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 Ok(())
             },
             (&Type::Union { types: ref to_types, .. }, _) => {
-                match self.compatible_candidate_from_union(to_types, from) {
-                    Ok(to_ty) =>
-                        self.compatible(to_ty, from),
+                match self.compatible_into_union(to_types, from) {
+                    Ok(()) => Ok(()),
                     Err(UnionCompatibilityError::NoMatch) =>
                         Err(UnificationError::Incompatible(to, from)),
-                    Err(UnionCompatibilityError::Ambiguity(tys)) =>
-                        Err(UnificationError::UnionAmbiguity(tys)),
                 }
             },
             (&Type::Any { .. }, _) => Ok(()),
@@ -1320,7 +1397,7 @@ pub enum Type<'ty, 'object: 'ty> {
         keywords: Vec<(String, TypeRef<'ty, 'object>)>,
         splat: Option<TypeRef<'ty, 'object>>,
         // keyword hash types can degrade to normal hash instances
-        // when they do, there will be an entry in the instance_map for this
+        // when they do, there will be an entry in the type_map for this
         // id:
         id: TypeVarId,
     },

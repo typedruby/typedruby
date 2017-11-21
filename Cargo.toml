@@ -13,6 +13,7 @@ regex = "0.2"
 ruby_parser = { path = "parser" }
 termcolor = "0.3"
 typed-arena = "1.2.0"
+vec_map = "0.8"
 
 [dev-dependencies]
 glob = "0.2"
