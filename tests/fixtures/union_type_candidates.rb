@@ -33,9 +33,26 @@ def test4 => nil
   nil
 end
 
-def ambiguous[T, U]((T | U) x) => nil; end
+def ambiguous_var[T, U]((T | U) x) => nil; end
 
-def test4 => nil
-  ambiguous(123)
+def test5 => nil
+  ambiguous_var(123)
   nil
+end
+
+module A
+end
+
+module B
+end
+
+class C
+  include A
+  include B
+end
+
+def ambiguous_module((A | B) x) => nil; end
+
+def test6 => nil
+  ambiguous_module(C.new)
 end
