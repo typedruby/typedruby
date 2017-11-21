@@ -384,49 +384,75 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             })
     }
 
-    fn compatible_into_union(&self, union_tys: &[TypeRef<'ty, 'object>], from_ty: TypeRef<'ty, 'object>)
-        -> Result<(), UnionCompatibilityError>
+    fn ordered_union_types(&self, union_tys: &[TypeRef<'ty, 'object>])
+        -> Vec<TypeRef<'ty, 'object>>
     {
-        let mut candidates = union_tys.iter()
-            .filter_map(|ty| {
+        let mut types = union_tys.iter()
+            .map(|ty| {
                 let depth = self.type_var_depth(*ty);
-                let (result, _) = self.type_map.transaction(||
-                    TransactionFlag::Rollback(self.compatible(*ty, from_ty)));
-                result.ok().map(|()| (depth, *ty))
+                (depth, *ty)
             })
             .collect::<Vec<_>>();
 
-        candidates.sort_by(|&(a_depth, _), &(b_depth, _)|
+        types.sort_by(|&(a_depth, _), &(b_depth, _)|
             match (a_depth, b_depth) {
                 (None, None) => Ordering::Equal,
                 (None, Some(_)) => Ordering::Less,
                 (Some(_), None) => Ordering::Greater,
                 (Some(a), Some(b)) => {
                     // This cmp is intentionally flipped - we want to sort
-                    // candidates so that those with depth None are first,
-                    // followed by candidates with Some depth in descending
-                    // order:
+                    // types so that those with depth None are first, followed
+                    // by types with Some depth in descending order:
                     b.cmp(&a)
                 }
             });
 
-        let mut success = false;
+        types.into_iter().map(|(_, ty)| ty).collect()
+    }
 
-        for (_, candidate) in candidates {
-            let (result, _) = self.type_map.transaction(||
-                match self.compatible(candidate, from_ty) {
-                    result@Ok(_) => TransactionFlag::Commit(result),
-                    result@Err(_) => TransactionFlag::Rollback(result),
+    fn compatible_from_union(&self, to_ty: TypeRef<'ty, 'object>, union_tys: &[TypeRef<'ty, 'object>])
+        -> Result<(), UnionCompatibilityError>
+    {
+        let (result, _) = self.type_map.transaction(|| {
+            for ty in self.ordered_union_types(union_tys) {
+                if self.compatible(to_ty, ty).is_err() {
+                    return TransactionFlag::Rollback(Err(UnionCompatibilityError::NoMatch));
+                }
+            }
+
+            TransactionFlag::Commit(Ok(()))
+        });
+
+        result
+    }
+
+    fn compatible_to_union(&self, union_tys: &[TypeRef<'ty, 'object>], from_ty: TypeRef<'ty, 'object>)
+        -> Result<(), UnionCompatibilityError>
+    {
+        let candidates = self.ordered_union_types(union_tys)
+            .into_iter()
+            .filter_map(|ty| {
+                let (result, _) = self.type_map.transaction(|| {
+                    TransactionFlag::Rollback(self.compatible(ty, from_ty))
                 });
 
-            success = success || result.is_ok();
-        }
+                result.map(|()| ty).ok()
+            })
+            .collect::<Vec<_>>();
 
-        if success {
-            Ok(())
-        } else {
-            Err(UnionCompatibilityError::NoMatch)
-        }
+        let (result, _) = self.type_map.transaction(|| {
+            let is_match = candidates.into_iter().any(|ty| {
+                self.compatible(ty, from_ty).is_ok()
+            });
+
+            if is_match {
+                TransactionFlag::Commit(Ok(()))
+            } else {
+                TransactionFlag::Rollback(Err(UnionCompatibilityError::NoMatch))
+            }
+        });
+
+        result
     }
 
     pub fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
@@ -454,20 +480,16 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                        .and_then(|()| self.compatible(from_ty, to_ty)))
             },
             (_, &Type::Union { types: ref from_types, .. }) => {
-                for from_type in from_types {
-                    if let e@Err(..) = self.compatible(to, *from_type) {
-                        return e;
-                    }
-                }
-
-                Ok(())
+                self.compatible_from_union(to, from_types)
+                    .map_err(|e| match e {
+                        UnionCompatibilityError::NoMatch => UnificationError::Incompatible(to, from)
+                    })
             },
             (&Type::Union { types: ref to_types, .. }, _) => {
-                match self.compatible_into_union(to_types, from) {
-                    Ok(()) => Ok(()),
-                    Err(UnionCompatibilityError::NoMatch) =>
-                        Err(UnificationError::Incompatible(to, from)),
-                }
+                self.compatible_to_union(to_types, from)
+                    .map_err(|e| match e {
+                        UnionCompatibilityError::NoMatch => UnificationError::Incompatible(to, from)
+                    })
             },
             (&Type::Any { .. }, _) => Ok(()),
             (_, &Type::Any { .. }) => Ok(()),

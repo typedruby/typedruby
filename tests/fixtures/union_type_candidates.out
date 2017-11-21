@@ -10,7 +10,7 @@ error: Revealed type is: P::[Integer]
      17 |    reveal_type(wrap(P.new(123)))
                          ^^^^^^^^^^^^^^^^ expression
 
-error: Revealed type is: P::[:any]
+error: Revealed type is: P::[t2]
 
         @ __ROOT__/tests/fixtures/union_type_candidates.rb:22
      22 |    reveal_type(wrap((nil : :any)))
