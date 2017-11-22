@@ -595,8 +595,30 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
                 Ok(())
             }
-            (&Type::KeywordHash { .. }, &Type::KeywordHash { .. }) => {
-                panic!("TODO implement compatible for keyword hash to keyword hash");
+            (&Type::KeywordHash { keywords: ref keywords_to, splat: ref splat_to, .. }, &Type::KeywordHash { keywords: ref keywords_from, splat: ref splat_from, .. }) => {
+                let mut keywords_to = keywords_to.iter()
+                    .map(|&(ref kw, ty)| (kw.as_str(), ty))
+                    .collect::<HashMap<&str, _>>();
+
+                let compatible = |to_ty, from_ty| {
+                    match to_ty {
+                        Some(to_ty) => self.compatible(to_ty, from_ty),
+                        None => Err(TypeError::Incompatible(to, from)),
+                    }
+                };
+
+                for &(ref kw, from_ty) in keywords_from {
+                    let to_ty = keywords_to.remove(kw.as_str())
+                        .or(splat_to.clone());
+
+                    compatible(to_ty, from_ty)?;
+                }
+
+                if let Some(from_ty) = *splat_from {
+                    compatible(splat_to.clone(), from_ty)?;
+                }
+
+                Ok(())
             }
             (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
                 if !self.is_hash(class) {
