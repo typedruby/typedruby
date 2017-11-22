@@ -1,7 +1,7 @@
 use std::rc::Rc;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
 use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
-use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, SplatArg, TypeConstraint, UnificationError};
+use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, SplatArg, TypeConstraint, TypeError};
 use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
@@ -167,11 +167,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         self.tyenv.instance(loc.clone(), class, type_parameters)
     }
 
-    fn type_error(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, reason: UnificationError<'ty, 'object>, loc: Option<&Loc>) {
+    fn type_error(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, reason: TypeError<'ty, 'object>, loc: Option<&Loc>) {
         let strs = Arena::new();
 
         match reason {
-            UnificationError::Incompatible(inner_to, inner_from) => {
+            TypeError::Incompatible(inner_to, inner_from) => {
                 let mut details = Vec::new();
 
                 if !inner_to.ref_eq(&to) || !inner_from.ref_eq(&from) {

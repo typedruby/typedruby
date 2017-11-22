@@ -17,11 +17,12 @@ use vec_map::VecMap;
 pub type TypeVarId = usize;
 
 #[derive(Debug)]
-pub enum UnificationError<'ty, 'object: 'ty> {
+pub enum TypeError<'ty, 'object: 'ty> {
     Incompatible(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
+    Recursive(TypeRef<'ty, 'object>, TypeVarId, Loc),
 }
 
-pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
+pub type UnificationResult<'ty, 'object> = Result<(), TypeError<'ty, 'object>>;
 
 enum UnionCompatibilityError {
     NoMatch,
@@ -471,7 +472,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         if self.occurs(ty, id) {
             // TODO - we shouldn't need to take var itself in this function -
             // we should be able to return a Recursive error or something
-            Err(UnificationError::Incompatible(ty, var))
+            Err(TypeError::Incompatible(ty, var))
         } else {
             self.set_var(id, ty);
             Ok(())
@@ -491,7 +492,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             }
             (&Type::Instance { class: to_class, type_parameters: ref to_tp, .. }, &Type::Instance { class: from_class, type_parameters: ref from_tp, .. }) => {
                 if from_class.ancestors().find(|c| c.delegate() == to_class).is_none() {
-                    return Err(UnificationError::Incompatible(to, from));
+                    return Err(TypeError::Incompatible(to, from));
                 }
 
                 let from_tyctx = TypeContext::with_type(from, from_class, from_tp.clone());
@@ -507,13 +508,13 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             (_, &Type::Union { types: ref from_types, .. }) => {
                 self.compatible_from_union(to, from_types)
                     .map_err(|e| match e {
-                        UnionCompatibilityError::NoMatch => UnificationError::Incompatible(to, from)
+                        UnionCompatibilityError::NoMatch => TypeError::Incompatible(to, from)
                     })
             },
             (&Type::Union { types: ref to_types, .. }, _) => {
                 self.compatible_to_union(to_types, from)
                     .map_err(|e| match e {
-                        UnionCompatibilityError::NoMatch => UnificationError::Incompatible(to, from)
+                        UnionCompatibilityError::NoMatch => TypeError::Incompatible(to, from)
                     })
             },
             (&Type::Any { .. }, _) => Ok(()),
@@ -589,7 +590,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                         from_elems.consume_front();
                         self.compatible(to_ty, from_ty)?;
                     } else {
-                        return Err(UnificationError::Incompatible(to, from));
+                        return Err(TypeError::Incompatible(to, from));
                     }
                 } else if let Some(&SplatArg::Splat(_)) = to_elems.first() {
                     to_elems.consume_front();
@@ -605,7 +606,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             }
             (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
                 if !self.is_hash(class) {
-                    return Err(UnificationError::Incompatible(to, from));
+                    return Err(TypeError::Incompatible(to, from));
                 }
 
                 let key_ty = type_parameters[0];
@@ -615,7 +616,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     Type::Instance { class, .. } if class.is_a(self.env.object.Symbol) => {
                         // ok!
                     },
-                    _ => return Err(UnificationError::Incompatible(to, from)),
+                    _ => return Err(TypeError::Incompatible(to, from)),
                 }
 
                 keywords.iter()
@@ -626,16 +627,16 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     })
             }
             (&Type::Proc { proto: ref to_proto, .. }, &Type::Proc { proto: ref from_proto, .. }) => {
-                self.compatible_prototype(to_proto, from_proto).unwrap_or(Err(UnificationError::Incompatible(to, from)))
+                self.compatible_prototype(to_proto, from_proto).unwrap_or(Err(TypeError::Incompatible(to, from)))
             }
             (&Type::TypeParameter { name: ref name1, .. }, &Type::TypeParameter { name: ref name2, .. }) => {
                 if name1 == name2 {
                     Ok(())
                 } else {
-                    Err(UnificationError::Incompatible(to, from))
+                    Err(TypeError::Incompatible(to, from))
                 }
             }
-            (_, _) => Err(UnificationError::Incompatible(to, from))
+            (_, _) => Err(TypeError::Incompatible(to, from))
         }
     }
 
