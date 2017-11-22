@@ -456,39 +456,31 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         result
     }
 
-    fn unify_var(&self, var: TypeRef<'ty, 'object>, ty: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
-        let id = if let Type::Var { id, .. } = *var {
-            id
-        } else {
-            panic!("expected type var");
-        };
-
+    fn unify_var(&self, ty: TypeRef<'ty, 'object>, var_id: TypeVarId, loc: &Loc) -> UnificationResult<'ty, 'object> {
         if let Type::Var { id: ty_id, .. } = *ty {
-            if id == ty_id {
+            if var_id == ty_id {
                 return Ok(())
             }
         }
 
-        if self.occurs(ty, id) {
-            // TODO - we shouldn't need to take var itself in this function -
-            // we should be able to return a Recursive error or something
-            Err(TypeError::Incompatible(ty, var))
+        if self.occurs(ty, var_id) {
+            Err(TypeError::Recursive(ty, var_id, loc.clone()))
         } else {
-            self.set_var(id, ty);
+            self.set_var(var_id, ty);
             Ok(())
         }
     }
 
-    pub fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
-        let to = self.prune(to);
-        let from = self.prune(from);
+    pub fn compatible(&self, to_: TypeRef<'ty, 'object>, from_: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
+        let to = self.prune(to_);
+        let from = self.prune(from_);
 
         match (to.deref(), from.deref()) {
-            (&Type::Var { .. }, _) => {
-                self.unify_var(to, from)
+            (&Type::Var { id: to_id, .. }, _) => {
+                self.unify_var(from, to_id, from_.loc())
             }
-            (_, &Type::Var { .. }) => {
-                self.unify_var(from, to)
+            (_, &Type::Var { id: from_id, .. }) => {
+                self.unify_var(to, from_id, to_.loc())
             }
             (&Type::Instance { class: to_class, type_parameters: ref to_tp, .. }, &Type::Instance { class: from_class, type_parameters: ref from_tp, .. }) => {
                 if from_class.ancestors().find(|c| c.delegate() == to_class).is_none() {
