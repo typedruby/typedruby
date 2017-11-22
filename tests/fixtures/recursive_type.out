@@ -2,10 +2,10 @@ error: Could not match types:
 
         @ __ROOT__/tests/fixtures/recursive_type.rb:5
       5 |    a = []
-                 ^^ t1, with:
+                 ^^ Array::[t1], with:
         @ __ROOT__/tests/fixtures/recursive_type.rb:5
       5 |    a = []
-                 ^^ Array::[t1]
+                 ^^ t1
 
         - arising from an attempt to match:
 
