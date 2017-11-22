@@ -843,6 +843,27 @@ impl<'a> RubyObject<'a> {
                 panic!("called type_parameters on RubyObject::IClass!"),
         }
     }
+
+    // I cannot wait for impl trait to land in stable ;_;
+    pub fn type_parameter_names(&'a self) -> TypeParameterNames<'a> {
+        TypeParameterNames(self.type_parameters())
+    }
+}
+
+pub struct TypeParameterNames<'a>(&'a [Id]);
+
+impl<'a> Iterator for TypeParameterNames<'a> {
+    type Item = &'a str;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.0.is_empty() {
+            None
+        } else {
+            let Id(_, ref name) = self.0[0];
+            self.0 = &self.0[1..];
+            Some(name)
+        }
+    }
 }
 
 impl<'a> fmt::Debug for RubyObject<'a> {

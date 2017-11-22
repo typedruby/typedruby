@@ -139,7 +139,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         } else if supplied_params < expected_params {
             let mut message = format!("{} also expects ", class.name());
 
-            for (i, &Id(_, ref name)) in class.type_parameters().iter().skip(supplied_params).enumerate() {
+            for (i, name) in class.type_parameter_names().skip(supplied_params).enumerate() {
                 if i > 0 {
                     message += ", ";
                 }

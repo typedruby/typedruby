@@ -24,8 +24,8 @@ impl<'object> TypeScope<'object> {
     {
         let scope = Rc::new(TypeScope::Constant { scope });
 
-        module.type_parameters().iter().fold(scope,
-            |scope, &Id(_, ref param)| Self::extend(scope, param.clone()))
+        module.type_parameter_names().fold(scope,
+            |scope, param| Self::extend(scope, param.to_owned()))
     }
 
     pub fn extend(parent: Rc<TypeScope<'object>>, name: String) -> Rc<TypeScope<'object>> {
@@ -35,9 +35,8 @@ impl<'object> TypeScope<'object> {
     pub fn is_param(&self, name: &str) -> bool {
         match *self {
             TypeScope::Constant { ref scope } =>
-                scope.module.type_parameters()
-                    .iter()
-                    .any(|&Id(_, ref param_name)| param_name == name),
+                scope.module.type_parameter_names()
+                    .any(|param_name| param_name == name),
             TypeScope::Param { name: ref param_name, .. }
                 if param_name == name => true,
             TypeScope::Param { ref parent, .. } =>
@@ -316,7 +315,7 @@ impl<'env, 'object> ResolveType<'env, 'object> {
         } else if supplied_params < expected_params {
             let mut message = format!("{} also expects ", class.name());
 
-            for (i, &Id(_, ref name)) in class.type_parameters().iter().skip(supplied_params).enumerate() {
+            for (i, name) in class.type_parameter_names().skip(supplied_params).enumerate() {
                 if i > 0 {
                     message += ", ";
                 }

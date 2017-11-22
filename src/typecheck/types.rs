@@ -2,7 +2,7 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
 use std::cmp::Ordering;
-use ast::{Loc, Node, Id};
+use ast::{Loc, Node};
 use environment::Environment;
 use object::RubyObject;
 use typed_arena::Arena;
@@ -168,8 +168,8 @@ pub struct TypeContext<'ty, 'object: 'ty> {
 impl<'ty, 'object> TypeContext<'ty, 'object> {
     fn new(self_: SelfInfo<'ty, 'object>, class: &'object RubyObject<'object>, type_parameters: Vec<TypeRef<'ty, 'object>>) -> Self {
         let type_names =
-            class.type_parameters().iter()
-                .map(|&Id(_, ref name)| name.clone())
+            class.type_parameter_names()
+                .map(|name| name.to_owned())
                 .zip(type_parameters.iter().cloned())
                 .collect();
 
@@ -373,8 +373,8 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     .map(|param| mat.materialize_type(param, &context))
                     .collect::<Vec<_>>();
 
-                let type_names = site.module.type_parameters().iter()
-                    .map(|&Id(_, ref name)| name.to_owned())
+                let type_names = site.module.type_parameter_names()
+                    .map(|name| name.to_owned())
                     .zip(type_params.iter().cloned())
                     .collect();
 
