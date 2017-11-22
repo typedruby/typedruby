@@ -4,7 +4,7 @@ use std::fmt;
 use std::cmp::Ordering;
 use ast::{Loc, Node};
 use environment::Environment;
-use object::RubyObject;
+use object::{RubyObject, Variance};
 use typed_arena::Arena;
 use util::Or;
 use itertools::Itertools;
@@ -493,11 +493,23 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
                 let to_tyctx = self.map_type_context(from_tyctx, to_class);
 
-                to_tp.iter().zip(to_tyctx.type_parameters).fold(Ok(()), |res, (&to_ty, from_ty)|
-                    // because an object could be mutated after coercion, we
-                    // require invariance in type parameters:
-                    res.and_then(|()| self.compatible(to_ty, from_ty))
-                       .and_then(|()| self.compatible(from_ty, to_ty)))
+                to_class.type_parameters().iter()
+                    .map(|param| &param.variance)
+                    .zip(to_tp.iter().cloned().zip(to_tyctx.type_parameters))
+                    .fold(Ok(()), |res, (variance, (to_ty, from_ty))| {
+                        match *variance {
+                            Variance::Invariant => {
+                                res.and_then(|()| self.compatible(to_ty, from_ty))
+                                   .and_then(|()| self.compatible(from_ty, to_ty))
+                            }
+                            Variance::Covariant(_) => {
+                                res.and_then(|()| self.compatible(to_ty, from_ty))
+                            }
+                            Variance::Contravariant(_) => {
+                                res.and_then(|()| self.compatible(from_ty, to_ty))
+                            }
+                        }
+                    })
             },
             (_, &Type::Union { types: ref from_types, .. }) => {
                 self.compatible_from_union(to, from_types)
