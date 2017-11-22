@@ -455,15 +455,40 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         result
     }
 
+    fn unify_var(&self, var: TypeRef<'ty, 'object>, ty: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
+        let id = if let Type::Var { id, .. } = *var {
+            id
+        } else {
+            panic!("expected type var");
+        };
+
+        if let Type::Var { id: ty_id, .. } = *ty {
+            if id == ty_id {
+                return Ok(())
+            }
+        }
+
+        if self.occurs(ty, id) {
+            // TODO - we shouldn't need to take var itself in this function -
+            // we should be able to return a Recursive error or something
+            Err(UnificationError::Incompatible(ty, var))
+        } else {
+            self.set_var(id, ty);
+            Ok(())
+        }
+    }
+
     pub fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let to = self.prune(to);
         let from = self.prune(from);
 
         match (to.deref(), from.deref()) {
-            (&Type::Var { .. }, _) =>
-                self.unify(to, from),
-            (_, &Type::Var { .. }) =>
-                self.unify(to, from),
+            (&Type::Var { .. }, _) => {
+                self.unify_var(to, from)
+            }
+            (_, &Type::Var { .. }) => {
+                self.unify_var(from, to)
+            }
             (&Type::Instance { class: to_class, type_parameters: ref to_tp, .. }, &Type::Instance { class: from_class, type_parameters: ref from_tp, .. }) => {
                 if from_class.ancestors().find(|c| c.delegate() == to_class).is_none() {
                     return Err(UnificationError::Incompatible(to, from));
@@ -601,7 +626,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 self.compatible_prototype(to_proto, from_proto).unwrap_or(Err(UnificationError::Incompatible(to, from)))
             }
             (_, _) =>
-                self.unify(to, from),
+                self.unify_(to, from),
         }
     }
 
@@ -799,7 +824,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         }
     }
 
-    pub fn unify(&self, t1: TypeRef<'ty, 'object>, t2: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
+    pub fn unify_(&self, t1: TypeRef<'ty, 'object>, t2: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
         let t1 = self.prune(t1);
         let t2 = self.prune(t2);
 
@@ -820,95 +845,10 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 }
             },
 
-            (_, &Type::Var { .. }) =>
-                self.unify(t2, t1),
-
-            (&Type::Instance { class: class1, type_parameters: ref tp1, .. }, &Type::Instance { class: class2, type_parameters: ref tp2, .. }) => {
-                if class1 != class2 {
-                    return Err(UnificationError::Incompatible(t1.clone(), t2.clone()));
-                }
-
-                self.unify_slice(tp1, tp2).expect("Instance types of same class to have same number of type parameters")
-            },
-
             (&Type::Instance { .. }, _) =>
                 Err(UnificationError::Incompatible(t1.clone(), t2.clone())),
 
-            (&Type::Tuple { lead: ref lead1, splat: ref splat1, post: ref post1, .. }, &Type::Tuple { lead: ref lead2, splat: ref splat2, post: ref post2, .. }) => {
-                self.unify_slice(lead1, lead2)
-                    .and_then(|res|
-                        match (*splat1, *splat2) {
-                            (Some(a), Some(b)) => Some(res.and_then(|_|
-                                self.unify(a, b)
-                            )),
-                            (None, None) => Some(res),
-                            _ => None,
-                        }
-                    ).and_then(|res|
-                        match res {
-                            Ok(_) => self.unify_slice(post1, post2),
-                            Err(e) => Some(Err(e)),
-                        }
-                    ).unwrap_or(
-                        Err(UnificationError::Incompatible(t1.clone(), t2.clone()))
-                    )
-            }
-
             (&Type::Tuple { .. }, _) =>
-                Err(UnificationError::Incompatible(t1.clone(), t2.clone())),
-
-            (&Type::Union { types: ref types1, .. }, &Type::Union { types: ref types2, .. }) => {
-                if types1.len() != types2.len() {
-                    return Err(UnificationError::Incompatible(t1, t2));
-                }
-
-                let mut marked1 = Vec::new();
-                marked1.resize(types1.len(), false);
-                let mut marked2 = marked1.clone();
-
-                // attempt to unify all concrete types first:
-                for (idx2, &ty2) in types2.iter().enumerate() {
-                    if self.is_uninstantiated_var(ty2) { continue }
-
-                    for (idx1, &ty1) in types1.iter().enumerate() {
-                        if marked1[idx1] { continue }
-                        if self.is_uninstantiated_var(ty1) { continue }
-
-                        match self.unify(ty1, ty2) {
-                            Ok(()) => {
-                                marked1[idx1] = true;
-                                marked2[idx2] = true;
-                                break
-                            }
-                            Err(..) => {
-                                continue
-                            }
-                        }
-                    }
-                }
-
-                // unify all unresolved type variables:
-                for (idx2, &ty2) in types2.iter().enumerate() {
-                    if marked2[idx2] { continue }
-
-                    for (idx1, &ty1) in types1.iter().enumerate() {
-                        if marked1[idx1] { continue }
-
-                        self.unify(ty1, ty2).expect("unifying two unresolved type variables should never fail");
-                        marked1[idx1] = true;
-                        marked2[idx2] = true;
-                    }
-                }
-
-                // if by this point not all types are marked, there was a mismatch
-                if !(marked1.iter().any(|m| *m) && marked2.iter().any(|m| *m)) {
-                    return Err(UnificationError::Incompatible(t1, t2));
-                }
-
-                Ok(())
-            },
-
-            (&Type::Union { .. }, _) =>
                 Err(UnificationError::Incompatible(t1.clone(), t2.clone())),
 
             (&Type::Any { .. }, &Type::Any { .. }) =>
@@ -943,29 +883,15 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
             (&Type::LocalVariable { .. }, _) =>
                 panic!("LocalVariable should not be present after pruning!"),
-        }
-    }
 
-    fn unify_slice(&self, types1: &[TypeRef<'ty, 'object>], types2: &[TypeRef<'ty, 'object>]) -> Option<UnificationResult<'ty, 'object>> {
-        if types1.len() != types2.len() {
-            return None;
+            _ =>
+                return Err(UnificationError::Incompatible(t1, t2))
         }
-
-        for (&a, &b) in types1.iter().zip(types2.iter()) {
-            match self.unify(a, b) {
-                Ok(_) => {},
-                err@Err(..) => return Some(err),
-            }
-        }
-
-        Some(Ok(()))
     }
 
     pub fn update_loc(&self, ty: TypeRef<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
         let tyvar = self.new_var(loc);
-
-        self.unify(tyvar, ty).expect("unifying new tyvar");
-
+        self.instantiate_var(tyvar, ty);
         tyvar
     }
 
