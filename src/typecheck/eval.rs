@@ -193,6 +193,21 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 self.error("Could not match types:", &details);
             }
+            TypeError::Recursive(ty, _, ref tyvar_loc) => {
+                let mut details = Vec::new();
+
+                details.push(Detail::Loc(
+                    strs.alloc(self.tyenv.describe(ty)), ty.loc()));
+
+                details.push(Detail::Loc(
+                    "would contain itself here", tyvar_loc));
+
+                if let Some(loc) = loc {
+                    details.push(Detail::Loc("in this expression", loc));
+                }
+
+                self.error("Type cannot contain itself:", &details);
+            }
         }
     }
 
