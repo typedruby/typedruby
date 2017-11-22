@@ -600,6 +600,9 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
                 Ok(())
             }
+            (&Type::KeywordHash { .. }, &Type::KeywordHash { .. }) => {
+                panic!("TODO implement compatible for keyword hash to keyword hash");
+            }
             (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
                 if !self.is_hash(class) {
                     return Err(UnificationError::Incompatible(to, from));
@@ -625,8 +628,14 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             (&Type::Proc { proto: ref to_proto, .. }, &Type::Proc { proto: ref from_proto, .. }) => {
                 self.compatible_prototype(to_proto, from_proto).unwrap_or(Err(UnificationError::Incompatible(to, from)))
             }
-            (_, _) =>
-                self.unify_(to, from),
+            (&Type::TypeParameter { name: ref name1, .. }, &Type::TypeParameter { name: ref name2, .. }) => {
+                if name1 == name2 {
+                    Ok(())
+                } else {
+                    Err(UnificationError::Incompatible(to, from))
+                }
+            }
+            (_, _) => Err(UnificationError::Incompatible(to, from))
         }
     }
 
@@ -821,71 +830,6 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             Type::Any { .. } |
             Type::TypeParameter { .. } => None,
             Type::LocalVariable { .. } => unreachable!(),
-        }
-    }
-
-    pub fn unify_(&self, t1: TypeRef<'ty, 'object>, t2: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
-        let t1 = self.prune(t1);
-        let t2 = self.prune(t2);
-
-        match (t1.deref(), t2.deref()) {
-            (&Type::Var { id: ref id1, .. }, _) => {
-                if let Type::Var { id: ref id2, .. } = *t2 {
-                    if id1 == id2 {
-                        // already unified
-                        return Ok(());
-                    }
-                }
-
-                if self.occurs(t2, *id1) {
-                    return Err(UnificationError::Incompatible(t1, t2));
-                } else {
-                    self.set_var(*id1, t2.clone());
-                    Ok(())
-                }
-            },
-
-            (&Type::Instance { .. }, _) =>
-                Err(UnificationError::Incompatible(t1.clone(), t2.clone())),
-
-            (&Type::Tuple { .. }, _) =>
-                Err(UnificationError::Incompatible(t1.clone(), t2.clone())),
-
-            (&Type::Any { .. }, &Type::Any { .. }) =>
-                Ok(()),
-
-            (&Type::Any { .. }, _) =>
-                Err(UnificationError::Incompatible(t1.clone(), t2.clone())),
-
-            (&Type::TypeParameter { name: ref name1, .. }, &Type::TypeParameter { name: ref name2, .. }) =>
-                if name1 == name2 {
-                    Ok(())
-                } else {
-                    Err(UnificationError::Incompatible(t1.clone(), t2.clone()))
-                },
-
-            (&Type::TypeParameter { .. }, _) =>
-                Err(UnificationError::Incompatible(t1.clone(), t2.clone())),
-
-            (&Type::Proc { .. }, &Type::Proc { .. }) => {
-                panic!("TODO unify proc");
-            },
-
-            (&Type::Proc { .. }, _) =>
-                Err(UnificationError::Incompatible(t1.clone(), t2.clone())),
-
-            (&Type::KeywordHash { .. }, &Type::KeywordHash { .. }) => {
-                panic!("TODO unify keyword hash")
-            }
-
-            (&Type::KeywordHash { .. }, _) =>
-                Err(UnificationError::Incompatible(t1.clone(), t2.clone())),
-
-            (&Type::LocalVariable { .. }, _) =>
-                panic!("LocalVariable should not be present after pruning!"),
-
-            _ =>
-                return Err(UnificationError::Incompatible(t1, t2))
         }
     }
 
