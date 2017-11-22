@@ -68,8 +68,8 @@ enum Lhs<'ty, 'object: 'ty> {
 
 impl<'ty, 'object> Eval<'ty, 'object> {
     pub fn process(env: &'ty Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, body: Option<Rc<Node>>, proto: &abstract_type::Prototype<'object>) {
-        let class_type_parameters = class.type_parameters().iter().map(|&Id(ref loc, _)|
-            tyenv.new_var(loc.clone())
+        let class_type_parameters = class.type_parameters().iter().map(|param|
+            tyenv.new_var(param.name_loc().clone())
         ).collect();
 
         let mut type_context = TypeContext::instance(class, class_type_parameters);

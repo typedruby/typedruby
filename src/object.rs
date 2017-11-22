@@ -275,7 +275,7 @@ impl<'a> ObjectGraph<'a> {
             .insert(key, value);
     }
 
-    pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
+    pub fn new_class(&self, name: String, superclass: &'a RubyObject<'a>, type_parameters: Vec<TypeParameter>) -> &'a RubyObject<'a> {
         self.alloc(RubyObject::Class {
             id: self.new_object_id(),
             name: name,
@@ -285,7 +285,7 @@ impl<'a> ObjectGraph<'a> {
         })
     }
 
-    pub fn new_module(&self, name: String, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
+    pub fn new_module(&self, name: String, type_parameters: Vec<TypeParameter>) -> &'a RubyObject<'a> {
         self.alloc(RubyObject::Module {
             id: self.new_object_id(),
             name: name,
@@ -295,7 +295,7 @@ impl<'a> ObjectGraph<'a> {
         })
     }
 
-    pub fn define_class(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, superclass: &'a RubyObject<'a>, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
+    pub fn define_class(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, superclass: &'a RubyObject<'a>, type_parameters: Vec<TypeParameter>) -> &'a RubyObject<'a> {
         let class = self.new_class(self.constant_path(owner, name), superclass, type_parameters);
 
         self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: class }))
@@ -304,7 +304,7 @@ impl<'a> ObjectGraph<'a> {
         class
     }
 
-    pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, type_parameters: Vec<Id>) -> &'a RubyObject<'a> {
+    pub fn define_module(&self, loc: Option<Loc>, owner: &'a RubyObject<'a>, name: &str, type_parameters: Vec<TypeParameter>) -> &'a RubyObject<'a> {
         let module = self.new_module(self.constant_path(owner, name), type_parameters);
 
         self.set_const(owner, name, Rc::new(ConstantEntry::Module { loc: loc, value: module }))
@@ -693,20 +693,55 @@ pub enum IncludeError<'object> {
     DuplicateInclude(&'object Loc),
 }
 
+#[derive(PartialEq,Eq,Clone,Debug)]
+pub enum Variance {
+    Invariant,
+    Covariant(Loc),
+    Contravariant(Loc),
+}
+
+#[derive(Debug,Clone)]
+pub struct TypeParameter {
+    pub variance: Variance,
+    pub name: Id,
+}
+
+impl TypeParameter {
+    pub fn loc(&self) -> Loc {
+        match self.variance {
+            Variance::Invariant => self.name.0.clone(),
+            Variance::Covariant(ref loc) |
+            Variance::Contravariant(ref loc) =>
+                loc.join(&self.name.0),
+        }
+    }
+
+    pub fn name_loc(&self) -> &Loc {
+        let Id(ref loc, _) = self.name;
+        loc
+    }
+}
+
+impl PartialEq for TypeParameter {
+    fn eq(&self, other: &TypeParameter) -> bool {
+        self.variance == other.variance && self.name.1 == other.name.1
+    }
+}
+
 pub enum RubyObject<'a> {
     Module {
         id: ObjectId,
         class: Cell<&'a RubyObject<'a>>,
         name: String,
         superclass: Cell<Option<&'a RubyObject<'a>>>,
-        type_parameters: Vec<Id>,
+        type_parameters: Vec<TypeParameter>,
     },
     Class {
         id: ObjectId,
         class: Cell<&'a RubyObject<'a>>,
         name: String,
         superclass: Cell<Option<&'a RubyObject<'a>>>,
-        type_parameters: Vec<Id>,
+        type_parameters: Vec<TypeParameter>,
     },
     Metaclass {
         id: ObjectId,
@@ -831,7 +866,7 @@ impl<'a> RubyObject<'a> {
         }
     }
 
-    pub fn type_parameters(&'a self) -> &'a [Id] {
+    pub fn type_parameters(&'a self) -> &'a [TypeParameter] {
         match *self {
             RubyObject::Metaclass { .. } => {
                 &[]
@@ -850,7 +885,7 @@ impl<'a> RubyObject<'a> {
     }
 }
 
-pub struct TypeParameterNames<'a>(&'a [Id]);
+pub struct TypeParameterNames<'a>(&'a [TypeParameter]);
 
 impl<'a> Iterator for TypeParameterNames<'a> {
     type Item = &'a str;
@@ -859,7 +894,7 @@ impl<'a> Iterator for TypeParameterNames<'a> {
         if self.0.is_empty() {
             None
         } else {
-            let Id(_, ref name) = self.0[0];
+            let Id(_, ref name) = self.0[0].name;
             self.0 = &self.0[1..];
             Some(name)
         }
