@@ -189,12 +189,6 @@ impl<'a, 'ty, 'object> Materialize<'a, 'ty, 'object> {
                         sub: self.materialize_type(sub, context),
                         super_: self.materialize_type(super_, context),
                     },
-                &abstract_type::TypeConstraint::Unify { ref loc, ref a, ref b } =>
-                    TypeConstraint::Unify {
-                        loc: loc.clone(),
-                        a: self.materialize_type(a, context),
-                        b: self.materialize_type(b, context),
-                    },
             }
         }).collect();
 
