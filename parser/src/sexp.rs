@@ -873,6 +873,16 @@ impl Sexp for Node {
                 let _ = builder.field(super_);
                 builder.finish()
             }
+            (&Node::TyContravariant(ref loc),) => {
+                let mut builder = __arg_0.new_node("ty-contravariant");
+                builder.field(loc);
+                builder.finish()
+            }
+            (&Node::TyCovariant(ref loc),) => {
+                let mut builder = __arg_0.new_node("ty-covariant");
+                builder.field(loc);
+                builder.finish()
+            }
             (&Node::TyCpath(ref __self_0, ref __self_1),) => {
                 let mut builder = __arg_0.new_node("ty-cpath");
                 let _ = builder.field(__self_0);
@@ -894,11 +904,12 @@ impl Sexp for Node {
                 let _ = builder.field(__self_3);
                 builder.finish()
             }
-            (&Node::TyGendeclarg(ref __self_0, ref __self_1, ref __self_2),) => {
+            (&Node::TyGendeclarg(ref __self_0, ref __self_1, ref __self_2, ref __self_3),) => {
                 let mut builder = __arg_0.new_node("ty-gendeclarg");
                 let _ = builder.field(__self_0);
                 let _ = builder.field(__self_1);
                 let _ = builder.field(__self_2);
+                let _ = builder.field(__self_3);
                 builder.finish()
             }
             (&Node::TyGeninst(ref __self_0, ref __self_1, ref __self_2),) => {

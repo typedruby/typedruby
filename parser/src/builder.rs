@@ -1402,6 +1402,14 @@ impl<'a> Builder<'a> {
         Node::TyConSubtype(loc, sub, super_)
     }
 
+    pub fn tr_contravariant(&self, tok: Option<Token>) -> Node {
+        Node::TyContravariant(self.loc(&tok))
+    }
+
+    pub fn tr_covariant(&self, tok: Option<Token>) -> Node {
+        Node::TyCovariant(self.loc(&tok))
+    }
+
     pub fn tr_cpath(&self, cpath: Option<Rc<Node>>) -> Node {
         let cpath = cpath.unwrap();
         Node::TyCpath(cpath.loc().clone(), cpath)
@@ -1416,7 +1424,7 @@ impl<'a> Builder<'a> {
         Node::TyGendecl(cpath.loc().join(&self.loc(&end)), cpath, genargs, constraints)
     }
 
-    pub fn tr_gendeclarg(&self, tok: Option<Token>, constraint: Option<Rc<Node>>) -> Node {
+    pub fn tr_gendeclarg(&self, variance: Option<Rc<Node>>, tok: Option<Token>, constraint: Option<Rc<Node>>) -> Node {
         let id = self.tok_id(&tok);
 
         let loc = match constraint {
@@ -1424,7 +1432,7 @@ impl<'a> Builder<'a> {
             Some(ref n) => id.0.join(n.loc()),
         };
 
-        Node::TyGendeclarg(loc, id, constraint)
+        Node::TyGendeclarg(loc, variance, id, constraint)
     }
 
     pub fn tr_geninst(&self, cpath: Option<Rc<Node>>, _begin: Option<Token>, genargs: Vec<Rc<Node>>, end: Option<Token>) -> Node {
