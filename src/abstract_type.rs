@@ -548,7 +548,13 @@ impl<'env, 'object> ResolveType<'env, 'object> {
             let mut type_constraints = vec![];
 
             let scope = vars.iter().fold(self.scope.clone(), |scope, var| {
-                if let &Node::TyGendeclarg(ref loc, ref id, ref supertype) = var.as_ref() {
+                if let &Node::TyGendeclarg(ref loc, ref variance, ref id, ref supertype) = var.as_ref() {
+                    if let Some(ref variance) = *variance {
+                        self.error("Variance specifier is not allowed on method type parameters", &[
+                            Detail::Loc("here", variance.loc())
+                        ]);
+                    }
+
                     let scope = TypeScope::extend(scope, id.1.clone());
 
                     type_vars.push(id.clone());

@@ -2119,6 +2119,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::TyArray(..) |
             Node::TyClass(..) |
             Node::TyConSubtype(..) |
+            Node::TyContravariant(..) |
+            Node::TyCovariant(..) |
             Node::TyCpath(..) |
             Node::TyGenargs(..) |
             Node::TyGendecl(..) |

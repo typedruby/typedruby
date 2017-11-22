@@ -120,19 +120,26 @@ impl<'env, 'object> Eval<'env, 'object> {
         let (name, params) = match *node {
             Node::TyGendecl(_, ref name, ref params, ref constraints) => {
                 let params = params.iter().map(|param| {
-                    let name = match **param {
-                        Node::TyGendeclarg(_, ref name, None) =>
-                            name.clone(),
-                        Node::TyGendeclarg(_, ref name, Some(ref constraint)) => {
+                    let (variance_node, name) = match **param {
+                        Node::TyGendeclarg(_, ref variance, ref name, None) =>
+                            (variance, name.clone()),
+                        Node::TyGendeclarg(_, ref variance, ref name, Some(ref constraint)) => {
                             self.error(ErrorType::TypedRuby, "Type constraints not permitted on classes/modules", &[
                                 Detail::Loc("here", constraint.loc()),
                             ]);
-                            name.clone()
+                            (variance, name.clone())
                         },
                         _ => panic!("expected TyGendeclarg in TyGendecl"),
                     };
 
-                    TypeParameter { variance: Variance::Invariant, name: name }
+                    let variance = match variance_node.as_ref().map(Rc::as_ref) {
+                        None => Variance::Invariant,
+                        Some(&Node::TyCovariant(ref loc)) => Variance::Covariant(loc.clone()),
+                        Some(&Node::TyContravariant(ref loc)) => Variance::Contravariant(loc.clone()),
+                        Some(node) => panic!("unexpected node in variance position: {:?}", node),
+                    };
+
+                    TypeParameter { variance, name }
                 }).collect();
 
                 if !constraints.is_empty() {
@@ -1057,7 +1064,7 @@ impl<'env, 'object> Eval<'env, 'object> {
                     self.eval_node(constraint);
                 }
             }
-            Node::TyGendeclarg(_, _, ref constraint) => {
+            Node::TyGendeclarg(_, _, _, ref constraint) => {
                 self.eval_maybe_node(constraint);
             }
             Node::TyConSubtype(_, ref a, ref b) |

@@ -202,7 +202,7 @@ impl Strip {
         match *node {
             Node::TyCpath(ref loc, _) |
             Node::TyGenargs(ref loc, _, _) |
-            Node::TyGendeclarg(ref loc, _, _) |
+            Node::TyGendeclarg(ref loc, _, _, _) |
             Node::TyIvardecl(ref loc, _, _) => {
                 self.remove(loc)
             }
@@ -228,6 +228,8 @@ impl Strip {
             Node::TyArray(..) |
             Node::TyClass(..) |
             Node::TyConSubtype(..) |
+            Node::TyContravariant(..) |
+            Node::TyCovariant(..) |
             Node::TyGeninst(..) |
             Node::TyHash(..) |
             Node::TyInstance(..) |
