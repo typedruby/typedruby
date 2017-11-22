@@ -228,7 +228,6 @@ impl Strip {
             Node::TyArray(..) |
             Node::TyClass(..) |
             Node::TyConSubtype(..) |
-            Node::TyConUnify(..) |
             Node::TyGeninst(..) |
             Node::TyHash(..) |
             Node::TyInstance(..) |

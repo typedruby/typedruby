@@ -94,11 +94,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         // unresolved to that they can be constrained. unify any unresolved
         // type variables with their named parameters:
         for (name, ty) in &eval.type_context.type_names {
-            if eval.tyenv.is_unresolved_var(*ty) {
-                eval.tyenv.unify(*ty, eval.tyenv.alloc(Type::TypeParameter {
+            if eval.tyenv.is_uninstantiated_var(*ty) {
+                eval.tyenv.instantiate_var(*ty, eval.tyenv.alloc(Type::TypeParameter {
                     name: name.clone(),
                     loc: ty.loc().clone(),
-                })).expect("unifying unresolved typevar should succeed");
+                }));
             }
         }
 
@@ -196,13 +196,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn unify(&self, a: TypeRef<'ty, 'object>, b: TypeRef<'ty, 'object>, loc: Option<&Loc>) {
-        match self.tyenv.unify(a, b) {
-            Ok(()) => {}
-            Err(reason) => self.type_error(a, b, reason, loc)
-        }
-    }
-
     fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: Option<&Loc>) -> bool {
         match self.tyenv.compatible(to, from) {
             Ok(()) => true,
@@ -267,8 +260,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             MethodImpl::Ruby { ref proto, .. } => {
                 let (proto, _) = self.materialize_prototype(proto, Locals::new(), &mut type_context);
 
-                self.tyenv.unify(proto.retn, self.tyenv.any(proto.retn.loc().clone()))
-                    .expect("retn to unify");
+                self.tyenv.instantiate_var(proto.retn, self.tyenv.any(proto.retn.loc().clone()));
 
                 proto
             }
@@ -908,8 +900,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn apply_constraints(&self, constraints: &[TypeConstraint<'ty, 'object>]) {
         for constraint in constraints {
             match *constraint {
-                TypeConstraint::Unify { ref loc, a, b } =>
-                    self.unify(a, b, Some(loc)),
                 TypeConstraint::Compatible { ref loc, sub, super_ } => {
                     self.compatible(super_, sub, Some(loc));
                 }
@@ -2114,7 +2104,6 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::TyArray(..) |
             Node::TyClass(..) |
             Node::TyConSubtype(..) |
-            Node::TyConUnify(..) |
             Node::TyCpath(..) |
             Node::TyGenargs(..) |
             Node::TyGendecl(..) |
