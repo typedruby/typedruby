@@ -22,7 +22,9 @@ pub enum TypeError<'ty, 'object: 'ty> {
     Recursive(TypeRef<'ty, 'object>, TypeVarId, Loc),
 }
 
-pub type UnificationResult<'ty, 'object> = Result<(), TypeError<'ty, 'object>>;
+pub type TypeResult<'ty, 'object, T> = Result<T, TypeError<'ty, 'object>>;
+
+pub type MatchResult<'ty, 'object> = TypeResult<'ty, 'object, ()>;
 
 enum UnionCompatibilityError {
     NoMatch,
@@ -456,7 +458,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         result
     }
 
-    fn unify_var(&self, ty: TypeRef<'ty, 'object>, var_id: TypeVarId, loc: &Loc) -> UnificationResult<'ty, 'object> {
+    fn unify_var(&self, ty: TypeRef<'ty, 'object>, var_id: TypeVarId, loc: &Loc) -> MatchResult<'ty, 'object> {
         if let Type::Var { id: ty_id, .. } = *ty {
             if var_id == ty_id {
                 return Ok(())
@@ -471,7 +473,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         }
     }
 
-    pub fn compatible(&self, to_: TypeRef<'ty, 'object>, from_: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
+    pub fn compatible(&self, to_: TypeRef<'ty, 'object>, from_: TypeRef<'ty, 'object>) -> MatchResult<'ty, 'object> {
         let to = self.prune(to_);
         let from = self.prune(from_);
 
@@ -632,7 +634,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         }
     }
 
-    pub fn compatible_prototype(&self, to: &Prototype<'ty, 'object>, from: &Prototype<'ty, 'object>) -> Option<UnificationResult<'ty, 'object>> {
+    pub fn compatible_prototype(&self, to: &Prototype<'ty, 'object>, from: &Prototype<'ty, 'object>) -> Option<MatchResult<'ty, 'object>> {
         self.compatible_args(&to.args, &from.args).map(|result|
             result.and_then(|()|
                 self.compatible(to.retn, from.retn)))
@@ -661,7 +663,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         Some(Arg::Required { loc: args_loc.clone(), ty: self.tuple(args_loc, arg_types, None, vec![]) })
     }
 
-    pub fn compatible_args(&self, to: &[Arg<'ty, 'object>], from: &[Arg<'ty, 'object>]) -> Option<UnificationResult<'ty, 'object>> {
+    pub fn compatible_args(&self, to: &[Arg<'ty, 'object>], from: &[Arg<'ty, 'object>]) -> Option<MatchResult<'ty, 'object>> {
         if to.len() == 1 {
             if let Arg::Procarg0 { arg: ref arg1, .. } = to[0] {
                 if from.len() == 1 {
@@ -699,7 +701,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         Some(Ok(()))
     }
 
-    pub fn compatible_arg(&self, to: &Arg<'ty, 'object>, from: &Arg<'ty, 'object>) -> Option<UnificationResult<'ty, 'object>> {
+    pub fn compatible_arg(&self, to: &Arg<'ty, 'object>, from: &Arg<'ty, 'object>) -> Option<MatchResult<'ty, 'object>> {
         match (to, from) {
             (&Arg::Procarg0 { arg: ref arg1, .. }, &Arg::Procarg0 { arg: ref arg2, .. }) =>
                 self.compatible_arg(arg2, arg1),
