@@ -909,6 +909,20 @@ end
 
 class NilClass < Object
   def nil? => TrueClass; end
+
+  def to_a[T] => Array::[T]; end
+
+  def to_i => Integer; end
+
+  def to_f => Float; end
+
+  def to_h[K, V] => Hash::[K, V]; end
+
+  def &(:any other) => FalseClass; end
+
+  def |(:any other) => Boolean; end
+
+  def ^(:any other) => Boolean; end
 end
 
 class ArgumentError < StandardError
