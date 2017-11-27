@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate clap;
+extern crate glob;
 extern crate immutable_map;
 extern crate itertools;
 extern crate regex;
@@ -11,7 +12,7 @@ use std::env;
 use std::path::PathBuf;
 use std::fs;
 use std::process;
-use clap::{App, AppSettings, Arg, SubCommand};
+use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
 use typed_arena::Arena;
 use termcolor::{ColorChoice, StandardStream};
 
@@ -35,6 +36,22 @@ use environment::Environment;
 use errors::{ErrorReporter, ErrorSink};
 use config::{Command, CheckConfig, StripConfig};
 
+fn source_files(matches: &ArgMatches) -> Vec<PathBuf> {
+    let sources = matches.values_of("source")
+        .expect("sources should be required");
+
+    if matches.is_present("glob") {
+        sources
+            .flat_map(|pattern| glob::glob(pattern).ok())
+            .flat_map(|iter| iter.flat_map(Result::ok))
+            .collect()
+    } else {
+        sources
+            .map(PathBuf::from)
+            .collect()
+    }
+}
+
 fn command() -> Command {
     let app = App::new(crate_name!())
         .version(crate_version!())
@@ -51,6 +68,10 @@ fn command() -> Command {
                         .help("Print stripped source without modifying source files")
                         .short("p")
                         .long("print"))
+                .arg(Arg::with_name("glob")
+                        .help("Treat source filenames as glob patterns")
+                        .short("g")
+                        .long("glob"))
                 .arg(Arg::with_name("source")
                     .index(1)
                     .multiple(true)
@@ -88,6 +109,10 @@ fn command() -> Command {
                 .arg(Arg::with_name("warning")
                     .short("w")
                     .help("Turns on additional warnings, like Ruby's -w"))
+                .arg(Arg::with_name("glob")
+                    .help("Treat source filenames as glob patterns")
+                    .short("g")
+                    .long("glob"))
                 .arg(Arg::with_name("source")
                     .index(1)
                     .multiple(true)
@@ -98,7 +123,6 @@ fn command() -> Command {
 
     if let Some(matches) = matches.subcommand_matches("check") {
         let mut config = CheckConfig::new();
-        let mut files = Vec::new();
 
         if let Some(load_paths) = matches.values_of("load-path") {
             config.require_paths.extend(load_paths.map(PathBuf::from));
@@ -120,26 +144,16 @@ fn command() -> Command {
         }
 
         config.warning = matches.is_present("warning");
-
         config.strip = matches.is_present("strip");
 
-        if let Some(files_iter) = matches.values_of("source") {
-            files.extend(files_iter.map(PathBuf::from));
-        }
-
-        Command::Check(config, files)
+        Command::Check(config, source_files(matches))
     } else if let Some(matches) = matches.subcommand_matches("strip") {
         let config = StripConfig {
             annotate: matches.is_present("annotate"),
             print: matches.is_present("print"),
         };
 
-        let files = matches.values_of("source")
-            .expect("source is required")
-            .map(PathBuf::from)
-            .collect();
-
-        Command::Strip(config, files)
+        Command::Strip(config, source_files(matches))
     } else {
         panic!("unreachable - clap should have exited if no subcommand matched");
     }

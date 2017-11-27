@@ -6,6 +6,7 @@ license = "MIT"
 
 [dependencies]
 clap = "2.23"
+glob = "0.2"
 immutable-map = "0.1.2"
 itertools = "0.6"
 lazy_static = "0.2"
@@ -16,5 +17,4 @@ typed-arena = "1.2.0"
 vec_map = "0.8"
 
 [dev-dependencies]
-glob = "0.2"
 difference = "1.0"
