@@ -734,6 +734,14 @@ class Float < Numeric
   EPSILON = nil
   INFINITY = nil
   NAN = nil
+
+  def +(Float other) => Float; end
+
+  def -(Float other) => Float; end
+
+  def *(Float other) => Float; end
+
+  def /(Float other) => Float; end
 end
 
 class String < Object
