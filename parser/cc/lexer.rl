@@ -112,7 +112,10 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <ruby_parser/driver.hh>
 #include <cassert>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-const-variable"
 %% write data nofinal;
+#pragma GCC diagnostic pop
 
 using namespace ruby_parser;
 using namespace std::string_literals;
