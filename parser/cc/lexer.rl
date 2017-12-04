@@ -112,7 +112,10 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <ruby_parser/driver.hh>
 #include <cassert>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-const-variable"
 %% write data nofinal;
+#pragma GCC diagnostic pop
 
 using namespace ruby_parser;
 using namespace std::string_literals;
@@ -1063,7 +1066,7 @@ void lexer::set_state_expr_value() {
     if (current_literal.heredoc()) {
       auto line = tok(herebody_s, ts);
 
-      while (line.back() == '\r') {
+      while (!line.empty() && line.back() == '\r') {
         line.pop_back();
       }
 
