@@ -1,11 +1,12 @@
 [package]
 name = "typedruby"
-version = "0.1.1"
+version = "0.3.4"
 authors = ["Hailey Somerville <hailey@hailey.lol>"]
 license = "MIT"
 
 [dependencies]
 clap = "2.23"
+glob = "0.2"
 immutable-map = "0.1.2"
 itertools = "0.6"
 lazy_static = "0.2"
@@ -13,7 +14,7 @@ regex = "0.2"
 ruby_parser = { path = "parser" }
 termcolor = "0.3"
 typed-arena = "1.2.0"
+vec_map = "0.8"
 
 [dev-dependencies]
-glob = "0.2"
 difference = "1.0"

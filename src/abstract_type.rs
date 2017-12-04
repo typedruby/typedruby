@@ -212,7 +212,6 @@ impl<'object> Prototype<'object> {
 #[derive(Debug)]
 pub enum TypeConstraint<'object> {
     Compatible { loc: Loc, sub: TypeNodeRef<'object>, super_: TypeNodeRef<'object> },
-    Unify { loc: Loc, a: TypeNodeRef<'object>, b: TypeNodeRef<'object> },
 }
 
 impl<'object> TypeNode<'object> {
@@ -532,12 +531,6 @@ impl<'env, 'object> ResolveType<'env, 'object> {
         -> TypeConstraint<'object>
     {
         match *node {
-            Node::TyConUnify(ref loc, ref a, ref b) =>
-                TypeConstraint::Unify {
-                    loc: loc.clone(),
-                    a: TypeNode::resolve(a, self.env, scope.clone()),
-                    b: TypeNode::resolve(b, self.env, scope.clone()),
-                },
             Node::TyConSubtype(ref loc, ref sub, ref super_) =>
                 TypeConstraint::Compatible {
                     loc: loc.clone(),

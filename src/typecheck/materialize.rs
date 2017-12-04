@@ -135,8 +135,11 @@ impl<'a, 'ty, 'object> Materialize<'a, 'ty, 'object> {
             ArgNode::Required { ref lhs, .. } => {
                 let (tyvar, locals) = self.materialize_arg_lhs(lhs, locals);
 
-                self.tyenv.unify(tyvar, ty)
-                    .expect("abstract_type ensures that this unification can not fail");
+                // we assert compatibility in the direction of external
+                // interface (the ty attached to this ArgNode) -> the arg's
+                // internal bindings (from tyvar, may be an mlhs tuple):
+                self.tyenv.compatible(tyvar, ty)
+                    .expect("abstract_type ensures that this can not fail");
 
                 (Arg::Required { loc: loc.clone(), ty: ty }, locals)
             }
@@ -189,12 +192,6 @@ impl<'a, 'ty, 'object> Materialize<'a, 'ty, 'object> {
                         loc: loc.clone(),
                         sub: self.materialize_type(sub, context),
                         super_: self.materialize_type(super_, context),
-                    },
-                &abstract_type::TypeConstraint::Unify { ref loc, ref a, ref b } =>
-                    TypeConstraint::Unify {
-                        loc: loc.clone(),
-                        a: self.materialize_type(a, context),
-                        b: self.materialize_type(b, context),
                     },
             }
         }).collect();

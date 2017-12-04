@@ -1,6 +1,9 @@
-use std::env;
+use std::io::{self, Write};
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::fs::File;
 use ast::{parse, Ast, SourceFile, Diagnostic, Node, Loc, Level};
+use config::StripConfig;
 use debug::annotate_file;
 
 #[derive(Debug)]
@@ -8,7 +11,8 @@ pub struct ByteRange(pub usize, pub usize);
 
 #[derive(Debug)]
 pub enum StripError {
-    SyntaxError(Vec<Diagnostic>),
+    Io(io::Error),
+    Syntax(Vec<Diagnostic>),
 }
 
 trait IntoNode<'a> {
@@ -27,6 +31,94 @@ impl<'a> IntoNode<'a> for &'a Option<Rc<Node>> {
     }
 }
 
+pub fn strip_file(path: PathBuf, config: &StripConfig) -> Result<(), StripError> {
+    let source_file = Rc::new(SourceFile::open(path).map_err(StripError::Io)?);
+
+    let remove = Strip::strip(source_file.clone())?;
+
+    if config.annotate {
+        return annotate_file(&source_file, &remove).map_err(StripError::Io);
+    }
+
+    if remove.is_empty() {
+        if config.print {
+            print!("{}", source_file.source());
+        }
+
+        return Ok(());
+    }
+
+    let stripped = remove_byte_ranges(source_file.source(), remove);
+
+    if config.print {
+        print!("{}", stripped);
+        Ok(())
+    } else {
+        File::create(source_file.filename())
+            .and_then(|mut file| file.write_all(stripped.as_bytes()))
+            .map_err(StripError::Io)
+    }
+}
+
+fn trim_around_range(source: &str, ByteRange(start, end): ByteRange) -> ByteRange {
+    // first try to expand the byte range to the end of its line:
+    let (trimmed_end, nl) = source[end..].char_indices()
+        .skip_while(|&(_, c)| line_whitespace(c))
+        .nth(0)
+        .map(|(i, c)| (i + end, c))
+        .unwrap_or((source.len(), '\n'));
+
+    if !newline(nl) {
+        // range was not at the end of the line
+        return ByteRange(start, end);
+    }
+
+    // if the range was at the end of its line, it's safe to try trimming
+    // whitespace backwards from the start:
+    let trimmed_start = source[..start].char_indices().rev()
+        .take_while(|&(_, c)| line_whitespace(c))
+        .last()
+        .map(|(i, _)| i)
+        .unwrap_or(start);
+
+    return ByteRange(trimmed_start, trimmed_end);
+
+    fn newline(c: char) -> bool {
+        c == '\r' || c == '\n'
+    }
+
+    fn line_whitespace(c: char) -> bool {
+        !newline(c) && (c == ' ' || c == '\t')
+    }
+}
+
+fn strip_trailing_whitespace(source: &str, remove: Vec<ByteRange>) -> Vec<ByteRange> {
+    remove.into_iter().map(|range| trim_around_range(source, range)).collect()
+}
+
+fn remove_byte_ranges(source: &str, mut remove: Vec<ByteRange>) -> String {
+    let source = source.as_bytes();
+    let mut result : Vec<u8> = Vec::new();
+    let mut src_pos : usize = 0;
+
+    remove.sort_by_key(|&ByteRange(start, _)| start);
+
+    for ByteRange(start, end) in remove {
+        if src_pos < start {
+            result.extend_from_slice(&source[src_pos..start]);
+        }
+        if end > src_pos {
+            src_pos = end;
+        }
+    }
+
+    if src_pos < source.len() {
+        result.extend_from_slice(&source[src_pos..])
+    }
+
+    String::from_utf8(result).expect("malformed UTF8 when processing file")
+}
+
 pub struct Strip {
     remove: Vec<ByteRange>,
 }
@@ -36,61 +128,26 @@ impl Strip {
         Strip { remove: Vec::new() }
     }
 
-    pub fn strip(file: Rc<SourceFile>) -> Result<String, StripError> {
+    pub fn strip(file: Rc<SourceFile>) -> Result<Vec<ByteRange>, StripError> {
         let Ast { node, diagnostics } = parse(file.clone());
 
         // Return early if any errors found
         if diagnostics.iter().any(|d| d.level == Level::Error) {
-            return Err(StripError::SyntaxError(diagnostics));
+            return Err(StripError::Syntax(diagnostics));
         }
 
         // Handle empty source file
         let node = match node {
             Some(node) => node,
-            None => return Ok("".to_owned()),
+            None => return Ok(vec![]),
         };
-            
+
         let mut strip = Strip::new();
         strip.strip_node(&node);
 
-        match env::var("TYPEDRUBY_STRIP_DEBUG") {
-            Ok(ref debug) => {
-                if debug.contains("ast") {
-                    eprintln!("{}", node.debug_ast());
-                }
-                if debug.contains("annotate") {
-                    annotate_file(&file, &strip.remove).unwrap();
-                }
-            } 
-            Err(..) => {},
-        };
+        let remove = strip_trailing_whitespace(file.source(), strip.remove);
 
-        Ok(strip.process_source(file.source()))
-    }
-
-    fn process_source(&mut self, source: &str) -> String {
-        let source = source.as_bytes();
-        let mut result : Vec<u8> = Vec::new();
-        let mut src_pos : usize = 0;
-
-        self.remove.sort_by_key(|&ByteRange(start, _)| start);
-
-        for range in self.remove.iter() {
-            let &ByteRange(start, end) = range;
-
-            if src_pos < start {
-                result.extend_from_slice(&source[src_pos..start]);
-            }
-            if end > src_pos {
-                src_pos = end;
-            }
-        }
-
-        if src_pos < source.len() {
-            result.extend_from_slice(&source[src_pos..])
-        }
-
-        String::from_utf8(result).expect("malformed UTF8 when processing file")
+        Ok(remove)
     }
 
     fn remove(&mut self, loc: &Loc) {
@@ -171,13 +228,13 @@ impl Strip {
             Node::TyArray(..) |
             Node::TyClass(..) |
             Node::TyConSubtype(..) |
-            Node::TyConUnify(..) |
             Node::TyGeninst(..) |
             Node::TyHash(..) |
             Node::TyInstance(..) |
             Node::TyNil(..) |
             Node::TyNillable(..) |
             Node::TyOr(..) |
+            Node::TyParen(..) |
             Node::TyProc(..) |
             Node::TyReturnSig(..) |
             Node::TySelf(..) |
@@ -214,8 +271,10 @@ impl Strip {
             Node::IFlipflop(_, ref a, ref b) |
             Node::IRange(_, ref a, ref b) |
             Node::Masgn(_, ref a, ref b) |
+            Node::MatchAsgn(_, ref a, ref b) |
             Node::Or(_, ref a, ref b) |
             Node::OrAsgn(_, ref a, ref b) |
+            Node::OpAsgn(_, ref a, _, ref b) |
             Node::Pair(_, ref a, ref b) |
             Node::UntilPost(_, ref a, ref b) |
             Node::WhilePost(_, ref a, ref b) => {
@@ -242,22 +301,59 @@ impl Strip {
                 self.strip_node(expr);
             }
             Node::Arg(..) |
+            Node::Kwarg(..) |
             Node::Backref(..) |
             Node::Blockarg(..) |
             Node::Cbase(..) |
             Node::Complex(..) |
             Node::Cvar(..) |
-            Node::Ivar(..) |
             Node::CvarLhs(..) |
-            Node::EncodingLiteral(..) => {
+            Node::EncodingLiteral(..) |
+            Node::False(..) |
+            Node::FileLiteral(..) |
+            Node::Float(..) |
+            Node::Gvar(.. ) |
+            Node::GvarLhs(..) |
+            Node::Ident(..) |
+            Node::Integer(..) |
+            Node::Ivar(..) |
+            Node::IvarLhs(..) |
+            Node::Kwrestarg(..) |
+            Node::Lambda(..) |
+            Node::LineLiteral(..) |
+            Node::Lvar(..) |
+            Node::LvarLhs(..) |
+            Node::Nil(..) |
+            Node::NthRef(..) |
+            Node::Rational(..) |
+            Node::Redo(..) |
+            Node::Regopt(..) |
+            Node::Restarg(..) |
+            Node::Retry(..) |
+            Node::Self_(..) |
+            Node::ShadowArg(..) |
+            Node::String(..) |
+            Node::Symbol(..) |
+            Node::True(..) |
+            Node::ZSuper(..) => {
                 // No-op
             }
 
             Node::Array(_, ref nodes) |
+            Node::Hash(_, ref nodes) |
             Node::Begin(_, ref nodes) |
             Node::Break(_, ref nodes) |
             Node::DString(_, ref nodes) |
-            Node::DSymbol(_, ref nodes) => {
+            Node::DSymbol(_, ref nodes) |
+            Node::Kwbegin(_, ref nodes) |
+            Node::Mlhs(_, ref nodes) |
+            Node::Next(_, ref nodes) |
+            Node::Regexp(_, ref nodes, _) |
+            Node::Return(_, ref nodes) |
+            Node::Super(_, ref nodes) |
+            Node::Undef(_, ref nodes) |
+            Node::XString(_, ref nodes) |
+            Node::Yield(_, ref nodes) => {
                 self.strip_nodes(nodes);
             }
             Node::Block(_, ref send, ref args, ref body) => {
@@ -267,11 +363,23 @@ impl Strip {
             }
             Node::BlockPass(_, ref node) |
             Node::CvarAsgn(_, _, ref node) |
-            Node::Defined(_, ref node) => {
+            Node::Defined(_, ref node) |
+            Node::GvarAsgn(_, _, ref node) |
+            Node::IvarAsgn(_, _, ref node) |
+            Node::Kwoptarg(_, _, ref node) |
+            Node::Kwsplat(_, ref node) |
+            Node::LvarAsgn(_, _, ref node) |
+            Node::MatchCurLine(_, ref node) |
+            Node::Optarg(_, _, ref node) |
+            Node::Procarg0(_, ref node) |
+            Node::Splat(_, ref node) => {
                 self.strip_node(node);
             }
             Node::Const(_, ref node, _) |
-            Node::ConstLhs(_, ref node, _) => {
+            Node::ConstLhs(_, ref node, _) |
+            Node::Postexe(_, ref node) |
+            Node::Preexe(_, ref node) |
+            Node::SplatLhs(_, ref node) => {
                 self.strip_node(node);
             }
             Node::Case(_, ref scrut, ref whens, ref else_) => {
@@ -298,8 +406,26 @@ impl Strip {
                 self.strip_node(args);
                 self.strip_node(body);
             }
-
-            _ => {}
+            Node::For(_, ref lhs, ref rhs, ref body) => {
+                self.strip_node(lhs);
+                self.strip_node(rhs);
+                self.strip_node(body);
+            }
+            Node::If(_, ref cond, ref then, ref else_) => {
+                self.strip_node(cond);
+                self.strip_node(then);
+                self.strip_node(else_);
+            }
+            Node::Resbody(_, ref class, ref var, ref body) => {
+                self.strip_node(class);
+                self.strip_node(var);
+                self.strip_node(body);
+            }
+            Node::Rescue(_, ref body, ref resbodies, ref else_) => {
+                self.strip_node(body);
+                self.strip_nodes(resbodies);
+                self.strip_node(else_);
+            }
         }
     }
 }
@@ -308,13 +434,17 @@ impl Strip {
 mod tests {
     extern crate glob;
     use std::io::Write;
-    use std::path::PathBuf;
     use std::process::{Command, Stdio};
     use super::*;
 
-    fn verify_stripped_syntax(path: PathBuf) {
-        let source = SourceFile::open(path.clone()).expect("failed to open source");
-        let stripped = Strip::strip(Rc::new(source)).unwrap();
+    fn strip(source: Rc<SourceFile>) -> String {
+        let remove = Strip::strip(source.clone()).unwrap();
+        remove_byte_ranges(source.source(), remove)
+    }
+
+    fn verify_stripped_syntax(source: Rc<SourceFile>) {
+        let stripped = strip(source.clone());
+
         let mut ruby_child = Command::new("ruby")
             .arg("-c")
             .stdin(Stdio::piped())
@@ -328,19 +458,23 @@ mod tests {
         let ruby_result = ruby_child.wait_with_output().unwrap();
         assert!(ruby_result.status.success(),
             "stripped syntax for '{}' is not valid Ruby.\nruby -c output:\n\n{}\n",
-            path.display(), String::from_utf8_lossy(&ruby_result.stderr)
+            source.filename().display(), String::from_utf8_lossy(&ruby_result.stderr)
         );
     }
 
     fn verify_stripped_sources(path: &str) {
         for path in glob::glob(path).unwrap().filter_map(Result::ok) {
             println!("checking: {}...", path.display());
-            verify_stripped_syntax(path);
+            let source = Rc::new(SourceFile::open(path.clone())
+                .expect("failed to open source"));
+            verify_stripped_syntax(source);
         }
     }
 
     #[test]
     fn test_annotation_stripping() {
+        use std::env;
+
         verify_stripped_sources("tests/fixtures/*.rb");
         verify_stripped_sources("definitions/lib/*.rb");
 
@@ -348,5 +482,14 @@ mod tests {
             Ok(ref path) => verify_stripped_sources(path),
             Err(..) => {},
         };
+    }
+
+    #[test]
+    fn strips_trailing_whitespace() {
+        let source = Rc::new(SourceFile::new("(test)".into(), "def foo => T  \n\n  123\nend".to_owned()));
+
+        let stripped = strip(source);
+
+        assert_eq!("def foo\n\n  123\nend", stripped);
     }
 }

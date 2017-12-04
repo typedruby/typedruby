@@ -17,12 +17,6 @@ def typedruby_bin_path
   }
 end
 
-def typedruby_lib_path
-  ENV.fetch("TYPEDRUBY_LIB") {
-    File.expand_path("../definitions/lib", __dir__)
-  }
-end
+ENV["TYPEDRUBY_LIB"] ||= File.expand_path("../definitions/lib", __dir__)
 
-exec [typedruby_bin_path, $0],
-  "-I#{typedruby_lib_path}",
-  *ARGV
+exec [typedruby_bin_path, $0], *ARGV

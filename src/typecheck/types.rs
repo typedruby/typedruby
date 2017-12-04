@@ -1,22 +1,34 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
+use std::cmp::Ordering;
 use ast::{Loc, Node, Id};
 use environment::Environment;
 use object::RubyObject;
 use typed_arena::Arena;
-use immutable_map::TreeMap;
 use util::Or;
 use itertools::Itertools;
 use std::ops::Deref;
-use std::iter;
+use std::iter::{self, FromIterator};
 use std::collections::HashMap;
 use typecheck::materialize::Materialize;
+use vec_map::VecMap;
 
 pub type TypeVarId = usize;
 
-pub type UnificationError<'ty, 'object> = (TypeRef<'ty, 'object>, TypeRef<'ty, 'object>);
-pub type UnificationResult<'ty, 'object> = Result<(), UnificationError<'ty, 'object>>;
+#[derive(Debug)]
+pub enum TypeError<'ty, 'object: 'ty> {
+    Incompatible(TypeRef<'ty, 'object>, TypeRef<'ty, 'object>),
+    Recursive(TypeRef<'ty, 'object>, TypeVarId, Loc),
+}
+
+pub type TypeResult<'ty, 'object, T> = Result<T, TypeError<'ty, 'object>>;
+
+pub type MatchResult<'ty, 'object> = TypeResult<'ty, 'object, ()>;
+
+enum UnionCompatibilityError {
+    NoMatch,
+}
 
 #[derive(Debug,Clone)]
 enum SelfInfo<'ty, 'object: 'ty> {
@@ -48,6 +60,99 @@ impl<'ty, 'object> SelfInfo<'ty, 'object> {
                 }
             }
             SelfInfo::Instance(class, _) => class,
+        }
+    }
+}
+
+pub struct TypeMapData<T> {
+    map: VecMap<T>,
+    log: Vec<(TypeVarId, T)>,
+}
+
+impl<T: Clone> TypeMapData<T> {
+    pub fn new() -> Self {
+        TypeMapData { map: VecMap::new(), log: Vec::new() }
+    }
+
+    pub fn insert(&mut self, id: TypeVarId, val: T) {
+        match self.map.insert(id, val.clone()) {
+            None => {
+                // insert into log:
+                self.log.push((id, val));
+            }
+            Some(_) => {
+                panic!("tried to set already-set TypeVarId in TypeMap - this is a critical logic error");
+            }
+        }
+    }
+
+    pub fn get(&self, id: TypeVarId) -> Option<T> {
+        self.map.get(id).cloned()
+    }
+}
+
+impl<T: Clone> FromIterator<(TypeVarId, T)> for TypeMapData<T> {
+    fn from_iter<It: IntoIterator<Item = (TypeVarId, T)>>(iter: It) -> Self {
+        let mut map = Self::new();
+
+        for (id, val) in iter {
+            map.insert(id, val)
+        }
+
+        map
+    }
+}
+
+pub enum TransactionFlag<U> {
+    Commit(U),
+    Rollback(U),
+}
+
+pub enum TransactionResult<T> {
+    Committed,
+    RolledBack(TypeMapData<T>)
+}
+
+struct TypeMap<T> {
+    inner: RefCell<TypeMapData<T>>,
+}
+
+impl<T: Clone> TypeMap<T> {
+    pub fn new() -> Self {
+        TypeMap { inner: RefCell::new(TypeMapData::new()) }
+    }
+
+    pub fn insert(&self, id: TypeVarId, val: T) {
+        self.inner.borrow_mut().insert(id, val)
+    }
+
+    pub fn get(&self, id: TypeVarId) -> Option<T> {
+        self.inner.borrow().get(id)
+    }
+
+    pub fn transaction<F, U>(&self, f: F) -> (U, TransactionResult<T>)
+        where F: FnOnce() -> TransactionFlag<U>
+    {
+        let log_len = {
+            self.inner.borrow().log.len()
+        };
+
+        match f() {
+            TransactionFlag::Commit(val) => (val, TransactionResult::Committed),
+            TransactionFlag::Rollback(val) => {
+                let mut inner = self.inner.borrow_mut();
+
+                let changes = inner.log.split_off(log_len);
+
+                for &(id, _) in &changes {
+                    match inner.map.remove(id) {
+                        None => { panic!("expected TypeVarId to be mapped to a type"); }
+                        Some(_) => { /* ok */ }
+                    }
+                }
+
+                (val, TransactionResult::RolledBack(changes.into_iter().collect()))
+            }
         }
     }
 }
@@ -94,11 +199,10 @@ impl<'ty, 'object> TypeContext<'ty, 'object> {
     }
 }
 
-#[derive(Clone)]
 pub struct TypeEnv<'ty, 'object: 'ty> {
     arena: &'ty Arena<Type<'ty, 'object>>,
     next_id: Rc<Cell<TypeVarId>>,
-    instance_map: RefCell<TreeMap<TypeVarId, TypeRef<'ty, 'object>>>,
+    type_map: TypeMap<TypeRef<'ty, 'object>>,
     env: &'ty Environment<'object>,
 }
 
@@ -107,7 +211,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         TypeEnv {
             arena: arena,
             env: env,
-            instance_map: RefCell::new(TreeMap::new()),
+            type_map: TypeMap::new(),
             next_id: Rc::new(Cell::new(1)),
         }
     }
@@ -235,21 +339,16 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
     }
 
     fn set_var(&self, id: TypeVarId, ty: TypeRef<'ty, 'object>) {
-        let mut instance_map_ref = self.instance_map.borrow_mut();
-
-        *instance_map_ref = instance_map_ref.insert_or_update(id, ty.clone(), |v|
-            panic!("attempted to set typevar {} to {:?}, but is already {:?}",
-                id, ty, v)
-        );
+        self.type_map.insert(id, ty);
     }
 
     pub fn prune(&self, ty: TypeRef<'ty, 'object>) -> TypeRef<'ty, 'object> {
         match *ty {
-            Type::Var { ref id, .. } |
-            Type::LocalVariable { ref id, .. } |
-            Type::KeywordHash { ref id, .. } |
-            Type::Tuple { ref id, .. } => {
-                if let Some(&instance) = { self.instance_map.borrow().get(id) } {
+            Type::Var { id, .. } |
+            Type::LocalVariable { id, .. } |
+            Type::KeywordHash { id, .. } |
+            Type::Tuple { id, .. } => {
+                if let Some(instance) = { self.type_map.get(id) } {
                     return self.prune(instance)
                 }
             },
@@ -288,18 +387,106 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             })
     }
 
-    pub fn compatible(&self, to: TypeRef<'ty, 'object>, from: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
-        let to = self.prune(to);
-        let from = self.prune(from);
+    fn ordered_union_types(&self, union_tys: &[TypeRef<'ty, 'object>])
+        -> Vec<TypeRef<'ty, 'object>>
+    {
+        let mut types = union_tys.iter()
+            .map(|ty| {
+                let depth = self.type_var_depth(*ty);
+                (depth, *ty)
+            })
+            .collect::<Vec<_>>();
+
+        types.sort_by(|&(a_depth, _), &(b_depth, _)|
+            match (a_depth, b_depth) {
+                (None, None) => Ordering::Equal,
+                (None, Some(_)) => Ordering::Less,
+                (Some(_), None) => Ordering::Greater,
+                (Some(a), Some(b)) => {
+                    // This cmp is intentionally flipped - we want to sort
+                    // types so that those with depth None are first, followed
+                    // by types with Some depth in descending order:
+                    b.cmp(&a)
+                }
+            });
+
+        types.into_iter().map(|(_, ty)| ty).collect()
+    }
+
+    fn compatible_from_union(&self, to_ty: TypeRef<'ty, 'object>, union_tys: &[TypeRef<'ty, 'object>])
+        -> Result<(), UnionCompatibilityError>
+    {
+        let (result, _) = self.type_map.transaction(|| {
+            for ty in self.ordered_union_types(union_tys) {
+                if self.compatible(to_ty, ty).is_err() {
+                    return TransactionFlag::Rollback(Err(UnionCompatibilityError::NoMatch));
+                }
+            }
+
+            TransactionFlag::Commit(Ok(()))
+        });
+
+        result
+    }
+
+    fn compatible_to_union(&self, union_tys: &[TypeRef<'ty, 'object>], from_ty: TypeRef<'ty, 'object>)
+        -> Result<(), UnionCompatibilityError>
+    {
+        let candidates = self.ordered_union_types(union_tys)
+            .into_iter()
+            .filter_map(|ty| {
+                let (result, _) = self.type_map.transaction(|| {
+                    TransactionFlag::Rollback(self.compatible(ty, from_ty))
+                });
+
+                result.map(|()| ty).ok()
+            })
+            .collect::<Vec<_>>();
+
+        let (result, _) = self.type_map.transaction(|| {
+            let is_match = candidates.into_iter().any(|ty| {
+                self.compatible(ty, from_ty).is_ok()
+            });
+
+            if is_match {
+                TransactionFlag::Commit(Ok(()))
+            } else {
+                TransactionFlag::Rollback(Err(UnionCompatibilityError::NoMatch))
+            }
+        });
+
+        result
+    }
+
+    fn unify_var(&self, ty: TypeRef<'ty, 'object>, var_id: TypeVarId, loc: &Loc) -> MatchResult<'ty, 'object> {
+        if let Type::Var { id: ty_id, .. } = *ty {
+            if var_id == ty_id {
+                return Ok(())
+            }
+        }
+
+        if self.occurs(ty, var_id) {
+            Err(TypeError::Recursive(ty, var_id, loc.clone()))
+        } else {
+            self.set_var(var_id, ty);
+            Ok(())
+        }
+    }
+
+    pub fn compatible(&self, to_: TypeRef<'ty, 'object>, from_: TypeRef<'ty, 'object>) -> MatchResult<'ty, 'object> {
+        let to = self.prune(to_);
+        let from = self.prune(from_);
 
         match (to.deref(), from.deref()) {
-            (&Type::Var { .. }, _) =>
-                self.unify(to, from),
-            (_, &Type::Var { .. }) =>
-                self.unify(to, from),
+            (&Type::Var { id: to_id, .. }, _) => {
+                self.unify_var(from, to_id, from_.loc())
+            }
+            (_, &Type::Var { id: from_id, .. }) => {
+                self.unify_var(to, from_id, to_.loc())
+            }
             (&Type::Instance { class: to_class, type_parameters: ref to_tp, .. }, &Type::Instance { class: from_class, type_parameters: ref from_tp, .. }) => {
                 if from_class.ancestors().find(|c| c.delegate() == to_class).is_none() {
-                    return Err((to, from));
+                    return Err(TypeError::Incompatible(to, from));
                 }
 
                 let from_tyctx = TypeContext::with_type(from, from_class, from_tp.clone());
@@ -313,22 +500,16 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                        .and_then(|()| self.compatible(from_ty, to_ty)))
             },
             (_, &Type::Union { types: ref from_types, .. }) => {
-                for from_type in from_types {
-                    if let e@Err(..) = self.compatible(to, *from_type) {
-                        return e;
-                    }
-                }
-
-                Ok(())
+                self.compatible_from_union(to, from_types)
+                    .map_err(|e| match e {
+                        UnionCompatibilityError::NoMatch => TypeError::Incompatible(to, from)
+                    })
             },
             (&Type::Union { types: ref to_types, .. }, _) => {
-                for to_type in to_types {
-                    if let Ok(()) = self.compatible(*to_type, from) {
-                        return Ok(());
-                    }
-                }
-
-                Err((to, from))
+                self.compatible_to_union(to_types, from)
+                    .map_err(|e| match e {
+                        UnionCompatibilityError::NoMatch => TypeError::Incompatible(to, from)
+                    })
             },
             (&Type::Any { .. }, _) => Ok(()),
             (_, &Type::Any { .. }) => Ok(()),
@@ -403,7 +584,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                         from_elems.consume_front();
                         self.compatible(to_ty, from_ty)?;
                     } else {
-                        return Err((to, from));
+                        return Err(TypeError::Incompatible(to, from));
                     }
                 } else if let Some(&SplatArg::Splat(_)) = to_elems.first() {
                     to_elems.consume_front();
@@ -414,9 +595,12 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
                 Ok(())
             }
+            (&Type::KeywordHash { .. }, &Type::KeywordHash { .. }) => {
+                panic!("TODO implement compatible for keyword hash to keyword hash");
+            }
             (&Type::KeywordHash { ref keywords, splat, .. }, &Type::Instance { class, ref type_parameters, .. }) => {
                 if !self.is_hash(class) {
-                    return Err((to, from));
+                    return Err(TypeError::Incompatible(to, from));
                 }
 
                 let key_ty = type_parameters[0];
@@ -426,7 +610,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     Type::Instance { class, .. } if class.is_a(self.env.object.Symbol) => {
                         // ok!
                     },
-                    _ => return Err((to, from)),
+                    _ => return Err(TypeError::Incompatible(to, from)),
                 }
 
                 keywords.iter()
@@ -437,14 +621,20 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     })
             }
             (&Type::Proc { proto: ref to_proto, .. }, &Type::Proc { proto: ref from_proto, .. }) => {
-                self.compatible_prototype(to_proto, from_proto).unwrap_or(Err((to, from)))
+                self.compatible_prototype(to_proto, from_proto).unwrap_or(Err(TypeError::Incompatible(to, from)))
             }
-            (_, _) =>
-                self.unify(to, from),
+            (&Type::TypeParameter { name: ref name1, .. }, &Type::TypeParameter { name: ref name2, .. }) => {
+                if name1 == name2 {
+                    Ok(())
+                } else {
+                    Err(TypeError::Incompatible(to, from))
+                }
+            }
+            (_, _) => Err(TypeError::Incompatible(to, from))
         }
     }
 
-    pub fn compatible_prototype(&self, to: &Prototype<'ty, 'object>, from: &Prototype<'ty, 'object>) -> Option<UnificationResult<'ty, 'object>> {
+    pub fn compatible_prototype(&self, to: &Prototype<'ty, 'object>, from: &Prototype<'ty, 'object>) -> Option<MatchResult<'ty, 'object>> {
         self.compatible_args(&to.args, &from.args).map(|result|
             result.and_then(|()|
                 self.compatible(to.retn, from.retn)))
@@ -473,7 +663,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         Some(Arg::Required { loc: args_loc.clone(), ty: self.tuple(args_loc, arg_types, None, vec![]) })
     }
 
-    pub fn compatible_args(&self, to: &[Arg<'ty, 'object>], from: &[Arg<'ty, 'object>]) -> Option<UnificationResult<'ty, 'object>> {
+    pub fn compatible_args(&self, to: &[Arg<'ty, 'object>], from: &[Arg<'ty, 'object>]) -> Option<MatchResult<'ty, 'object>> {
         if to.len() == 1 {
             if let Arg::Procarg0 { arg: ref arg1, .. } = to[0] {
                 if from.len() == 1 {
@@ -511,7 +701,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         Some(Ok(()))
     }
 
-    pub fn compatible_arg(&self, to: &Arg<'ty, 'object>, from: &Arg<'ty, 'object>) -> Option<UnificationResult<'ty, 'object>> {
+    pub fn compatible_arg(&self, to: &Arg<'ty, 'object>, from: &Arg<'ty, 'object>) -> Option<MatchResult<'ty, 'object>> {
         match (to, from) {
             (&Arg::Procarg0 { arg: ref arg1, .. }, &Arg::Procarg0 { arg: ref arg2, .. }) =>
                 self.compatible_arg(arg2, arg1),
@@ -531,7 +721,15 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
         }
     }
 
-    pub fn is_unresolved_var(&self, ty: TypeRef<'ty, 'object>) -> bool {
+    pub fn instantiate_var(&self, tyvar: TypeRef<'ty, 'object>, ty: TypeRef<'ty, 'object>) {
+        if let Type::Var { id, .. } = *self.prune(tyvar) {
+            self.set_var(id, ty);
+        } else {
+            panic!("attempting to instantiate already instantiated type: {:?}", tyvar);
+        }
+    }
+
+    pub fn is_uninstantiated_var(&self, ty: TypeRef<'ty, 'object>) -> bool {
         if let Type::Var { .. } = *self.prune(ty) {
             true
         } else {
@@ -569,7 +767,7 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             Type::Proc { ref proto, .. } =>
                 proto.args.iter()
                     .map(|arg| match *arg.unwrap_procarg0() {
-                        Arg::Procarg0 { .. } => panic!("impossible"),
+                        Arg::Procarg0 { .. } => unreachable!(),
                         Arg::Required { ty, .. } |
                         Arg::Optional { ty, .. } |
                         Arg::Rest { ty, .. } |
@@ -580,177 +778,59 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     })
                     .chain(iter::once(proto.retn))
                     .any(|t| self.occurs(t, id)),
-            Type::LocalVariable { .. } => panic!("should not happen"),
+            Type::LocalVariable { .. } => unreachable!(),
         }
     }
 
-    pub fn unify(&self, t1: TypeRef<'ty, 'object>, t2: TypeRef<'ty, 'object>) -> UnificationResult<'ty, 'object> {
-        let t1 = self.prune(t1);
-        let t2 = self.prune(t2);
-
-        match (t1.deref(), t2.deref()) {
-            (&Type::Var { id: ref id1, .. }, _) => {
-                if let Type::Var { id: ref id2, .. } = *t2 {
-                    if id1 == id2 {
-                        // already unified
-                        return Ok(());
-                    }
-                }
-
-                if self.occurs(t2, *id1) {
-                    return Err((t1, t2));
-                } else {
-                    self.set_var(*id1, t2.clone());
-                    Ok(())
-                }
-            },
-
-            (_, &Type::Var { .. }) =>
-                self.unify(t2, t1),
-
-            (&Type::Instance { class: class1, type_parameters: ref tp1, .. }, &Type::Instance { class: class2, type_parameters: ref tp2, .. }) => {
-                if class1 != class2 {
-                    return Err((t1.clone(), t2.clone()));
-                }
-
-                self.unify_slice(tp1, tp2).expect("Instance types of same class to have same number of type parameters")
-            },
-
-            (&Type::Instance { .. }, _) =>
-                Err((t1.clone(), t2.clone())),
-
-            (&Type::Tuple { lead: ref lead1, splat: ref splat1, post: ref post1, .. }, &Type::Tuple { lead: ref lead2, splat: ref splat2, post: ref post2, .. }) => {
-                self.unify_slice(lead1, lead2)
-                    .and_then(|res|
-                        match (*splat1, *splat2) {
-                            (Some(a), Some(b)) => Some(res.and_then(|_|
-                                self.unify(a, b)
-                            )),
-                            (None, None) => Some(res),
-                            _ => None,
-                        }
-                    ).and_then(|res|
-                        match res {
-                            Ok(_) => self.unify_slice(post1, post2),
-                            Err(e) => Some(Err(e)),
-                        }
-                    ).unwrap_or(
-                        Err((t1.clone(), t2.clone()))
-                    )
-            }
-
-            (&Type::Tuple { .. }, _) =>
-                Err((t1.clone(), t2.clone())),
-
-            (&Type::Union { types: ref types1, .. }, &Type::Union { types: ref types2, .. }) => {
-                if types1.len() != types2.len() {
-                    return Err((t1, t2));
-                }
-
-                let mut marked1 = Vec::new();
-                marked1.resize(types1.len(), false);
-                let mut marked2 = marked1.clone();
-
-                // attempt to unify all concrete types first:
-                for (idx2, &ty2) in types2.iter().enumerate() {
-                    if self.is_unresolved_var(ty2) { continue }
-
-                    for (idx1, &ty1) in types1.iter().enumerate() {
-                        if marked1[idx1] { continue }
-                        if self.is_unresolved_var(ty1) { continue }
-
-                        match self.unify(ty1, ty2) {
-                            Ok(()) => {
-                                marked1[idx1] = true;
-                                marked2[idx2] = true;
-                                break
-                            }
-                            Err(..) => {
-                                continue
-                            }
-                        }
-                    }
-                }
-
-                // unify all unresolved type variables:
-                for (idx2, &ty2) in types2.iter().enumerate() {
-                    if marked2[idx2] { continue }
-
-                    for (idx1, &ty1) in types1.iter().enumerate() {
-                        if marked1[idx1] { continue }
-
-                        self.unify(ty1, ty2).expect("unifying two unresolved type variables should never fail");
-                        marked1[idx1] = true;
-                        marked2[idx2] = true;
-                    }
-                }
-
-                // if by this point not all types are marked, there was a mismatch
-                if !(marked1.iter().any(|m| *m) && marked2.iter().any(|m| *m)) {
-                    return Err((t1, t2));
-                }
-
-                Ok(())
-            },
-
-            (&Type::Union { .. }, _) =>
-                Err((t1.clone(), t2.clone())),
-
-            (&Type::Any { .. }, &Type::Any { .. }) =>
-                Ok(()),
-
-            (&Type::Any { .. }, _) =>
-                Err((t1.clone(), t2.clone())),
-
-            (&Type::TypeParameter { name: ref name1, .. }, &Type::TypeParameter { name: ref name2, .. }) =>
-                if name1 == name2 {
-                    Ok(())
-                } else {
-                    Err((t1.clone(), t2.clone()))
-                },
-
-            (&Type::TypeParameter { .. }, _) =>
-                Err((t1.clone(), t2.clone())),
-
-            (&Type::Proc { .. }, &Type::Proc { .. }) => {
-                panic!("TODO unify proc");
-            },
-
-            (&Type::Proc { .. }, _) =>
-                Err((t1.clone(), t2.clone())),
-
-            (&Type::KeywordHash { .. }, &Type::KeywordHash { .. }) => {
-                panic!("TODO unify keyword hash")
-            }
-
-            (&Type::KeywordHash { .. }, _) =>
-                Err((t1.clone(), t2.clone())),
-
-            (&Type::LocalVariable { .. }, _) =>
-                panic!("LocalVariable should not be present after pruning!"),
+    fn type_var_depth(&self, ty: TypeRef<'ty, 'object>) -> Option<usize> {
+        match *self.prune(ty).deref() {
+            Type::Var { .. } => Some(0),
+            Type::Instance { ref type_parameters, .. } =>
+                type_parameters.iter()
+                    .filter_map(|ty| self.type_var_depth(*ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::Tuple { ref lead, ref splat, ref post, .. } =>
+                lead.iter().chain(splat).chain(post)
+                    .filter_map(|ty| self.type_var_depth(*ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::Union { ref types, .. } =>
+                types.iter()
+                    .filter_map(|ty| self.type_var_depth(*ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::KeywordHash { ref keywords, .. } =>
+                keywords.iter()
+                    .map(|&(_, ty)| ty)
+                    .filter_map(|ty| self.type_var_depth(ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::Proc { ref proto, .. } =>
+                proto.args.iter()
+                    .map(|arg| match *arg.unwrap_procarg0() {
+                        Arg::Procarg0 { .. } => unreachable!(),
+                        Arg::Required { ty, .. } |
+                        Arg::Optional { ty, .. } |
+                        Arg::Rest { ty, .. } |
+                        Arg::Kwarg { ty, .. } |
+                        Arg::Kwoptarg { ty, .. } |
+                        Arg::Kwrest { ty, .. } |
+                        Arg::Block { ty, .. } => ty
+                    })
+                    .chain(iter::once(proto.retn))
+                    .filter_map(|ty| self.type_var_depth(ty))
+                    .min()
+                    .map(|depth| depth + 1),
+            Type::Any { .. } |
+            Type::TypeParameter { .. } => None,
+            Type::LocalVariable { .. } => unreachable!(),
         }
-    }
-
-    fn unify_slice(&self, types1: &[TypeRef<'ty, 'object>], types2: &[TypeRef<'ty, 'object>]) -> Option<UnificationResult<'ty, 'object>> {
-        if types1.len() != types2.len() {
-            return None;
-        }
-
-        for (&a, &b) in types1.iter().zip(types2.iter()) {
-            match self.unify(a, b) {
-                Ok(_) => {},
-                err@Err(..) => return Some(err),
-            }
-        }
-
-        Some(Ok(()))
     }
 
     pub fn update_loc(&self, ty: TypeRef<'ty, 'object>, loc: Loc) -> TypeRef<'ty, 'object> {
         let tyvar = self.new_var(loc);
-
-        self.unify(tyvar, ty).expect("unifying new tyvar");
-
+        self.instantiate_var(tyvar, ty);
         tyvar
     }
 
@@ -1212,7 +1292,7 @@ pub enum Type<'ty, 'object: 'ty> {
         keywords: Vec<(String, TypeRef<'ty, 'object>)>,
         splat: Option<TypeRef<'ty, 'object>>,
         // keyword hash types can degrade to normal hash instances
-        // when they do, there will be an entry in the instance_map for this
+        // when they do, there will be an entry in the type_map for this
         // id:
         id: TypeVarId,
     },
@@ -1233,11 +1313,6 @@ pub enum Type<'ty, 'object: 'ty> {
 
 #[derive(Debug)]
 pub enum TypeConstraint<'ty, 'object: 'ty> {
-    Unify {
-        loc: Loc,
-        a: TypeRef<'ty, 'object>,
-        b: TypeRef<'ty, 'object>,
-    },
     Compatible {
         loc: Loc,
         sub: TypeRef<'ty, 'object>,

@@ -28,7 +28,7 @@ end
 main
 ```
 
-If we run TypedRuby over that code with `bundle exec typedruby example.rb`, it should exit cleanly without reporting any errors. Yay!
+If we run TypedRuby over that code with `bundle exec typedruby check example.rb`, it should exit cleanly without reporting any errors. Yay!
 
 Let's try tweaking our `main` method:
 

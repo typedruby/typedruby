@@ -1,6 +1,6 @@
 use termcolor::{Color, ColorSpec, WriteColor};
 use std::io::{Result};
-use ast::Loc;
+use ast::{Loc, Diagnostic, Level};
 
 pub enum Detail<'a> {
     Message(&'a str),
@@ -13,6 +13,18 @@ pub trait ErrorSink {
 
     fn error_count(&self) -> usize;
     fn warning_count(&self) -> usize;
+
+    fn parser_diagnostic(&mut self, diagnostic: &Diagnostic) {
+        match diagnostic.level {
+            Level::Note => {}
+            Level::Warning => {}
+            Level::Error | Level::Fatal => {
+                self.error(&format!("{}", diagnostic), &[
+                    Detail::Loc("here", &diagnostic.loc),
+                ]);
+            }
+        }
+    }
 }
 
 fn color_scheme(base: Color) -> (ColorSpec, ColorSpec, ColorSpec) {
@@ -124,7 +136,7 @@ impl<T: WriteColor> ErrorReporter<T> {
             }
         }
 
-        self.need_newline_padding = true;
+        self.need_newline_padding = details.len() > 0;
         Ok(())
     }
 }
