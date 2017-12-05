@@ -414,12 +414,13 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
     }
 
     fn compatible_from_union(&self, to_ty: TypeRef<'ty, 'object>, union_tys: &[TypeRef<'ty, 'object>])
-        -> Result<(), UnionCompatibilityError>
+        -> Result<(), TypeError<'ty, 'object>>
     {
         let (result, _) = self.type_map.transaction(|| {
             for ty in self.ordered_union_types(union_tys) {
-                if self.compatible(to_ty, ty).is_err() {
-                    return TransactionFlag::Rollback(Err(UnionCompatibilityError::NoMatch));
+                match self.compatible(to_ty, ty) {
+                    Ok(()) => {}
+                    Err(e) => return TransactionFlag::Rollback(Err(e))
                 }
             }
 
@@ -501,9 +502,6 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
             },
             (_, &Type::Union { types: ref from_types, .. }) => {
                 self.compatible_from_union(to, from_types)
-                    .map_err(|e| match e {
-                        UnionCompatibilityError::NoMatch => TypeError::Incompatible(to, from)
-                    })
             },
             (&Type::Union { types: ref to_types, .. }, _) => {
                 self.compatible_to_union(to_types, from)

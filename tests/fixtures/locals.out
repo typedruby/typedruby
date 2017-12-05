@@ -1,0 +1,197 @@
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/locals.rb:1
+      1 |  def test_rebind => nil
+                              ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:3
+      3 |    a = "foo"
+                 ^^^^^ String
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/locals.rb:1
+      1 |  def test_rebind => nil
+                              ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:4
+      4 |    a
+             ^ String
+
+error: Cannot assign value of type:
+
+        @ __ROOT__/tests/fixtures/locals.rb:10
+     10 |    a = "foo"
+                 ^^^^^ String
+        @ __ROOT__/tests/fixtures/locals.rb:10
+     10 |    a = "foo"
+             ^^^^^^^^^ to Integer in this expression
+        @ __ROOT__/tests/fixtures/locals.rb:9
+      9 |    tap do |_| a end
+                        ^ because this variable is referenced from a block
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/locals.rb:7
+      7 |  def test_pin => nil
+                           ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:8
+      8 |    a = 123
+                 ^^^ Integer
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/locals.rb:7
+      7 |  def test_pin => nil
+                           ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:11
+     11 |    a
+             ^ Integer
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/locals.rb:14
+     14 |  def test_union => nil
+                             ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:16
+     16 |      a = 123
+                   ^^^ Integer
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/locals.rb:14
+     14 |  def test_union => nil
+                             ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:21
+     21 |    a
+             ^ Integer | String
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/locals.rb:24
+     24 |  def test_union2 => nil
+                              ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:28
+     28 |      a = "foo"
+                   ^^^^^ String
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/locals.rb:24
+     24 |  def test_union2 => nil
+                              ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:31
+     31 |    a
+             ^ String | Integer
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/locals.rb:34
+     34 |  def test_conditionally_pinned => nil
+                                            ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:36
+     36 |      a = 123
+                   ^^^ Integer
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/locals.rb:34
+     34 |  def test_conditionally_pinned => nil
+                                            ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:40
+     40 |    a
+             ^ NilClass | Integer
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/locals.rb:43
+     43 |  def test_conditionally_pinned2 => nil
+                                             ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:44
+     44 |    a = 123
+                 ^^^ Integer
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/locals.rb:43
+     43 |  def test_conditionally_pinned2 => nil
+                                             ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:50
+     50 |    a
+             ^ Integer
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/locals.rb:53
+     53 |  def test_rescue_uncertainty => nil
+                                          ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:56
+     56 |      a = "foo"
+                   ^^^^^ String
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/locals.rb:53
+     53 |  def test_rescue_uncertainty => nil
+                                          ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:60
+     60 |    a
+             ^ String | NilClass | Integer
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/locals.rb:63
+     63 |  def test_rescue_refine => nil
+                                     ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:65
+     65 |      a = 123
+                   ^^^ Integer
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/locals.rb:63
+     63 |  def test_rescue_refine => nil
+                                     ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:71
+     71 |      return a
+                      ^ Integer
+
+error: Cannot assign value of type:
+
+        @ __ROOT__/tests/fixtures/locals.rb:77
+     77 |      a = 123
+                   ^^^ NilClass | Integer | String
+        @ __ROOT__/tests/fixtures/locals.rb:77
+     77 |      a = 123
+               ^^^^^^^ to String in this expression
+        @ __ROOT__/tests/fixtures/locals.rb:81
+     81 |          a
+                   ^ because this variable is referenced from a block
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/locals.rb:75
+     75 |  def test_pin_uncertain => nil
+                                     ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:78
+     78 |      a = "foo"
+                   ^^^^^ String
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/locals.rb:75
+     75 |  def test_pin_uncertain => nil
+                                     ^^^ NilClass, with:
+        @ __ROOT__/tests/fixtures/locals.rb:87
+     87 |    a
+             ^ String
+
+error: Cannot assign value of type:
+
+        @ __ROOT__/tests/fixtures/locals.rb:107
+    107 |    a = "foo"
+                 ^^^^^ String
+        @ __ROOT__/tests/fixtures/locals.rb:107
+    107 |    a = "foo"
+             ^^^^^^^^^ to Integer in this expression
+        @ __ROOT__/tests/fixtures/locals.rb:99
+     99 |            a
+                     ^ because this variable is referenced from a block

@@ -1,6 +1,6 @@
 use std::rc::Rc;
 use typecheck::control::{Computation, ComputationPredicate, EvalResult};
-use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge};
+use typecheck::locals::{Locals, LocalEntry, LocalEntryMerge, PinnedType};
 use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, KwsplatResult, SplatArg, TypeConstraint, TypeError};
 use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
@@ -208,6 +208,16 @@ impl<'ty, 'object> Eval<'ty, 'object> {
 
                 self.error("Type cannot contain itself:", &details);
             }
+        }
+    }
+
+    fn compatible_asgn(&self, to: &PinnedType<'ty, 'object>, from: TypeRef<'ty, 'object>, loc: &Loc) {
+        if self.tyenv.compatible(to.ty, from).is_err() {
+            self.error("Cannot assign value of type:", &[
+                Detail::Loc(&self.tyenv.describe(from), from.loc()),
+                Detail::Loc(&format!("to {} in this expression", self.tyenv.describe(to.ty)), loc),
+                Detail::Loc("because this variable is referenced from a block", &to.pinned_loc),
+            ]);
         }
     }
 
@@ -475,9 +485,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         }
     }
 
-    fn merge_locals(&self, a: Locals<'ty, 'object>, b: Locals<'ty, 'object>) -> Locals<'ty, 'object> {
+    fn uncertain_locals(&self, uncertain: Locals<'ty, 'object>, since: Locals<'ty, 'object>) -> Locals<'ty, 'object> {
         let mut merges = Vec::new();
-        let merged_locals = a.merge(b, &self.tyenv, &mut merges);
+        let merged_locals = uncertain.uncertain(since, &self.tyenv, &mut merges);
         self.process_local_merges(merges);
         merged_locals
     }
@@ -486,8 +496,22 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         for merge in merges {
             match merge {
                 LocalEntryMerge::Ok(_) => {},
-                LocalEntryMerge::MustMatch(_, to, from) => {
-                    self.compatible(to, from, None);
+                LocalEntryMerge::MustMatch(to_entry, from_entry) => {
+                    match to_entry {
+                        LocalEntry::Pinned(pin) |
+                        LocalEntry::ConditionallyPinned(pin) => {
+                            match from_entry {
+                                LocalEntry::Bound(bind) => {
+                                    self.compatible_asgn(&pin, bind.ty, &bind.asgn_loc);
+                                }
+                                LocalEntry::Pinned(sub_pin) |
+                                LocalEntry::ConditionallyPinned(sub_pin) => {
+                                    self.compatible(pin.ty, sub_pin.ty, None);
+                                }
+                            }
+                        }
+                        _ => panic!("should not happen"),
+                    }
                 }
             }
         }
@@ -1095,20 +1119,20 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn lookup_lvar(&self, loc: &Loc, name: &str, locals: Locals<'ty, 'object>)
         -> EvalResult<'ty, 'object, Option<TypeRef<'ty, 'object>>>
     {
-        let (ty, locals) = locals.lookup(name);
+        let (entry, locals) = locals.lookup(name, loc);
 
-        let ty = match ty {
-            LocalEntry::Bound(ty) |
-            LocalEntry::Pinned(ty) => {
-                let lv_ty = self.tyenv.local_variable(loc.clone(), name.to_owned(), ty);
-                Some(lv_ty)
+        let ty = entry.map(|entry| match entry {
+            LocalEntry::Bound(bind) => {
+                self.tyenv.local_variable(loc.clone(), name.to_owned(), bind.ty)
             }
-            LocalEntry::ConditionallyPinned(ty) => {
-                let lv_ty = self.tyenv.nillable(loc, self.tyenv.local_variable(loc.clone(), name.to_owned(), ty));
-                Some(lv_ty)
+            LocalEntry::Pinned(pin) => {
+                self.tyenv.local_variable(loc.clone(), name.to_owned(), pin.ty)
             }
-            LocalEntry::Unbound => None,
-        };
+            LocalEntry::ConditionallyPinned(pin) => {
+                self.tyenv.nillable(loc,
+                    self.tyenv.local_variable(loc.clone(), name.to_owned(), pin.ty))
+            }
+        });
 
         EvalResult::Ok(ty, locals)
     }
@@ -1130,15 +1154,15 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     fn assign_lvar(&self, name: &str, ty: TypeRef<'ty, 'object>, locals: Locals<'ty, 'object>, loc: &Loc)
         -> Locals<'ty, 'object>
     {
-        match locals.assign(name.to_owned(), ty) {
+        match locals.assign(name.to_owned(), ty, loc) {
             // in the none case, the assignment happened
             // successfully and the local variable entry is now set
             // to the type we passed in:
             (None, l) => l,
             // in the some case, the local variable is already
             // pinned to a type and we must check type compatibility:
-            (Some(lvar_ty), l) => {
-                self.compatible(lvar_ty, ty, Some(loc));
+            (Some(pin), l) => {
+                self.compatible_asgn(&pin, ty, loc);
                 l
             }
         }
@@ -1150,8 +1174,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         match *lhs {
             Lhs::Lvar(ref loc, ref name) => {
                 let lv_ty = self.tyenv.new_var(loc.clone());
-                match locals.assign(name.clone(), lv_ty) {
-                    (Some(ty), locals) => EvalResult::Ok(ty, locals),
+                match locals.assign(name.clone(), lv_ty, loc) {
+                    (Some(pin), locals) => EvalResult::Ok(pin.ty, locals),
                     (None, locals) => EvalResult::Ok(lv_ty, locals),
                 }
             }
@@ -1274,9 +1298,9 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     {
         match lhs {
             Lhs::Lvar(_, name) => {
-                match locals.assign(name, rty) {
-                    (Some(ty), locals) => {
-                        self.compatible(ty, rty, Some(loc));
+                match locals.assign(name, rty, loc) {
+                    (Some(pin), locals) => {
+                        self.compatible_asgn(&pin, rty, loc);
                         EvalResult::Ok((), locals)
                     }
                     (None, locals) => {
@@ -1852,11 +1876,10 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 Computation::result(ty, locals)
             }
             Node::Ensure(ref loc, ref body, ref ensure) => {
-                let body_result = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.autopin())
-                    .map_locals(&|l| l.unautopin());
+                let body_result = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.clone());
 
                 body_result.seq(&|ty, l| {
-                    let uncertain_locals = self.merge_locals(locals.clone(), l);
+                    let uncertain_locals = self.uncertain_locals(l, locals.clone());
 
                     self.process_option_node(loc, ensure.as_ref().map(Rc::as_ref), uncertain_locals).seq(&|_, l| {
                         Computation::result(ty, l)
@@ -1864,11 +1887,12 @@ impl<'ty, 'object> Eval<'ty, 'object> {
                 })
             }
             Node::Rescue(ref loc, ref body, ref resbodies, ref else_) => {
-                let body_comp = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.autopin())
-                    .map_locals(&|l| l.unautopin());
+                let body_comp = self.process_option_node(loc, body.as_ref().map(Rc::as_ref), locals.clone());
 
-                let uncertain_comp = body_comp.seq(&|ty, l|
-                    Computation::result(ty, self.merge_locals(locals.clone(), l)));
+                let uncertain_comp = body_comp.seq(&|ty, l| {
+                    let uncertain = self.uncertain_locals(l, locals.clone());
+                    Computation::result(ty, uncertain)
+                });
 
                 let rescue_comps = resbodies.iter().map(|resbody| {
                     self.seq_process(uncertain_comp.clone(), resbody)
