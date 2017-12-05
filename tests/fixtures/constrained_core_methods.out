@@ -29,7 +29,7 @@ error: Could not match types:
                                           ^^^^^^ [t3, t4], with:
         @ __ROOT__/tests/fixtures/constrained_core_methods.rb:24
      24 |    [["one", 1], 2].to_h
-             ^^^^^^^^^^^^^^^ [String, Integer] | Integer
+                          ^ Integer
 
         - arising from an attempt to match:
 
