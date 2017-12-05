@@ -170,25 +170,13 @@ fn check(mut errors: Box<ErrorSink>, mut config: CheckConfig, files: Vec<PathBuf
 
     let env = Environment::new(&arena, errors, config);
 
-    let success = files.iter().all(|file|
-        match env.require(&file) {
-            Ok(()) => true,
-            Err(e) => {
-                env.error_sink.borrow_mut()
-                    .error(&format!("{}: {}", file.display(), e), &[]);
-                false
-            }
-        });
-
+    env.load_files(files.iter());
     env.define();
-
     env.typecheck();
 
     let errors = env.error_sink.borrow();
 
-    success &&
-        errors.error_count() == 0 &&
-        errors.warning_count() == 0
+    errors.error_count() == 0 && errors.warning_count() == 0
 }
 
 fn strip(mut errors: Box<ErrorSink>, config: StripConfig, files: Vec<PathBuf>) -> bool {
