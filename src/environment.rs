@@ -240,6 +240,24 @@ impl<'object> Environment<'object> {
         None
     }
 
+    pub fn load_files<I, P>(&self, files_iter: I)
+        where I: Iterator<Item = P>, P: AsRef<Path>
+    {
+        for file in files_iter {
+            let file = file.as_ref();
+
+            match self.require(file) {
+                Ok(()) => {}
+                Err(e) => {
+                    self.error_sink.borrow_mut()
+                        .error(&format!("{}: {}", file.display(), e), &[]);
+                }
+            }
+        }
+
+        self.defs.autoload_const_references(self);
+    }
+
     pub fn define(&self) {
         self.phase.set(Phase::Define);
 
