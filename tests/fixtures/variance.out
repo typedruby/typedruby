@@ -1,0 +1,83 @@
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/variance.rb:24
+     24 |  def inv(Invariant::[B] x) => nil; end
+                               ^ B, with:
+        @ __ROOT__/tests/fixtures/variance.rb:27
+     27 |    inv(Invariant.new(A.new))
+                                 ^^^ A
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/variance.rb:24
+     24 |  def inv(Invariant::[B] x) => nil; end
+                   ^^^^^^^^^^^^^^ Invariant::[B], with:
+        @ __ROOT__/tests/fixtures/variance.rb:27
+     27 |    inv(Invariant.new(A.new))
+                 ^^^^^^^^^^^^^^^^^^^^ Invariant::[A]
+        @ __ROOT__/tests/fixtures/variance.rb:27
+     27 |    inv(Invariant.new(A.new))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^ in this expression
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/variance.rb:29
+     29 |    inv(Invariant.new(C.new))
+                                 ^^^ C, with:
+        @ __ROOT__/tests/fixtures/variance.rb:24
+     24 |  def inv(Invariant::[B] x) => nil; end
+                               ^ B
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/variance.rb:24
+     24 |  def inv(Invariant::[B] x) => nil; end
+                   ^^^^^^^^^^^^^^ Invariant::[B], with:
+        @ __ROOT__/tests/fixtures/variance.rb:29
+     29 |    inv(Invariant.new(C.new))
+                 ^^^^^^^^^^^^^^^^^^^^ Invariant::[C]
+        @ __ROOT__/tests/fixtures/variance.rb:29
+     29 |    inv(Invariant.new(C.new))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^ in this expression
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/variance.rb:32
+     32 |  def cov(Covariant::[B] x) => nil; end
+                               ^ B, with:
+        @ __ROOT__/tests/fixtures/variance.rb:35
+     35 |    cov(Covariant.new(A.new))
+                                 ^^^ A
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/variance.rb:32
+     32 |  def cov(Covariant::[B] x) => nil; end
+                   ^^^^^^^^^^^^^^ Covariant::[B], with:
+        @ __ROOT__/tests/fixtures/variance.rb:35
+     35 |    cov(Covariant.new(A.new))
+                 ^^^^^^^^^^^^^^^^^^^^ Covariant::[A]
+        @ __ROOT__/tests/fixtures/variance.rb:35
+     35 |    cov(Covariant.new(A.new))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^ in this expression
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/variance.rb:45
+     45 |    contra(Contravariant.new(C.new))
+                                        ^^^ C, with:
+        @ __ROOT__/tests/fixtures/variance.rb:40
+     40 |  def contra(Contravariant::[B] x) => nil; end
+                                      ^ B
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/variance.rb:40
+     40 |  def contra(Contravariant::[B] x) => nil; end
+                      ^^^^^^^^^^^^^^^^^^ Contravariant::[B], with:
+        @ __ROOT__/tests/fixtures/variance.rb:45
+     45 |    contra(Contravariant.new(C.new))
+                    ^^^^^^^^^^^^^^^^^^^^^^^^ Contravariant::[C]
+        @ __ROOT__/tests/fixtures/variance.rb:45
+     45 |    contra(Contravariant.new(C.new))
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ in this expression

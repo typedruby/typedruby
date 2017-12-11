@@ -2,9 +2,9 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::fmt;
 use std::cmp::Ordering;
-use ast::{Loc, Node, Id};
+use ast::{Loc, Node};
 use environment::Environment;
-use object::RubyObject;
+use object::{RubyObject, Variance};
 use typed_arena::Arena;
 use util::Or;
 use itertools::Itertools;
@@ -168,8 +168,8 @@ pub struct TypeContext<'ty, 'object: 'ty> {
 impl<'ty, 'object> TypeContext<'ty, 'object> {
     fn new(self_: SelfInfo<'ty, 'object>, class: &'object RubyObject<'object>, type_parameters: Vec<TypeRef<'ty, 'object>>) -> Self {
         let type_names =
-            class.type_parameters().iter()
-                .map(|&Id(_, ref name)| name.clone())
+            class.type_parameter_names()
+                .map(|name| name.to_owned())
                 .zip(type_parameters.iter().cloned())
                 .collect();
 
@@ -373,8 +373,8 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     .map(|param| mat.materialize_type(param, &context))
                     .collect::<Vec<_>>();
 
-                let type_names = site.module.type_parameters().iter()
-                    .map(|&Id(_, ref name)| name.to_owned())
+                let type_names = site.module.type_parameter_names()
+                    .map(|name| name.to_owned())
                     .zip(type_params.iter().cloned())
                     .collect();
 
@@ -494,11 +494,23 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
 
                 let to_tyctx = self.map_type_context(from_tyctx, to_class);
 
-                to_tp.iter().zip(to_tyctx.type_parameters).fold(Ok(()), |res, (&to_ty, from_ty)|
-                    // because an object could be mutated after coercion, we
-                    // require invariance in type parameters:
-                    res.and_then(|()| self.compatible(to_ty, from_ty))
-                       .and_then(|()| self.compatible(from_ty, to_ty)))
+                to_class.type_parameters().iter()
+                    .map(|param| &param.variance)
+                    .zip(to_tp.iter().cloned().zip(to_tyctx.type_parameters))
+                    .fold(Ok(()), |res, (variance, (to_ty, from_ty))| {
+                        match *variance {
+                            Variance::Invariant => {
+                                res.and_then(|()| self.compatible(to_ty, from_ty))
+                                   .and_then(|()| self.compatible(from_ty, to_ty))
+                            }
+                            Variance::Covariant(_) => {
+                                res.and_then(|()| self.compatible(to_ty, from_ty))
+                            }
+                            Variance::Contravariant(_) => {
+                                res.and_then(|()| self.compatible(from_ty, to_ty))
+                            }
+                        }
+                    })
             },
             (_, &Type::Union { types: ref from_types, .. }) => {
                 self.compatible_from_union(to, from_types)

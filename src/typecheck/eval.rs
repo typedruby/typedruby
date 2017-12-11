@@ -68,8 +68,8 @@ enum Lhs<'ty, 'object: 'ty> {
 
 impl<'ty, 'object> Eval<'ty, 'object> {
     pub fn process(env: &'ty Environment<'object>, tyenv: TypeEnv<'ty, 'object>, scope: Rc<Scope<'object>>, class: &'object RubyObject<'object>, body: Option<Rc<Node>>, proto: &abstract_type::Prototype<'object>) {
-        let class_type_parameters = class.type_parameters().iter().map(|&Id(ref loc, _)|
-            tyenv.new_var(loc.clone())
+        let class_type_parameters = class.type_parameters().iter().map(|param|
+            tyenv.new_var(param.name_loc().clone())
         ).collect();
 
         let mut type_context = TypeContext::instance(class, class_type_parameters);
@@ -139,7 +139,7 @@ impl<'ty, 'object> Eval<'ty, 'object> {
         } else if supplied_params < expected_params {
             let mut message = format!("{} also expects ", class.name());
 
-            for (i, &Id(_, ref name)) in class.type_parameters().iter().skip(supplied_params).enumerate() {
+            for (i, name) in class.type_parameter_names().skip(supplied_params).enumerate() {
                 if i > 0 {
                     message += ", ";
                 }
@@ -2143,6 +2143,8 @@ impl<'ty, 'object> Eval<'ty, 'object> {
             Node::TyArray(..) |
             Node::TyClass(..) |
             Node::TyConSubtype(..) |
+            Node::TyContravariant(..) |
+            Node::TyCovariant(..) |
             Node::TyCpath(..) |
             Node::TyGenargs(..) |
             Node::TyGendecl(..) |
