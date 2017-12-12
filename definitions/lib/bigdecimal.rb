@@ -7,4 +7,6 @@ class BigDecimal < Numeric
   def *(Numeric other) => BigDecimal; end
 
   def round(Integer n = 0, (Integer|Symbol) mode = 0) => BigDecimal; end
+
+  def to_r => Rational; end
 end
