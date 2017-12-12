@@ -1,7 +1,7 @@
 use ast::{Id, Node, Loc, SourceFile};
 use environment::Environment;
 use errors::Detail;
-use define::{Definitions, MethodVisibility, MethodDef, IvarDef};
+use define::{Definitions, MethodVisibility, MethodDef, IvarDef, ConstReference};
 use object::{RubyObject, Scope, ConstantEntry, IncludeError};
 use std::rc::Rc;
 use std::cell::Cell;
@@ -847,13 +847,17 @@ impl<'env, 'object> Eval<'env, 'object> {
                 self.eval_maybe_node(block_body);
             }
             Node::Const(..) => {
-                // try to autoload this const, but ignore any errors
-                let _ = self.resolve_cpath(node);
+                self.defs.add_const_reference(ConstReference {
+                    node: node.clone(),
+                    scope: self.scope.clone(),
+                });
             }
             Node::ConstLhs(_, ref base, _) => {
                 if let Some(ref base) = *base {
-                    // try to autoload this const, but ignore any errors
-                    let _ = self.resolve_cpath(base);
+                    self.defs.add_const_reference(ConstReference {
+                        node: base.clone(),
+                        scope: self.scope.clone(),
+                    });
                 }
             }
             Node::Args(_, ref args) => {

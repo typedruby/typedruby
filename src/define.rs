@@ -1,5 +1,6 @@
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
+use std::mem;
 
 use ast::{Id, Node};
 use errors::Detail;
@@ -61,9 +62,16 @@ pub struct IvarDef<'object> {
 }
 
 #[derive(Debug)]
+pub struct ConstReference<'object> {
+    pub node: Rc<Node>,
+    pub scope: Rc<Scope<'object>>,
+}
+
+#[derive(Debug)]
 pub struct Definitions<'object> {
     methods: RefCell<Vec<MethodDef<'object>>>,
     ivars: RefCell<Vec<IvarDef<'object>>>,
+    const_refs: RefCell<Vec<ConstReference<'object>>>,
 }
 
 impl<'object> Definitions<'object> {
@@ -71,6 +79,7 @@ impl<'object> Definitions<'object> {
         Definitions {
             methods: RefCell::new(Vec::new()),
             ivars: RefCell::new(Vec::new()),
+            const_refs: RefCell::new(Vec::new()),
         }
     }
 
@@ -80,6 +89,26 @@ impl<'object> Definitions<'object> {
 
     pub fn add_ivar(&self, ivar: IvarDef<'object>) {
         self.ivars.borrow_mut().push(ivar);
+    }
+
+    pub fn add_const_reference(&self, autoload: ConstReference<'object>) {
+        self.const_refs.borrow_mut().push(autoload);
+    }
+
+    pub fn autoload_const_references(&self, env: &Environment<'object>) {
+        loop {
+            let mut const_refs = Vec::new();
+            mem::swap(&mut const_refs, &mut self.const_refs.borrow_mut());
+
+            if const_refs.is_empty() {
+                break;
+            }
+
+            for const_ref in const_refs {
+                // just ignore errors when trying to autoload const references:
+                let _ = env.resolve_cpath(&const_ref.node, const_ref.scope);
+            }
+        }
     }
 
     pub fn define(&self, env: &Environment<'object>) -> Vec<Rc<MethodEntry<'object>>> {
