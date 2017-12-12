@@ -915,14 +915,21 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                 Or::Left(ty)
             } else if class.is_a(ty_class) {
                 let narrowed_ty = if let Some(ty_params) = ty_params {
-                    let mut instance_params = ty_params.to_vec();
-                    let expected_params = class.type_parameters().len();
+                    let sub_class = class;
+                    let sub_params = sub_class.type_parameters().iter()
+                        .map(|_| self.new_var(class_loc.clone()))
+                        .collect::<Vec<_>>();
+                    let sub_ty = self.instance(class_loc.clone(), sub_class, sub_params.clone());
+                    let sub_tyctx = TypeContext::with_type(sub_ty, sub_class, sub_params);
 
-                    while instance_params.len() < expected_params {
-                        instance_params.push(self.new_var(class_loc.clone()));
-                    }
+                    let super_tyctx = self.map_type_context(sub_tyctx, ty_class);
 
-                    self.instance(class_loc.clone(), class, instance_params)
+                    ty_params.iter()
+                        .zip(super_tyctx.type_parameters)
+                        .map(|(sub_tp, super_tp)| self.compatible(super_tp, *sub_tp))
+                        .fold_results((), |(), ()| ())
+                        .map(|()| sub_ty)
+                        .unwrap_or(ty)
                 } else {
                     ty
                 };
