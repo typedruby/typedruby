@@ -1,0 +1,5 @@
+error: Revealed type is: NilClass | String
+
+        @ __ROOT__/tests/fixtures/partition_by_class_narrowing.rb:9
+      9 |      reveal_type(enum.keys.first)
+                           ^^^^^^^^^^^^^^^ expression
