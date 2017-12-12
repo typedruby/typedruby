@@ -704,6 +704,8 @@ class Numeric < Object
   def nonzero? => Boolean; end
   def finite? => Boolean; end
   def infinite? => Boolean; end
+  def negative? => Boolean; end
+  def positive? => Boolean; end
 end
 
 class Integer < Numeric
@@ -718,6 +720,8 @@ class Integer < Numeric
   def *(Integer other) => Integer; end
 
   def /(Integer other) => Integer; end
+
+  def to_r => Rational; end
 end
 
 class Float < Numeric
@@ -742,6 +746,8 @@ class Float < Numeric
   def *(Float other) => Float; end
 
   def /(Float other) => Float; end
+
+  def to_r => Rational; end
 end
 
 class String < Object
@@ -808,6 +814,8 @@ class String < Object
   def intern => Symbol; end
 
   def to_i => Integer; end
+
+  def to_r => Rational; end
 end
 
 class Array::[ElementType] < Object
@@ -926,6 +934,8 @@ class NilClass < Object
 
   def to_h[K, V] => Hash::[K, V]; end
 
+  def to_r => Rational; end
+
   def &(:any other) => FalseClass; end
 
   def |(:any other) => Boolean; end
@@ -957,6 +967,13 @@ class FiberError < StandardError
 end
 
 class Rational < Numeric
+  def to_i => Integer; end
+  def to_r => Rational; end
+
+  def +(Rational other) => Rational; end
+  def -(Rational other) => Rational; end
+  def *(Rational other) => Rational; end
+  def /(Rational other) => Rational; end
 end
 
 module ObjectSpace
@@ -1234,6 +1251,11 @@ end
 
 class Complex < Numeric
   I = nil
+
+  def to_r => Rational; end
+
+  undef negative?
+  undef positive?
 end
 
 class Enumerator::[EnumType] < Object
@@ -2162,6 +2184,8 @@ class Time < Object
   def strftime(String format) => String; end
 
   def to_f => Float; end
+
+  def to_r => Rational; end
 end
 
 module Marshal
