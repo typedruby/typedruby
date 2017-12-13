@@ -174,7 +174,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "typedruby"
-version = "0.3.4"
+version = "0.4.0"
 dependencies = [
  "clap 2.24.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "difference 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
