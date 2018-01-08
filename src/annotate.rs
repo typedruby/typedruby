@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fs::File;
-use std::io::{self, Read};
+use std::io::{self, Read, Write};
 use std::path::Path;
 use std::rc::Rc;
 use std::iter;
@@ -79,7 +79,9 @@ fn annotate_file<'a>(path: &Path, annos: Vec<Annotation<'a>>)
 
     let annotated = insert(source_file.source(), &insertions);
 
-    println!("{}", annotated);
+    File::create(path)
+        .and_then(|mut file| file.write_all(annotated.as_bytes()))
+        .map_err(AnnotateError::Io)?;
 
     Ok(())
 }
