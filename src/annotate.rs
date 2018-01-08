@@ -10,6 +10,8 @@ use itertools::Itertools;
 use serde_json;
 
 use ast::{parse, IntoNode, Id, Ast, SourceFile, Diagnostic, Node, Level};
+use config::AnnotateConfig;
+use debug;
 
 struct Annotation<'a> {
     line: usize,
@@ -25,7 +27,7 @@ pub enum AnnotateError {
     Syntax(Vec<Diagnostic>),
 }
 
-pub fn apply_annotations(path: &Path) -> Result<(), AnnotateError> {
+pub fn apply_annotations(path: &Path, config: AnnotateConfig) -> Result<(), AnnotateError> {
     let mut buff = String::new();
 
     File::open(path)
@@ -35,7 +37,7 @@ pub fn apply_annotations(path: &Path) -> Result<(), AnnotateError> {
     let annos = load_annotations(&buff)?;
 
     for (file, annos) in annos {
-        annotate_file(&file, annos)?;
+        annotate_file(&file, annos, &config)?;
     }
 
     Ok(())
@@ -70,7 +72,7 @@ fn load_annotations<'a>(buff: &'a str) -> Result<HashMap<Cow<'a, Path>, Vec<Anno
     Ok(annos)
 }
 
-fn annotate_file<'a>(path: &Path, annos: Vec<Annotation<'a>>)
+fn annotate_file<'a>(path: &Path, annos: Vec<Annotation<'a>>, config: &AnnotateConfig)
     -> Result<(), AnnotateError>
 {
     let source_file = Rc::new(SourceFile::open(path.to_owned()).map_err(AnnotateError::Io)?);
@@ -79,9 +81,14 @@ fn annotate_file<'a>(path: &Path, annos: Vec<Annotation<'a>>)
 
     let annotated = insert(source_file.source(), &insertions);
 
-    File::create(path)
-        .and_then(|mut file| file.write_all(annotated.as_bytes()))
-        .map_err(AnnotateError::Io)?;
+    if config.print {
+        let annotated_source = SourceFile::new(path.to_owned(), annotated);
+        let _ = debug::annotate_file(&annotated_source, &[]);
+    } else {
+        File::create(path)
+            .and_then(|mut file| file.write_all(annotated.as_bytes()))
+            .map_err(AnnotateError::Io)?;
+    }
 
     Ok(())
 }

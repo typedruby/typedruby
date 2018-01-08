@@ -1,11 +1,10 @@
-use std::rc::Rc;
 use std::io;
 use std::io::Write;
 use termcolor::{Color, ColorChoice, ColorSpec, StandardStream, WriteColor};
 use ast::SourceFile;
 use strip::ByteRange;
 
-pub fn annotate_file(file: &Rc<SourceFile>, ranges: &[ByteRange]) -> io::Result<()> {
+pub fn annotate_file(file: &SourceFile, ranges: &[ByteRange]) -> io::Result<()> {
     let mut stderr = StandardStream::stderr(ColorChoice::Always);
 
     let mut red = ColorSpec::new();
@@ -29,8 +28,7 @@ pub fn annotate_file(file: &Rc<SourceFile>, ranges: &[ByteRange]) -> io::Result<
         stderr.reset()?;
         writeln!(&mut stderr, "{}", line)?;
 
-        for range in ranges.iter() {
-            let &ByteRange(range_start, range_end) = range;
+        for &ByteRange(range_start, range_end) in ranges.iter() {
             if range_start >= offset && range_end <= end {
                 let pos = range_start - offset;
                 let len = range_end - range_start;
