@@ -4,7 +4,9 @@ use std::fs::File;
 use std::io::{self, Read};
 use std::path::Path;
 use std::rc::Rc;
+use std::iter;
 
+use itertools::Itertools;
 use serde_json;
 
 use ast::{parse, IntoNode, Id, Ast, SourceFile, Diagnostic, Node, Level};
@@ -73,15 +75,23 @@ fn annotate_file<'a>(path: &Path, annos: Vec<Annotation<'a>>)
 {
     let source_file = Rc::new(SourceFile::open(path.to_owned()).map_err(AnnotateError::Io)?);
 
-    let insertions = Annotate::annotate(annos, source_file)?;
+    let insertions = Annotate::annotate(annos, Rc::clone(&source_file))?;
 
-    println!("insertions for {:?}:", path);
-    for insertion in insertions {
-        println!("  - {:?}", insertion);
-    }
-    println!();
+    let annotated = insert(source_file.source(), &insertions);
+
+    println!("{}", annotated);
 
     Ok(())
+}
+
+fn insert<'a>(buffer: &str, insertions: &[Insertion<'a>]) -> String {
+    iter::once(0)
+        .chain(insertions.iter().map(|ins| ins.byte_pos))
+        .chain(iter::once(buffer.len()))
+        .tuple_windows()
+        .map(|(begin, end)| &buffer[begin..end])
+        .interleave(insertions.iter().map(|ins| &*ins.string))
+        .fold(String::new(), |out, part| out + part)
 }
 
 #[derive(Debug)]
