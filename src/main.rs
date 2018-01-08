@@ -67,6 +67,10 @@ fn command() -> Command {
         .subcommand(
             SubCommand::with_name("annotate")
                 .about("Annotate source files in place with provided type annotations")
+                .arg(Arg::with_name("print")
+                        .help("Print annotated source without modifying source files")
+                        .short("p")
+                        .long("print"))
                 .arg(Arg::with_name("input")
                     .index(1)
                     .multiple(false)
@@ -164,7 +168,9 @@ fn command() -> Command {
 
         Command::Check(config, source_files(matches))
     } else if let Some(matches) = matches.subcommand_matches("annotate") {
-        let config = AnnotateConfig;
+        let config = AnnotateConfig {
+            print: matches.is_present("print"),
+        };
 
         let input = matches.value_of("input")
             .expect("input should be required")
@@ -203,8 +209,8 @@ fn check(mut errors: Box<ErrorSink>, mut config: CheckConfig, files: Vec<PathBuf
     errors.error_count() == 0 && errors.warning_count() == 0
 }
 
-fn annotate(mut errors: Box<ErrorSink>, _config: AnnotateConfig, file: PathBuf) -> bool {
-    match annotate::apply_annotations(&file) {
+fn annotate(mut errors: Box<ErrorSink>, config: AnnotateConfig, file: PathBuf) -> bool {
+    match annotate::apply_annotations(&file, config) {
         Ok(()) => true,
         Err(err) => {
             match err {

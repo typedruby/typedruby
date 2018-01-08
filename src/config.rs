@@ -24,7 +24,9 @@ impl CheckConfig {
     }
 }
 
-pub struct AnnotateConfig;
+pub struct AnnotateConfig {
+    pub print: bool,
+}
 
 pub struct StripConfig {
     pub annotate: bool,
