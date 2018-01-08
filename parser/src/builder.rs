@@ -12,7 +12,7 @@ use parser::{ParserOptions, ParserMode};
 use onig::Regex as OnigRegex;
 
 lazy_static! {
-    static ref COMMENT_ANNO_RE: Regex = Regex::new(r"^(#\s*@typedruby:?\s*)(.*)$").unwrap();
+    static ref COMMENT_ANNO_RE: Regex = Regex::new(r"^(#\s*@typedruby:\s*)(.*)$").unwrap();
 }
 
 pub struct Builder<'a, 'd: 'a> {
