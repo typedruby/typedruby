@@ -24,6 +24,8 @@ impl CheckConfig {
     }
 }
 
+pub struct AnnotateConfig;
+
 pub struct StripConfig {
     pub annotate: bool,
     pub print: bool,
@@ -31,5 +33,6 @@ pub struct StripConfig {
 
 pub enum Command {
     Check(CheckConfig, Vec<PathBuf>),
+    Annotate(AnnotateConfig, PathBuf),
     Strip(StripConfig, Vec<PathBuf>),
 }
