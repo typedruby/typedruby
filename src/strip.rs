@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::fs::File;
 use ast::{parse, IntoNode, Ast, SourceFile, Diagnostic, Node, Loc, Level};
 use config::StripConfig;
-use debug::annotate_file;
+use debug;
 
 #[derive(Debug)]
 pub struct ByteRange(pub usize, pub usize);
@@ -21,7 +21,7 @@ pub fn strip_file(path: PathBuf, config: &StripConfig) -> Result<(), StripError>
     let remove = Strip::strip(source_file.clone())?;
 
     if config.annotate {
-        return annotate_file(&source_file, &remove).map_err(StripError::Io);
+        return debug::annotate_file(&source_file, &remove).map_err(StripError::Io);
     }
 
     if remove.is_empty() {
