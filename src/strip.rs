@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::fs::File;
-use ast::{parse, Ast, SourceFile, Diagnostic, Node, Loc, Level};
+use ast::{parse, IntoNode, Ast, SourceFile, Diagnostic, Node, Loc, Level};
 use config::StripConfig;
 use debug::annotate_file;
 
@@ -13,22 +13,6 @@ pub struct ByteRange(pub usize, pub usize);
 pub enum StripError {
     Io(io::Error),
     Syntax(Vec<Diagnostic>),
-}
-
-trait IntoNode<'a> {
-    fn into_node(self) -> Option<&'a Node>;
-}
-
-impl<'a> IntoNode<'a> for &'a Rc<Node> {
-    fn into_node(self) -> Option<&'a Node> {
-        Some(self.as_ref())
-    }
-}
-
-impl<'a> IntoNode<'a> for &'a Option<Rc<Node>> {
-    fn into_node(self) -> Option<&'a Node> {
-        self.as_ref().map(Rc::as_ref)
-    }
 }
 
 pub fn strip_file(path: PathBuf, config: &StripConfig) -> Result<(), StripError> {
