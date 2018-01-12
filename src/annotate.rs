@@ -111,7 +111,6 @@ struct Insertion<'a> {
 
 struct Annotate<'a> {
     annotations: Vec<Annotation<'a>>, /* reverse sorted */
-    ignored: Vec<Annotation<'a>>,
     insert: Vec<Insertion<'a>>,
 }
 
@@ -123,7 +122,6 @@ impl<'a> Annotate<'a> {
 
         Annotate {
             annotations: annotations,
-            ignored: Vec::new(),
             insert: Vec::new(),
         }
     }
