@@ -2,9 +2,9 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 use std::rc::Rc;
 use std::fs::File;
-use ast::{parse, Ast, SourceFile, Diagnostic, Node, Loc, Level};
+use ast::{parse, IntoNode, Ast, SourceFile, Diagnostic, Node, Loc, Level};
 use config::StripConfig;
-use debug::annotate_file;
+use debug;
 
 #[derive(Debug)]
 pub struct ByteRange(pub usize, pub usize);
@@ -15,29 +15,13 @@ pub enum StripError {
     Syntax(Vec<Diagnostic>),
 }
 
-trait IntoNode<'a> {
-    fn into_node(self) -> Option<&'a Node>;
-}
-
-impl<'a> IntoNode<'a> for &'a Rc<Node> {
-    fn into_node(self) -> Option<&'a Node> {
-        Some(self.as_ref())
-    }
-}
-
-impl<'a> IntoNode<'a> for &'a Option<Rc<Node>> {
-    fn into_node(self) -> Option<&'a Node> {
-        self.as_ref().map(Rc::as_ref)
-    }
-}
-
 pub fn strip_file(path: PathBuf, config: &StripConfig) -> Result<(), StripError> {
     let source_file = Rc::new(SourceFile::open(path).map_err(StripError::Io)?);
 
     let remove = Strip::strip(source_file.clone())?;
 
     if config.annotate {
-        return annotate_file(&source_file, &remove).map_err(StripError::Io);
+        return debug::annotate_file(&source_file, &remove).map_err(StripError::Io);
     }
 
     if remove.is_empty() {

@@ -1,9 +1,15 @@
 #[macro_use]
 extern crate clap;
+
+#[macro_use]
+extern crate serde_derive;
+
 extern crate glob;
 extern crate immutable_map;
 extern crate itertools;
 extern crate regex;
+extern crate serde;
+extern crate serde_json;
 extern crate termcolor;
 extern crate typed_arena;
 extern crate vec_map;
@@ -17,6 +23,7 @@ use typed_arena::Arena;
 use termcolor::{ColorChoice, StandardStream};
 
 mod abstract_type;
+mod annotate;
 mod ast;
 mod config;
 mod debug;
@@ -31,10 +38,11 @@ mod top_level;
 mod typecheck;
 mod util;
 
+use annotate::AnnotateError;
 use strip::StripError;
 use environment::Environment;
 use errors::{ErrorReporter, ErrorSink};
-use config::{Command, CheckConfig, StripConfig};
+use config::{Command, AnnotateConfig, CheckConfig, StripConfig};
 
 fn source_files(matches: &ArgMatches) -> Vec<PathBuf> {
     let sources = matches.values_of("source")
@@ -56,6 +64,18 @@ fn command() -> Command {
     let app = App::new(crate_name!())
         .version(crate_version!())
         .setting(AppSettings::SubcommandRequiredElseHelp)
+        .subcommand(
+            SubCommand::with_name("annotate")
+                .about("Annotate source files in place with provided type annotations")
+                .arg(Arg::with_name("print")
+                        .help("Print annotated source without modifying source files")
+                        .short("p")
+                        .long("print"))
+                .arg(Arg::with_name("input")
+                    .index(1)
+                    .multiple(false)
+                    .required(true)
+                    .help("Annotations file")))
         .subcommand(
             SubCommand::with_name("strip")
                 .about("Strip source files of type annotations in place without type checking")
@@ -147,6 +167,16 @@ fn command() -> Command {
         config.strip = matches.is_present("strip");
 
         Command::Check(config, source_files(matches))
+    } else if let Some(matches) = matches.subcommand_matches("annotate") {
+        let config = AnnotateConfig {
+            print: matches.is_present("print"),
+        };
+
+        let input = matches.value_of("input")
+            .expect("input should be required")
+            .into();
+
+        Command::Annotate(config, input)
     } else if let Some(matches) = matches.subcommand_matches("strip") {
         let config = StripConfig {
             annotate: matches.is_present("annotate"),
@@ -177,6 +207,29 @@ fn check(mut errors: Box<ErrorSink>, mut config: CheckConfig, files: Vec<PathBuf
     let errors = env.error_sink.borrow();
 
     errors.error_count() == 0 && errors.warning_count() == 0
+}
+
+fn annotate(mut errors: Box<ErrorSink>, config: AnnotateConfig, file: PathBuf) -> bool {
+    match annotate::apply_annotations(&file, config) {
+        Ok(()) => true,
+        Err(err) => {
+            match err {
+                AnnotateError::Syntax(diagnostics) => {
+                    for diagnostic in diagnostics {
+                        errors.parser_diagnostic(&diagnostic);
+                    }
+                }
+                AnnotateError::Json(err) => {
+                    errors.error(&format!("Could not parse line of annotations file: {}", err), &[]);
+                }
+                AnnotateError::Io(err) => {
+                    errors.error(&format!("Could not open {}: {}", file.display(), err), &[]);
+                }
+            }
+
+            false
+        }
+    }
 }
 
 fn strip(mut errors: Box<ErrorSink>, config: StripConfig, files: Vec<PathBuf>) -> bool {
@@ -210,6 +263,7 @@ fn main() {
 
     let success = match command() {
         Command::Check(config, files) => check(errors, config, files),
+        Command::Annotate(config, file) => annotate(errors, config, file),
         Command::Strip(config, files) => strip(errors, config, files),
     };
 
