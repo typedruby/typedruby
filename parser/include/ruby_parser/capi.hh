@@ -17,7 +17,7 @@ struct cdiagnostic {
 };
 
 ruby_parser::typedruby24*
-rbdriver_typedruby24_new(const char* source, size_t source_length, const ruby_parser::builder* builder);
+rbdriver_typedruby24_new(ruby_parser::parser_mode mode, const char* source, size_t source_length, const ruby_parser::builder* builder);
 
 void
 rbdriver_typedruby24_free(ruby_parser::typedruby24* parser);
@@ -57,6 +57,18 @@ rbdriver_diag_get(const ruby_parser::base_driver* parser, size_t index, struct c
 
 void
 rbdriver_diag_report(ruby_parser::base_driver* driver, const struct cdiagnostic *diag);
+
+size_t
+rbdriver_comment_get_length(const ruby_parser::base_driver* parser);
+
+size_t
+rbdriver_comment_get_begin(const ruby_parser::base_driver* parser, size_t index);
+
+size_t
+rbdriver_comment_get_end(const ruby_parser::base_driver* parser, size_t index);
+
+size_t
+rbdriver_comment_get_string(const ruby_parser::base_driver* parser, size_t index, const char** out_ptr);
 
 }
 

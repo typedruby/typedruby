@@ -10,6 +10,8 @@
 #define RUBY_PARSER_TOKEN_TYPES(XX) \
   XX(eof,                     0) \
   XX(error,                  -1) \
+  XX(modePROGRAM,             1) \
+  XX(modePROTOTYPE,           2) \
   XX(kCLASS,               1001) \
   XX(kMODULE,              1002) \
   XX(kDEF,                 1003) \

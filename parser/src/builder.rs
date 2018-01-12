@@ -1,14 +1,22 @@
 use ffi::{Token, Driver};
 use std::rc::Rc;
-use ast::{Node, Id, Loc, SourceFile, RubyString, Error};
+use std::str;
+use ast::{Node, Id, Loc, SourceRef, RubyString, Error};
 use std::collections::HashSet;
 use id_arena::IdArena;
+use regex::Regex;
+use parser;
+use parser::{ParserOptions, ParserMode};
 
-#[cfg(feature = "regex")]
-use onig::Regex;
+#[cfg(feature = "ruby_regexp")]
+use onig::Regex as OnigRegex;
 
-pub struct Builder<'a> {
-    pub driver: &'a mut Driver,
+lazy_static! {
+    static ref COMMENT_ANNO_RE: Regex = Regex::new(r"^(#\s*@typedruby:\s*)(.*)$").unwrap();
+}
+
+pub struct Builder<'a, 'd: 'a> {
+    pub driver: &'a mut Driver<'d>,
     pub magic_literals: bool,
     pub emit_lambda: bool,
     pub emit_procarg0: bool,
@@ -189,17 +197,19 @@ fn call_type_for_dot(dot: Option<Token>) -> CallType {
     }
 }
 
-impl<'a> Builder<'a> {
+impl<'a, 'd> Builder<'a, 'd> {
     /*
      * Helpers
      */
     fn loc(&self, tok: &Option<Token>) -> Loc {
-        tok.as_ref().unwrap().location(self.current_file())
+        let tok = tok.as_ref().unwrap();
+
+        self.source_ref().make_loc(tok.begin_pos(), tok.end_pos())
     }
 
     fn tok_split(&self, tok: &Option<Token>) -> (Loc, RubyString) {
         let tok = tok.as_ref().unwrap();
-        let loc = tok.location(self.current_file());
+        let loc = self.source_ref().make_loc(tok.begin_pos(), tok.end_pos());
         let s = RubyString::new(tok.bytes().as_slice());
         (loc, s)
     }
@@ -213,8 +223,8 @@ impl<'a> Builder<'a> {
         self.loc(left).join(&self.loc(right))
     }
 
-    fn current_file(&self) -> Rc<SourceFile> {
-        self.driver.current_file.clone()
+    fn source_ref(&self) -> &SourceRef {
+        &self.driver.source_ref
     }
 
     fn collection_map(&self, begin: Option<Token>, elements: &[Rc<Node>], end: Option<Token>) -> Option<Loc> {
@@ -283,11 +293,11 @@ impl<'a> Builder<'a> {
     /*
      * Oniguruma methods (ENABLED)
      */
-    #[cfg(feature = "regex")]
-    fn parse_static_regexp(&mut self, loc: &Loc, parts: &[Rc<Node>]) -> Option<Regex> {
+    #[cfg(feature = "ruby_regexp")]
+    fn parse_static_regexp(&mut self, loc: &Loc, parts: &[Rc<Node>]) -> Option<OnigRegex> {
         let mut st = String::new();
         if build_static_string(&mut st, parts) {
-            match Regex::new(&st) {
+            match OnigRegex::new(&st) {
                 Ok(re) => Some(re),
                 Err(err) => {
                     self.driver.error_with_data(
@@ -300,7 +310,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    #[cfg(feature = "regex")]
+    #[cfg(feature = "ruby_regexp")]
     fn declare_static_regexp(&mut self, node: &Node) -> bool {
         if let &Node::Regexp(ref loc, ref parts, _) = node {
             match self.parse_static_regexp(loc, parts) {
@@ -317,7 +327,7 @@ impl<'a> Builder<'a> {
         }
     }
 
-    #[cfg(feature = "regex")]
+    #[cfg(feature = "ruby_regexp")]
     fn check_static_regexp(&mut self, loc: &Loc, parts: &[Rc<Node>]) -> bool {
         self.parse_static_regexp(loc, parts).is_some()
     }
@@ -325,12 +335,12 @@ impl<'a> Builder<'a> {
     /*
      * Oniguruma methods (DISABLED)
      */
-    #[cfg(not(feature = "regex"))]
+    #[cfg(not(feature = "ruby_regexp"))]
     fn check_static_regexp(&mut self, _: &Loc, _: &[Rc<Node>]) -> bool {
         true
     }
 
-    #[cfg(not(feature = "regex"))]
+    #[cfg(not(feature = "ruby_regexp"))]
     fn declare_static_regexp(&mut self, node: &Node) -> bool {
         if let &Node::Regexp(_, ref parts, _) = node {
             let mut st = Vec::new();
@@ -340,6 +350,54 @@ impl<'a> Builder<'a> {
         }
     }
 
+    fn annotation(&self, tok: &Token) -> Option<(String, usize)> {
+        let tok_begin = tok.begin_pos();
+
+        let comment = match self.driver.comments().before(tok_begin) {
+            Some(c) => c,
+            None => return None,
+        };
+
+        // check that there's nothing but whitespace between this comment
+        // and `tok`:
+        let is_relevant_loc = {
+            let comment_end = comment.loc.end_pos;
+            let source_bytes = comment.loc.file().source().as_bytes();
+
+            str::from_utf8(&source_bytes[comment_end..tok_begin]).ok()
+                .map(|between| between.chars().all(char::is_whitespace))
+                .unwrap_or(false)
+        };
+
+        if !is_relevant_loc {
+            return None;
+        }
+
+        COMMENT_ANNO_RE.captures(&comment.contents).map(|caps| {
+            let preamble = &caps[1];
+            let anno = caps[2].to_owned() + "\n";
+            let begin_pos = comment.loc.begin_pos + preamble.bytes().len();
+            (anno, begin_pos)
+        })
+    }
+
+    fn parse_inner(&mut self, mode: ParserMode, source: String, begin_pos: usize) -> Option<Rc<Node>> {
+        let source_ref = SourceRef::Slice {
+            file: self.driver.source_ref.file(),
+            source: source,
+            byte_offset: begin_pos,
+        };
+
+        let anno_ast = parser::parse_with_opts(
+            source_ref, ParserOptions { mode, ..self.driver.opt });
+
+        for diag in anno_ast.diagnostics {
+            self.driver.diagnostic(diag.level, diag.error, diag.loc,
+                diag.data.as_ref().map(String::as_ref));
+        }
+
+        anno_ast.node
+    }
 
     /*
      * Implementation
@@ -794,9 +852,27 @@ impl<'a> Builder<'a> {
         Node::Class(self.tok_join(&class_, &end_), name.unwrap(), superclass, body)
     }
 
-    pub fn def_method(&self, def: Option<Token>, name: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
+    fn prototype_for_def(&mut self, def: &Token, args: Option<Rc<Node>>) -> Option<Rc<Node>> {
+        let anno_proto = self.annotation(def).map(|(anno, begin_pos)|
+            self.parse_inner(ParserMode::Prototype, anno, begin_pos));
+
+        if let Some(anno_proto) = anno_proto {
+            if let Some(&Node::TyPrototype(..)) = args.as_ref().map(Rc::as_ref) {
+                // TODO print diagnostic about conflicting annotations
+            }
+
+            anno_proto
+        } else {
+            args
+        }
+    }
+
+    pub fn def_method(&mut self, def: Option<Token>, name: Option<Token>, args: Option<Rc<Node>>, body: Option<Rc<Node>>, end: Option<Token>) -> Node {
         let loc = self.tok_join(&def, &end);
-        Node::Def(loc, self.tok_id(&name), args, body)
+        let id = self.tok_id(&name);
+        let proto = self.prototype_for_def(def.as_ref().unwrap(), args);
+
+        Node::Def(loc, id, proto, body)
     }
 
     pub fn def_module(&self, module: Option<Token>, name: Option<Rc<Node>>, body: Option<Rc<Node>>, end_: Option<Token>) -> Node {
@@ -825,7 +901,9 @@ impl<'a> Builder<'a> {
             _ => {},
         };
 
-        Node::Defs(loc, definee, self.tok_id(&name), args, body)
+        let proto = self.prototype_for_def(def.as_ref().unwrap(), args);
+
+        Node::Defs(loc, definee, self.tok_id(&name), proto, body)
     }
 
     pub fn encoding_literal(&self, tok: Option<Token>) -> Node {

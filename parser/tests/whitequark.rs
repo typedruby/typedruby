@@ -13,7 +13,8 @@ ruby_parser::ParserOptions {
   emit_file_vars_as_literals: true,
   emit_lambda: true,
   emit_procarg0: true,
-  declare_env: &["foo", "bar", "baz"]
+  declare_env: &["foo", "bar", "baz"],
+  mode: ruby_parser::ParserMode::Program,
 };
 
 
@@ -3287,7 +3288,8 @@ fn parse_send_lambda_legacy() {
     emit_file_vars_as_literals: true,
     emit_lambda: false,
     emit_procarg0: true,
-    declare_env: &["foo", "bar", "baz"]
+    declare_env: &["foo", "bar", "baz"],
+    mode: ruby_parser::ParserMode::Program,
   };
   let code = "->{ }";
 	let sexp = r##"
@@ -4078,7 +4080,8 @@ fn assert_parses_blockargs_5() {
     emit_file_vars_as_literals: true,
     emit_lambda: true,
     emit_procarg0: false,
-    declare_env: &["foo", "bar", "baz"]
+    declare_env: &["foo", "bar", "baz"],
+    mode: ruby_parser::ParserMode::Program,
   };
 	let code = "f{ |a| }";
 	let sexp = r##"
@@ -4690,7 +4693,7 @@ fn parse_const_unscoped() {
 }
 
 #[test]
-#[cfg(feature = "regex")]
+#[cfg(feature = "ruby_regexp")]
 fn parse_lvar_injecting_match() {
 	let code = "/(?<match>bar)/ =~ 'bar'; match";
 	let sexp = r##"

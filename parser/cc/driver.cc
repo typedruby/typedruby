@@ -6,8 +6,10 @@
 
 namespace ruby_parser {
 
-base_driver::base_driver(ruby_version version, const std::string& source, const struct builder& builder)
-	: build(builder),
+base_driver::base_driver(ruby_version version, parser_mode mode, const std::string& source, const struct builder& builder)
+	: mode(mode),
+	emitted_mode_pseudotoken(false),
+	build(builder),
 	lex(diagnostics, version, source),
 	pending_error(false),
 	def_level(0),
@@ -15,8 +17,8 @@ base_driver::base_driver(ruby_version version, const std::string& source, const 
 {
 }
 
-typedruby24::typedruby24(const std::string& source, const struct builder& builder)
-	: base_driver(ruby_version::RUBY_24, source, builder)
+typedruby24::typedruby24(parser_mode mode, const std::string& source, const struct builder& builder)
+	: base_driver(ruby_version::RUBY_24, mode, source, builder)
 {}
 
 foreign_ptr typedruby24::parse(self_ptr self) {

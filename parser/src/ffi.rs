@@ -2,10 +2,10 @@
 
 extern crate libc;
 
-use ::ast::{Node, Loc, SourceFile, Diagnostic, Level, Error};
+use ::ast::{Node, Loc, SourceRef, Diagnostic, Level, Error, Comment};
 use ::builder::Builder;
-use ::parser::ParserOptions;
-use self::libc::{size_t, c_char};
+use ::parser::{ParserOptions, ParserMode};
+use self::libc::{size_t, c_char, c_int};
 use std::ffi::{CStr, CString};
 use std::vec::Vec;
 use std::rc::Rc;
@@ -94,7 +94,7 @@ struct CDiagnostic {
 include!(concat!(env!("OUT_DIR"), "/ffi_builder.rs"));
 
 extern "C" {
-    fn rbdriver_typedruby24_new(source: *const u8, source_length: size_t, builder: *const BuilderInterface) -> *mut DriverPtr;
+    fn rbdriver_typedruby24_new(mode: c_int, source: *const u8, source_length: size_t, builder: *const BuilderInterface) -> *mut DriverPtr;
     fn rbdriver_typedruby24_free(driver: *mut DriverPtr);
     fn rbdriver_parse(driver: *mut DriverPtr, builder: *mut Builder) -> NodeId;
     fn rbdriver_in_definition(driver: *const DriverPtr) -> bool;
@@ -108,6 +108,10 @@ extern "C" {
     fn rbdriver_diag_get_length(driver: *const DriverPtr) -> size_t;
     fn rbdriver_diag_get(driver: *const DriverPtr, index: size_t, diag: *mut CDiagnostic);
     fn rbdriver_diag_report(driver: *const DriverPtr, diag: *const CDiagnostic);
+    fn rbdriver_comment_get_length(driver: *const DriverPtr) -> size_t;
+    fn rbdriver_comment_get_begin(driver: *const DriverPtr, index: size_t) -> size_t;
+    fn rbdriver_comment_get_end(driver: *const DriverPtr, index: size_t) -> size_t;
+    fn rbdriver_comment_get_string(driver: *const DriverPtr, index: size_t, ptr: *mut *const u8) -> size_t;
 }
 
 pub struct Token {
@@ -115,10 +119,12 @@ pub struct Token {
 }
 
 impl Token {
-    pub fn location(&self, file: Rc<SourceFile>) -> Loc {
-        let begin = unsafe { rbtoken_get_start(self.token) };
-        let end = unsafe { rbtoken_get_end(self.token) };
-        Loc::new(file, begin, end)
+    pub fn begin_pos(&self) -> usize {
+        unsafe { rbtoken_get_start(self.token) }
+    }
+
+    pub fn end_pos(&self) -> usize {
+        unsafe { rbtoken_get_end(self.token) }
     }
 
     pub fn string(&self) -> String {
@@ -140,38 +146,90 @@ impl Token {
     }
 }
 
-pub struct Driver {
-    ptr: *mut DriverPtr,
-    pub current_file: Rc<SourceFile>,
+pub struct Comments<'d, 'a: 'd> {
+    driver: &'d Driver<'a>,
 }
 
-impl Drop for Driver {
+impl<'d, 'a> Comments<'d, 'a> {
+    pub fn len(&self) -> usize {
+        unsafe { rbdriver_comment_get_length(self.driver.ptr) }
+    }
+
+    pub fn at(&self, idx: usize) -> Comment {
+        let begin_pos = unsafe { rbdriver_comment_get_begin(self.driver.ptr, idx) };
+        let end_pos = unsafe { rbdriver_comment_get_end(self.driver.ptr, idx) };
+
+        let mut string: *const u8 = ptr::null();
+        let string_length = unsafe { rbdriver_comment_get_string(self.driver.ptr, idx, &mut string) };
+
+        let contents = unsafe {
+            String::from(str::from_utf8_unchecked(slice::from_raw_parts(string, string_length)))
+        };
+
+        Comment {
+            loc: self.driver.source_ref.make_loc(begin_pos, end_pos),
+            contents: contents,
+        }
+    }
+
+    pub fn before(&self, pos: usize) -> Option<Comment> {
+        let mut i = self.len();
+
+        while i > 0 {
+            i = i - 1;
+
+            let comment = self.at(i);
+
+            if comment.loc.end_pos <= pos {
+                return Some(comment);
+            }
+        }
+
+        None
+    }
+}
+
+pub struct Driver<'a> {
+    ptr: *mut DriverPtr,
+    pub(crate) opt: ParserOptions<'a>,
+    pub source_ref: SourceRef,
+}
+
+impl<'a> Drop for Driver<'a> {
     fn drop(&mut self) {
         unsafe { rbdriver_typedruby24_free(self.ptr); }
     }
 }
 
-impl Driver {
-    pub fn new(file: Rc<SourceFile>) -> Self {
-        let source = file.source();
-        let ptr = unsafe { rbdriver_typedruby24_new(source.as_ptr(), source.len(), &CALLBACKS) };
-        Driver { ptr: ptr, current_file: file.clone() }
+impl<'a> Driver<'a> {
+    pub fn new(opt: ParserOptions<'a>, file: SourceRef) -> Self {
+        let mode = match opt.mode {
+            ParserMode::Program => 1,
+            ParserMode::Prototype => 2,
+        };
+
+        let ptr = {
+            let source = file.source();
+            unsafe { rbdriver_typedruby24_new(mode, source.as_ptr(), source.len(), &CALLBACKS) }
+        };
+
+        Driver { ptr: ptr, opt: opt, source_ref: file }
     }
 
-    pub fn parse(&mut self, opt: &ParserOptions) -> Option<Rc<Node>> {
-        for var in opt.declare_env.iter() {
+    pub fn parse(&mut self) -> Option<Rc<Node>> {
+        for var in self.opt.declare_env.iter() {
             self.declare(var);
         }
 
         let driver = self.ptr;
 
         let mut builder = Builder {
-            driver: self,
             cookie: 12345678,
-            magic_literals: opt.emit_file_vars_as_literals,
-            emit_lambda: opt.emit_lambda,
-            emit_procarg0: opt.emit_procarg0,
+            magic_literals: self.opt.emit_file_vars_as_literals,
+            emit_lambda: self.opt.emit_lambda,
+            emit_procarg0: self.opt.emit_procarg0,
             nodes: IdArena::new(),
+            driver: self,
         };
 
         let ast = unsafe { rbdriver_parse(driver, &mut builder) };
@@ -179,11 +237,15 @@ impl Driver {
         builder.nodes.get(ast).cloned()
     }
 
-    fn diagnostic(&mut self, level: Level, err: Error, loc: Loc, data: *const c_char) {
+    pub fn diagnostic(&mut self, level: Level, err: Error, loc: Loc, data: Option<&str>) {
+        let data = data.map(|data| CString::new(data.to_owned()).unwrap());
+
+        let ptr = data.as_ref().map(|cstr| cstr.as_ptr()).unwrap_or(ptr::null());
+
         let diag = CDiagnostic {
             level: level,
             class: err,
-            data: data,
+            data: ptr,
             begin_pos: loc.begin_pos,
             end_pos: loc.end_pos,
         };
@@ -194,13 +256,7 @@ impl Driver {
     }
 
     pub fn error(&mut self, err: Error, loc: Loc) {
-        self.diagnostic(Level::Error, err, loc, ptr::null())
-    }
-
-    #[allow(dead_code)]
-    pub fn error_with_data(&mut self, err: Error, loc: Loc, data: &str) {
-        let data = CString::new(data.to_owned()).unwrap();
-        self.diagnostic(Level::Error, err, loc, data.as_ptr())
+        self.diagnostic(Level::Error, err, loc, None)
     }
 
     pub fn is_in_definition(&self) -> bool {
@@ -226,11 +282,11 @@ impl Driver {
                 diag
             };
 
-            let loc = Loc::new(self.current_file.clone(), cdiag.begin_pos, cdiag.end_pos);
+            let loc = self.source_ref.make_loc(cdiag.begin_pos, cdiag.end_pos);
             let cstr = unsafe { CStr::from_ptr(cdiag.data) }.to_str();
             let data = match cstr {
-                Ok(msg) => if msg.len() > 0 { Some(msg.to_owned()) } else { None },
-                Err(_) => None,
+                Ok(msg) => if msg.len() > 0 { Some(msg.to_owned()) } else { println!("None because zero length"); None },
+                Err(_) => { println!("None because error"); None },
             };
 
             vec.push(Diagnostic {
@@ -242,5 +298,9 @@ impl Driver {
         }
 
         vec
+    }
+
+    pub fn comments(&self) -> Comments {
+        Comments { driver: self }
     }
 }
