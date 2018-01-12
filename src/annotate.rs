@@ -247,11 +247,6 @@ impl<'a> Annotate<'a> {
                 self.annotate_def(node, name, args.as_ref().map(Rc::as_ref));
                 self.annotate_node(body);
             }
-            Node::TyTypedArg(..) |
-            Node::TyPrototype(..) |
-            Node::Args(..) => {
-                panic!("should be unreachable!")
-            }
 
             Node::TyCpath(..) |
             Node::TyGenargs(..) |
@@ -276,11 +271,13 @@ impl<'a> Annotate<'a> {
             Node::TyGendecl(..) => {
                 // cannot contain defs
             }
-
-            Node::TyCast(_, ref expr, _) => {
-                self.annotate_node(expr);
+            Node::TyCast(_, ref node, _) |
+            Node::TyTypedArg(_, _, ref node) => {
+                self.annotate_node(node)
             }
-
+            Node::TyPrototype(_, _, ref node, _) => {
+                self.annotate_node(node)
+            }
             Node::Alias(_, ref a, ref b) |
             Node::And(_, ref a, ref b) |
             Node::AndAsgn(_, ref a, ref b) |
@@ -357,6 +354,7 @@ impl<'a> Annotate<'a> {
                 // No-op
             }
 
+            Node::Args(_, ref nodes) |
             Node::Array(_, ref nodes) |
             Node::Hash(_, ref nodes) |
             Node::Begin(_, ref nodes) |
