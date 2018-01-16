@@ -1,11 +1,12 @@
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixListener;
-use std::sync::Mutex;
+use std::sync::mpsc::{self, SyncSender};
 
 use environment::Environment;
 use errors::{self, ErrorSink};
+use load::LoadCache;
+use remote::protocol::{self, ProtocolError, Message, ClientTransport, ReplyData};
 use remote;
-use remote::protocol::{self, ProtocolError, Message, ClientTransport, ReplyData, ClientTransaction};
 
 use crossbeam;
 use typed_arena::Arena;
@@ -15,22 +16,46 @@ pub enum RunServerError {
     Io(io::Error)
 }
 
+type Work = (Message, SyncSender<ReplyData>);
+
 pub fn run() -> Result<(), RunServerError> {
     let path = remote::socket_path().map_err(RunServerError::Io)?;
 
     let listener = UnixListener::bind(&path).map_err(RunServerError::Io)?;
 
-    let mutex = Mutex::new(());
+    let (send, recv) = mpsc::sync_channel::<Work>(0);
 
     crossbeam::scope(|scope| {
+        scope.spawn(move || {
+            let load_cache = LoadCache::new();
+
+            while let Ok((message, reply)) = recv.recv() {
+                match message {
+                    Message::Ping => {
+                        let _ = reply.send(ReplyData::Ok);
+                    }
+                    Message::Check { mut config, files } => {
+                        let mut errors = ClientErrors::new(reply);
+                        let arena = Arena::new();
+
+                        let env = Environment::new(&arena, &load_cache, &mut errors, config);
+
+                        env.load_files(files.iter());
+                        env.define();
+                        env.typecheck();
+                    }
+                }
+            }
+        });
+
         let mut result = Ok(());
 
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    let mutex = &mutex;
+                    let send = send.clone();
                     scope.spawn(move || {
-                        match Client::run(stream, mutex) {
+                        match Client::run(stream, send) {
                             Ok(()) => {}
                             Err(e) => {
                                 eprintln!("error in client thread: {:?}", e);
@@ -49,41 +74,31 @@ pub fn run() -> Result<(), RunServerError> {
     })
 }
 
-struct Client<'a, T: Read + Write> {
+struct Client<T: Read + Write> {
     transport: ClientTransport<T>,
-    mutex: &'a Mutex<()>,
+    send_work: SyncSender<Work>,
 }
 
-impl<'a, T: Read + Write> Client<'a, T> {
-    pub fn run(io: T, mutex: &'a Mutex<()>) -> Result<(), ProtocolError> {
-        Self::new(io, mutex)?.run_client()
+impl<T: Read + Write> Client<T> {
+    pub fn run(io: T, send_work: SyncSender<Work>) -> Result<(), ProtocolError> {
+        Self::new(io, send_work)?.run_client()
     }
 
-    pub fn new(io: T, mutex: &'a Mutex<()>) -> Result<Self, ProtocolError> {
+    pub fn new(io: T, send_work: SyncSender<Work>) -> Result<Self, ProtocolError> {
         Ok(Client {
             transport: ClientTransport::new(io)?,
-            mutex,
+            send_work,
         })
     }
 
     pub fn run_client(&mut self) -> Result<(), ProtocolError> {
-        // self.transport.send(Reply::Hello { version: env!("CARGO_PKG_VERSION") });
-
         while let Some((message, mut txn)) = self.transport.recv()? {
-            match message {
-                Message::Ping => txn.reply(ReplyData::Ok)?,
-                Message::Check { mut config, files } => {
-                    let _ = self.mutex.lock().expect("mutex lock in Client::run_client");
+            let (reply_send, reply_recv) = mpsc::sync_channel(0);
 
-                    let mut errors = ClientErrors::new(txn);
-                    let arena = Arena::new();
+            let _ = self.send_work.send((message, reply_send));
 
-                    let env = Environment::new(&arena, &mut errors, config);
-
-                    env.load_files(files.iter());
-                    env.define();
-                    env.typecheck();
-                }
+            while let Ok(reply) = reply_recv.recv() {
+                txn.reply(reply)?;
             }
         }
 
@@ -91,15 +106,15 @@ impl<'a, T: Read + Write> Client<'a, T> {
     }
 }
 
-struct ClientErrors<'a, T: Read + Write + 'a> {
-    txn: ClientTransaction<'a, T>,
+struct ClientErrors {
+    reply: SyncSender<ReplyData>,
     error_count: usize,
     warning_count: usize,
 }
 
-impl<'a, T: Read + Write + 'a> ClientErrors<'a, T> {
-    pub fn new(txn: ClientTransaction<'a, T>) -> Self {
-        ClientErrors { txn, error_count: 0, warning_count: 0 }
+impl ClientErrors {
+    pub fn new(reply: SyncSender<ReplyData>) -> Self {
+        ClientErrors { reply, error_count: 0, warning_count: 0 }
     }
 }
 
@@ -120,18 +135,16 @@ fn map_details(details: &[errors::Detail]) -> Vec<protocol::Detail> {
     }).collect()
 }
 
-impl<'a, T: Read + Write + 'a> ErrorSink for ClientErrors<'a, T> {
+impl ErrorSink for ClientErrors {
     fn error(&mut self, message: &str, details: &[errors::Detail]) {
-        // ignore error here:
-        let _ = self.txn.reply(ReplyData::Error {
+        let _ = self.reply.send(ReplyData::Error {
             msg: message.to_owned(),
             details: map_details(details),
         });
     }
 
     fn warning(&mut self, message: &str, details: &[errors::Detail]) {
-        // ignore error here:
-        let _ = self.txn.reply(ReplyData::Warning {
+        let _ = self.reply.send(ReplyData::Warning {
             msg: message.to_owned(),
             details: map_details(details),
         });
