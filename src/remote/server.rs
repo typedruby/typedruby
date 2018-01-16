@@ -6,7 +6,7 @@ use std::sync::Mutex;
 
 use environment::Environment;
 use errors::{self, ErrorSink};
-use protocol::{self, ProtocolError, Message, ClientTransport, ReplyData, ClientTransaction};
+use remote::protocol::{self, ProtocolError, Message, ClientTransport, ReplyData, ClientTransaction};
 
 use crossbeam;
 use typed_arena::Arena;

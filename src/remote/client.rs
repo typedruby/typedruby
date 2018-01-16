@@ -9,7 +9,7 @@ use typed_arena::Arena;
 use ast::{SourceFile, Loc};
 use config::CheckConfig;
 use errors::{self, ErrorSink};
-use protocol::{self, ServerTransport, ProtocolError, Message, ReplyData};
+use remote::protocol::{self, ServerTransport, ProtocolError, Message, ReplyData};
 
 type SourceCache = HashMap<PathBuf, Rc<SourceFile>>;
 
