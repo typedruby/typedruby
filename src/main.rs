@@ -32,6 +32,7 @@ mod define;
 mod environment;
 mod errors;
 mod inflect;
+mod load;
 mod object;
 mod remote;
 mod slice_util;
@@ -41,10 +42,11 @@ mod typecheck;
 mod util;
 
 use annotate::AnnotateError;
-use strip::StripError;
+use config::{Command, AnnotateConfig, CheckConfig, StripConfig};
 use environment::Environment;
 use errors::{ErrorReporter, ErrorSink};
-use config::{Command, AnnotateConfig, CheckConfig, StripConfig};
+use load::LoadCache;
+use strip::StripError;
 
 fn source_files(matches: &ArgMatches) -> Vec<PathBuf> {
     let sources = matches.values_of("source")
@@ -211,9 +213,10 @@ fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig, fil
             Err(e) => panic!("client::check_remote: {:?}", e),
         }
     } else {
+        let load_cache = LoadCache::new();
         let arena = Arena::new();
 
-        let env = Environment::new(&arena, &mut errors, config);
+        let env = Environment::new(&arena, &load_cache, &mut errors, config);
 
         env.load_files(files.iter());
         env.define();
