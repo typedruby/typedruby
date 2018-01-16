@@ -1,0 +1,177 @@
+use serde::{Serialize, Deserialize};
+use serde_json;
+use std::io::{self, Read, Write, BufRead, BufReader};
+use std::iter::Iterator;
+use std::ops::Drop;
+use std::path::PathBuf;
+
+use config::CheckConfig;
+
+#[derive(Debug)]
+pub enum ProtocolError {
+    Io(io::Error),
+    Json(serde_json::Error),
+    VersionMismatch(String),
+    LostConnection,
+    Violation(&'static str),
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "t")]
+pub enum Message {
+    Ping,
+    Check { config: CheckConfig, files: Vec<PathBuf> },
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(tag = "t")]
+pub enum Reply {
+    Hello { version: String },
+    Accepted,
+    Data { data: ReplyData },
+    End,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "t")]
+pub enum ReplyData {
+    Error { msg: String },
+    Ok,
+}
+
+fn read_json<'a, D: Deserialize<'a>, T: BufRead>(io: &mut T, buff: &'a mut String) -> Result<Option<D>, ProtocolError> {
+    match io.read_line(buff) {
+        Ok(0) => Ok(None),
+        Ok(_) => {
+            let msg = serde_json::from_str(buff).map_err(ProtocolError::Json)?;
+            Ok(Some(msg))
+        }
+        Err(e) => Err(ProtocolError::Io(e)),
+    }
+}
+
+fn write_json<S: Serialize, T: Write>(io: &mut T, data: S) -> Result<(), ProtocolError> {
+    let string = serde_json::to_string(&data)
+        .map_err(ProtocolError::Json)? + "\n";
+
+    io.write_all(string.as_bytes())
+        .map_err(ProtocolError::Io)
+}
+
+pub struct ClientTransport<T: Read + Write> {
+    io: BufReader<T>,
+}
+
+impl<T: Read + Write> ClientTransport<T> {
+    pub fn new(io: T) -> Result<Self, ProtocolError> {
+        Ok(ClientTransport { io: BufReader::new(io) })
+    }
+
+    pub fn recv<'a>(&'a mut self) -> Result<Option<ClientTransaction<'a, T>>, ProtocolError> {
+        let mut buff = String::new();
+        let msg = read_json(&mut self.io, &mut buff)?;
+
+        Ok(msg.map(move |msg| ClientTransaction::new(self, msg)))
+    }
+
+    fn send_raw(&mut self, reply: Reply) -> Result<(), ProtocolError> {
+        write_json(self.io.get_mut(), reply)
+    }
+}
+
+pub struct ClientTransaction<'a, T: Read + Write + 'a> {
+    transport: &'a mut ClientTransport<T>,
+    message: Message,
+}
+
+impl<'a, T: Read + Write> ClientTransaction<'a, T> {
+    fn new(transport: &'a mut ClientTransport<T>, message: Message) -> Self {
+        transport.send_raw(Reply::Accepted);
+
+        ClientTransaction { transport, message }
+    }
+
+    pub fn message(&self) -> &Message {
+        &self.message
+    }
+
+    pub fn reply(&mut self, data: ReplyData) -> Result<(), ProtocolError> {
+        self.transport.send_raw(Reply::Data { data })
+    }
+}
+
+impl<'a, T: Read + Write> Drop for ClientTransaction<'a, T> {
+    fn drop(&mut self) {
+        // ignore error here?
+        let _ = self.transport.send_raw(Reply::End);
+    }
+}
+
+pub struct ServerTransport<T: Read + Write> {
+    io: BufReader<T>,
+}
+
+impl<T: Read + Write> ServerTransport<T> {
+    pub fn new(io: T) -> Result<Self, ProtocolError> {
+        Ok(ServerTransport { io: BufReader::new(io) })
+    }
+
+    fn recv_raw(&mut self) -> Result<Option<Reply>, ProtocolError> {
+        let mut buff = String::new();
+        Ok(read_json(&mut self.io, &mut buff)?)
+    }
+
+    pub fn send<'a>(&'a mut self, msg: Message) -> Result<ServerTransaction<'a, T>, ProtocolError> {
+        write_json(self.io.get_mut(), msg)?;
+
+        match self.recv_raw()? {
+            Some(Reply::Accepted) => {
+                Ok(ServerTransaction::new(self))
+            }
+            None => Err(ProtocolError::Violation("server closed connection unexpectedly")),
+            Some(_) => Err(ProtocolError::Violation("unexpected reply")),
+        }
+    }
+}
+
+pub struct ServerTransaction<'a, T: Read + Write + 'a> {
+    transport: &'a mut ServerTransport<T>,
+    complete: bool,
+}
+
+impl<'a, T: Read + Write + 'a> ServerTransaction<'a, T> {
+    fn new(transport: &'a mut ServerTransport<T>) -> Self {
+        ServerTransaction { transport, complete: false }
+    }
+}
+
+impl<'a, T: Read + Write + 'a> Iterator for ServerTransaction<'a, T> {
+    type Item = Result<ReplyData, ProtocolError>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.transport.recv_raw() {
+            Ok(Some(Reply::Data { data })) => Some(Ok(data)),
+            Ok(Some(Reply::End)) => {
+                self.complete = true;
+                None
+            }
+            Ok(Some(_)) => {
+                self.complete = true;
+                Some(Err(ProtocolError::Violation("unexpected reply")))
+            }
+            Ok(None) => {
+                self.complete = true;
+                Some(Err(ProtocolError::Violation("server closed connection unexpectedly")))
+            }
+            Err(e) => Some(Err(e)),
+        }
+    }
+}
+
+impl<'a, T: Read + Write + 'a> Drop for ServerTransaction<'a, T> {
+    fn drop(&mut self) {
+        if !self.complete {
+            while let Some(Ok(_)) = self.next() {}
+        }
+    }
+}
