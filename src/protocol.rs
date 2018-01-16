@@ -14,7 +14,6 @@ pub enum ProtocolError {
     Io(io::Error),
     Json(serde_json::Error),
     VersionMismatch(String),
-    LostConnection,
     Violation(&'static str),
 }
 
@@ -37,8 +36,23 @@ pub enum Reply {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "t")]
 pub enum ReplyData {
-    Error { msg: String },
+    Error { msg: String, details: Vec<Detail> },
+    Warning { msg: String, details: Vec<Detail> },
     Ok,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+#[serde(tag = "t")]
+pub enum Detail {
+    Message { msg: String },
+    Loc { msg: String, loc: Loc },
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct Loc {
+    pub file: PathBuf,
+    pub begin_pos: usize,
+    pub end_pos: usize,
 }
 
 fn read_json<'a, D: Deserialize<'a>, T: BufRead>(io: &mut T, buff: &'a mut String) -> Result<Option<D>, ProtocolError> {
@@ -61,7 +75,7 @@ fn write_json<S: Serialize, T: Write>(io: &mut T, data: S) -> Result<(), Protoco
 }
 
 fn handshake<T: Read + Write>(io: &mut BufReader<T>) -> Result<(), ProtocolError> {
-    write_json(io.get_mut(), PROTOCOL_VERSION);
+    write_json(io.get_mut(), PROTOCOL_VERSION)?;
 
     let mut buff = String::new();
     let remote_version: Option<&str> = read_json(io, &mut buff)?;
@@ -92,11 +106,17 @@ impl<T: Read + Write> ClientTransport<T> {
         Ok(ClientTransport { io })
     }
 
-    pub fn recv<'a>(&'a mut self) -> Result<Option<ClientTransaction<'a, T>>, ProtocolError> {
+    pub fn recv<'a>(&'a mut self) -> Result<Option<(Message, ClientTransaction<'a, T>)>, ProtocolError> {
         let mut buff = String::new();
         let msg = read_json(&mut self.io, &mut buff)?;
 
-        Ok(msg.map(move |msg| ClientTransaction::new(self, msg)))
+        match msg {
+            Some(msg) => {
+                let txn = ClientTransaction::new(self)?;
+                Ok(Some((msg, txn)))
+            }
+            None => Ok(None)
+        }
     }
 
     fn send_raw(&mut self, reply: Reply) -> Result<(), ProtocolError> {
@@ -106,18 +126,13 @@ impl<T: Read + Write> ClientTransport<T> {
 
 pub struct ClientTransaction<'a, T: Read + Write + 'a> {
     transport: &'a mut ClientTransport<T>,
-    message: Message,
 }
 
 impl<'a, T: Read + Write> ClientTransaction<'a, T> {
-    fn new(transport: &'a mut ClientTransport<T>, message: Message) -> Self {
-        transport.send_raw(Reply::Accepted);
+    fn new(transport: &'a mut ClientTransport<T>) -> Result<Self, ProtocolError> {
+        transport.send_raw(Reply::Accepted)?;
 
-        ClientTransaction { transport, message }
-    }
-
-    pub fn message(&self) -> &Message {
-        &self.message
+        Ok(ClientTransaction { transport })
     }
 
     pub fn reply(&mut self, data: ReplyData) -> Result<(), ProtocolError> {

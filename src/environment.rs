@@ -64,7 +64,7 @@ impl PhaseCell {
 
 pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
-    pub error_sink: RefCell<Box<ErrorSink>>,
+    pub error_sink: RefCell<&'object mut ErrorSink>,
     pub config: CheckConfig,
     pub defs: Definitions<'object>,
     phase: PhaseCell,
@@ -76,7 +76,7 @@ pub struct Environment<'object> {
 static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
 
 impl<'object> Environment<'object> {
-    pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: CheckConfig) -> Environment<'object> {
+    pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: &'object mut ErrorSink, config: CheckConfig) -> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
 
         let env = Environment {
