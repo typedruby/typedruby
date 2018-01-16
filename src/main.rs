@@ -197,7 +197,7 @@ fn command() -> Command {
 }
 
 fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig, files: Vec<PathBuf>) -> bool {
-    let socket_path = remote::server::socket_path().expect("server::socket_path");
+    let socket_path = remote::socket_path().expect("server::socket_path");
 
     if socket_path.exists() {
         match remote::client::check_remote(&socket_path, &mut errors, config, files) {

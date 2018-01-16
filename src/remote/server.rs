@@ -6,6 +6,7 @@ use std::sync::Mutex;
 
 use environment::Environment;
 use errors::{self, ErrorSink};
+use remote;
 use remote::protocol::{self, ProtocolError, Message, ClientTransport, ReplyData, ClientTransaction};
 
 use crossbeam;
@@ -17,7 +18,7 @@ pub enum RunServerError {
 }
 
 pub fn run() -> Result<(), RunServerError> {
-    let path = socket_path()?;
+    let path = remote::socket_path().map_err(RunServerError::Io)?;
 
     let listener = UnixListener::bind(&path).map_err(RunServerError::Io)?;
 
@@ -48,14 +49,6 @@ pub fn run() -> Result<(), RunServerError> {
 
         result
     })
-}
-
-pub fn socket_path() -> Result<PathBuf, RunServerError> {
-    let mut path = env::current_dir().map_err(RunServerError::Io)?;
-
-    path.push(".typedruby.sock");
-
-    Ok(path)
 }
 
 struct Client<'a, T: Read + Write> {
