@@ -1,5 +1,7 @@
+use std::fs;
 use std::io::{self, Read, Write};
-use std::os::unix::net::UnixListener;
+use std::os::unix::net::{UnixStream, UnixListener};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 
 use environment::Environment;
@@ -13,15 +15,35 @@ use typed_arena::Arena;
 
 #[derive(Debug)]
 pub enum RunServerError {
-    Io(io::Error)
+    Io(io::Error),
+    AlreadyRunning(PathBuf),
 }
 
 type Work = (Message, SyncSender<ReplyData>);
 
+fn bind_socket(path: &Path) -> Result<UnixListener, RunServerError> {
+    // try to bind to the socket eagerly:
+    match UnixListener::bind(path) {
+        Ok(listener) => { return Ok(listener); }
+        Err(_) => {}
+    }
+
+    // if that fails, try to connect to it - a server instance might
+    // already be running:
+    match UnixStream::connect(path) {
+        Ok(_) => { return Err(RunServerError::AlreadyRunning(path.to_owned())); }
+        Err(_) => {}
+    }
+
+    // if that fails, try to remove the socket and make a last-ditch
+    // effort to bind again before giving up:
+    let _ = fs::remove_file(path);
+    UnixListener::bind(path).map_err(RunServerError::Io)
+}
+
 pub fn run() -> Result<(), RunServerError> {
     let path = remote::socket_path().map_err(RunServerError::Io)?;
-
-    let listener = UnixListener::bind(&path).map_err(RunServerError::Io)?;
+    let listener = bind_socket(&path)?;
 
     let (send, recv) = mpsc::sync_channel::<Work>(0);
 
@@ -55,12 +77,7 @@ pub fn run() -> Result<(), RunServerError> {
                 Ok(stream) => {
                     let send = send.clone();
                     scope.spawn(move || {
-                        match Client::run(stream, send) {
-                            Ok(()) => {}
-                            Err(e) => {
-                                eprintln!("error in client thread: {:?}", e);
-                            }
-                        }
+                        let _ = Client::run(stream, send);
                     });
                 }
                 Err(e) => {
