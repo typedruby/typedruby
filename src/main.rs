@@ -46,6 +46,7 @@ use config::{Command, AnnotateConfig, CheckConfig, StripConfig};
 use environment::Environment;
 use errors::{ErrorReporter, ErrorSink};
 use load::LoadCache;
+use remote::server::RunServerError;
 use strip::StripError;
 
 fn source_files(matches: &ArgMatches) -> Vec<PathBuf> {
@@ -279,11 +280,13 @@ fn strip(mut errors: ErrorReporter<StandardStream>, config: StripConfig, files: 
 
 fn server(errors: &mut ErrorSink) -> bool {
     match remote::server::run() {
-        Ok(()) => {
-            true
+        Ok(()) => true,
+        Err(RunServerError::AlreadyRunning(path)) => {
+            errors.error(&format!("A TypedRuby server is already running on {}", path.display()), &[]);
+            false
         }
         Err(e) => {
-            errors.error(&format!("Could not run server: {:?}", e), &[]);
+            errors.error(&format!("Could not start server: {:?}", e), &[]);
             false
         }
     }
