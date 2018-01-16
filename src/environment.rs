@@ -7,7 +7,7 @@ use std::fs;
 
 use typed_arena::Arena;
 
-use ast::{parse, Ast, SourceFile, Node, Id};
+use ast::{Ast, SourceFile, Node, Id};
 use config::CheckConfig;
 use define::Definitions;
 use errors::ErrorSink;
@@ -75,8 +75,6 @@ pub struct Environment<'object> {
     load_cache: &'object LoadCache,
 }
 
-static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
-
 impl<'object> Environment<'object> {
     pub fn new(arena: &'object Arena<RubyObject<'object>>, load_cache: &'object LoadCache, error_sink: &'object mut ErrorSink, config: CheckConfig) -> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
@@ -93,9 +91,7 @@ impl<'object> Environment<'object> {
             load_cache: load_cache,
         };
 
-        let source_file = Rc::new(SourceFile::new(PathBuf::from("(builtin stdlib)"), STDLIB_DEFINITIONS.to_owned()));
-
-        env.load_ast(&parse(Rc::clone(&source_file)), source_file.filename());
+        top_level::evaluate(&env, load_cache.builtin_stdlib());
 
         env
     }

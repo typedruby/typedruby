@@ -6,7 +6,7 @@ use std::path::{PathBuf, Path};
 use std::rc::Rc;
 use std::time::SystemTime;
 
-use ast::{self, Ast, SourceFile};
+use ast::{self, Ast, SourceFile, Node};
 
 struct CacheEntry {
     mtime: SystemTime,
@@ -17,6 +17,16 @@ type Cache = HashMap<PathBuf, Rc<CacheEntry>>;
 
 pub struct LoadCache {
     cache: RefCell<Cache>,
+    builtin_stdlib: Rc<Node>,
+}
+
+fn load_stdlib() -> Rc<Node> {
+    const STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
+
+    let source_file = Rc::new(SourceFile::new(PathBuf::from("(builtin stdlib)"), STDLIB_DEFINITIONS.to_owned()));
+    let ast = Rc::new(ast::parse(source_file));
+
+    Rc::clone(ast.node.as_ref().expect("builtin stdlib AST to not be empty"))
 }
 
 fn load(cache: &mut Cache, path: &Path) -> Result<Rc<CacheEntry>, io::Error> {
@@ -41,12 +51,19 @@ fn load(cache: &mut Cache, path: &Path) -> Result<Rc<CacheEntry>, io::Error> {
 
 impl LoadCache {
     pub fn new() -> Self {
-        LoadCache { cache: RefCell::new(HashMap::new()) }
+        LoadCache {
+            cache: RefCell::new(HashMap::new()),
+            builtin_stdlib: load_stdlib(),
+        }
     }
 
     pub fn load_ast(&self, path: &Path) -> Result<Rc<Ast>, io::Error> {
         let mut cache = self.cache.borrow_mut();
 
         load(&mut cache, path).map(|ent| Rc::clone(&ent.ast))
+    }
+
+    pub fn builtin_stdlib(&self) -> Rc<Node> {
+        Rc::clone(&self.builtin_stdlib)
     }
 }
