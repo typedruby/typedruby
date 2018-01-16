@@ -26,7 +26,6 @@ use termcolor::{ColorChoice, StandardStream};
 mod abstract_type;
 mod annotate;
 mod ast;
-mod client;
 mod config;
 mod debug;
 mod define;
@@ -34,8 +33,7 @@ mod environment;
 mod errors;
 mod inflect;
 mod object;
-mod protocol;
-mod server;
+mod remote;
 mod slice_util;
 mod strip;
 mod top_level;
@@ -199,10 +197,10 @@ fn command() -> Command {
 }
 
 fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig, files: Vec<PathBuf>) -> bool {
-    let socket_path = server::socket_path().expect("server::socket_path");
+    let socket_path = remote::server::socket_path().expect("server::socket_path");
 
     if socket_path.exists() {
-        match client::check_remote(&socket_path, &mut errors, config, files) {
+        match remote::client::check_remote(&socket_path, &mut errors, config, files) {
             Ok(result) => result,
             Err(e) => panic!("client::check_remote: {:?}", e),
         }
@@ -277,7 +275,7 @@ fn strip(mut errors: ErrorReporter<StandardStream>, config: StripConfig, files: 
 }
 
 fn server(errors: &mut ErrorSink) -> bool {
-    match server::run() {
+    match remote::server::run() {
         Ok(()) => {
             true
         }
