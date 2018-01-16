@@ -198,11 +198,11 @@ fn command() -> Command {
     }
 }
 
-fn check(mut errors: Box<ErrorSink>, mut config: CheckConfig, files: Vec<PathBuf>) -> bool {
+fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig, files: Vec<PathBuf>) -> bool {
     let socket_path = server::socket_path().expect("server::socket_path");
 
     if socket_path.exists() {
-        match client::check_remote(&socket_path, errors, config, files) {
+        match client::check_remote(&socket_path, &mut errors, config, files) {
             Ok(result) => result,
             Err(e) => panic!("client::check_remote: {:?}", e),
         }
@@ -215,7 +215,7 @@ fn check(mut errors: Box<ErrorSink>, mut config: CheckConfig, files: Vec<PathBuf
             errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
         }
 
-        let env = Environment::new(&arena, errors, config);
+        let env = Environment::new(&arena, &mut errors, config);
 
         env.load_files(files.iter());
         env.define();
@@ -227,7 +227,7 @@ fn check(mut errors: Box<ErrorSink>, mut config: CheckConfig, files: Vec<PathBuf
     }
 }
 
-fn annotate(mut errors: Box<ErrorSink>, config: AnnotateConfig, file: PathBuf) -> bool {
+fn annotate(mut errors: ErrorReporter<StandardStream>, config: AnnotateConfig, file: PathBuf) -> bool {
     match annotate::apply_annotations(&file, config) {
         Ok(()) => true,
         Err(err) => {
@@ -250,7 +250,7 @@ fn annotate(mut errors: Box<ErrorSink>, config: AnnotateConfig, file: PathBuf) -
     }
 }
 
-fn strip(mut errors: Box<ErrorSink>, config: StripConfig, files: Vec<PathBuf>) -> bool {
+fn strip(mut errors: ErrorReporter<StandardStream>, config: StripConfig, files: Vec<PathBuf>) -> bool {
     let mut success = true;
 
     for file in files {
@@ -276,7 +276,7 @@ fn strip(mut errors: Box<ErrorSink>, config: StripConfig, files: Vec<PathBuf>) -
     success
 }
 
-fn server(mut errors: Box<ErrorSink>) -> bool {
+fn server(errors: &mut ErrorSink) -> bool {
     match server::run() {
         Ok(()) => {
             true
@@ -289,13 +289,13 @@ fn server(mut errors: Box<ErrorSink>) -> bool {
 }
 
 fn main() {
-    let errors = Box::new(ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto)));
+    let mut errors = ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto));
 
     let success = match command() {
         Command::Check(config, files) => check(errors, config, files),
         Command::Annotate(config, file) => annotate(errors, config, file),
         Command::Strip(config, files) => strip(errors, config, files),
-        Command::Server => server(errors),
+        Command::Server => server(&mut errors),
     };
 
     process::exit(match success {
