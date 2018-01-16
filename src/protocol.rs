@@ -7,6 +7,8 @@ use std::path::PathBuf;
 
 use config::CheckConfig;
 
+const PROTOCOL_VERSION: &'static str = env!("CARGO_PKG_VERSION");
+
 #[derive(Debug)]
 pub enum ProtocolError {
     Io(io::Error),
@@ -58,13 +60,36 @@ fn write_json<S: Serialize, T: Write>(io: &mut T, data: S) -> Result<(), Protoco
         .map_err(ProtocolError::Io)
 }
 
+fn handshake<T: Read + Write>(io: &mut BufReader<T>) -> Result<(), ProtocolError> {
+    write_json(io.get_mut(), PROTOCOL_VERSION);
+
+    let mut buff = String::new();
+    let remote_version: Option<&str> = read_json(io, &mut buff)?;
+
+    match remote_version {
+        Some(ver) if ver == PROTOCOL_VERSION => {
+            Ok(())
+        }
+        Some(ver) => {
+            Err(ProtocolError::VersionMismatch(ver.to_string()))
+        }
+        None => {
+            Err(ProtocolError::Violation("expected version handshake"))
+        }
+    }
+}
+
 pub struct ClientTransport<T: Read + Write> {
     io: BufReader<T>,
 }
 
 impl<T: Read + Write> ClientTransport<T> {
     pub fn new(io: T) -> Result<Self, ProtocolError> {
-        Ok(ClientTransport { io: BufReader::new(io) })
+        let mut io = BufReader::new(io);
+
+        handshake(&mut io)?;
+
+        Ok(ClientTransport { io })
     }
 
     pub fn recv<'a>(&'a mut self) -> Result<Option<ClientTransaction<'a, T>>, ProtocolError> {
@@ -113,7 +138,11 @@ pub struct ServerTransport<T: Read + Write> {
 
 impl<T: Read + Write> ServerTransport<T> {
     pub fn new(io: T) -> Result<Self, ProtocolError> {
-        Ok(ServerTransport { io: BufReader::new(io) })
+        let mut io = BufReader::new(io);
+
+        handshake(&mut io)?;
+
+        Ok(ServerTransport { io })
     }
 
     fn recv_raw(&mut self) -> Result<Option<Reply>, ProtocolError> {
