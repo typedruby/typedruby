@@ -1,7 +1,5 @@
-use std::env;
 use std::io::{self, Read, Write};
 use std::os::unix::net::UnixListener;
-use std::path::PathBuf;
 use std::sync::Mutex;
 
 use environment::Environment;
@@ -76,12 +74,6 @@ impl<'a, T: Read + Write> Client<'a, T> {
                 Message::Ping => txn.reply(ReplyData::Ok)?,
                 Message::Check { mut config, files } => {
                     let _ = self.mutex.lock().expect("mutex lock in Client::run_client");
-
-                    if let Some(lib_path) = env::var("TYPEDRUBY_LIB").ok() {
-                        config.require_paths.insert(0, PathBuf::from(lib_path));
-                    } else {
-                        // errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
-                    }
 
                     let mut errors = ClientErrors::new(txn);
                     let arena = Arena::new();

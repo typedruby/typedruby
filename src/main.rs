@@ -197,6 +197,12 @@ fn command() -> Command {
 }
 
 fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig, files: Vec<PathBuf>) -> bool {
+    if let Some(lib_path) = env::var("TYPEDRUBY_LIB").ok() {
+        config.require_paths.insert(0, PathBuf::from(lib_path));
+    } else {
+        errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
+    }
+
     let socket_path = remote::socket_path().expect("server::socket_path");
 
     if socket_path.exists() {
@@ -206,12 +212,6 @@ fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig, fil
         }
     } else {
         let arena = Arena::new();
-
-        if let Some(lib_path) = env::var("TYPEDRUBY_LIB").ok() {
-            config.require_paths.insert(0, PathBuf::from(lib_path));
-        } else {
-            errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
-        }
 
         let env = Environment::new(&arena, &mut errors, config);
 
