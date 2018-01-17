@@ -1,10 +1,15 @@
+use std::env;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::str;
 
+use glob;
 use toml;
 
-use config::ProjectConfig;
+use config::{ProjectConfig, CheckConfig, Strings};
+use errors::ErrorSink;
 use load::LoadCache;
 
 const CONFIG_FILE: &'static str = "TypedRuby.toml";
@@ -12,25 +17,31 @@ const SOCKET_FILE: &'static str = ".typedruby.sock";
 
 pub struct Project {
     pub cache: LoadCache,
-    root: PathBuf,
+    pub root: PathBuf,
     pub config: ProjectConfig,
+    pub check_config: CheckConfig,
 }
 
 #[derive(Debug)]
 pub enum ProjectError {
+    NoProjectConfig,
     Io(io::Error),
     Toml(toml::de::Error),
+    GlobPattern(glob::PatternError),
+    Glob(glob::GlobError),
 }
 
-fn find_typedruby_toml(initial_dir: &Path) -> PathBuf {
-    let mut dir = initial_dir.to_owned();
-    dir.push(CONFIG_FILE);
+fn find_typedruby_toml(initial_dir: &Path) -> Option<PathBuf> {
+    let mut initial_dir = initial_dir.to_owned();
+    initial_dir.push(CONFIG_FILE);
+
+    let mut dir = initial_dir.clone();
 
     loop {
         let config = dir.with_file_name(CONFIG_FILE);
 
         if config.exists() {
-            return config;
+            return Some(config);
         }
 
         if !dir.pop() {
@@ -38,9 +49,7 @@ fn find_typedruby_toml(initial_dir: &Path) -> PathBuf {
         }
     }
 
-    // if we couldn't find a directory with a TypedRuby.toml, just use the
-    // initial dir that was passed in:
-    initial_dir.to_owned()
+    None
 }
 
 fn read_typedruby_toml(path: &Path) -> Result<ProjectConfig, ProjectError> {
@@ -53,9 +62,65 @@ fn read_typedruby_toml(path: &Path) -> Result<ProjectConfig, ProjectError> {
     toml::from_str(&buff).map_err(ProjectError::Toml)
 }
 
+fn load_bundler_load_paths(project_root: &Path) -> Result<Vec<PathBuf>, io::Error> {
+    let output = Command::new("ruby")
+        .args(&["-r", "bundler/setup", "-e", "puts $LOAD_PATH"])
+        .output()?;
+
+    Ok(output.stdout
+        .split(|c| *c == ('\r' as u8) || *c == ('\n' as u8))
+        .filter_map(|line| str::from_utf8(line).ok())
+        .map(PathBuf::from)
+        .collect())
+}
+
+fn paths_from_strings(strings: &Strings) -> Result<Vec<PathBuf>, ProjectError> {
+    let mut paths = Vec::new();
+
+    for pattern in strings.as_slice() {
+        for path in glob::glob(pattern).map_err(ProjectError::GlobPattern)? {
+            let path = path.map_err(ProjectError::Glob)?;
+            paths.push(path);
+        }
+    }
+
+    Ok(paths)
+}
+
+fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &ProjectConfig) -> Result<CheckConfig, ProjectError> {
+    let mut require_paths = Vec::new();
+
+    require_paths.extend(paths_from_strings(&config.typedruby.load_path)?);
+
+    if let Some(lib_path) = env::var("TYPEDRUBY_LIB").ok() {
+        require_paths.push(PathBuf::from(lib_path));
+    } else {
+        errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
+    }
+
+    if config.typedruby.bundler {
+        require_paths.extend(load_bundler_load_paths(project_root).map_err(ProjectError::Io)?);
+    }
+
+    let autoload_paths = paths_from_strings(&config.typedruby.autoload_path)?;
+    let ignore_errors_in = paths_from_strings(&config.typedruby.ignore_errors)?;
+    let files = paths_from_strings(&config.typedruby.source)?;
+
+    let inflect_acronyms = config.inflect.acronyms.as_slice().to_vec();
+
+    Ok(CheckConfig {
+        warning: false,
+        require_paths,
+        autoload_paths,
+        ignore_errors_in,
+        inflect_acronyms,
+        files,
+    })
+}
+
 impl Project {
-    pub fn find(dir: &Path) -> Result<Project, ProjectError> {
-        let config_path = find_typedruby_toml(dir);
+    pub fn find(errors: &mut ErrorSink, dir: &Path) -> Result<Project, ProjectError> {
+        let config_path = find_typedruby_toml(dir).ok_or(ProjectError::NoProjectConfig)?;
 
         let config = read_typedruby_toml(&config_path)?;
 
@@ -65,7 +130,18 @@ impl Project {
             root
         };
 
+        // XXX - GLOBAL STATE!
+        //
+        // the glob crate is always relative to the process's current directory
+        // and does not allow us to pass a base path to use instead.
+        // until the glob crate is fixed we need to set the process's current
+        // directory to the current project.
+        // this prevents us from supporting multiple projects in the same process
+        //
+        env::set_current_dir(&root).map_err(ProjectError::Io)?;
+
         Ok(Project {
+            check_config: init_check_config(errors, &root, &config)?,
             root,
             config,
             cache: LoadCache::new(),

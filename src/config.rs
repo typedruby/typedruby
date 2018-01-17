@@ -1,6 +1,8 @@
 use std::path::PathBuf;
 use std::vec::Vec;
 
+use ref_slice::ref_slice;
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CheckConfig {
     pub require_paths: Vec<PathBuf>,
@@ -8,21 +10,7 @@ pub struct CheckConfig {
     pub autoload_paths: Vec<PathBuf>,
     pub inflect_acronyms: Vec<String>,
     pub ignore_errors_in: Vec<PathBuf>,
-    pub strip: bool,
-}
-
-impl CheckConfig {
-    // TODO read from a config file or something
-    pub fn new() -> CheckConfig {
-        CheckConfig {
-            require_paths: Vec::new(),
-            warning: false,
-            autoload_paths: Vec::new(),
-            inflect_acronyms: Vec::new(),
-            ignore_errors_in: Vec::new(),
-            strip: false,
-        }
-    }
+    pub files: Vec<PathBuf>,
 }
 
 pub struct AnnotateConfig {
@@ -32,20 +20,6 @@ pub struct AnnotateConfig {
 pub struct StripConfig {
     pub annotate: bool,
     pub print: bool,
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(untagged)]
-pub enum Paths {
-    None,
-    One(PathBuf),
-    Many(Vec<PathBuf>),
-}
-
-impl Default for Paths {
-    fn default() -> Self {
-        Paths::None
-    }
 }
 
 #[derive(Deserialize, Debug)]
@@ -62,14 +36,23 @@ impl Default for Strings {
     }
 }
 
+impl Strings {
+    pub fn as_slice(&self) -> &[String] {
+        match *self {
+            Strings::None => &[],
+            Strings::One(ref string) => ref_slice(string),
+            Strings::Many(ref strings) => strings,
+        }
+    }
+}
+
 #[derive(Deserialize, Default, Debug)]
 pub struct TypedRubyConfig {
     #[serde(default)] pub bundler: bool,
-    #[serde(default)] pub glob: bool,
-    #[serde(default)] pub files: Paths,
-    #[serde(default)] pub load_path: Paths,
-    #[serde(default)] pub autoload_path: Paths,
-    #[serde(default)] pub ignore_errors: Paths,
+    #[serde(default)] pub source: Strings,
+    #[serde(default)] pub load_path: Strings,
+    #[serde(default)] pub autoload_path: Strings,
+    #[serde(default)] pub ignore_errors: Strings,
 }
 
 #[derive(Deserialize, Default, Debug)]

@@ -5,7 +5,7 @@ use termcolor::StandardStream;
 use typed_arena::Arena;
 
 use annotate::{self, AnnotateError};
-use config::{AnnotateConfig, CheckConfig, StripConfig};
+use config::{AnnotateConfig, StripConfig};
 use environment::Environment;
 use errors::{ErrorReporter, ErrorSink};
 use project::{Project, ProjectError};
@@ -14,14 +14,8 @@ use remote::client::{Remote, ConnectError};
 use remote;
 use strip::{self, StripError};
 
-pub fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig, files: Vec<PathBuf>) -> bool {
-    if let Some(lib_path) = env::var("TYPEDRUBY_LIB").ok() {
-        config.require_paths.insert(0, PathBuf::from(lib_path));
-    } else {
-        errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
-    }
-
-    let project = match Project::find(&env::current_dir().expect("env::current_dir")) {
+pub fn check(mut errors: ErrorReporter<StandardStream>) -> bool {
+    let project = match Project::find(&mut errors, &env::current_dir().expect("env::current_dir")) {
         Ok(project) => project,
         Err(ProjectError::Toml(e)) => {
             // TODO use Loc stuff to pinpoint error in TypedRuby.toml
@@ -32,11 +26,12 @@ pub fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig,
             errors.error(&format!("Couldn't load project: {:?}", e), &[]);
             return false;
         }
+        Err(e) => panic!("FIXME {:?}", e)
     };
 
     match Remote::connect(&project.socket_path()) {
         Ok(mut remote) => {
-            match remote.check(&mut errors, config, files) {
+            match remote.check(&mut errors) {
                 Ok(result) => result,
                 Err(e) => {
                     errors.error(&format!("Error communicating with TypedRuby server: {:?}", e), &[]);
@@ -59,9 +54,9 @@ pub fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig,
         Err(ConnectError::NoServer) => {
             let arena = Arena::new();
 
-            let env = Environment::new(&arena, &project, &mut errors, config);
+            let env = Environment::new(&arena, &project, &mut errors);
 
-            env.load_files(files.iter());
+            env.load_files(project.check_config.files.iter());
             env.define();
             env.typecheck();
 
@@ -122,7 +117,7 @@ pub fn strip(mut errors: ErrorReporter<StandardStream>, config: StripConfig, fil
 }
 
 pub fn server(errors: &mut ErrorSink) -> bool {
-    match remote::server::run() {
+    match remote::server::run(errors) {
         Ok(()) => true,
         Err(RunServerError::AlreadyRunning(path)) => {
             errors.error(&format!("A TypedRuby server is already running on {}", path.display()), &[]);
