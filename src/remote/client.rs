@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io;
+use std::io::{self, ErrorKind};
 use std::os::unix::net::UnixStream;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
@@ -37,31 +37,59 @@ fn map_details<'a>(arena: &'a Arena<Loc>, cache: &mut SourceCache, details: &'a 
     }).collect::<Result<Vec<_>, _>>()
 }
 
-pub fn check_remote(socket_path: &Path, errors: &mut ErrorSink, config: CheckConfig, files: Vec<PathBuf>)
-    -> Result<bool, ProtocolError>
-{
-    let stream = UnixStream::connect(socket_path)
-        .map_err(ProtocolError::Io)?;
+pub struct Remote {
+    transport: ServerTransport<UnixStream>,
+}
 
-    let mut transport = ServerTransport::new(stream)?;
+pub enum ConnectError {
+    NoServer,
+    VersionMismatch(String),
+    Protocol(ProtocolError),
+    Io(io::Error),
+}
 
-    let mut source_cache = SourceCache::new();
-
-    for reply in transport.send(Message::Check { config, files })? {
-        let arena = Arena::new();
-
-        match reply? {
-            ReplyData::Error { msg, details } => {
-                let details = map_details(&arena, &mut source_cache, &details).map_err(ProtocolError::Io)?;
-                errors.error(&msg, &details)
+impl Remote {
+    pub fn connect(socket_path: &Path) -> Result<Remote, ConnectError> {
+        let stream = UnixStream::connect(socket_path).map_err(|e|
+            match e.kind() {
+                ErrorKind::NotFound |
+                ErrorKind::AddrNotAvailable |
+                ErrorKind::ConnectionRefused => ConnectError::NoServer,
+                _ => ConnectError::Io(e)
             }
-            ReplyData::Warning { msg, details } => {
-                let details = map_details(&arena, &mut source_cache, &details).map_err(ProtocolError::Io)?;
-                errors.warning(&msg, &details)
+        )?;
+
+        let transport = ServerTransport::new(stream).map_err(|e|
+            match e {
+                ProtocolError::VersionMismatch(version) => ConnectError::VersionMismatch(version),
+                _ => ConnectError::Protocol(e),
             }
-            ReplyData::Ok => {}
-        }
+        )?;
+
+        Ok(Remote { transport })
     }
 
-    Ok(true)
+    pub fn check(&mut self, errors: &mut ErrorSink, config: CheckConfig, files: Vec<PathBuf>)
+        -> Result<bool, ProtocolError>
+    {
+        let mut source_cache = SourceCache::new();
+
+        for reply in self.transport.send(Message::Check { config, files })? {
+            let arena = Arena::new();
+
+            match reply? {
+                ReplyData::Error { msg, details } => {
+                    let details = map_details(&arena, &mut source_cache, &details).map_err(ProtocolError::Io)?;
+                    errors.error(&msg, &details)
+                }
+                ReplyData::Warning { msg, details } => {
+                    let details = map_details(&arena, &mut source_cache, &details).map_err(ProtocolError::Io)?;
+                    errors.warning(&msg, &details)
+                }
+                ReplyData::Ok => {}
+            }
+        }
+
+        Ok(true)
+    }
 }
