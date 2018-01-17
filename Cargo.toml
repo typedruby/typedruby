@@ -5,6 +5,7 @@ authors = ["Hailey Somerville <hailey@hailey.lol>"]
 license = "MIT"
 
 [dependencies]
+crossbeam = "0.3"
 clap = "2.23"
 glob = "0.2"
 immutable-map = "0.1.2"

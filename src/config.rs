@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::vec::Vec;
 
+#[derive(Serialize, Deserialize, Debug)]
 pub struct CheckConfig {
     pub require_paths: Vec<PathBuf>,
     pub warning: bool,
@@ -31,10 +32,4 @@ pub struct AnnotateConfig {
 pub struct StripConfig {
     pub annotate: bool,
     pub print: bool,
-}
-
-pub enum Command {
-    Check(CheckConfig, Vec<PathBuf>),
-    Annotate(AnnotateConfig, PathBuf),
-    Strip(StripConfig, Vec<PathBuf>),
 }

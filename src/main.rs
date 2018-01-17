@@ -4,6 +4,7 @@ extern crate clap;
 #[macro_use]
 extern crate serde_derive;
 
+extern crate crossbeam;
 extern crate glob;
 extern crate immutable_map;
 extern crate itertools;
@@ -14,35 +15,40 @@ extern crate termcolor;
 extern crate typed_arena;
 extern crate vec_map;
 
-use std::env;
 use std::path::PathBuf;
 use std::fs;
 use std::process;
 use clap::{App, AppSettings, Arg, ArgMatches, SubCommand};
-use typed_arena::Arena;
 use termcolor::{ColorChoice, StandardStream};
 
 mod abstract_type;
 mod annotate;
 mod ast;
+mod command;
 mod config;
 mod debug;
 mod define;
 mod environment;
 mod errors;
 mod inflect;
+mod load;
 mod object;
+mod remote;
 mod slice_util;
 mod strip;
 mod top_level;
 mod typecheck;
 mod util;
 
-use annotate::AnnotateError;
-use strip::StripError;
-use environment::Environment;
-use errors::{ErrorReporter, ErrorSink};
-use config::{Command, AnnotateConfig, CheckConfig, StripConfig};
+use config::{AnnotateConfig, CheckConfig, StripConfig};
+use errors::ErrorReporter;
+
+enum Command {
+    Check(CheckConfig, Vec<PathBuf>),
+    Annotate(AnnotateConfig, PathBuf),
+    Strip(StripConfig, Vec<PathBuf>),
+    Server,
+}
 
 fn source_files(matches: &ArgMatches) -> Vec<PathBuf> {
     let sources = matches.values_of("source")
@@ -60,7 +66,7 @@ fn source_files(matches: &ArgMatches) -> Vec<PathBuf> {
     }
 }
 
-fn command() -> Command {
+fn parse_cmdline() -> Command {
     let app = App::new(crate_name!())
         .version(crate_version!())
         .setting(AppSettings::SubcommandRequiredElseHelp)
@@ -97,6 +103,9 @@ fn command() -> Command {
                     .multiple(true)
                     .required(true)
                     .help("Source files to strip")))
+        .subcommand(
+            SubCommand::with_name("server")
+                .about("Runs the TypedRuby development server for the project in the current directory"))
         .subcommand(
             SubCommand::with_name("check")
                 .about("Type check Ruby source files")
@@ -184,87 +193,21 @@ fn command() -> Command {
         };
 
         Command::Strip(config, source_files(matches))
+    } else if let Some(_) = matches.subcommand_matches("server") {
+        Command::Server
     } else {
         panic!("unreachable - clap should have exited if no subcommand matched");
     }
 }
 
-fn check(mut errors: Box<ErrorSink>, mut config: CheckConfig, files: Vec<PathBuf>) -> bool {
-    let arena = Arena::new();
-
-    if let Some(lib_path) = env::var("TYPEDRUBY_LIB").ok() {
-        config.require_paths.insert(0, PathBuf::from(lib_path));
-    } else {
-        errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
-    }
-
-    let env = Environment::new(&arena, errors, config);
-
-    env.load_files(files.iter());
-    env.define();
-    env.typecheck();
-
-    let errors = env.error_sink.borrow();
-
-    errors.error_count() == 0 && errors.warning_count() == 0
-}
-
-fn annotate(mut errors: Box<ErrorSink>, config: AnnotateConfig, file: PathBuf) -> bool {
-    match annotate::apply_annotations(&file, config) {
-        Ok(()) => true,
-        Err(err) => {
-            match err {
-                AnnotateError::Syntax(diagnostics) => {
-                    for diagnostic in diagnostics {
-                        errors.parser_diagnostic(&diagnostic);
-                    }
-                }
-                AnnotateError::Json(err) => {
-                    errors.error(&format!("Could not parse line of annotations file: {}", err), &[]);
-                }
-                AnnotateError::Io(err) => {
-                    errors.error(&format!("Could not open {}: {}", file.display(), err), &[]);
-                }
-            }
-
-            false
-        }
-    }
-}
-
-fn strip(mut errors: Box<ErrorSink>, config: StripConfig, files: Vec<PathBuf>) -> bool {
-    let mut success = true;
-
-    for file in files {
-        match strip::strip_file(file.clone(), &config) {
-            Ok(()) => {},
-            Err(err) => {
-                success = false;
-
-                match err {
-                    StripError::Syntax(diagnostics) => {
-                        for diagnostic in diagnostics {
-                            errors.parser_diagnostic(&diagnostic);
-                        }
-                    }
-                    StripError::Io(err) => {
-                        errors.error(&format!("Could not open {}: {}", file.display(), err), &[]);
-                    }
-                }
-            }
-        }
-    }
-
-    success
-}
-
 fn main() {
-    let errors = Box::new(ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto)));
+    let mut errors = ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto));
 
-    let success = match command() {
-        Command::Check(config, files) => check(errors, config, files),
-        Command::Annotate(config, file) => annotate(errors, config, file),
-        Command::Strip(config, files) => strip(errors, config, files),
+    let success = match parse_cmdline() {
+        Command::Check(config, files) => command::check(errors, config, files),
+        Command::Annotate(config, file) => command::annotate(errors, config, file),
+        Command::Strip(config, files) => command::strip(errors, config, files),
+        Command::Server => command::server(&mut errors),
     };
 
     process::exit(match success {

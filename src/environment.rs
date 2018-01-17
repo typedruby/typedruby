@@ -7,11 +7,12 @@ use std::fs;
 
 use typed_arena::Arena;
 
-use ast::{parse, SourceFile, Node, Id};
+use ast::{Ast, SourceFile, Node, Id};
 use config::CheckConfig;
 use define::Definitions;
 use errors::ErrorSink;
 use inflect::Inflector;
+use load::LoadCache;
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope, ConstantEntry};
 use top_level;
 use typecheck;
@@ -64,19 +65,18 @@ impl PhaseCell {
 
 pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
-    pub error_sink: RefCell<Box<ErrorSink>>,
+    pub error_sink: RefCell<&'object mut ErrorSink>,
     pub config: CheckConfig,
     pub defs: Definitions<'object>,
     phase: PhaseCell,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
     inflector: Inflector,
+    load_cache: &'object LoadCache,
 }
 
-static STDLIB_DEFINITIONS: &'static str = include_str!("../definitions/core.rb");
-
 impl<'object> Environment<'object> {
-    pub fn new(arena: &'object Arena<RubyObject<'object>>, error_sink: Box<ErrorSink>, config: CheckConfig) -> Environment<'object> {
+    pub fn new(arena: &'object Arena<RubyObject<'object>>, load_cache: &'object LoadCache, error_sink: &'object mut ErrorSink, config: CheckConfig) -> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
 
         let env = Environment {
@@ -88,22 +88,18 @@ impl<'object> Environment<'object> {
             method_queue: RefCell::new(VecDeque::new()),
             inflector: inflector,
             defs: Definitions::new(),
+            load_cache: load_cache,
         };
 
-        let source_file = SourceFile::new(PathBuf::from("(builtin stdlib)"), STDLIB_DEFINITIONS.to_owned());
-
-        env.load_source_file(source_file);
+        top_level::evaluate(&env, load_cache.builtin_stdlib());
 
         env
     }
 
     pub fn load_file(&self, path: &Path) -> io::Result<()> {
-        let source_file = match SourceFile::open(path.to_owned()) {
-            Ok(sf) => sf,
-            Err(err) => return Err(err),
-        };
+        let ast = self.load_cache.load_ast(path)?;
 
-        self.load_source_file(source_file);
+        self.load_ast(&ast, path);
 
         Ok(())
     }
@@ -112,16 +108,13 @@ impl<'object> Environment<'object> {
         !self.config.ignore_errors_in.iter().any(|prefix| path.starts_with(prefix))
     }
 
-    fn load_source_file(&self, source_file: SourceFile) {
+    fn load_ast(&self, ast: &Ast, path: &Path) {
         if !self.phase.get().can_load() {
-            panic!("tried to load file in {:?} phase: {}", self.phase.get(), source_file.filename().display());
+            panic!("tried to load file in {:?} phase: {}", self.phase.get(), path.display());
         }
 
-        let source_file = Rc::new(source_file);
-        let ast = parse(source_file.clone());
-
-        for diag in ast.diagnostics {
-            self.error_sink.borrow_mut().parser_diagnostic(&diag);
+        for diag in &ast.diagnostics {
+            self.error_sink.borrow_mut().parser_diagnostic(diag);
         }
 
         if let Some(ref node) = ast.node {
