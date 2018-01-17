@@ -45,10 +45,10 @@ fn bind_socket(path: &Path) -> Result<UnixListener, RunServerError> {
     UnixListener::bind(path).map_err(RunServerError::Io)
 }
 
-pub fn run() -> Result<(), RunServerError> {
+pub fn run(errors: &mut ErrorSink) -> Result<(), RunServerError> {
     let current_dir = env::current_dir().expect("env::current_dir");
 
-    let project = Project::find(&current_dir).map_err(RunServerError::Project)?;
+    let project = Project::find(errors, &current_dir).map_err(RunServerError::Project)?;
 
     let listener = bind_socket(&project.socket_path())?;
 
@@ -77,13 +77,13 @@ pub fn run() -> Result<(), RunServerError> {
                 Work::Message(Message::Ping, reply) => {
                     let _ = reply.send(ReplyData::Ok);
                 }
-                Work::Message(Message::Check { mut config, files }, reply) => {
+                Work::Message(Message::Check, reply) => {
                     let mut errors = ClientErrors::new(reply);
                     let arena = Arena::new();
 
-                    let env = Environment::new(&arena, &project, &mut errors, config);
+                    let env = Environment::new(&arena, &project, &mut errors);
 
-                    env.load_files(files.iter());
+                    env.load_files(project.check_config.files.iter());
                     env.define();
                     env.typecheck();
                 }

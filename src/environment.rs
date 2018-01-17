@@ -66,7 +66,7 @@ impl PhaseCell {
 pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
     pub error_sink: RefCell<&'object mut ErrorSink>,
-    pub config: CheckConfig,
+    pub config: &'object CheckConfig,
     pub defs: Definitions<'object>,
     phase: PhaseCell,
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
@@ -76,13 +76,13 @@ pub struct Environment<'object> {
 }
 
 impl<'object> Environment<'object> {
-    pub fn new(arena: &'object Arena<RubyObject<'object>>, project: &'object Project, error_sink: &'object mut ErrorSink, config: CheckConfig) -> Environment<'object> {
-        let inflector = Inflector::new(&config.inflect_acronyms);
+    pub fn new(arena: &'object Arena<RubyObject<'object>>, project: &'object Project, error_sink: &'object mut ErrorSink) -> Environment<'object> {
+        let inflector = Inflector::new(&project.check_config.inflect_acronyms);
 
         let env = Environment {
             error_sink: RefCell::new(error_sink),
             object: ObjectGraph::new(&arena),
-            config: config,
+            config: &project.check_config,
             phase: PhaseCell::new(Phase::Load),
             loaded_features: RefCell::new(HashMap::new()),
             method_queue: RefCell::new(VecDeque::new()),

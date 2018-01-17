@@ -7,7 +7,6 @@ use std::rc::Rc;
 use typed_arena::Arena;
 
 use ast::{SourceFile, Loc};
-use config::CheckConfig;
 use errors::{self, ErrorSink};
 use remote::protocol::{self, ServerTransport, ProtocolError, Message, ReplyData};
 
@@ -69,12 +68,12 @@ impl Remote {
         Ok(Remote { transport })
     }
 
-    pub fn check(&mut self, errors: &mut ErrorSink, config: CheckConfig, files: Vec<PathBuf>)
+    pub fn check(&mut self, errors: &mut ErrorSink)
         -> Result<bool, ProtocolError>
     {
         let mut source_cache = SourceCache::new();
 
-        for reply in self.transport.send(Message::Check { config, files })? {
+        for reply in self.transport.send(Message::Check)? {
             let arena = Arena::new();
 
             match reply? {
