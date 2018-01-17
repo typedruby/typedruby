@@ -1,3 +1,4 @@
+use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::os::unix::net::{UnixStream, UnixListener};
@@ -6,9 +7,8 @@ use std::sync::mpsc::{self, SyncSender};
 
 use environment::Environment;
 use errors::{self, ErrorSink};
-use load::LoadCache;
+use project::{Project, ProjectError};
 use remote::protocol::{self, ProtocolError, Message, ClientTransport, ReplyData};
-use remote;
 
 use crossbeam;
 use typed_arena::Arena;
@@ -16,10 +16,14 @@ use typed_arena::Arena;
 #[derive(Debug)]
 pub enum RunServerError {
     Io(io::Error),
+    Project(ProjectError),
     AlreadyRunning(PathBuf),
 }
 
-type Work = (Message, SyncSender<ReplyData>);
+enum Work {
+    Connection(UnixStream, SyncSender<Work>),
+    Message(Message, SyncSender<ReplyData>),
+}
 
 fn bind_socket(path: &Path) -> Result<UnixListener, RunServerError> {
     // try to bind to the socket eagerly:
@@ -42,53 +46,52 @@ fn bind_socket(path: &Path) -> Result<UnixListener, RunServerError> {
 }
 
 pub fn run() -> Result<(), RunServerError> {
-    let path = remote::socket_path().map_err(RunServerError::Io)?;
-    let listener = bind_socket(&path)?;
+    let current_dir = env::current_dir().expect("env::current_dir");
+
+    let project = Project::find(&current_dir).map_err(RunServerError::Project)?;
+
+    let listener = bind_socket(&project.socket_path())?;
 
     let (send, recv) = mpsc::sync_channel::<Work>(0);
 
     crossbeam::scope(|scope| {
         scope.spawn(move || {
-            let load_cache = LoadCache::new();
-
-            while let Ok((message, reply)) = recv.recv() {
-                match message {
-                    Message::Ping => {
-                        let _ = reply.send(ReplyData::Ok);
+            for stream in listener.incoming() {
+                match stream {
+                    Ok(stream) => {
+                        let stream_sender = send.clone();
+                        let _ = send.send(Work::Connection(stream, stream_sender));
                     }
-                    Message::Check { mut config, files } => {
-                        let mut errors = ClientErrors::new(reply);
-                        let arena = Arena::new();
-
-                        let env = Environment::new(&arena, &load_cache, &mut errors, config);
-
-                        env.load_files(files.iter());
-                        env.define();
-                        env.typecheck();
-                    }
+                    Err(_) => { break; }
                 }
             }
         });
 
-        let mut result = Ok(());
-
-        for stream in listener.incoming() {
-            match stream {
-                Ok(stream) => {
-                    let send = send.clone();
+        while let Ok(work) = recv.recv() {
+            match work {
+                Work::Connection(stream, send) => {
                     scope.spawn(move || {
                         let _ = Client::run(stream, send);
                     });
                 }
-                Err(e) => {
-                    result = Err(RunServerError::Io(e));
-                    break;
+                Work::Message(Message::Ping, reply) => {
+                    let _ = reply.send(ReplyData::Ok);
+                }
+                Work::Message(Message::Check { mut config, files }, reply) => {
+                    let mut errors = ClientErrors::new(reply);
+                    let arena = Arena::new();
+
+                    let env = Environment::new(&arena, &project, &mut errors, config);
+
+                    env.load_files(files.iter());
+                    env.define();
+                    env.typecheck();
                 }
             }
         }
+    });
 
-        result
-    })
+    Ok(())
 }
 
 struct Client<T: Read + Write> {
@@ -112,7 +115,7 @@ impl<T: Read + Write> Client<T> {
         while let Some((message, mut txn)) = self.transport.recv()? {
             let (reply_send, reply_recv) = mpsc::sync_channel(0);
 
-            let _ = self.send_work.send((message, reply_send));
+            let _ = self.send_work.send(Work::Message(message, reply_send));
 
             while let Ok(reply) = reply_recv.recv() {
                 txn.reply(reply)?;

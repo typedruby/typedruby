@@ -12,8 +12,8 @@ use config::CheckConfig;
 use define::Definitions;
 use errors::ErrorSink;
 use inflect::Inflector;
-use load::LoadCache;
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope, ConstantEntry};
+use project::Project;
 use top_level;
 use typecheck;
 
@@ -72,11 +72,11 @@ pub struct Environment<'object> {
     loaded_features: RefCell<HashMap<PathBuf, LoadState>>,
     method_queue: RefCell<VecDeque<Rc<MethodEntry<'object>>>>,
     inflector: Inflector,
-    load_cache: &'object LoadCache,
+    project: &'object Project,
 }
 
 impl<'object> Environment<'object> {
-    pub fn new(arena: &'object Arena<RubyObject<'object>>, load_cache: &'object LoadCache, error_sink: &'object mut ErrorSink, config: CheckConfig) -> Environment<'object> {
+    pub fn new(arena: &'object Arena<RubyObject<'object>>, project: &'object Project, error_sink: &'object mut ErrorSink, config: CheckConfig) -> Environment<'object> {
         let inflector = Inflector::new(&config.inflect_acronyms);
 
         let env = Environment {
@@ -88,16 +88,16 @@ impl<'object> Environment<'object> {
             method_queue: RefCell::new(VecDeque::new()),
             inflector: inflector,
             defs: Definitions::new(),
-            load_cache: load_cache,
+            project: project,
         };
 
-        top_level::evaluate(&env, load_cache.builtin_stdlib());
+        top_level::evaluate(&env, project.cache.builtin_stdlib());
 
         env
     }
 
     pub fn load_file(&self, path: &Path) -> io::Result<()> {
-        let ast = self.load_cache.load_ast(path)?;
+        let ast = self.project.cache.load_ast(path)?;
 
         self.load_ast(&ast, path);
 

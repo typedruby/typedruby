@@ -8,7 +8,7 @@ use annotate::{self, AnnotateError};
 use config::{AnnotateConfig, CheckConfig, StripConfig};
 use environment::Environment;
 use errors::{ErrorReporter, ErrorSink};
-use load::LoadCache;
+use project::{Project, ProjectError};
 use remote::server::RunServerError;
 use remote::client::{Remote, ConnectError};
 use remote;
@@ -21,9 +21,20 @@ pub fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig,
         errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
     }
 
-    let socket_path = remote::socket_path().expect("server::socket_path");
+    let project = match Project::find(&env::current_dir().expect("env::current_dir")) {
+        Ok(project) => project,
+        Err(ProjectError::Toml(e)) => {
+            // TODO use Loc stuff to pinpoint error in TypedRuby.toml
+            errors.error(&format!("Couldn't parse TypedRuby.toml: {:?}", e), &[]);
+            return false;
+        }
+        Err(ProjectError::Io(e)) => {
+            errors.error(&format!("Couldn't load project: {:?}", e), &[]);
+            return false;
+        }
+    };
 
-    match Remote::connect(&socket_path) {
+    match Remote::connect(&project.socket_path()) {
         Ok(mut remote) => {
             match remote.check(&mut errors, config, files) {
                 Ok(result) => result,
@@ -46,10 +57,9 @@ pub fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig,
             false
         }
         Err(ConnectError::NoServer) => {
-            let load_cache = LoadCache::new();
             let arena = Arena::new();
 
-            let env = Environment::new(&arena, &load_cache, &mut errors, config);
+            let env = Environment::new(&arena, &project, &mut errors, config);
 
             env.load_files(files.iter());
             env.define();
