@@ -12,6 +12,7 @@ extern crate regex;
 extern crate serde;
 extern crate serde_json;
 extern crate termcolor;
+extern crate toml;
 extern crate typed_arena;
 extern crate vec_map;
 
@@ -33,6 +34,7 @@ mod errors;
 mod inflect;
 mod load;
 mod object;
+mod project;
 mod remote;
 mod slice_util;
 mod strip;

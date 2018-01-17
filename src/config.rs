@@ -33,3 +33,58 @@ pub struct StripConfig {
     pub annotate: bool,
     pub print: bool,
 }
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum Paths {
+    None,
+    One(PathBuf),
+    Many(Vec<PathBuf>),
+}
+
+impl Default for Paths {
+    fn default() -> Self {
+        Paths::None
+    }
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(untagged)]
+pub enum Strings {
+    None,
+    One(String),
+    Many(Vec<String>),
+}
+
+impl Default for Strings {
+    fn default() -> Self {
+        Strings::None
+    }
+}
+
+#[derive(Deserialize, Default, Debug)]
+pub struct TypedRubyConfig {
+    #[serde(default)] pub bundler: bool,
+    #[serde(default)] pub glob: bool,
+    #[serde(default)] pub files: Paths,
+    #[serde(default)] pub load_path: Paths,
+    #[serde(default)] pub autoload_path: Paths,
+    #[serde(default)] pub ignore_errors: Paths,
+}
+
+#[derive(Deserialize, Default, Debug)]
+pub struct InflectConfig {
+    #[serde(default)] pub acronyms: Strings,
+}
+
+#[derive(Deserialize, Default, Debug)]
+pub struct CodegenConfig {
+    #[serde(default)] pub exec: Strings,
+}
+
+#[derive(Deserialize, Default, Debug)]
+pub struct ProjectConfig {
+    #[serde(default)] pub typedruby: TypedRubyConfig,
+    #[serde(default)] pub inflect: InflectConfig,
+    #[serde(default)] pub codegen: CodegenConfig,
+}
