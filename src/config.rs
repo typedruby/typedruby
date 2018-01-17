@@ -33,10 +33,3 @@ pub struct StripConfig {
     pub annotate: bool,
     pub print: bool,
 }
-
-pub enum Command {
-    Check(CheckConfig, Vec<PathBuf>),
-    Annotate(AnnotateConfig, PathBuf),
-    Strip(StripConfig, Vec<PathBuf>),
-    Server,
-}
