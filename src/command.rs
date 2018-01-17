@@ -10,6 +10,7 @@ use environment::Environment;
 use errors::{ErrorReporter, ErrorSink};
 use load::LoadCache;
 use remote::server::RunServerError;
+use remote::client::{Remote, ConnectError};
 use remote;
 use strip::{self, StripError};
 
@@ -22,24 +23,42 @@ pub fn check(mut errors: ErrorReporter<StandardStream>, mut config: CheckConfig,
 
     let socket_path = remote::socket_path().expect("server::socket_path");
 
-    if socket_path.exists() {
-        match remote::client::check_remote(&socket_path, &mut errors, config, files) {
-            Ok(result) => result,
-            Err(e) => panic!("client::check_remote: {:?}", e),
+    match Remote::connect(&socket_path) {
+        Ok(mut remote) => {
+            match remote.check(&mut errors, config, files) {
+                Ok(result) => result,
+                Err(e) => {
+                    errors.error(&format!("Error communicating with TypedRuby server: {:?}", e), &[]);
+                    false
+                }
+            }
         }
-    } else {
-        let load_cache = LoadCache::new();
-        let arena = Arena::new();
+        Err(ConnectError::Io(e)) => {
+            errors.error(&format!("Could not connect to TypedRuby server: {:?}", e), &[]);
+            false
+        }
+        Err(ConnectError::VersionMismatch(version)) => {
+            errors.error(&format!("TypedRuby server is running version {}, expected {}", version, remote::protocol::VERSION), &[]);
+            false
+        }
+        Err(ConnectError::Protocol(e)) => {
+            errors.error(&format!("Error communicating with TypedRuby server: {:?}", e), &[]);
+            false
+        }
+        Err(ConnectError::NoServer) => {
+            let load_cache = LoadCache::new();
+            let arena = Arena::new();
 
-        let env = Environment::new(&arena, &load_cache, &mut errors, config);
+            let env = Environment::new(&arena, &load_cache, &mut errors, config);
 
-        env.load_files(files.iter());
-        env.define();
-        env.typecheck();
+            env.load_files(files.iter());
+            env.define();
+            env.typecheck();
 
-        let errors = env.error_sink.borrow();
+            let errors = env.error_sink.borrow();
 
-        errors.error_count() == 0 && errors.warning_count() == 0
+            errors.error_count() == 0 && errors.warning_count() == 0
+        }
     }
 }
 

@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use config::CheckConfig;
 
-const PROTOCOL_VERSION: &'static str = env!("CARGO_PKG_VERSION");
+pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug)]
 pub enum ProtocolError {
@@ -75,13 +75,13 @@ fn write_json<S: Serialize, T: Write>(io: &mut T, data: S) -> Result<(), Protoco
 }
 
 fn handshake<T: Read + Write>(io: &mut BufReader<T>) -> Result<(), ProtocolError> {
-    write_json(io.get_mut(), PROTOCOL_VERSION)?;
+    write_json(io.get_mut(), VERSION)?;
 
     let mut buff = String::new();
     let remote_version: Option<&str> = read_json(io, &mut buff)?;
 
     match remote_version {
-        Some(ver) if ver == PROTOCOL_VERSION => {
+        Some(ver) if ver == VERSION => {
             Ok(())
         }
         Some(ver) => {
