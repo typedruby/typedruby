@@ -7,7 +7,7 @@ use std::sync::mpsc::{self, SyncSender};
 
 use environment::Environment;
 use errors::{self, ErrorSink};
-use project::{Project, ProjectError};
+use project::{Project, ProjectPath, ProjectError};
 use remote::protocol::{self, ProtocolError, Message, ClientTransport, ReplyData};
 
 use crossbeam;
@@ -15,6 +15,7 @@ use typed_arena::Arena;
 
 #[derive(Debug)]
 pub enum RunServerError {
+    NoProjectConfig,
     Io(io::Error),
     Project(ProjectError),
     AlreadyRunning(PathBuf),
@@ -48,9 +49,11 @@ fn bind_socket(path: &Path) -> Result<UnixListener, RunServerError> {
 pub fn run(errors: &mut ErrorSink) -> Result<(), RunServerError> {
     let current_dir = env::current_dir().expect("env::current_dir");
 
-    let project = Project::find(errors, &current_dir).map_err(RunServerError::Project)?;
+    let project_path = ProjectPath::find(current_dir).ok_or(RunServerError::NoProjectConfig)?;
 
-    let listener = bind_socket(&project.socket_path())?;
+    let project = Project::new(errors, project_path).map_err(RunServerError::Project)?;
+
+    let listener = bind_socket(&project.path.socket_path())?;
 
     let (send, recv) = mpsc::sync_channel::<Work>(0);
 
