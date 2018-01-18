@@ -222,3 +222,27 @@ impl Project {
     }
 }
 
+#[cfg(test)]
+pub fn load_fixture(errors: &mut ErrorSink, fixture_path: &Path) -> Project {
+    let root = fixture_path
+        .parent()
+        .expect("fixture_path.parent()")
+        .to_owned();
+
+    let mut config = ProjectConfig::default();
+
+    config.typedruby.source = Strings::One(
+        fixture_path.to_str()
+            .expect("fixture_path should be UTF-8")
+            .to_owned());
+
+    let check_config = init_check_config(errors, &root, &config)
+        .expect("init_check_config");
+
+    Project {
+        check_config,
+        root,
+        config,
+        cache: LoadCache::new(),
+    }
+}
