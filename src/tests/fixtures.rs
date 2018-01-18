@@ -1,21 +1,19 @@
-extern crate difference;
-extern crate glob;
-extern crate regex;
-#[macro_use]
-extern crate lazy_static;
-
-mod common;
-
-use difference::{Changeset, Difference};
-use glob::glob;
 use std::env;
 use std::fs::File;
-use std::io::Read;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
-use regex::{Regex, Captures};
 
+extern crate difference;
+use self::difference::{Changeset, Difference};
+
+use glob::glob;
+use regex::{Regex, Captures};
+use termcolor::NoColor;
+use typed_arena::Arena;
+
+use environment::Environment;
+use errors::ErrorReporter;
+use project;
 
 struct Mismatch {
     path: PathBuf,
@@ -54,40 +52,33 @@ fn clean_typecheck_output(output: &str, rootdir: &Path) -> String {
 }
 
 fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
-    let rootdir = env::current_dir().unwrap();
+    let root_dir = env::current_dir().unwrap();
 
-    let status = Command::new(common::typedruby_exe())
-        .arg("check")
-        .arg(&path)
-        // Remove TERM to force termcolor to not output colors in
-        // tests.
-        .env_remove("TERM")
-        .env("TYPEDRUBY_LIB", rootdir.join("definitions/lib"))
-        .output()
-        .expect("Failed to execute typedruby");
+    let mut error_buff = Vec::new();
+
+    {
+        let mut errors = ErrorReporter::new(NoColor::new(&mut error_buff));
+
+        let project = project::load_fixture(&mut errors, &path);
+
+        let arena = Arena::new();
+        let env = Environment::new(&arena, &project, &mut errors);
+
+        env.load_files(project.check_config.files.iter());
+        env.define();
+        env.typecheck();
+    }
 
     let expected = read_file(&output_path(&path));
-    let expected_code = match expected.len() {
-        0 => 0,
-        _ => 1,
-    };
 
-    let exit_code = status.status.code().expect("process to exit cleanly with a status code");
+    let output = String::from_utf8(error_buff).expect("output should be utf-8");
+    let output = clean_typecheck_output(&output, &root_dir);
 
-    assert_eq!(expected_code, exit_code,
-        "unexpected exit code when typechecking '{}' (want: {}, got: {})",
-        path.display(), expected_code, exit_code);
-
-    let stderr = String::from_utf8(status.stderr)
-        .expect("output to be utf-8");
-
-    let stderr = clean_typecheck_output(&stderr, &rootdir);
-
-    if stderr != expected {
+    if output != expected {
         return Some(Mismatch{
             path: path,
             expected: expected,
-            got: stderr,
+            got: output,
         })
     }
     return None
@@ -95,6 +86,8 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
 
 #[test]
 fn test_fixtures() {
+    env::set_var("TYPEDRUBY_LIB", env::current_dir().unwrap().join("definitions/lib"));
+
     let rewrite = match env::var("TYPEDRUBY_UPDATE_FIXTURES") {
         Ok(ref val) => val != "",
         Err(..) => false,

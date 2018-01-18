@@ -42,6 +42,15 @@ mod top_level;
 mod typecheck;
 mod util;
 
+#[cfg(test)]
+#[macro_use]
+extern crate lazy_static;
+
+#[cfg(test)]
+mod tests {
+    mod fixtures;
+}
+
 use config::{AnnotateConfig, StripConfig};
 use errors::ErrorReporter;
 
