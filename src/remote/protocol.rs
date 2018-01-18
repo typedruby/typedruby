@@ -5,8 +5,6 @@ use std::iter::Iterator;
 use std::ops::Drop;
 use std::path::PathBuf;
 
-use config::CheckConfig;
-
 pub const VERSION: &'static str = env!("CARGO_PKG_VERSION");
 
 #[derive(Debug)]
@@ -21,7 +19,7 @@ pub enum ProtocolError {
 #[serde(tag = "t")]
 pub enum Message {
     Ping,
-    Check { config: CheckConfig, files: Vec<PathBuf> },
+    Check,
 }
 
 #[derive(Serialize, Deserialize)]
