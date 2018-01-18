@@ -6,7 +6,6 @@ extern crate serde_derive;
 
 extern crate crossbeam;
 extern crate glob;
-extern crate immutable_map;
 extern crate itertools;
 extern crate ref_slice;
 extern crate regex;
