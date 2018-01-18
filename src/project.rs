@@ -2,7 +2,7 @@ use std::env;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process;
+use std::process::{self, Stdio};
 use std::str;
 
 use glob;
@@ -29,7 +29,14 @@ pub enum ProjectError {
     Toml(toml::de::Error),
     GlobPattern(glob::PatternError),
     Glob(glob::GlobError),
-    Bundler { stdout: Vec<u8>, stderr: Vec<u8> },
+    Bundler(CommandError),
+    Codegen(CommandError),
+}
+
+#[derive(Debug)]
+pub enum CommandError {
+    NonZeroStatus,
+    Io(io::Error),
 }
 
 fn find_typedruby_toml(initial_dir: &Path) -> Option<PathBuf> {
@@ -63,33 +70,48 @@ fn read_typedruby_toml(path: &Path) -> Result<ProjectConfig, ProjectError> {
     toml::from_str(&buff).map_err(ProjectError::Toml)
 }
 
-fn load_bundler_load_paths(project_root: &Path, config: &BundlerConfig) -> Result<Vec<PathBuf>, ProjectError> {
-    let mut command;
+fn prepare_command(project_root: &Path, bin: &str) -> process::Command {
+    let mut process = process::Command::new(bin);
+    process.current_dir(project_root);
+    process.stderr(Stdio::inherit());
+    process
+}
 
-    match *config {
+fn prepare_config_command(project_root: &Path, command: &Command) -> process::Command {
+    let mut process;
+
+    match *command {
+        Command::Shell { ref cmd } => {
+            // TODO implement windows support
+            process = prepare_command(project_root, "sh");
+            process.args(&["-e", "-c", cmd]);
+        }
+        Command::Argv { ref bin, ref args } => {
+            process = prepare_command(project_root, bin);
+            process.args(args);
+        }
+    }
+
+    process
+}
+
+fn load_bundler_load_paths(project_root: &Path, config: &BundlerConfig) -> Result<Vec<PathBuf>, CommandError> {
+    let mut command = match *config {
         BundlerConfig { enabled: Some(false), .. } |
         BundlerConfig { enabled: None, exec: None } => {
             return Ok(Vec::new());
         }
         BundlerConfig { enabled: Some(true), exec: None } => {
-            command = process::Command::new("ruby");
+            let mut command = prepare_command(project_root, "ruby");
             command.args(&["-r", "bundler/setup", "-e", "puts $LOAD_PATH"]);
+            command
         }
-        BundlerConfig { exec: Some(Command::Shell { ref cmd }), .. } => {
-            // TODO implement windows support
-            command = process::Command::new("sh");
-            command.args(&["-e", "-c", cmd]);
-        }
-        BundlerConfig { exec: Some(Command::Argv { ref bin, ref args }), .. } => {
-            command = process::Command::new(bin);
-            command.args(args);
+        BundlerConfig { exec: Some(ref cmd), .. } => {
+            prepare_config_command(project_root, cmd)
         }
     };
 
-    let output = command
-        .current_dir(project_root)
-        .output()
-        .map_err(ProjectError::Io)?;
+    let output = command.output().map_err(CommandError::Io)?;
 
     if output.status.success() {
         Ok(output.stdout
@@ -98,10 +120,7 @@ fn load_bundler_load_paths(project_root: &Path, config: &BundlerConfig) -> Resul
             .map(PathBuf::from)
             .collect())
     } else {
-        Err(ProjectError::Bundler {
-            stdout: output.stdout,
-            stderr: output.stderr,
-        })
+        Err(CommandError::NonZeroStatus)
     }
 }
 
@@ -131,7 +150,8 @@ fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &Proje
     }
 
     require_paths.extend(
-        load_bundler_load_paths(project_root, &config.bundler)?);
+        load_bundler_load_paths(project_root, &config.bundler)
+            .map_err(ProjectError::Bundler)?);
 
     let autoload_paths = paths_from_strings(&config.typedruby.autoload_path)?;
     let ignore_errors_in = paths_from_strings(&config.typedruby.ignore_errors)?;
@@ -171,12 +191,30 @@ impl Project {
         //
         env::set_current_dir(&root).map_err(ProjectError::Io)?;
 
-        Ok(Project {
-            check_config: init_check_config(errors, &root, &config)?,
+        let check_config = init_check_config(errors, &root, &config)?;
+
+        let mut project = Project {
+            check_config,
             root,
             config,
             cache: LoadCache::new(),
-        })
+        };
+
+        project.codegen().map_err(ProjectError::Codegen)?;
+
+        Ok(project)
+    }
+
+    pub fn codegen(&mut self) -> Result<(), CommandError> {
+        if let Some(ref cmd) = self.config.codegen.exec {
+            match prepare_config_command(&self.root, cmd).status() {
+                Ok(stat) if stat.success() => Ok(()),
+                Ok(_) => Err(CommandError::NonZeroStatus),
+                Err(e) => Err(CommandError::Io(e)),
+            }
+        } else {
+            Ok(())
+        }
     }
 
     pub fn socket_path(&self) -> PathBuf {

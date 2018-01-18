@@ -106,7 +106,7 @@ pub struct InflectConfig {
 
 #[derive(Deserialize, Default, Debug)]
 pub struct CodegenConfig {
-    #[serde(default)] pub exec: Strings,
+    #[serde(default)] pub exec: Option<Command>,
 }
 
 #[derive(Deserialize, Default, Debug)]
