@@ -2,13 +2,13 @@ use std::env;
 use std::fs::File;
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process;
 use std::str;
 
 use glob;
 use toml;
 
-use config::{ProjectConfig, CheckConfig, Strings};
+use config::{ProjectConfig, CheckConfig, Strings, Command, BundlerConfig};
 use errors::ErrorSink;
 use load::LoadCache;
 
@@ -29,6 +29,7 @@ pub enum ProjectError {
     Toml(toml::de::Error),
     GlobPattern(glob::PatternError),
     Glob(glob::GlobError),
+    Bundler { stdout: Vec<u8>, stderr: Vec<u8> },
 }
 
 fn find_typedruby_toml(initial_dir: &Path) -> Option<PathBuf> {
@@ -62,16 +63,46 @@ fn read_typedruby_toml(path: &Path) -> Result<ProjectConfig, ProjectError> {
     toml::from_str(&buff).map_err(ProjectError::Toml)
 }
 
-fn load_bundler_load_paths(project_root: &Path) -> Result<Vec<PathBuf>, io::Error> {
-    let output = Command::new("ruby")
-        .args(&["-r", "bundler/setup", "-e", "puts $LOAD_PATH"])
-        .output()?;
+fn load_bundler_load_paths(project_root: &Path, config: &BundlerConfig) -> Result<Vec<PathBuf>, ProjectError> {
+    let mut command;
 
-    Ok(output.stdout
-        .split(|c| *c == ('\r' as u8) || *c == ('\n' as u8))
-        .filter_map(|line| str::from_utf8(line).ok())
-        .map(PathBuf::from)
-        .collect())
+    match *config {
+        BundlerConfig { enabled: Some(false), .. } |
+        BundlerConfig { enabled: None, exec: None } => {
+            return Ok(Vec::new());
+        }
+        BundlerConfig { enabled: Some(true), exec: None } => {
+            command = process::Command::new("ruby");
+            command.args(&["-r", "bundler/setup", "-e", "puts $LOAD_PATH"]);
+        }
+        BundlerConfig { exec: Some(Command::Shell { ref cmd }), .. } => {
+            // TODO implement windows support
+            command = process::Command::new("sh");
+            command.args(&["-e", "-c", cmd]);
+        }
+        BundlerConfig { exec: Some(Command::Argv { ref bin, ref args }), .. } => {
+            command = process::Command::new(bin);
+            command.args(args);
+        }
+    };
+
+    let output = command
+        .current_dir(project_root)
+        .output()
+        .map_err(ProjectError::Io)?;
+
+    if output.status.success() {
+        Ok(output.stdout
+            .split(|c| *c == ('\r' as u8) || *c == ('\n' as u8))
+            .filter_map(|line| str::from_utf8(line).ok())
+            .map(PathBuf::from)
+            .collect())
+    } else {
+        Err(ProjectError::Bundler {
+            stdout: output.stdout,
+            stderr: output.stderr,
+        })
+    }
 }
 
 fn paths_from_strings(strings: &Strings) -> Result<Vec<PathBuf>, ProjectError> {
@@ -90,7 +121,8 @@ fn paths_from_strings(strings: &Strings) -> Result<Vec<PathBuf>, ProjectError> {
 fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &ProjectConfig) -> Result<CheckConfig, ProjectError> {
     let mut require_paths = Vec::new();
 
-    require_paths.extend(paths_from_strings(&config.typedruby.load_path)?);
+    require_paths.extend(
+        paths_from_strings(&config.typedruby.load_path)?);
 
     if let Some(lib_path) = env::var("TYPEDRUBY_LIB").ok() {
         require_paths.push(PathBuf::from(lib_path));
@@ -98,9 +130,8 @@ fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &Proje
         errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
     }
 
-    if config.typedruby.bundler {
-        require_paths.extend(load_bundler_load_paths(project_root).map_err(ProjectError::Io)?);
-    }
+    require_paths.extend(
+        load_bundler_load_paths(project_root, &config.bundler)?);
 
     let autoload_paths = paths_from_strings(&config.typedruby.autoload_path)?;
     let ignore_errors_in = paths_from_strings(&config.typedruby.ignore_errors)?;
