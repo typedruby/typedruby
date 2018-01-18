@@ -2,6 +2,8 @@ use std::path::PathBuf;
 use std::vec::Vec;
 
 use ref_slice::ref_slice;
+use serde::{Deserialize, Deserializer};
+use serde::de::Error;
 
 #[derive(Serialize, Deserialize, Debug)]
 pub struct CheckConfig {
@@ -46,13 +48,55 @@ impl Strings {
     }
 }
 
+#[derive(Debug)]
+pub enum Command {
+    Shell { cmd: String },
+    Argv { bin: String, args: Vec<String> },
+}
+
+impl<'de> Deserialize<'de> for Command {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where D: Deserializer<'de>
+    {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum RawCommand {
+            Shell(String),
+            Argv(Vec<String>),
+        }
+
+        RawCommand::deserialize(deserializer)
+            .and_then(|strings| match strings {
+                RawCommand::Shell(cmd) => Ok(Command::Shell { cmd }),
+                RawCommand::Argv(argv) => {
+                    match argv.split_first() {
+                        Some((bin, args)) => {
+                            Ok(Command::Argv {
+                                bin: bin.to_owned(),
+                                args: args.to_vec(),
+                            })
+                        }
+                        None => {
+                            Err(D::Error::custom("command argument vector may not be empty"))
+                        }
+                    }
+                }
+            })
+    }
+}
+
 #[derive(Deserialize, Default, Debug)]
 pub struct TypedRubyConfig {
-    #[serde(default)] pub bundler: bool,
     #[serde(default)] pub source: Strings,
     #[serde(default)] pub load_path: Strings,
     #[serde(default)] pub autoload_path: Strings,
     #[serde(default)] pub ignore_errors: Strings,
+}
+
+#[derive(Deserialize, Default, Debug)]
+pub struct BundlerConfig {
+    #[serde(default)] pub enabled: Option<bool>,
+    #[serde(default)] pub exec: Option<Command>,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -68,6 +112,7 @@ pub struct CodegenConfig {
 #[derive(Deserialize, Default, Debug)]
 pub struct ProjectConfig {
     #[serde(default)] pub typedruby: TypedRubyConfig,
+    #[serde(default)] pub bundler: BundlerConfig,
     #[serde(default)] pub inflect: InflectConfig,
     #[serde(default)] pub codegen: CodegenConfig,
 }
