@@ -22,11 +22,10 @@ pub fn check(mut errors: ErrorReporter<StandardStream>) -> bool {
             errors.error(&format!("Couldn't parse TypedRuby.toml: {:?}", e), &[]);
             return false;
         }
-        Err(ProjectError::Io(e)) => {
+        Err(e) => {
             errors.error(&format!("Couldn't load project: {:?}", e), &[]);
             return false;
         }
-        Err(e) => panic!("FIXME {:?}", e)
     };
 
     match Remote::connect(&project.socket_path()) {
