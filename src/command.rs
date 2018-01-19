@@ -8,27 +8,22 @@ use annotate::{self, AnnotateError};
 use config::{AnnotateConfig, StripConfig};
 use environment::Environment;
 use errors::{ErrorReporter, ErrorSink};
-use project::{Project, ProjectError};
+use project::{Project, ProjectPath, ProjectError};
 use remote::server::RunServerError;
 use remote::client::{Remote, ConnectError};
 use remote;
 use strip::{self, StripError};
 
 pub fn check(mut errors: ErrorReporter<StandardStream>) -> bool {
-    let project = match Project::find(&mut errors, &env::current_dir().expect("env::current_dir")) {
-        Ok(project) => project,
-        Err(ProjectError::Toml(e)) => {
-            // TODO use Loc stuff to pinpoint error in TypedRuby.toml
-            errors.error(&format!("Couldn't parse TypedRuby.toml: {:?}", e), &[]);
-            return false;
-        }
-        Err(e) => {
-            errors.error(&format!("Couldn't load project: {:?}", e), &[]);
+    let project_path = match ProjectPath::find(env::current_dir().expect("env::current_dir")) {
+        Some(path) => path,
+        None => {
+            errors.error(&format!("Couldn't find TypedRuby.toml"), &[]);
             return false;
         }
     };
 
-    match Remote::connect(&project.socket_path()) {
+    match Remote::connect(&project_path.socket_path()) {
         Ok(mut remote) => {
             match remote.check(&mut errors) {
                 Ok(result) => result,
@@ -51,8 +46,20 @@ pub fn check(mut errors: ErrorReporter<StandardStream>) -> bool {
             false
         }
         Err(ConnectError::NoServer) => {
-            let arena = Arena::new();
+            let project = match Project::new(&mut errors, project_path) {
+                Ok(project) => project,
+                Err(ProjectError::Toml(e)) => {
+                    // TODO use Loc stuff to pinpoint error in TypedRuby.toml
+                    errors.error(&format!("Couldn't parse TypedRuby.toml: {:?}", e), &[]);
+                    return false;
+                }
+                Err(e) => {
+                    errors.error(&format!("Couldn't load project: {:?}", e), &[]);
+                    return false;
+                }
+            };
 
+            let arena = Arena::new();
             let env = Environment::new(&arena, &project, &mut errors);
 
             env.load_files(project.check_config.files.iter());
