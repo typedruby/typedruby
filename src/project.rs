@@ -15,16 +15,49 @@ use load::LoadCache;
 const CONFIG_FILE: &'static str = "TypedRuby.toml";
 const SOCKET_FILE: &'static str = ".typedruby.sock";
 
+pub struct ProjectPath {
+    root: PathBuf,
+}
+
+impl ProjectPath {
+    pub fn find(dir: PathBuf) -> Option<ProjectPath> {
+        let mut dir = dir;
+
+        loop {
+            if dir.join(CONFIG_FILE).exists() {
+                return Some(ProjectPath { root: dir });
+            }
+
+            if !dir.pop() {
+                break;
+            }
+        }
+
+        None
+    }
+
+    pub fn root(&self) -> &Path {
+        &self.root
+    }
+
+    pub fn config_path(&self) -> PathBuf {
+        self.root.join(CONFIG_FILE)
+    }
+
+    pub fn socket_path(&self) -> PathBuf {
+        self.root.join(SOCKET_FILE)
+    }
+}
+
 pub struct Project {
     pub cache: LoadCache,
-    pub root: PathBuf,
+    pub path: ProjectPath,
     pub config: ProjectConfig,
     pub check_config: CheckConfig,
 }
 
 #[derive(Debug)]
 pub enum ProjectError {
-    NoProjectConfig,
     Io(io::Error),
     Toml(toml::de::Error),
     GlobPattern(glob::PatternError),
@@ -37,27 +70,6 @@ pub enum ProjectError {
 pub enum CommandError {
     NonZeroStatus,
     Io(io::Error),
-}
-
-fn find_typedruby_toml(initial_dir: &Path) -> Option<PathBuf> {
-    let mut initial_dir = initial_dir.to_owned();
-    initial_dir.push(CONFIG_FILE);
-
-    let mut dir = initial_dir.clone();
-
-    loop {
-        let config = dir.with_file_name(CONFIG_FILE);
-
-        if config.exists() {
-            return Some(config);
-        }
-
-        if !dir.pop() {
-            break;
-        }
-    }
-
-    None
 }
 
 fn read_typedruby_toml(path: &Path) -> Result<ProjectConfig, ProjectError> {
@@ -170,16 +182,8 @@ fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &Proje
 }
 
 impl Project {
-    pub fn find(errors: &mut ErrorSink, dir: &Path) -> Result<Project, ProjectError> {
-        let config_path = find_typedruby_toml(dir).ok_or(ProjectError::NoProjectConfig)?;
-
-        let config = read_typedruby_toml(&config_path)?;
-
-        let root = {
-            let mut root = config_path;
-            root.pop();
-            root
-        };
+    pub fn new(errors: &mut ErrorSink, path: ProjectPath) -> Result<Project, ProjectError> {
+        let config = read_typedruby_toml(&path.config_path())?;
 
         // XXX - GLOBAL STATE!
         //
@@ -189,13 +193,13 @@ impl Project {
         // directory to the current project.
         // this prevents us from supporting multiple projects in the same process
         //
-        env::set_current_dir(&root).map_err(ProjectError::Io)?;
+        env::set_current_dir(path.root()).map_err(ProjectError::Io)?;
 
-        let check_config = init_check_config(errors, &root, &config)?;
+        let check_config = init_check_config(errors, path.root(), &config)?;
 
         let mut project = Project {
             check_config,
-            root,
+            path,
             config,
             cache: LoadCache::new(),
         };
@@ -207,7 +211,7 @@ impl Project {
 
     pub fn codegen(&mut self) -> Result<(), CommandError> {
         if let Some(ref cmd) = self.config.codegen.exec {
-            match prepare_config_command(&self.root, cmd).status() {
+            match prepare_config_command(self.path.root(), cmd).status() {
                 Ok(stat) if stat.success() => Ok(()),
                 Ok(_) => Err(CommandError::NonZeroStatus),
                 Err(e) => Err(CommandError::Io(e)),
@@ -215,10 +219,6 @@ impl Project {
         } else {
             Ok(())
         }
-    }
-
-    pub fn socket_path(&self) -> PathBuf {
-        self.root.with_file_name(SOCKET_FILE)
     }
 }
 
@@ -241,7 +241,7 @@ pub fn load_fixture(errors: &mut ErrorSink, fixture_path: &Path) -> Project {
 
     Project {
         check_config,
-        root,
+        path: ProjectPath { root },
         config,
         cache: LoadCache::new(),
     }
