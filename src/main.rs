@@ -149,13 +149,13 @@ fn parse_cmdline() -> Command {
 }
 
 fn main() {
-    let mut errors = TerminalReporter::new(StandardStream::stderr(ColorChoice::Auto));
+    let mut reporter = TerminalReporter::new(StandardStream::stderr(ColorChoice::Auto));
 
     let success = match parse_cmdline() {
-        Command::Check => command::check(errors),
-        Command::Annotate(config, file) => command::annotate(errors, config, file),
-        Command::Strip(config, files) => command::strip(errors, config, files),
-        Command::Server => command::server(&mut errors),
+        Command::Check => command::check(&mut reporter),
+        Command::Annotate(config, file) => command::annotate(&mut reporter, config, file),
+        Command::Strip(config, files) => command::strip(&mut reporter, config, files),
+        Command::Server => command::server(&mut reporter),
     };
 
     process::exit(match success {

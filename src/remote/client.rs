@@ -77,6 +77,12 @@ impl Remote {
             let arena = Arena::new();
 
             match reply? {
+                ReplyData::Info { msg } => {
+                    errors.info(&msg);
+                }
+                ReplyData::Success { msg } => {
+                    errors.success(&msg);
+                }
                 ReplyData::Error { msg, details } => {
                     let details = map_details(&arena, &mut source_cache, &details).map_err(ProtocolError::Io)?;
                     errors.error(&msg, &details)

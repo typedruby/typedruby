@@ -46,12 +46,12 @@ fn bind_socket(path: &Path) -> Result<UnixListener, RunServerError> {
     UnixListener::bind(path).map_err(RunServerError::Io)
 }
 
-pub fn run(errors: &mut Reporter) -> Result<(), RunServerError> {
+pub fn run(reporter: &mut Reporter) -> Result<(), RunServerError> {
     let current_dir = env::current_dir().expect("env::current_dir");
 
     let project_path = ProjectPath::find(current_dir).ok_or(RunServerError::NoProjectConfig)?;
 
-    let project = Project::new(errors, project_path).map_err(RunServerError::Project)?;
+    let project = Project::new(reporter, project_path).map_err(RunServerError::Project)?;
 
     let listener = bind_socket(&project.path.socket_path())?;
 
@@ -81,14 +81,10 @@ pub fn run(errors: &mut Reporter) -> Result<(), RunServerError> {
                     let _ = reply.send(ReplyData::Ok);
                 }
                 Work::Message(Message::Check, reply) => {
-                    let mut errors = ClientReporter::new(reply);
+                    let mut reporter = ClientReporter::new(reply);
                     let arena = Arena::new();
 
-                    let env = Environment::new(&arena, &project, &mut errors);
-
-                    env.load_files(project.check_config.files.iter());
-                    env.define();
-                    env.typecheck();
+                    Environment::new(&arena, &project, &mut reporter).run();
                 }
             }
         }
@@ -159,6 +155,18 @@ fn map_details(details: &[report::Detail]) -> Vec<protocol::Detail> {
 }
 
 impl Reporter for ClientReporter {
+    fn info(&mut self, message: &str) {
+        let _ = self.reply.send(ReplyData::Info {
+            msg: message.to_owned(),
+        });
+    }
+
+    fn success(&mut self, message: &str) {
+        let _ = self.reply.send(ReplyData::Success {
+            msg: message.to_owned(),
+        });
+    }
+
     fn error(&mut self, message: &str, details: &[report::Detail]) {
         let _ = self.reply.send(ReplyData::Error {
             msg: message.to_owned(),

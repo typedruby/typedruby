@@ -1,7 +1,6 @@
 use std::env;
 use std::path::PathBuf;
 
-use termcolor::StandardStream;
 use typed_arena::Arena;
 
 use annotate::{self, AnnotateError};
@@ -11,83 +10,75 @@ use project::{Project, ProjectPath, ProjectError};
 use remote::server::RunServerError;
 use remote::client::{Remote, ConnectError};
 use remote;
-use report::{TerminalReporter, Reporter};
+use report::Reporter;
 use strip::{self, StripError};
 
-pub fn check(mut errors: TerminalReporter<StandardStream>) -> bool {
+pub fn check(reporter: &mut Reporter) -> bool {
     let project_path = match ProjectPath::find(env::current_dir().expect("env::current_dir")) {
         Some(path) => path,
         None => {
-            errors.error(&format!("Couldn't find TypedRuby.toml"), &[]);
+            reporter.error(&format!("Couldn't find TypedRuby.toml"), &[]);
             return false;
         }
     };
 
     match Remote::connect(&project_path.socket_path()) {
         Ok(mut remote) => {
-            match remote.check(&mut errors) {
+            match remote.check(reporter) {
                 Ok(result) => result,
                 Err(e) => {
-                    errors.error(&format!("Error communicating with TypedRuby server: {:?}", e), &[]);
+                    reporter.error(&format!("Error communicating with TypedRuby server: {:?}", e), &[]);
                     false
                 }
             }
         }
         Err(ConnectError::Io(e)) => {
-            errors.error(&format!("Could not connect to TypedRuby server: {:?}", e), &[]);
+            reporter.error(&format!("Could not connect to TypedRuby server: {:?}", e), &[]);
             false
         }
         Err(ConnectError::VersionMismatch(version)) => {
-            errors.error(&format!("TypedRuby server is running version {}, expected {}", version, remote::protocol::VERSION), &[]);
+            reporter.error(&format!("TypedRuby server is running version {}, expected {}", version, remote::protocol::VERSION), &[]);
             false
         }
         Err(ConnectError::Protocol(e)) => {
-            errors.error(&format!("Error communicating with TypedRuby server: {:?}", e), &[]);
+            reporter.error(&format!("Error communicating with TypedRuby server: {:?}", e), &[]);
             false
         }
         Err(ConnectError::NoServer) => {
-            let project = match Project::new(&mut errors, project_path) {
+            let project = match Project::new(reporter, project_path) {
                 Ok(project) => project,
                 Err(ProjectError::Toml(e)) => {
                     // TODO use Loc stuff to pinpoint error in TypedRuby.toml
-                    errors.error(&format!("Couldn't parse TypedRuby.toml: {:?}", e), &[]);
+                    reporter.error(&format!("Couldn't parse TypedRuby.toml: {:?}", e), &[]);
                     return false;
                 }
                 Err(e) => {
-                    errors.error(&format!("Couldn't load project: {:?}", e), &[]);
+                    reporter.error(&format!("Couldn't load project: {:?}", e), &[]);
                     return false;
                 }
             };
 
             let arena = Arena::new();
-            let env = Environment::new(&arena, &project, &mut errors);
-
-            env.load_files(project.check_config.files.iter());
-            env.define();
-            env.typecheck();
-
-            let errors = env.reporter.borrow();
-
-            errors.error_count() == 0 && errors.warning_count() == 0
+            Environment::new(&arena, &project, reporter).run()
         }
     }
 }
 
-pub fn annotate(mut errors: TerminalReporter<StandardStream>, config: AnnotateConfig, file: PathBuf) -> bool {
+pub fn annotate(reporter: &mut Reporter, config: AnnotateConfig, file: PathBuf) -> bool {
     match annotate::apply_annotations(&file, config) {
         Ok(()) => true,
         Err(err) => {
             match err {
                 AnnotateError::Syntax(diagnostics) => {
                     for diagnostic in diagnostics {
-                        errors.parser_diagnostic(&diagnostic);
+                        reporter.parser_diagnostic(&diagnostic);
                     }
                 }
                 AnnotateError::Json(err) => {
-                    errors.error(&format!("Could not parse line of annotations file: {}", err), &[]);
+                    reporter.error(&format!("Could not parse line of annotations file: {}", err), &[]);
                 }
                 AnnotateError::Io(err) => {
-                    errors.error(&format!("Could not open {}: {}", file.display(), err), &[]);
+                    reporter.error(&format!("Could not open {}: {}", file.display(), err), &[]);
                 }
             }
 
@@ -96,7 +87,7 @@ pub fn annotate(mut errors: TerminalReporter<StandardStream>, config: AnnotateCo
     }
 }
 
-pub fn strip(mut errors: TerminalReporter<StandardStream>, config: StripConfig, files: Vec<PathBuf>) -> bool {
+pub fn strip(reporter: &mut Reporter, config: StripConfig, files: Vec<PathBuf>) -> bool {
     let mut success = true;
 
     for file in files {
@@ -108,11 +99,11 @@ pub fn strip(mut errors: TerminalReporter<StandardStream>, config: StripConfig, 
                 match err {
                     StripError::Syntax(diagnostics) => {
                         for diagnostic in diagnostics {
-                            errors.parser_diagnostic(&diagnostic);
+                            reporter.parser_diagnostic(&diagnostic);
                         }
                     }
                     StripError::Io(err) => {
-                        errors.error(&format!("Could not open {}: {}", file.display(), err), &[]);
+                        reporter.error(&format!("Could not open {}: {}", file.display(), err), &[]);
                     }
                 }
             }
@@ -122,15 +113,15 @@ pub fn strip(mut errors: TerminalReporter<StandardStream>, config: StripConfig, 
     success
 }
 
-pub fn server(errors: &mut Reporter) -> bool {
-    match remote::server::run(errors) {
+pub fn server(reporter: &mut Reporter) -> bool {
+    match remote::server::run(reporter) {
         Ok(()) => true,
         Err(RunServerError::AlreadyRunning(path)) => {
-            errors.error(&format!("A TypedRuby server is already running on {}", path.display()), &[]);
+            reporter.error(&format!("A TypedRuby server is already running on {}", path.display()), &[]);
             false
         }
         Err(e) => {
-            errors.error(&format!("Could not start server: {:?}", e), &[]);
+            reporter.error(&format!("Could not start server: {:?}", e), &[]);
             false
         }
     }
