@@ -90,7 +90,7 @@ pub fn run(reporter: &mut Reporter) -> Result<(), RunServerError> {
                             .map_err(RunServerError::Project)?;
                     }
 
-                    project.refresh();
+                    project.refresh(&mut reporter).map_err(RunServerError::Project)?;
 
                     Environment::new(&arena, &project, &mut reporter).run();
                 }
