@@ -12,7 +12,7 @@ use termcolor::NoColor;
 use typed_arena::Arena;
 
 use environment::Environment;
-use errors::ErrorReporter;
+use report::ErrorReporter;
 use project;
 
 struct Mismatch {

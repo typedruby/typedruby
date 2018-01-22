@@ -9,8 +9,8 @@ use glob;
 use toml;
 
 use config::{ProjectConfig, CheckConfig, Strings, Command, BundlerConfig};
-use errors::ErrorSink;
 use load::LoadCache;
+use report::ErrorSink;
 
 const CONFIG_FILE: &'static str = "TypedRuby.toml";
 const SOCKET_FILE: &'static str = ".typedruby.sock";

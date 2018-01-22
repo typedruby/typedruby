@@ -2,8 +2,8 @@ use std::rc::Rc;
 
 use ast::{Id, Loc, Node};
 use environment::Environment;
-use errors::Detail;
 use object::{Scope, RubyObject, ConstantEntry};
+use report::Detail;
 
 pub type TypeNodeRef<'object> = Rc<TypeNode<'object>>;
 
