@@ -8,7 +8,7 @@ use typed_arena::Arena;
 
 use ast::{SourceFile, Loc};
 use remote::protocol::{self, ServerTransport, ProtocolError, Message, ReplyData};
-use report::{self, ErrorSink};
+use report::{self, Reporter};
 
 type SourceCache = HashMap<PathBuf, Rc<SourceFile>>;
 
@@ -68,7 +68,7 @@ impl Remote {
         Ok(Remote { transport })
     }
 
-    pub fn check(&mut self, errors: &mut ErrorSink)
+    pub fn check(&mut self, errors: &mut Reporter)
         -> Result<bool, ProtocolError>
     {
         let mut source_cache = SourceCache::new();

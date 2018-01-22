@@ -8,7 +8,7 @@ use std::sync::mpsc::{self, SyncSender};
 use environment::Environment;
 use project::{Project, ProjectPath, ProjectError};
 use remote::protocol::{self, ProtocolError, Message, ClientTransport, ReplyData};
-use report::{self, ErrorSink};
+use report::{self, Reporter};
 
 use crossbeam;
 use typed_arena::Arena;
@@ -46,7 +46,7 @@ fn bind_socket(path: &Path) -> Result<UnixListener, RunServerError> {
     UnixListener::bind(path).map_err(RunServerError::Io)
 }
 
-pub fn run(errors: &mut ErrorSink) -> Result<(), RunServerError> {
+pub fn run(errors: &mut Reporter) -> Result<(), RunServerError> {
     let current_dir = env::current_dir().expect("env::current_dir");
 
     let project_path = ProjectPath::find(current_dir).ok_or(RunServerError::NoProjectConfig)?;
@@ -158,7 +158,7 @@ fn map_details(details: &[report::Detail]) -> Vec<protocol::Detail> {
     }).collect()
 }
 
-impl ErrorSink for ClientErrors {
+impl Reporter for ClientErrors {
     fn error(&mut self, message: &str, details: &[report::Detail]) {
         let _ = self.reply.send(ReplyData::Error {
             msg: message.to_owned(),

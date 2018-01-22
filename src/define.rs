@@ -159,7 +159,7 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
             let (anno, proto) = Prototype::resolve(&name_loc, proto.as_ref().map(Rc::as_ref), env, type_scope);
 
             if anno == AnnotationStatus::Partial {
-                env.error_sink.borrow_mut().error("Partial type signatures are not permitted in method definitions", &[
+                env.reporter.borrow_mut().error("Partial type signatures are not permitted in method definitions", &[
                     Detail::Loc("all arguments and return value must be annotated", &proto.loc),
                 ]);
             }
@@ -193,7 +193,7 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                 env.object.define_method(module, to.1, method.clone());
             } else {
                 if emit_error {
-                    env.error_sink.borrow_mut().error("Could not resolve source method in alias", &[
+                    env.reporter.borrow_mut().error("Could not resolve source method in alias", &[
                         Detail::Loc(&format!("{}#{}", module.name(), from.1), &from.0),
                     ]);
                 }
@@ -241,7 +241,7 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                 }
             } else {
                 if emit_error {
-                    env.error_sink.borrow_mut().error("Could not resolve method name in visibility declaration", &[
+                    env.reporter.borrow_mut().error("Could not resolve method name in visibility declaration", &[
                         Detail::Loc("here", &loc),
                     ]);
                 }
@@ -253,7 +253,7 @@ fn define_method<'o>(env: &Environment<'o>, method: MethodDef<'o>)
                 env.object.define_method(target, name, method);
             } else {
                 if emit_error {
-                    env.error_sink.borrow_mut().error("Could not resolve method name in module_function", &[
+                    env.reporter.borrow_mut().error("Could not resolve method name in module_function", &[
                         Detail::Loc("here", &loc),
                     ]);
                 }
@@ -268,7 +268,7 @@ fn define_ivar<'o>(env: &Environment<'o>, ivar: IvarDef<'o>) {
     let IvarDef { module, name: Id(ivar_loc, ivar), type_node, scope } = ivar;
 
     if let Some(ivar_entry) = env.object.lookup_ivar(module, &ivar) {
-        env.error_sink.borrow_mut().error("Duplicate instance variable type declaration", &[
+        env.reporter.borrow_mut().error("Duplicate instance variable type declaration", &[
             Detail::Loc("here", &ivar_loc),
             Detail::Loc("previous declaration was here", &ivar_entry.ivar_loc),
         ]);

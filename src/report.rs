@@ -7,7 +7,7 @@ pub enum Detail<'a> {
     Loc(&'a str, &'a Loc),
 }
 
-pub trait ErrorSink {
+pub trait Reporter {
     fn error(&mut self, message: &str, details: &[Detail]);
     fn warning(&mut self, message: &str, details: &[Detail]);
 
@@ -141,7 +141,7 @@ impl<T: WriteColor> ErrorReporter<T> {
     }
 }
 
-impl<T: WriteColor> ErrorSink for ErrorReporter<T> {
+impl<T: WriteColor> Reporter for ErrorReporter<T> {
     fn error(&mut self, message: &str, details: &[Detail]) {
         self.error_count += 1;
         self.emit("error", Color::Red, message, details).unwrap();

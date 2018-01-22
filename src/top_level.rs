@@ -101,7 +101,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         };
 
         if emit && self.env.should_emit_errors(self.source_file.filename()) {
-            self.env.error_sink.borrow_mut().error(message, details)
+            self.env.reporter.borrow_mut().error(message, details)
         }
     }
 

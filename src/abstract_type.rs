@@ -245,7 +245,7 @@ struct ResolveType<'env, 'object: 'env> {
 
 impl<'env, 'object> ResolveType<'env, 'object> {
     fn error(&self, message: &str, details: &[Detail]) {
-        self.env.error_sink.borrow_mut().error(message, details)
+        self.env.reporter.borrow_mut().error(message, details)
     }
 
     fn resolve_type_name(&self, cpath: &Node) -> Option<&'object RubyObject<'object>> {

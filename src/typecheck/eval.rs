@@ -111,11 +111,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn error(&self, message: &str, details: &[Detail]) {
-        self.env.error_sink.borrow_mut().error(message, details)
+        self.env.reporter.borrow_mut().error(message, details)
     }
 
     fn warning(&self, message: &str, details: &[Detail]) {
-        self.env.error_sink.borrow_mut().warning(message, details)
+        self.env.reporter.borrow_mut().warning(message, details)
     }
 
     fn materialize_type(&self, type_node: &TypeNode<'object>, context: &TypeContext<'ty, 'object>) -> TypeRef<'ty, 'object> {
