@@ -51,7 +51,9 @@ pub fn run(reporter: &mut Reporter) -> Result<(), RunServerError> {
 
     let project_path = ProjectPath::find(current_dir).ok_or(RunServerError::NoProjectConfig)?;
 
-    let project = Project::new(reporter, project_path).map_err(RunServerError::Project)?;
+    let mut project = Project::new(reporter, project_path.clone()).map_err(RunServerError::Project)?;
+
+    reporter.info("Ready");
 
     let listener = bind_socket(&project.path.socket_path())?;
 
@@ -84,13 +86,21 @@ pub fn run(reporter: &mut Reporter) -> Result<(), RunServerError> {
                     let mut reporter = ClientReporter::new(reply);
                     let arena = Arena::new();
 
+                    if project.needs_reload() {
+                        reporter.info("Detected change to TypedRuby.toml, reloading project");
+                        project = Project::new(&mut reporter, project_path.clone())
+                            .map_err(RunServerError::Project)?;
+                    }
+
+                    project.refresh(&mut reporter).map_err(RunServerError::Project)?;
+
                     Environment::new(&arena, &project, &mut reporter).run();
                 }
             }
         }
-    });
 
-    Ok(())
+        Ok(())
+    })
 }
 
 struct Client<T: Read + Write> {

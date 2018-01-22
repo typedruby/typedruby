@@ -97,6 +97,7 @@ pub struct TypedRubyConfig {
 pub struct BundlerConfig {
     #[serde(default)] pub enabled: Option<bool>,
     #[serde(default)] pub exec: Option<Command>,
+    #[serde(default)] pub refresh: Strings,
 }
 
 #[derive(Deserialize, Default, Debug)]
@@ -107,6 +108,7 @@ pub struct InflectConfig {
 #[derive(Deserialize, Default, Debug)]
 pub struct CodegenConfig {
     #[serde(default)] pub exec: Option<Command>,
+    #[serde(default)] pub refresh: Strings,
 }
 
 #[derive(Deserialize, Default, Debug)]
