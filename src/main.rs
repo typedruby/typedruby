@@ -29,12 +29,12 @@ mod config;
 mod debug;
 mod define;
 mod environment;
-mod errors;
 mod inflect;
 mod load;
 mod object;
 mod project;
 mod remote;
+mod report;
 mod slice_util;
 mod strip;
 mod top_level;
@@ -51,7 +51,7 @@ mod tests {
 }
 
 use config::{AnnotateConfig, StripConfig};
-use errors::ErrorReporter;
+use report::ErrorReporter;
 
 enum Command {
     Check,

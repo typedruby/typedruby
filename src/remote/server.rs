@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 
 use environment::Environment;
-use errors::{self, ErrorSink};
 use project::{Project, ProjectPath, ProjectError};
 use remote::protocol::{self, ProtocolError, Message, ClientTransport, ReplyData};
+use report::{self, ErrorSink};
 
 use crossbeam;
 use typed_arena::Arena;
@@ -141,12 +141,12 @@ impl ClientErrors {
     }
 }
 
-fn map_details(details: &[errors::Detail]) -> Vec<protocol::Detail> {
+fn map_details(details: &[report::Detail]) -> Vec<protocol::Detail> {
     details.iter().map(|detail| match *detail {
-        errors::Detail::Message(msg) =>
+        report::Detail::Message(msg) =>
             protocol::Detail::Message { msg: msg.to_owned() },
 
-        errors::Detail::Loc(msg, ref loc) =>
+        report::Detail::Loc(msg, ref loc) =>
             protocol::Detail::Loc {
                 msg: msg.to_owned(),
                 loc: protocol::Loc {
@@ -159,14 +159,14 @@ fn map_details(details: &[errors::Detail]) -> Vec<protocol::Detail> {
 }
 
 impl ErrorSink for ClientErrors {
-    fn error(&mut self, message: &str, details: &[errors::Detail]) {
+    fn error(&mut self, message: &str, details: &[report::Detail]) {
         let _ = self.reply.send(ReplyData::Error {
             msg: message.to_owned(),
             details: map_details(details),
         });
     }
 
-    fn warning(&mut self, message: &str, details: &[errors::Detail]) {
+    fn warning(&mut self, message: &str, details: &[report::Detail]) {
         let _ = self.reply.send(ReplyData::Warning {
             msg: message.to_owned(),
             details: map_details(details),

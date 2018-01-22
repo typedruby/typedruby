@@ -5,7 +5,7 @@ use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, Kwsp
 use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
-use errors::Detail;
+use report::Detail;
 use typed_arena::Arena;
 use typecheck::call;
 use typecheck::call::ArgError;

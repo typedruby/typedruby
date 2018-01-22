@@ -10,10 +10,10 @@ use typed_arena::Arena;
 use ast::{Ast, SourceFile, Node, Id};
 use config::CheckConfig;
 use define::Definitions;
-use errors::ErrorSink;
 use inflect::Inflector;
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope, ConstantEntry};
 use project::Project;
+use report::ErrorSink;
 use top_level;
 use typecheck;
 

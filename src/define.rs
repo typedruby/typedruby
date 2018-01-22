@@ -2,11 +2,11 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::mem;
 
+use abstract_type::{TypeNode, TypeScope, Prototype, AnnotationStatus};
 use ast::{Id, Node};
-use errors::Detail;
 use environment::Environment;
 use object::{RubyObject, Scope, MethodEntry, MethodImpl, ObjectGraph, IvarEntry};
-use abstract_type::{TypeNode, TypeScope, Prototype, AnnotationStatus};
+use report::Detail;
 
 #[derive(Copy,Clone,Debug)]
 pub enum MethodVisibility {

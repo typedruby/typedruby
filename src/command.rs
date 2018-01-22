@@ -7,11 +7,11 @@ use typed_arena::Arena;
 use annotate::{self, AnnotateError};
 use config::{AnnotateConfig, StripConfig};
 use environment::Environment;
-use errors::{ErrorReporter, ErrorSink};
 use project::{Project, ProjectPath, ProjectError};
 use remote::server::RunServerError;
 use remote::client::{Remote, ConnectError};
 use remote;
+use report::{ErrorReporter, ErrorSink};
 use strip::{self, StripError};
 
 pub fn check(mut errors: ErrorReporter<StandardStream>) -> bool {

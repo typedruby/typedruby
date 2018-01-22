@@ -1,14 +1,14 @@
 use std::rc::Rc;
 use itertools::Itertools;
 
-use abstract_type;
 use abstract_type::TypeNode;
+use abstract_type;
 use ast::Id;
-use typecheck::types::{TypeEnv, TypeContext, TypeRef, Type, Prototype, Arg, TypeConstraint};
-use typecheck::locals::Locals;
-use object::RubyObject;
-use errors::Detail;
 use environment::Environment;
+use report::Detail;
+use object::RubyObject;
+use typecheck::locals::Locals;
+use typecheck::types::{TypeEnv, TypeContext, TypeRef, Type, Prototype, Arg, TypeConstraint};
 
 pub struct Materialize<'a, 'ty: 'a, 'object: 'ty> {
     env: &'a Environment<'object>,
