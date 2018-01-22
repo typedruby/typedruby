@@ -77,12 +77,12 @@ pub struct Environment<'object> {
 
 impl<'object> Environment<'object> {
     pub fn new(arena: &'object Arena<RubyObject<'object>>, project: &'object Project, reporter: &'object mut Reporter) -> Environment<'object> {
-        let inflector = Inflector::new(&project.check_config.inflect_acronyms);
+        let inflector = Inflector::new(&project.check_config().inflect_acronyms);
 
         let env = Environment {
             reporter: RefCell::new(reporter),
             object: ObjectGraph::new(&arena),
-            config: &project.check_config,
+            config: project.check_config(),
             phase: PhaseCell::new(Phase::Load),
             loaded_features: RefCell::new(HashMap::new()),
             method_queue: RefCell::new(VecDeque::new()),
@@ -236,7 +236,7 @@ impl<'object> Environment<'object> {
     pub fn run(self) -> bool {
         self.reporter.borrow_mut().info("Typechecking...");
 
-        self.load_files(self.project.check_config.files.iter());
+        self.load_files(self.project.check_config().files.iter());
         self.define();
         self.typecheck();
 
