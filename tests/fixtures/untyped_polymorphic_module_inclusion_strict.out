@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Too few type parameters supplied in instantiation of generic type
 
         @ __ROOT__/tests/fixtures/untyped_polymorphic_module_inclusion_strict.rb:4

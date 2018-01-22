@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Could not match types:
 
         @ __ROOT__/tests/fixtures/generic_method_constraints.rb:3

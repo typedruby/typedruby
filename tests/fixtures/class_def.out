@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Could not match types:
 
         @ __ROOT__/tests/fixtures/class_def.rb:12

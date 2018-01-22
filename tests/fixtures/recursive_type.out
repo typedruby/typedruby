@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Type cannot contain itself:
 
         @ __ROOT__/tests/fixtures/recursive_type.rb:5
