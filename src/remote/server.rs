@@ -81,7 +81,7 @@ pub fn run(errors: &mut Reporter) -> Result<(), RunServerError> {
                     let _ = reply.send(ReplyData::Ok);
                 }
                 Work::Message(Message::Check, reply) => {
-                    let mut errors = ClientErrors::new(reply);
+                    let mut errors = ClientReporter::new(reply);
                     let arena = Arena::new();
 
                     let env = Environment::new(&arena, &project, &mut errors);
@@ -129,15 +129,15 @@ impl<T: Read + Write> Client<T> {
     }
 }
 
-struct ClientErrors {
+struct ClientReporter {
     reply: SyncSender<ReplyData>,
     error_count: usize,
     warning_count: usize,
 }
 
-impl ClientErrors {
+impl ClientReporter {
     pub fn new(reply: SyncSender<ReplyData>) -> Self {
-        ClientErrors { reply, error_count: 0, warning_count: 0 }
+        ClientReporter { reply, error_count: 0, warning_count: 0 }
     }
 }
 
@@ -158,7 +158,7 @@ fn map_details(details: &[report::Detail]) -> Vec<protocol::Detail> {
     }).collect()
 }
 
-impl Reporter for ClientErrors {
+impl Reporter for ClientReporter {
     fn error(&mut self, message: &str, details: &[report::Detail]) {
         let _ = self.reply.send(ReplyData::Error {
             msg: message.to_owned(),
