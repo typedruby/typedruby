@@ -51,7 +51,7 @@ mod tests {
 }
 
 use config::{AnnotateConfig, StripConfig};
-use report::ErrorReporter;
+use report::TerminalReporter;
 
 enum Command {
     Check,
@@ -149,7 +149,7 @@ fn parse_cmdline() -> Command {
 }
 
 fn main() {
-    let mut errors = ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto));
+    let mut errors = TerminalReporter::new(StandardStream::stderr(ColorChoice::Auto));
 
     let success = match parse_cmdline() {
         Command::Check => command::check(errors),
