@@ -53,6 +53,8 @@ pub fn run(reporter: &mut Reporter) -> Result<(), RunServerError> {
 
     let mut project = Project::new(reporter, project_path.clone()).map_err(RunServerError::Project)?;
 
+    reporter.info("Ready");
+
     let listener = bind_socket(&project.path.socket_path())?;
 
     let (send, recv) = mpsc::sync_channel::<Work>(0);
