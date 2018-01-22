@@ -11,7 +11,7 @@ use project::{Project, ProjectPath, ProjectError};
 use remote::server::RunServerError;
 use remote::client::{Remote, ConnectError};
 use remote;
-use report::{ErrorReporter, ErrorSink};
+use report::{ErrorReporter, Reporter};
 use strip::{self, StripError};
 
 pub fn check(mut errors: ErrorReporter<StandardStream>) -> bool {
@@ -66,7 +66,7 @@ pub fn check(mut errors: ErrorReporter<StandardStream>) -> bool {
             env.define();
             env.typecheck();
 
-            let errors = env.error_sink.borrow();
+            let errors = env.reporter.borrow();
 
             errors.error_count() == 0 && errors.warning_count() == 0
         }
@@ -122,7 +122,7 @@ pub fn strip(mut errors: ErrorReporter<StandardStream>, config: StripConfig, fil
     success
 }
 
-pub fn server(errors: &mut ErrorSink) -> bool {
+pub fn server(errors: &mut Reporter) -> bool {
     match remote::server::run(errors) {
         Ok(()) => true,
         Err(RunServerError::AlreadyRunning(path)) => {

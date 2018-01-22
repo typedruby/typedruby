@@ -62,7 +62,7 @@ impl<'a, 'ty, 'object> Materialize<'a, 'ty, 'object> {
                         if class != self.env.object.Class {
                             // TODO: we need to move this check out to abstract_type
                             // we should not ever error while materializing a type!
-                            let mut sink = self.env.error_sink.borrow_mut();
+                            let mut sink = self.env.reporter.borrow_mut();
                             sink.error("Cannot instatiate instance type", &[
                                 Detail::Loc(&format!("Self here is {}, which is not a Class", class.name()), loc),
                             ]);

@@ -13,7 +13,7 @@ use define::Definitions;
 use inflect::Inflector;
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope, ConstantEntry};
 use project::Project;
-use report::ErrorSink;
+use report::Reporter;
 use top_level;
 use typecheck;
 
@@ -65,7 +65,7 @@ impl PhaseCell {
 
 pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
-    pub error_sink: RefCell<&'object mut ErrorSink>,
+    pub reporter: RefCell<&'object mut Reporter>,
     pub config: &'object CheckConfig,
     pub defs: Definitions<'object>,
     phase: PhaseCell,
@@ -76,11 +76,11 @@ pub struct Environment<'object> {
 }
 
 impl<'object> Environment<'object> {
-    pub fn new(arena: &'object Arena<RubyObject<'object>>, project: &'object Project, error_sink: &'object mut ErrorSink) -> Environment<'object> {
+    pub fn new(arena: &'object Arena<RubyObject<'object>>, project: &'object Project, reporter: &'object mut Reporter) -> Environment<'object> {
         let inflector = Inflector::new(&project.check_config.inflect_acronyms);
 
         let env = Environment {
-            error_sink: RefCell::new(error_sink),
+            reporter: RefCell::new(reporter),
             object: ObjectGraph::new(&arena),
             config: &project.check_config,
             phase: PhaseCell::new(Phase::Load),
@@ -114,7 +114,7 @@ impl<'object> Environment<'object> {
         }
 
         for diag in &ast.diagnostics {
-            self.error_sink.borrow_mut().parser_diagnostic(diag);
+            self.reporter.borrow_mut().parser_diagnostic(diag);
         }
 
         if let Some(ref node) = ast.node {
@@ -242,7 +242,7 @@ impl<'object> Environment<'object> {
             match self.require(file) {
                 Ok(()) => {}
                 Err(e) => {
-                    self.error_sink.borrow_mut()
+                    self.reporter.borrow_mut()
                         .error(&format!("{}: {}", file.display(), e), &[]);
                 }
             }

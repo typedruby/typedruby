@@ -10,7 +10,7 @@ use toml;
 
 use config::{ProjectConfig, CheckConfig, Strings, Command, BundlerConfig};
 use load::LoadCache;
-use report::ErrorSink;
+use report::Reporter;
 
 const CONFIG_FILE: &'static str = "TypedRuby.toml";
 const SOCKET_FILE: &'static str = ".typedruby.sock";
@@ -149,7 +149,7 @@ fn paths_from_strings(strings: &Strings) -> Result<Vec<PathBuf>, ProjectError> {
     Ok(paths)
 }
 
-fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &ProjectConfig) -> Result<CheckConfig, ProjectError> {
+fn init_check_config(errors: &mut Reporter, project_root: &Path, config: &ProjectConfig) -> Result<CheckConfig, ProjectError> {
     let mut require_paths = Vec::new();
 
     require_paths.extend(
@@ -182,7 +182,7 @@ fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &Proje
 }
 
 impl Project {
-    pub fn new(errors: &mut ErrorSink, path: ProjectPath) -> Result<Project, ProjectError> {
+    pub fn new(errors: &mut Reporter, path: ProjectPath) -> Result<Project, ProjectError> {
         let config = read_typedruby_toml(&path.config_path())?;
 
         // XXX - GLOBAL STATE!
@@ -223,7 +223,7 @@ impl Project {
 }
 
 #[cfg(test)]
-pub fn load_fixture(errors: &mut ErrorSink, fixture_path: &Path) -> Project {
+pub fn load_fixture(errors: &mut Reporter, fixture_path: &Path) -> Project {
     let root = fixture_path
         .parent()
         .expect("fixture_path.parent()")
