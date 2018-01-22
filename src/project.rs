@@ -181,7 +181,7 @@ fn interpret_bundler_config<'a>(config: &'a BundlerConfig) -> Option<BundlerStra
     }
 }
 
-fn load_bundler_load_paths(reporter: &mut Reporter, project_root: &Path, config: &BundlerConfig) -> Result<Refreshable<Vec<PathBuf>>, CommandError> {
+fn load_bundler_load_paths(reporter: &mut Reporter, project_root: &Path, config: &BundlerConfig) -> Result<Refreshable<Vec<PathBuf>>, ProjectError> {
     let (mut command, refresh) = match interpret_bundler_config(config) {
         None => {
             return Ok(Refreshable::new(Vec::new(), &[]));
@@ -190,19 +190,19 @@ fn load_bundler_load_paths(reporter: &mut Reporter, project_root: &Path, config:
             let mut command = prepare_command(project_root, "ruby");
             command.args(&["-r", "bundler/setup", "-e", "puts $LOAD_PATH"]);
 
-            let mut refresh = config.refresh.to_paths();
+            let mut refresh = paths_from_strings(&config.refresh)?;
             refresh.push(project_root.join("Gemfile.lock"));
 
             (command, refresh)
         }
         Some(BundlerStrategy::Custom(cmd)) => {
-            (prepare_config_command(project_root, cmd), config.refresh.to_paths())
+            (prepare_config_command(project_root, cmd), paths_from_strings(&config.refresh)?)
         }
     };
 
     reporter.info("Loading Gem environment...");
 
-    let output = command.output().map_err(CommandError::Io)?;
+    let output = command.output().map_err(ProjectError::Io)?;
 
     if output.status.success() {
         let paths = output.stdout
@@ -214,7 +214,7 @@ fn load_bundler_load_paths(reporter: &mut Reporter, project_root: &Path, config:
         Ok(Refreshable::new(paths, &refresh))
     } else {
         reporter.error("Command exited with non-zero status", &[]);
-        Err(CommandError::NonZeroStatus)
+        Err(ProjectError::Bundler(CommandError::NonZeroStatus))
     }
 }
 
@@ -245,8 +245,7 @@ fn setup_require_paths(reporter: &mut Reporter, project_root: &Path, config: &Pr
         reporter.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
     }
 
-    Ok(load_bundler_load_paths(reporter, project_root, &config.bundler)
-        .map_err(ProjectError::Bundler)?
+    Ok(load_bundler_load_paths(reporter, project_root, &config.bundler)?
         .map(|paths| {
             require_paths.extend(paths);
             require_paths
@@ -272,7 +271,7 @@ fn setup_check_config(reporter: &mut Reporter, project_root: &Path, config: &Pro
     }))
 }
 
-fn codegen(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig) -> Result<Refreshable<()>, CommandError> {
+fn codegen(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig) -> Result<Refreshable<()>, ProjectError> {
     let cmd = match config.codegen.exec {
         Some(ref cmd) => cmd,
         None => { return Ok(Refreshable::new((), &[])) }
@@ -281,14 +280,14 @@ fn codegen(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig)
     reporter.info("Generating code...");
 
     match prepare_config_command(project_root, cmd).status() {
-        Ok(stat) if stat.success() => Ok(Refreshable::new((), &config.codegen.refresh.to_paths())),
+        Ok(stat) if stat.success() => Ok(Refreshable::new((), &paths_from_strings(&config.codegen.refresh)?)),
         Ok(_) => {
             reporter.error("Command exited with non-zero status", &[]);
-            Err(CommandError::NonZeroStatus)
+            Err(ProjectError::Codegen(CommandError::NonZeroStatus))
         }
         Err(e) => {
             reporter.error("Could not invoke codegen command", &[]);
-            Err(CommandError::Io(e))
+            Err(ProjectError::Codegen(CommandError::Io(e)))
         }
     }
 }
@@ -316,8 +315,7 @@ impl Project {
 
         let check_config = setup_check_config(reporter, path.root(), &config)?;
 
-        let codegen = codegen(reporter, path.root(), &config)
-            .map_err(ProjectError::Codegen)?;
+        let codegen = codegen(reporter, path.root(), &config)?;
 
         let project = Project {
             check_config,
@@ -341,8 +339,7 @@ impl Project {
         }
 
         if self.codegen.needs_refresh() {
-            self.codegen = codegen(reporter, self.path.root(), &self.config)
-                .map_err(ProjectError::Codegen)?;
+            self.codegen = codegen(reporter, self.path.root(), &self.config)?;
         }
 
         Ok(())
