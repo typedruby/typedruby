@@ -1,9 +1,10 @@
 use std::env;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 use std::process::{self, Stdio};
 use std::str;
+use std::time::SystemTime;
 
 use glob;
 use toml;
@@ -15,6 +16,7 @@ use report::Reporter;
 const CONFIG_FILE: &'static str = "TypedRuby.toml";
 const SOCKET_FILE: &'static str = ".typedruby.sock";
 
+#[derive(Clone)]
 pub struct ProjectPath {
     root: PathBuf,
 }
@@ -54,6 +56,7 @@ pub struct Project {
     pub path: ProjectPath,
     pub config: ProjectConfig,
     pub check_config: CheckConfig,
+    config_mtime: SystemTime,
 }
 
 #[derive(Debug)]
@@ -207,7 +210,14 @@ fn codegen(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig)
 
 impl Project {
     pub fn new(reporter: &mut Reporter, path: ProjectPath) -> Result<Project, ProjectError> {
-        let config = read_typedruby_toml(&path.config_path())?;
+        let config_path = path.config_path();
+
+        let config = read_typedruby_toml(&config_path)?;
+
+        let config_mtime = fs::metadata(&config_path)
+            .map_err(ProjectError::Io)?
+            .modified()
+            .map_err(ProjectError::Io)?;
 
         // XXX - GLOBAL STATE!
         //
@@ -225,6 +235,7 @@ impl Project {
             check_config,
             path,
             config,
+            config_mtime,
             cache: LoadCache::new(),
         };
 
@@ -232,6 +243,24 @@ impl Project {
             .map_err(ProjectError::Codegen)?;
 
         Ok(project)
+    }
+
+    pub fn needs_reload(&self) -> bool {
+        let mtime = fs::metadata(self.path.config_path())
+            .and_then(|meta| meta.modified());
+
+        match mtime {
+            Ok(mtime) => mtime > self.config_mtime,
+            Err(_) => {
+                // if we couldn't fetch the mtime of the project config file
+                // then always force a project refresh
+                true
+            }
+        }
+    }
+
+    pub fn refresh(&self) {
+        // TODO
     }
 }
 
