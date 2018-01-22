@@ -276,7 +276,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 
 [[package]]
 name = "typedruby"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "clap 2.29.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "crossbeam 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
