@@ -46,13 +46,6 @@ impl Strings {
             Strings::Many(ref strings) => strings,
         }
     }
-
-    pub fn to_paths(&self) -> Vec<PathBuf> {
-        self.as_slice()
-            .iter()
-            .map(|path| PathBuf::from(path))
-            .collect::<Vec<_>>()
-    }
 }
 
 #[derive(Debug)]
