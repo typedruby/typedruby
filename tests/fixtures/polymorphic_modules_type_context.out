@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Revealed type is: Integer
 
         @ __ROOT__/tests/fixtures/polymorphic_modules_type_context.rb:12

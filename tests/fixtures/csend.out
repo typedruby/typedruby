@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Union member NilClass does not respond to #+
 
         @ __ROOT__/tests/fixtures/csend.rb:8
