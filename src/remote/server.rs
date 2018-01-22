@@ -6,9 +6,9 @@ use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, SyncSender};
 
 use environment::Environment;
-use errors::{self, ErrorSink};
 use project::{Project, ProjectPath, ProjectError};
 use remote::protocol::{self, ProtocolError, Message, ClientTransport, ReplyData};
+use report::{self, Reporter};
 
 use crossbeam;
 use typed_arena::Arena;
@@ -46,12 +46,12 @@ fn bind_socket(path: &Path) -> Result<UnixListener, RunServerError> {
     UnixListener::bind(path).map_err(RunServerError::Io)
 }
 
-pub fn run(errors: &mut ErrorSink) -> Result<(), RunServerError> {
+pub fn run(reporter: &mut Reporter) -> Result<(), RunServerError> {
     let current_dir = env::current_dir().expect("env::current_dir");
 
     let project_path = ProjectPath::find(current_dir).ok_or(RunServerError::NoProjectConfig)?;
 
-    let project = Project::new(errors, project_path).map_err(RunServerError::Project)?;
+    let project = Project::new(reporter, project_path).map_err(RunServerError::Project)?;
 
     let listener = bind_socket(&project.path.socket_path())?;
 
@@ -81,14 +81,10 @@ pub fn run(errors: &mut ErrorSink) -> Result<(), RunServerError> {
                     let _ = reply.send(ReplyData::Ok);
                 }
                 Work::Message(Message::Check, reply) => {
-                    let mut errors = ClientErrors::new(reply);
+                    let mut reporter = ClientReporter::new(reply);
                     let arena = Arena::new();
 
-                    let env = Environment::new(&arena, &project, &mut errors);
-
-                    env.load_files(project.check_config.files.iter());
-                    env.define();
-                    env.typecheck();
+                    Environment::new(&arena, &project, &mut reporter).run();
                 }
             }
         }
@@ -129,24 +125,24 @@ impl<T: Read + Write> Client<T> {
     }
 }
 
-struct ClientErrors {
+struct ClientReporter {
     reply: SyncSender<ReplyData>,
     error_count: usize,
     warning_count: usize,
 }
 
-impl ClientErrors {
+impl ClientReporter {
     pub fn new(reply: SyncSender<ReplyData>) -> Self {
-        ClientErrors { reply, error_count: 0, warning_count: 0 }
+        ClientReporter { reply, error_count: 0, warning_count: 0 }
     }
 }
 
-fn map_details(details: &[errors::Detail]) -> Vec<protocol::Detail> {
+fn map_details(details: &[report::Detail]) -> Vec<protocol::Detail> {
     details.iter().map(|detail| match *detail {
-        errors::Detail::Message(msg) =>
+        report::Detail::Message(msg) =>
             protocol::Detail::Message { msg: msg.to_owned() },
 
-        errors::Detail::Loc(msg, ref loc) =>
+        report::Detail::Loc(msg, ref loc) =>
             protocol::Detail::Loc {
                 msg: msg.to_owned(),
                 loc: protocol::Loc {
@@ -158,15 +154,27 @@ fn map_details(details: &[errors::Detail]) -> Vec<protocol::Detail> {
     }).collect()
 }
 
-impl ErrorSink for ClientErrors {
-    fn error(&mut self, message: &str, details: &[errors::Detail]) {
+impl Reporter for ClientReporter {
+    fn info(&mut self, message: &str) {
+        let _ = self.reply.send(ReplyData::Info {
+            msg: message.to_owned(),
+        });
+    }
+
+    fn success(&mut self, message: &str) {
+        let _ = self.reply.send(ReplyData::Success {
+            msg: message.to_owned(),
+        });
+    }
+
+    fn error(&mut self, message: &str, details: &[report::Detail]) {
         let _ = self.reply.send(ReplyData::Error {
             msg: message.to_owned(),
             details: map_details(details),
         });
     }
 
-    fn warning(&mut self, message: &str, details: &[errors::Detail]) {
+    fn warning(&mut self, message: &str, details: &[report::Detail]) {
         let _ = self.reply.send(ReplyData::Warning {
             msg: message.to_owned(),
             details: map_details(details),

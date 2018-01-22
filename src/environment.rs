@@ -10,10 +10,10 @@ use typed_arena::Arena;
 use ast::{Ast, SourceFile, Node, Id};
 use config::CheckConfig;
 use define::Definitions;
-use errors::ErrorSink;
 use inflect::Inflector;
 use object::{ObjectGraph, RubyObject, MethodEntry, Scope, ConstantEntry};
 use project::Project;
+use report::Reporter;
 use top_level;
 use typecheck;
 
@@ -65,7 +65,7 @@ impl PhaseCell {
 
 pub struct Environment<'object> {
     pub object: ObjectGraph<'object>,
-    pub error_sink: RefCell<&'object mut ErrorSink>,
+    pub reporter: RefCell<&'object mut Reporter>,
     pub config: &'object CheckConfig,
     pub defs: Definitions<'object>,
     phase: PhaseCell,
@@ -76,11 +76,11 @@ pub struct Environment<'object> {
 }
 
 impl<'object> Environment<'object> {
-    pub fn new(arena: &'object Arena<RubyObject<'object>>, project: &'object Project, error_sink: &'object mut ErrorSink) -> Environment<'object> {
+    pub fn new(arena: &'object Arena<RubyObject<'object>>, project: &'object Project, reporter: &'object mut Reporter) -> Environment<'object> {
         let inflector = Inflector::new(&project.check_config.inflect_acronyms);
 
         let env = Environment {
-            error_sink: RefCell::new(error_sink),
+            reporter: RefCell::new(reporter),
             object: ObjectGraph::new(&arena),
             config: &project.check_config,
             phase: PhaseCell::new(Phase::Load),
@@ -114,7 +114,7 @@ impl<'object> Environment<'object> {
         }
 
         for diag in &ast.diagnostics {
-            self.error_sink.borrow_mut().parser_diagnostic(diag);
+            self.reporter.borrow_mut().parser_diagnostic(diag);
         }
 
         if let Some(ref node) = ast.node {
@@ -233,7 +233,29 @@ impl<'object> Environment<'object> {
         None
     }
 
-    pub fn load_files<I, P>(&self, files_iter: I)
+    pub fn run(self) -> bool {
+        self.reporter.borrow_mut().info("Typechecking...");
+
+        self.load_files(self.project.check_config.files.iter());
+        self.define();
+        self.typecheck();
+
+        let mut reporter = self.reporter.borrow_mut();
+
+        if reporter.error_count() == 0 {
+            if reporter.warning_count() == 0 {
+                reporter.success("Typecheck passed");
+            } else {
+                reporter.success("Typecheck passed with warnings");
+            }
+
+            true
+        } else {
+            false
+        }
+    }
+
+    fn load_files<I, P>(&self, files_iter: I)
         where I: Iterator<Item = P>, P: AsRef<Path>
     {
         for file in files_iter {
@@ -242,7 +264,7 @@ impl<'object> Environment<'object> {
             match self.require(file) {
                 Ok(()) => {}
                 Err(e) => {
-                    self.error_sink.borrow_mut()
+                    self.reporter.borrow_mut()
                         .error(&format!("{}: {}", file.display(), e), &[]);
                 }
             }
@@ -251,7 +273,7 @@ impl<'object> Environment<'object> {
         self.defs.autoload_const_references(self);
     }
 
-    pub fn define(&self) {
+    fn define(&self) {
         self.phase.set(Phase::Define);
 
         let methods = self.defs.define(&self);
@@ -263,7 +285,7 @@ impl<'object> Environment<'object> {
         }
     }
 
-    pub fn typecheck(&self) {
+    fn typecheck(&self) {
         self.phase.set(Phase::TypeCheck);
 
         while let Some(method) = self.method_queue.borrow_mut().pop_front() {

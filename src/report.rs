@@ -1,5 +1,5 @@
-use termcolor::{Color, ColorSpec, WriteColor};
 use std::io::{Result};
+use termcolor::{Color, ColorSpec, WriteColor};
 use ast::{Loc, Diagnostic, Level};
 
 pub enum Detail<'a> {
@@ -7,7 +7,9 @@ pub enum Detail<'a> {
     Loc(&'a str, &'a Loc),
 }
 
-pub trait ErrorSink {
+pub trait Reporter {
+    fn info(&mut self, message: &str);
+    fn success(&mut self, message: &str);
     fn error(&mut self, message: &str, details: &[Detail]);
     fn warning(&mut self, message: &str, details: &[Detail]);
 
@@ -51,16 +53,16 @@ macro_rules! write_color {
     });
 }
 
-pub struct ErrorReporter<T: WriteColor> {
+pub struct TerminalReporter<T: WriteColor> {
     io: T,
     need_newline_padding: bool,
     error_count: usize,
     warning_count: usize,
 }
 
-impl<T: WriteColor> ErrorReporter<T> {
-    pub fn new(io: T) -> ErrorReporter<T> {
-        ErrorReporter {
+impl<T: WriteColor> TerminalReporter<T> {
+    pub fn new(io: T) -> TerminalReporter<T> {
+        TerminalReporter {
             io: io,
             need_newline_padding: false,
             error_count: 0,
@@ -76,9 +78,13 @@ impl<T: WriteColor> ErrorReporter<T> {
         }
 
         write_color!(err, self.io, "{}: ", diagnostic_name);
-        write_color!(high, self.io, "{}\n\n", message);
+        write_color!(high, self.io, "{}\n", message);
 
         self.io.reset()?;
+
+        if details.len() > 0 {
+            write!(self.io, "\n")?;
+        }
 
         for detail in details {
             match *detail {
@@ -141,14 +147,22 @@ impl<T: WriteColor> ErrorReporter<T> {
     }
 }
 
-impl<T: WriteColor> ErrorSink for ErrorReporter<T> {
+impl<T: WriteColor> Reporter for TerminalReporter<T> {
+    fn info(&mut self, message: &str) {
+        self.emit("info", Color::Magenta, message, &[]).unwrap();
+    }
+
+    fn success(&mut self, message: &str) {
+        self.emit("success", Color::Green, message, &[]).unwrap();
+    }
+
     fn error(&mut self, message: &str, details: &[Detail]) {
         self.error_count += 1;
         self.emit("error", Color::Red, message, details).unwrap();
     }
 
     fn warning(&mut self, message: &str, details: &[Detail]) {
-        self.error_count += 1;
+        self.warning_count += 1;
         self.emit("warning", Color::Yellow, message, details).unwrap();
     }
 

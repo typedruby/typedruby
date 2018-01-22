@@ -9,8 +9,8 @@ use glob;
 use toml;
 
 use config::{ProjectConfig, CheckConfig, Strings, Command, BundlerConfig};
-use errors::ErrorSink;
 use load::LoadCache;
+use report::Reporter;
 
 const CONFIG_FILE: &'static str = "TypedRuby.toml";
 const SOCKET_FILE: &'static str = ".typedruby.sock";
@@ -107,7 +107,7 @@ fn prepare_config_command(project_root: &Path, command: &Command) -> process::Co
     process
 }
 
-fn load_bundler_load_paths(project_root: &Path, config: &BundlerConfig) -> Result<Vec<PathBuf>, CommandError> {
+fn load_bundler_load_paths(reporter: &mut Reporter, project_root: &Path, config: &BundlerConfig) -> Result<Vec<PathBuf>, CommandError> {
     let mut command = match *config {
         BundlerConfig { enabled: Some(false), .. } |
         BundlerConfig { enabled: None, exec: None } => {
@@ -123,6 +123,8 @@ fn load_bundler_load_paths(project_root: &Path, config: &BundlerConfig) -> Resul
         }
     };
 
+    reporter.info("Loading Gem environment...");
+
     let output = command.output().map_err(CommandError::Io)?;
 
     if output.status.success() {
@@ -132,6 +134,7 @@ fn load_bundler_load_paths(project_root: &Path, config: &BundlerConfig) -> Resul
             .map(PathBuf::from)
             .collect())
     } else {
+        reporter.error("Command exited with non-zero status", &[]);
         Err(CommandError::NonZeroStatus)
     }
 }
@@ -149,7 +152,7 @@ fn paths_from_strings(strings: &Strings) -> Result<Vec<PathBuf>, ProjectError> {
     Ok(paths)
 }
 
-fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &ProjectConfig) -> Result<CheckConfig, ProjectError> {
+fn init_check_config(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig) -> Result<CheckConfig, ProjectError> {
     let mut require_paths = Vec::new();
 
     require_paths.extend(
@@ -158,11 +161,11 @@ fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &Proje
     if let Some(lib_path) = env::var("TYPEDRUBY_LIB").ok() {
         require_paths.push(PathBuf::from(lib_path));
     } else {
-        errors.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
+        reporter.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
     }
 
     require_paths.extend(
-        load_bundler_load_paths(project_root, &config.bundler)
+        load_bundler_load_paths(reporter, project_root, &config.bundler)
             .map_err(ProjectError::Bundler)?);
 
     let autoload_paths = paths_from_strings(&config.typedruby.autoload_path)?;
@@ -181,8 +184,29 @@ fn init_check_config(errors: &mut ErrorSink, project_root: &Path, config: &Proje
     })
 }
 
+fn codegen(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig) -> Result<(), CommandError> {
+    let cmd = match config.codegen.exec {
+        Some(ref cmd) => cmd,
+        None => { return Ok(()) }
+    };
+
+    reporter.info("Generating code...");
+
+    match prepare_config_command(project_root, cmd).status() {
+        Ok(stat) if stat.success() => Ok(()),
+        Ok(_) => {
+            reporter.error("Command exited with non-zero status", &[]);
+            Err(CommandError::NonZeroStatus)
+        }
+        Err(e) => {
+            reporter.error("Could not invoke codegen command", &[]);
+            Err(CommandError::Io(e))
+        }
+    }
+}
+
 impl Project {
-    pub fn new(errors: &mut ErrorSink, path: ProjectPath) -> Result<Project, ProjectError> {
+    pub fn new(reporter: &mut Reporter, path: ProjectPath) -> Result<Project, ProjectError> {
         let config = read_typedruby_toml(&path.config_path())?;
 
         // XXX - GLOBAL STATE!
@@ -195,35 +219,24 @@ impl Project {
         //
         env::set_current_dir(path.root()).map_err(ProjectError::Io)?;
 
-        let check_config = init_check_config(errors, path.root(), &config)?;
+        let check_config = init_check_config(reporter, path.root(), &config)?;
 
-        let mut project = Project {
+        let project = Project {
             check_config,
             path,
             config,
             cache: LoadCache::new(),
         };
 
-        project.codegen().map_err(ProjectError::Codegen)?;
+        codegen(reporter, project.path.root(), &project.config)
+            .map_err(ProjectError::Codegen)?;
 
         Ok(project)
-    }
-
-    pub fn codegen(&mut self) -> Result<(), CommandError> {
-        if let Some(ref cmd) = self.config.codegen.exec {
-            match prepare_config_command(self.path.root(), cmd).status() {
-                Ok(stat) if stat.success() => Ok(()),
-                Ok(_) => Err(CommandError::NonZeroStatus),
-                Err(e) => Err(CommandError::Io(e)),
-            }
-        } else {
-            Ok(())
-        }
     }
 }
 
 #[cfg(test)]
-pub fn load_fixture(errors: &mut ErrorSink, fixture_path: &Path) -> Project {
+pub fn load_fixture(reporter: &mut Reporter, fixture_path: &Path) -> Project {
     let root = fixture_path
         .parent()
         .expect("fixture_path.parent()")
@@ -236,7 +249,7 @@ pub fn load_fixture(errors: &mut ErrorSink, fixture_path: &Path) -> Project {
             .expect("fixture_path should be UTF-8")
             .to_owned());
 
-    let check_config = init_check_config(errors, &root, &config)
+    let check_config = init_check_config(reporter, &root, &config)
         .expect("init_check_config");
 
     Project {

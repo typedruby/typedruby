@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Revealed type is: [Integer, String]
 
         @ __ROOT__/tests/fixtures/reveal_type.rb:3

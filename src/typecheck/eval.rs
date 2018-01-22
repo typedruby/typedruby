@@ -5,7 +5,7 @@ use typecheck::types::{Arg, TypeEnv, TypeContext, Type, TypeRef, Prototype, Kwsp
 use object::{Scope, RubyObject, MethodEntry, MethodImpl, ConstantEntry};
 use ast::{Node, Loc, Id};
 use environment::Environment;
-use errors::Detail;
+use report::Detail;
 use typed_arena::Arena;
 use typecheck::call;
 use typecheck::call::ArgError;
@@ -111,11 +111,11 @@ impl<'ty, 'object> Eval<'ty, 'object> {
     }
 
     fn error(&self, message: &str, details: &[Detail]) {
-        self.env.error_sink.borrow_mut().error(message, details)
+        self.env.reporter.borrow_mut().error(message, details)
     }
 
     fn warning(&self, message: &str, details: &[Detail]) {
-        self.env.error_sink.borrow_mut().warning(message, details)
+        self.env.reporter.borrow_mut().warning(message, details)
     }
 
     fn materialize_type(&self, type_node: &TypeNode<'object>, context: &TypeContext<'ty, 'object>) -> TypeRef<'ty, 'object> {

@@ -29,12 +29,12 @@ mod config;
 mod debug;
 mod define;
 mod environment;
-mod errors;
 mod inflect;
 mod load;
 mod object;
 mod project;
 mod remote;
+mod report;
 mod slice_util;
 mod strip;
 mod top_level;
@@ -51,7 +51,7 @@ mod tests {
 }
 
 use config::{AnnotateConfig, StripConfig};
-use errors::ErrorReporter;
+use report::TerminalReporter;
 
 enum Command {
     Check,
@@ -149,13 +149,13 @@ fn parse_cmdline() -> Command {
 }
 
 fn main() {
-    let mut errors = ErrorReporter::new(StandardStream::stderr(ColorChoice::Auto));
+    let mut reporter = TerminalReporter::new(StandardStream::stderr(ColorChoice::Auto));
 
     let success = match parse_cmdline() {
-        Command::Check => command::check(errors),
-        Command::Annotate(config, file) => command::annotate(errors, config, file),
-        Command::Strip(config, files) => command::strip(errors, config, files),
-        Command::Server => command::server(&mut errors),
+        Command::Check => command::check(&mut reporter),
+        Command::Annotate(config, file) => command::annotate(&mut reporter, config, file),
+        Command::Strip(config, files) => command::strip(&mut reporter, config, files),
+        Command::Server => command::server(&mut reporter),
     };
 
     process::exit(match success {

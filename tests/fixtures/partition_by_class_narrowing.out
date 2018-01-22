@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Revealed type is: NilClass | String
 
         @ __ROOT__/tests/fixtures/partition_by_class_narrowing.rb:9

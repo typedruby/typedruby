@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Revealed type is: Array::[Integer]
 
         @ __ROOT__/tests/fixtures/constrained_core_methods.rb:4

@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Revealed type is: P::[Integer]
 
         @ __ROOT__/tests/fixtures/union_type_candidates.rb:16
