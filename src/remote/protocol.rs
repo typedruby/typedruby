@@ -34,6 +34,8 @@ pub enum Reply {
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(tag = "t")]
 pub enum ReplyData {
+    Info { msg: String },
+    Success { msg: String },
     Error { msg: String, details: Vec<Detail> },
     Warning { msg: String, details: Vec<Detail> },
     Ok,

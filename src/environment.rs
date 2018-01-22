@@ -233,7 +233,29 @@ impl<'object> Environment<'object> {
         None
     }
 
-    pub fn load_files<I, P>(&self, files_iter: I)
+    pub fn run(self) -> bool {
+        self.reporter.borrow_mut().info("Typechecking...");
+
+        self.load_files(self.project.check_config.files.iter());
+        self.define();
+        self.typecheck();
+
+        let mut reporter = self.reporter.borrow_mut();
+
+        if reporter.error_count() == 0 {
+            if reporter.warning_count() == 0 {
+                reporter.success("Typecheck passed");
+            } else {
+                reporter.success("Typecheck passed with warnings");
+            }
+
+            true
+        } else {
+            false
+        }
+    }
+
+    fn load_files<I, P>(&self, files_iter: I)
         where I: Iterator<Item = P>, P: AsRef<Path>
     {
         for file in files_iter {
@@ -251,7 +273,7 @@ impl<'object> Environment<'object> {
         self.defs.autoload_const_references(self);
     }
 
-    pub fn define(&self) {
+    fn define(&self) {
         self.phase.set(Phase::Define);
 
         let methods = self.defs.define(&self);
@@ -263,7 +285,7 @@ impl<'object> Environment<'object> {
         }
     }
 
-    pub fn typecheck(&self) {
+    fn typecheck(&self) {
         self.phase.set(Phase::TypeCheck);
 
         while let Some(method) = self.method_queue.borrow_mut().pop_front() {

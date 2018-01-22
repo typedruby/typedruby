@@ -62,11 +62,7 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
         let project = project::load_fixture(&mut errors, &path);
 
         let arena = Arena::new();
-        let env = Environment::new(&arena, &project, &mut errors);
-
-        env.load_files(project.check_config.files.iter());
-        env.define();
-        env.typecheck();
+        Environment::new(&arena, &project, &mut errors).run();
     }
 
     let expected = read_file(&output_path(&path));

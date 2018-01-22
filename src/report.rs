@@ -1,5 +1,5 @@
-use termcolor::{Color, ColorSpec, WriteColor};
 use std::io::{Result};
+use termcolor::{Color, ColorSpec, WriteColor};
 use ast::{Loc, Diagnostic, Level};
 
 pub enum Detail<'a> {
@@ -8,6 +8,8 @@ pub enum Detail<'a> {
 }
 
 pub trait Reporter {
+    fn info(&mut self, message: &str);
+    fn success(&mut self, message: &str);
     fn error(&mut self, message: &str, details: &[Detail]);
     fn warning(&mut self, message: &str, details: &[Detail]);
 
@@ -76,9 +78,13 @@ impl<T: WriteColor> TerminalReporter<T> {
         }
 
         write_color!(err, self.io, "{}: ", diagnostic_name);
-        write_color!(high, self.io, "{}\n\n", message);
+        write_color!(high, self.io, "{}\n", message);
 
         self.io.reset()?;
+
+        if details.len() > 0 {
+            write!(self.io, "\n")?;
+        }
 
         for detail in details {
             match *detail {
@@ -142,13 +148,21 @@ impl<T: WriteColor> TerminalReporter<T> {
 }
 
 impl<T: WriteColor> Reporter for TerminalReporter<T> {
+    fn info(&mut self, message: &str) {
+        self.emit("info", Color::Magenta, message, &[]).unwrap();
+    }
+
+    fn success(&mut self, message: &str) {
+        self.emit("success", Color::Green, message, &[]).unwrap();
+    }
+
     fn error(&mut self, message: &str, details: &[Detail]) {
         self.error_count += 1;
         self.emit("error", Color::Red, message, details).unwrap();
     }
 
     fn warning(&mut self, message: &str, details: &[Detail]) {
-        self.error_count += 1;
+        self.warning_count += 1;
         self.emit("warning", Color::Yellow, message, details).unwrap();
     }
 
