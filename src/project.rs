@@ -51,11 +51,65 @@ impl ProjectPath {
     }
 }
 
+fn file_needs_refresh(path: &Path, cached_mtime: SystemTime) -> bool {
+    let current_mtime = fs::metadata(path)
+        .and_then(|meta| meta.modified());
+
+    match current_mtime {
+        Ok(current_mtime) => current_mtime > cached_mtime,
+        Err(_) => {
+            // if we can't fetch the mtime of the file then always refresh:
+            true
+        }
+    }
+}
+
+struct Refreshable<T> {
+    inner: T,
+    files: Vec<(PathBuf, Option<SystemTime>)>,
+}
+
+impl<T> Refreshable<T> {
+    pub fn new(inner: T, files: &[PathBuf]) -> Self {
+        let files = files.iter()
+            .map(|path|
+                (path.to_owned(),
+                    fs::metadata(path)
+                        .and_then(|meta| meta.modified())
+                        .ok()))
+            .collect();
+
+        Refreshable { inner, files }
+    }
+
+    pub fn needs_refresh(&self) -> bool {
+        self.files.iter().any(|&(ref path, mtime)|
+            match mtime {
+                Some(mtime) => file_needs_refresh(path, mtime),
+                None => true,
+            })
+    }
+
+    pub fn inner(&self) -> &T {
+        &self.inner
+    }
+
+    pub fn map<F, U>(self, f: F) -> Refreshable<U>
+        where F: FnOnce(T) -> U
+    {
+        Refreshable {
+            inner: f(self.inner),
+            files: self.files,
+        }
+    }
+}
+
 pub struct Project {
     pub cache: LoadCache,
     pub path: ProjectPath,
     pub config: ProjectConfig,
-    pub check_config: CheckConfig,
+    check_config: Refreshable<CheckConfig>,
+    codegen: Refreshable<()>,
     config_mtime: SystemTime,
 }
 
@@ -110,19 +164,39 @@ fn prepare_config_command(project_root: &Path, command: &Command) -> process::Co
     process
 }
 
-fn load_bundler_load_paths(reporter: &mut Reporter, project_root: &Path, config: &BundlerConfig) -> Result<Vec<PathBuf>, CommandError> {
-    let mut command = match *config {
+enum BundlerStrategy<'a> {
+    Default,
+    Custom(&'a Command),
+}
+
+fn interpret_bundler_config<'a>(config: &'a BundlerConfig) -> Option<BundlerStrategy<'a>> {
+    match *config {
         BundlerConfig { enabled: Some(false), .. } |
-        BundlerConfig { enabled: None, exec: None } => {
-            return Ok(Vec::new());
+        BundlerConfig { enabled: None, exec: None, .. } =>
+            None,
+        BundlerConfig { enabled: Some(true), exec: None, .. } =>
+            Some(BundlerStrategy::Default),
+        BundlerConfig { exec: Some(ref cmd), .. } =>
+            Some(BundlerStrategy::Custom(cmd)),
+    }
+}
+
+fn load_bundler_load_paths(reporter: &mut Reporter, project_root: &Path, config: &BundlerConfig) -> Result<Refreshable<Vec<PathBuf>>, CommandError> {
+    let (mut command, refresh) = match interpret_bundler_config(config) {
+        None => {
+            return Ok(Refreshable::new(Vec::new(), &[]));
         }
-        BundlerConfig { enabled: Some(true), exec: None } => {
+        Some(BundlerStrategy::Default) => {
             let mut command = prepare_command(project_root, "ruby");
             command.args(&["-r", "bundler/setup", "-e", "puts $LOAD_PATH"]);
-            command
+
+            let mut refresh = config.refresh.to_paths();
+            refresh.push(project_root.join("Gemfile.lock"));
+
+            (command, refresh)
         }
-        BundlerConfig { exec: Some(ref cmd), .. } => {
-            prepare_config_command(project_root, cmd)
+        Some(BundlerStrategy::Custom(cmd)) => {
+            (prepare_config_command(project_root, cmd), config.refresh.to_paths())
         }
     };
 
@@ -131,11 +205,13 @@ fn load_bundler_load_paths(reporter: &mut Reporter, project_root: &Path, config:
     let output = command.output().map_err(CommandError::Io)?;
 
     if output.status.success() {
-        Ok(output.stdout
+        let paths = output.stdout
             .split(|c| *c == ('\r' as u8) || *c == ('\n' as u8))
             .filter_map(|line| str::from_utf8(line).ok())
             .map(PathBuf::from)
-            .collect())
+            .collect();
+
+        Ok(Refreshable::new(paths, &refresh))
     } else {
         reporter.error("Command exited with non-zero status", &[]);
         Err(CommandError::NonZeroStatus)
@@ -155,7 +231,9 @@ fn paths_from_strings(strings: &Strings) -> Result<Vec<PathBuf>, ProjectError> {
     Ok(paths)
 }
 
-fn init_check_config(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig) -> Result<CheckConfig, ProjectError> {
+fn setup_require_paths(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig)
+    -> Result<Refreshable<Vec<PathBuf>>, ProjectError>
+{
     let mut require_paths = Vec::new();
 
     require_paths.extend(
@@ -167,36 +245,43 @@ fn init_check_config(reporter: &mut Reporter, project_root: &Path, config: &Proj
         reporter.warning("TYPEDRUBY_LIB environment variable not set, will not use builtin standard library definitions", &[]);
     }
 
-    require_paths.extend(
-        load_bundler_load_paths(reporter, project_root, &config.bundler)
-            .map_err(ProjectError::Bundler)?);
+    Ok(load_bundler_load_paths(reporter, project_root, &config.bundler)
+        .map_err(ProjectError::Bundler)?
+        .map(|paths| {
+            require_paths.extend(paths);
+            require_paths
+        }))
+}
 
+fn setup_check_config(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig)
+    -> Result<Refreshable<CheckConfig>, ProjectError>
+{
+    let require_paths = setup_require_paths(reporter, project_root, config)?;
     let autoload_paths = paths_from_strings(&config.typedruby.autoload_path)?;
     let ignore_errors_in = paths_from_strings(&config.typedruby.ignore_errors)?;
     let files = paths_from_strings(&config.typedruby.source)?;
-
     let inflect_acronyms = config.inflect.acronyms.as_slice().to_vec();
 
-    Ok(CheckConfig {
+    Ok(require_paths.map(|require_paths| CheckConfig {
         warning: false,
         require_paths,
         autoload_paths,
         ignore_errors_in,
         inflect_acronyms,
         files,
-    })
+    }))
 }
 
-fn codegen(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig) -> Result<(), CommandError> {
+fn codegen(reporter: &mut Reporter, project_root: &Path, config: &ProjectConfig) -> Result<Refreshable<()>, CommandError> {
     let cmd = match config.codegen.exec {
         Some(ref cmd) => cmd,
-        None => { return Ok(()) }
+        None => { return Ok(Refreshable::new((), &[])) }
     };
 
     reporter.info("Generating code...");
 
     match prepare_config_command(project_root, cmd).status() {
-        Ok(stat) if stat.success() => Ok(()),
+        Ok(stat) if stat.success() => Ok(Refreshable::new((), &config.codegen.refresh.to_paths())),
         Ok(_) => {
             reporter.error("Command exited with non-zero status", &[]);
             Err(CommandError::NonZeroStatus)
@@ -229,38 +314,42 @@ impl Project {
         //
         env::set_current_dir(path.root()).map_err(ProjectError::Io)?;
 
-        let check_config = init_check_config(reporter, path.root(), &config)?;
+        let check_config = setup_check_config(reporter, path.root(), &config)?;
+
+        let codegen = codegen(reporter, path.root(), &config)
+            .map_err(ProjectError::Codegen)?;
 
         let project = Project {
             check_config,
             path,
             config,
             config_mtime,
+            codegen,
             cache: LoadCache::new(),
         };
-
-        codegen(reporter, project.path.root(), &project.config)
-            .map_err(ProjectError::Codegen)?;
 
         Ok(project)
     }
 
     pub fn needs_reload(&self) -> bool {
-        let mtime = fs::metadata(self.path.config_path())
-            .and_then(|meta| meta.modified());
-
-        match mtime {
-            Ok(mtime) => mtime > self.config_mtime,
-            Err(_) => {
-                // if we couldn't fetch the mtime of the project config file
-                // then always force a project refresh
-                true
-            }
-        }
+        file_needs_refresh(&self.path.config_path(), self.config_mtime)
     }
 
-    pub fn refresh(&self) {
-        // TODO
+    pub fn refresh(&mut self, reporter: &mut Reporter) -> Result<(), ProjectError> {
+        if self.check_config.needs_refresh() {
+            self.check_config = setup_check_config(reporter, self.path.root(), &self.config)?;
+        }
+
+        if self.codegen.needs_refresh() {
+            self.codegen = codegen(reporter, self.path.root(), &self.config)
+                .map_err(ProjectError::Codegen)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn check_config(&self) -> &CheckConfig {
+        self.check_config.inner()
     }
 }
 
