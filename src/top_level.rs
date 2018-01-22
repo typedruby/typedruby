@@ -1,11 +1,11 @@
-use ast::{Id, Node, Loc, SourceFile};
-use environment::Environment;
-use errors::Detail;
-use define::{Definitions, MethodVisibility, MethodDef, IvarDef, ConstReference};
-use object::{RubyObject, Scope, ConstantEntry, IncludeError};
-use std::rc::Rc;
-use std::cell::Cell;
 use abstract_type::{TypeNode, TypeScope, TypeNodeRef};
+use ast::{Id, Node, Loc, SourceFile};
+use define::{Definitions, MethodVisibility, MethodDef, IvarDef, ConstReference};
+use environment::Environment;
+use object::{RubyObject, Scope, ConstantEntry, IncludeError};
+use report::Detail;
+use std::cell::Cell;
+use std::rc::Rc;
 
 type EvalResult<'a, T> = Result<T, (&'a Node, &'static str)>;
 
@@ -101,7 +101,7 @@ impl<'env, 'object> Eval<'env, 'object> {
         };
 
         if emit && self.env.should_emit_errors(self.source_file.filename()) {
-            self.env.error_sink.borrow_mut().error(message, details)
+            self.env.reporter.borrow_mut().error(message, details)
         }
     }
 

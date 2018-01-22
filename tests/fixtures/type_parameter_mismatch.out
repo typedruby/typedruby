@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Mismatched type parameters
 
         @ __ROOT__/tests/fixtures/type_parameter_mismatch.rb:1

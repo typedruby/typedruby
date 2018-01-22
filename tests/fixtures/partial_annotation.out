@@ -1,3 +1,4 @@
+info: Typechecking...
 error: Partial type signatures are not permitted in method definitions
 
         @ __ROOT__/tests/fixtures/partial_annotation.rb:6

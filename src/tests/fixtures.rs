@@ -12,7 +12,7 @@ use termcolor::NoColor;
 use typed_arena::Arena;
 
 use environment::Environment;
-use errors::ErrorReporter;
+use report::TerminalReporter;
 use project;
 
 struct Mismatch {
@@ -57,16 +57,12 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
     let mut error_buff = Vec::new();
 
     {
-        let mut errors = ErrorReporter::new(NoColor::new(&mut error_buff));
+        let mut errors = TerminalReporter::new(NoColor::new(&mut error_buff));
 
         let project = project::load_fixture(&mut errors, &path);
 
         let arena = Arena::new();
-        let env = Environment::new(&arena, &project, &mut errors);
-
-        env.load_files(project.check_config.files.iter());
-        env.define();
-        env.typecheck();
+        Environment::new(&arena, &project, &mut errors).run();
     }
 
     let expected = read_file(&output_path(&path));
