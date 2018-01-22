@@ -11,10 +11,10 @@ use project::{Project, ProjectPath, ProjectError};
 use remote::server::RunServerError;
 use remote::client::{Remote, ConnectError};
 use remote;
-use report::{ErrorReporter, Reporter};
+use report::{TerminalReporter, Reporter};
 use strip::{self, StripError};
 
-pub fn check(mut errors: ErrorReporter<StandardStream>) -> bool {
+pub fn check(mut errors: TerminalReporter<StandardStream>) -> bool {
     let project_path = match ProjectPath::find(env::current_dir().expect("env::current_dir")) {
         Some(path) => path,
         None => {
@@ -73,7 +73,7 @@ pub fn check(mut errors: ErrorReporter<StandardStream>) -> bool {
     }
 }
 
-pub fn annotate(mut errors: ErrorReporter<StandardStream>, config: AnnotateConfig, file: PathBuf) -> bool {
+pub fn annotate(mut errors: TerminalReporter<StandardStream>, config: AnnotateConfig, file: PathBuf) -> bool {
     match annotate::apply_annotations(&file, config) {
         Ok(()) => true,
         Err(err) => {
@@ -96,7 +96,7 @@ pub fn annotate(mut errors: ErrorReporter<StandardStream>, config: AnnotateConfi
     }
 }
 
-pub fn strip(mut errors: ErrorReporter<StandardStream>, config: StripConfig, files: Vec<PathBuf>) -> bool {
+pub fn strip(mut errors: TerminalReporter<StandardStream>, config: StripConfig, files: Vec<PathBuf>) -> bool {
     let mut success = true;
 
     for file in files {

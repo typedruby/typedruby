@@ -51,16 +51,16 @@ macro_rules! write_color {
     });
 }
 
-pub struct ErrorReporter<T: WriteColor> {
+pub struct TerminalReporter<T: WriteColor> {
     io: T,
     need_newline_padding: bool,
     error_count: usize,
     warning_count: usize,
 }
 
-impl<T: WriteColor> ErrorReporter<T> {
-    pub fn new(io: T) -> ErrorReporter<T> {
-        ErrorReporter {
+impl<T: WriteColor> TerminalReporter<T> {
+    pub fn new(io: T) -> TerminalReporter<T> {
+        TerminalReporter {
             io: io,
             need_newline_padding: false,
             error_count: 0,
@@ -141,7 +141,7 @@ impl<T: WriteColor> ErrorReporter<T> {
     }
 }
 
-impl<T: WriteColor> Reporter for ErrorReporter<T> {
+impl<T: WriteColor> Reporter for TerminalReporter<T> {
     fn error(&mut self, message: &str, details: &[Detail]) {
         self.error_count += 1;
         self.emit("error", Color::Red, message, details).unwrap();

@@ -12,7 +12,7 @@ use termcolor::NoColor;
 use typed_arena::Arena;
 
 use environment::Environment;
-use report::ErrorReporter;
+use report::TerminalReporter;
 use project;
 
 struct Mismatch {
@@ -57,7 +57,7 @@ fn compare_fixture(path: PathBuf) -> Option<Mismatch> {
     let mut error_buff = Vec::new();
 
     {
-        let mut errors = ErrorReporter::new(NoColor::new(&mut error_buff));
+        let mut errors = TerminalReporter::new(NoColor::new(&mut error_buff));
 
         let project = project::load_fixture(&mut errors, &path);
 
