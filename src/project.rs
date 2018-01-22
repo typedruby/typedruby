@@ -364,13 +364,15 @@ pub fn load_fixture(reporter: &mut Reporter, fixture_path: &Path) -> Project {
             .expect("fixture_path should be UTF-8")
             .to_owned());
 
-    let check_config = init_check_config(reporter, &root, &config)
+    let check_config = setup_check_config(reporter, &root, &config)
         .expect("init_check_config");
 
     Project {
         check_config,
         path: ProjectPath { root },
         config,
+        config_mtime: SystemTime::now(),
+        codegen: Refreshable::new((), &[]),
         cache: LoadCache::new(),
     }
 }
