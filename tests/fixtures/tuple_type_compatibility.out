@@ -1,0 +1,45 @@
+info: Typechecking...
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:3
+      3 |  def f([Integer, String] x) => nil; end
+                 ^^^^^^^^^^^^^^^^^ [Integer, String], with:
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:6
+      6 |    f [1]
+               ^^^ [Integer]
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:6
+      6 |    f [1]
+             ^^^^^ in this expression
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:3
+      3 |  def f([Integer, String] x) => nil; end
+                 ^^^^^^^^^^^^^^^^^ [Integer, String], with:
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:14
+     14 |    f [1, "foo", :bar]
+               ^^^^^^^^^^^^^^^^ [Integer, String, Symbol]
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:14
+     14 |    f [1, "foo", :bar]
+             ^^^^^^^^^^^^^^^^^^ in this expression
+
+error: Could not match types:
+
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:3
+      3 |  def f([Integer, String] x) => nil; end
+                  ^^^^^^^ Integer, with:
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:18
+     18 |    f ["foo", :bar, 1]
+                ^^^^^ String
+
+        - arising from an attempt to match:
+
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:3
+      3 |  def f([Integer, String] x) => nil; end
+                 ^^^^^^^^^^^^^^^^^ [Integer, String], with:
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:18
+     18 |    f ["foo", :bar, 1]
+               ^^^^^^^^^^^^^^^^ [String, Symbol, Integer]
+        @ __ROOT__/tests/fixtures/tuple_type_compatibility.rb:18
+     18 |    f ["foo", :bar, 1]
+             ^^^^^^^^^^^^^^^^^^ in this expression
