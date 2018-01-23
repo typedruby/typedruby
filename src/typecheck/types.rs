@@ -588,10 +588,11 @@ impl<'ty, 'object: 'ty> TypeEnv<'ty, 'object> {
                     to_elems.consume_front();
                 }
 
-                assert!(to_elems.is_empty());
-                assert!(from_elems.is_empty());
-
-                Ok(())
+                if to_elems.is_empty() && from_elems.is_empty() {
+                    Ok(())
+                } else {
+                    Err(TypeError::Incompatible(to, from))
+                }
             }
             (&Type::KeywordHash { .. }, &Type::KeywordHash { .. }) => {
                 panic!("TODO implement compatible for keyword hash to keyword hash");
