@@ -1,6 +1,6 @@
-extern crate ruby_parser;
+extern crate typedruby_parser;
 
-pub use self::ruby_parser::{parse, Ast, SourceFile, Id, Node, Loc, Diagnostic, Level};
+pub use self::typedruby_parser::{parse, Ast, SourceFile, Id, Node, Loc, Diagnostic, Level};
 
 use std::rc::Rc;
 

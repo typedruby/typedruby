@@ -1,5 +1,5 @@
 [package]
-name = "ruby_parser"
+name = "typedruby_parser"
 version = "0.1.0"
 authors = ["Hailey Somerville <hailey@hailey.lol>"]
 build = "build.rs"
