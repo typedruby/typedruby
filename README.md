@@ -18,93 +18,9 @@ end
 
 Check out the [documentation](/docs) for an introductory guide and more details!
 
-## Syntax
+## Installing
 
-TypedRuby extends the Ruby grammar to allow argument and return type annotations in method definitions and blocks.
-
-Type annotations for arguments come before the argument (and also before any sigils, eg. type annotations for rest arguments are written as `MyType *args`), and return type annotations come after a `=>` token after the argument list.
-
-Here's an [EBNF](https://en.wikipedia.org/wiki/Extended_Backus%E2%80%93Naur_form) description of TypedRuby's type annotation syntax:
-
-```ebnf
-type                    = instance_type
-                        | generic_instance_type
-                        | array_type
-                        | tuple_type
-                        | hash_type
-                        | proc_type
-                        | nillable_type
-                        | "nil"
-                        | ":any"
-                        | ":self"
-                        | ":instance"
-                        | ":class"
-                        | "(", paren_inner, ")"
-                        ;
-
-types                   = type, { ",", type } ;
-
-instance_type           = constant_path ;
-
-generic_instance_type   = constant_path, "::", "[", types, "]" ;
-
-constant_path           = (* same as Ruby *) ;
-
-array_type              = "[", type, "]" ;
-
-tuple_type              = "[", type, ",", types, "]" ;
-
-hash_type               = "{", type, "=>", type, "}" ;
-
-proc_type               = "{", "|", proc_args, "|", "=>", type, "}" ;
-
-proc_args               = (* omitted for brevity, same as Ruby's argument syntax *) ;
-
-nillable_type           = "~", type ;
-
-paren_inner             = union_type
-                        | type
-                        ;
-
-union_type              = type, { "|", type } ;
-```
-
-TypedRuby also extends the Ruby grammar with a few other extra syntax items:
-
-* **Type casts**
-
-  Valid anywhere an expression is, causes TypedRuby to ignore the inferred type for the expression and treat it as the specified type instead. Type casts should be avoided where possible, but can be a useful escape hatch.
-
-  Grammar:
-
-  ```ebnf
-  type_cast = "(", expression, ":", type, ")" ;
-  ```
-
-  Example:
-
-  ```ruby
-  x = (123 : String)
-  # x is now typed String
-  ```
-
-* **Instance variable type declarations**
-
-  Valid in class/module bodies.
-
-  Grammar:
-
-  ```ebnf
-  ivar_decl = "def", ivar, ":", type ;
-  ```
-
-  Example:
-
-  ```ruby
-  class Foo
-    def @bar : String
-  end
-  ```
+Add `typedruby` to your `Gemfile` and you're ready to go!
 
 ## Building
 
