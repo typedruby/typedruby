@@ -18,6 +18,10 @@ end
 
 Check out the [documentation](/docs) for an introductory guide and more details!
 
+## Installing
+
+Add `typedruby` to your `Gemfile` and you're ready to go!
+
 ## Building
 
 TypedRuby is written in Rust, and uses Ragel and Bison in its parser.
