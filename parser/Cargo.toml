@@ -1,7 +1,7 @@
 [package]
 name = "typedruby_parser"
 version = "0.1.0"
-authors = ["Charlie Somerville <charlie@charlie.bz>"]
+authors = ["Charlie Somerville <charlie@charlie.bz>", "GitHub <opensource+typedruby@github.com>"]
 build = "build.rs"
 include = [
     "build.rs",
