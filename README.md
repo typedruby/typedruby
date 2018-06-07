@@ -1,3 +1,5 @@
+**Note:** TypedRuby is not currently under active development.
+
 # TypedRuby
 
 TypedRuby is a gradual static type checker for Ruby. TypedRuby statically analyses your code and, with the help of type annotations, helps you find bugs sooner rather than later.
