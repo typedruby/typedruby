@@ -1,5 +1,11 @@
 The MIT License (MIT)
 
+Copyright (c) 2013-2016 whitequark  <whitequark@whitequark.org>
+
+Parts of the source are derived from ruby_parser:
+Copyright (c) Ryan Davis, seattle.rb
+
+This parser is a rewrite of whitequark's original parser gem in C++ and Rust:
 Copyright (c) 2017 GitHub, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
