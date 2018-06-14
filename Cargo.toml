@@ -1,6 +1,6 @@
 [package]
 name = "typedruby"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["Hailey Somerville <hailey@hailey.lol>", "GitHub <opensource+typedruby@github.com>"]
 license = "MIT"
 
