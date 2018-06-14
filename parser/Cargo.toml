@@ -2,6 +2,7 @@
 name = "typedruby_parser"
 version = "0.1.0"
 authors = ["Hailey Somerville <hailey@hailey.lol>", "GitHub <opensource+typedruby@github.com>"]
+license = "MIT"
 build = "build.rs"
 include = [
     "build.rs",
