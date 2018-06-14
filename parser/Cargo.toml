@@ -1,6 +1,6 @@
 [package]
 name = "typedruby_parser"
-version = "0.1.0"
+version = "0.6.0"
 authors = ["Charlie Somerville <charlie@github.com>", "GitHub <opensource+typedruby@github.com>"]
 license = "MIT"
 build = "build.rs"
