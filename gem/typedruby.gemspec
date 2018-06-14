@@ -4,8 +4,8 @@ Gem::Specification.new do |s|
   s.summary = "Gradual static typing for Ruby"
   s.description = "Gradual static typing for Ruby."
   s.authors = ["Hailey Somerville"]
-  s.email = ["hailey@hailey.lol"]
-  s.homepage = "https://github.com/github/typedruby"
+  s.email = ["hailey@hailey.lol", "opensource+typedruby@github.com"]
+  s.homepage = "https://github.com/typedruby/typedruby"
   s.license = "MIT"
 
   s.files = Dir["**/*"]
