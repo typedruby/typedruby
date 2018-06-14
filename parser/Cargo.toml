@@ -31,6 +31,7 @@ include = [
     "src/ast.rs",
     "src/builder.rs",
     "src/ffi.rs",
+    "src/id_arena.rs",
     "src/lib.rs",
     "src/parser.rs",
     "src/sexp.rs",
